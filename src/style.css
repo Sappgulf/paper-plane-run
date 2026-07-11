@@ -76,6 +76,9 @@ html, body, #game-root {
   35% { transform: scale(1.28); box-shadow: 0 8px 24px rgba(124,58,237,.45); }
   100% { transform: scale(1); }
 }
+.hud-card.streak-hud { border-color: rgba(217,119,6,.4); background: rgba(255,247,224,.92); }
+.hud-card.streak-hud > span:nth-child(2) { color: #b45309; }
+.hud-card.streak-hud.combo-pulse { animation: comboPulse 0.4s cubic-bezier(.34,1.56,.64,1); }
 .hud-card.mode-chip > span:nth-child(2),
 .hud-card.zone-chip > span:nth-child(2) { font-size: 13px !important; }
 .next-zone-chip {

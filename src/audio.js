@@ -227,6 +227,26 @@ export class GameAudio {
     this._tone(120, 0.4, 'sawtooth', 0.12, 40)
   }
 
+  starStreak(tier = 1) {
+    if (!this.ctx || this.muted) return
+    const t = this._now()
+    const base = 660 + tier * 40
+    ;[base, base * 1.26, base * 1.5].forEach((f, i) => {
+      const osc = this.ctx.createOscillator()
+      const g = this.ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.value = f
+      const start = t + i * 0.055
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.14, start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.18)
+      osc.connect(g)
+      g.connect(this.sfx || this.master)
+      osc.start(start)
+      osc.stop(start + 0.2)
+    })
+  }
+
   incoming() {
     if (!this.ctx || this.muted) return
     const t = this._now()

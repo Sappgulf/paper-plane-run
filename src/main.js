@@ -71,6 +71,8 @@ const powerLabel = $('power-label')
 const powerFill = $('power-fill')
 const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
+const streakHud = $('streak-hud')
+const streakVal = $('streak-val')
 const distanceEl = $('distance')
 const bestEl = $('best')
 const starsEl = $('stars')
@@ -306,6 +308,9 @@ let currentZoneId = 'city'
 let combo = 0
 let maxCombo = 0
 let comboTimer = 0
+/** Consecutive star pickups within a short window — separate from the near-miss combo */
+let starStreak = 0
+let starStreakTimer = 0
 let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
@@ -922,7 +927,7 @@ const FLYER_DEFS = [
   { id: 'kite', label: 'loose kite', radius: 0.75, weight: 0.5, tex: '/assets/flyer-kite.jpg', scale: 1.55, weave: true },
   { id: 'biplane', label: 'toy biplane', radius: 0.9, weight: 0.45, tex: '/assets/flyer-biplane.jpg', scale: 1.7, dive: true },
   { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5 },
-  { id: 'swarm', label: 'paper scrap swarm', radius: 0.95, weight: 0.35 },
+  { id: 'swarm', label: 'flock of paper cranes', radius: 0.95, weight: 0.35, tex: '/assets/birds.jpg', scale: 1.9 },
 ]
 
 function createBillboardFlyer(texUrl, scale = 1.5) {
@@ -996,19 +1001,6 @@ function createFlyer(kindId) {
         if (sx < 0 && sy > 0) g.userData.wingL = w
         if (sx > 0 && sy > 0) g.userData.wingR = w
       }
-    }
-  } else if (def.id === 'swarm') {
-    for (let i = 0; i < 7; i++) {
-      const scrap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.15 + rng() * 0.2, 0.04, 0.2 + rng() * 0.15),
-        new THREE.MeshStandardMaterial({
-          color: [0xf0956a, 0xffe6a8, 0xb8e0d2, 0xd4c4f0][i % 4],
-          roughness: 0.9,
-        }),
-      )
-      scrap.position.set((rng() - 0.5) * 1.2, (rng() - 0.5) * 0.9, (rng() - 0.5) * 0.6)
-      scrap.rotation.set(rng(), rng(), rng())
-      g.add(scrap)
     }
   } else if (season.id === 'winter') {
     g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), birdMat))
@@ -1098,7 +1090,15 @@ function createScissors() {
 
 function createStar() {
   const g = new THREE.Group()
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), starMat)
+  // Hero origami-star art (glowing gold star), billboard-facing
+  const tex = loadCutoutTex('/assets/pickup-orb.jpg')
+  const core = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 1.1),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, alphaTest: 0.12, side: THREE.DoubleSide, depthWrite: false,
+    }),
+  )
+  core.rotation.y = Math.PI
   g.add(core)
   // Soft glow shell for readability
   const glow = new THREE.Mesh(
@@ -1109,6 +1109,7 @@ function createStar() {
   )
   g.add(glow)
   g.userData.core = core
+  g.userData.billboard = core
   return g
 }
 
@@ -1161,15 +1162,19 @@ function createPowerUp(kind) {
   ring.rotation.x = Math.PI / 2
   g.add(ring)
 
-  // Icon sprite facing player (clean PNG)
-  const iconUrl = `/assets/power-${kind}.png`
+  // Icon sprite facing player — boost gets the hero origami-rocket art,
+  // everything else uses its clean flat icon.
+  const isBoostHero = kind === 'boost'
+  const iconUrl = isBoostHero ? '/assets/pickup-boost.jpg' : `/assets/power-${kind}.png`
+  const iconSize = isBoostHero ? 1.3 : 0.85
   try {
-    const tex = loadTex(iconUrl)
+    const tex = isBoostHero ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
     const icon = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.85, 0.85),
+      new THREE.PlaneGeometry(iconSize, iconSize),
       new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
+        alphaTest: isBoostHero ? 0.12 : 0,
         depthWrite: false,
         side: THREE.DoubleSide,
       }),
@@ -1765,6 +1770,9 @@ function resetGame() {
   combo = 0
   maxCombo = 0
   comboTimer = 0
+  starStreak = 0
+  starStreakTimer = 0
+  streakHud?.classList.add('hidden')
   runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
   nextBossAt = 500
   bossActive = false
@@ -3069,7 +3077,8 @@ function animateHazards(dt) {
         }
       })
     }
-    if (e.type === 'star') e.mesh.rotation.y += dt * 2.5
+    // Spin the billboard card in-plane (not around Y) so it keeps facing the camera
+    if (e.type === 'star' && e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.z += dt * 1.6
     if (e.type === 'power') {
       e.mesh.rotation.y += dt * 1.8
       e.mesh.userData.ring && (e.mesh.userData.ring.rotation.z += dt * 2)
@@ -3106,6 +3115,32 @@ function registerNearMiss(kind = null) {
   Haptic.nearMiss()
   spawnConfetti(planeX, planeY, 2)
   distance += 5 * combo * 0.25
+}
+
+/** Consecutive star pickups within a short window — every 5th grants bonus stars. */
+function registerStarStreak() {
+  starStreak++
+  starStreakTimer = 2.2
+  if (streakVal) streakVal.textContent = String(starStreak)
+  if (starStreak >= 2 && streakHud) {
+    streakHud.classList.remove('hidden')
+    streakHud.classList.remove('combo-pulse')
+    void streakHud.offsetWidth
+    streakHud.classList.add('combo-pulse')
+  }
+  if (starStreak % 5 === 0) {
+    const tier = starStreak / 5
+    const bonus = 1 + tier
+    stars += bonus
+    runStats.stars = stars
+    starsEl.textContent = String(stars)
+    audio.starStreak(tier)
+    if (settings.haptics) Haptic.collect()
+    spawnConfetti(planeX, planeY, 1)
+    powerBanner.textContent = `⭐ Star Streak x${starStreak}! +${bonus}`
+    powerBanner.classList.remove('hidden')
+    bannerTimer = 2.0
+  }
 }
 
 function update(dt) {
@@ -3244,6 +3279,13 @@ function update(dt) {
     if (comboTimer <= 0) {
       combo = 0
       comboHud.classList.add('hidden')
+    }
+  }
+  if (starStreakTimer > 0) {
+    starStreakTimer -= dt
+    if (starStreakTimer <= 0) {
+      starStreak = 0
+      streakHud?.classList.add('hidden')
     }
   }
 
@@ -3629,6 +3671,7 @@ function update(dt) {
         audio.collectStar()
         if (settings.haptics) Haptic.collect()
         spawnConfetti(m.position.x, m.position.y, m.position.z)
+        registerStarStreak()
         scene.remove(m)
         entities.splice(i, 1)
       }
