@@ -1374,57 +1374,77 @@ function resetStick() {
   stickKnob.style.transform = 'translate(-50%, -50%)'
 }
 function wantsJoystick() {
-  // Co-op always needs sticks; otherwise honor setting
   if (runKind === 'coop') return true
-  return settings.controlMode === 'joystick'
+  return String(settings.controlMode || 'mouse') === 'joystick'
 }
 
-function showStick(v) {
+/** Force stick UI to match control mode — CSS + classes + aria */
+function showStick(playing) {
   const windZone = $('wind-stick-zone')
   const root = $('game-root')
   const joy = wantsJoystick()
-  if (v && joy) {
+  const showFlyStick = !!(playing && joy)
+  const showWindStick = !!(playing && runKind === 'coop')
+
+  // Mode classes drive CSS display rules
+  root?.classList.toggle('joystick-mode', joy)
+  root?.classList.toggle('mouse-mode', !joy)
+  root?.classList.toggle('coop-mode', runKind === 'coop' && playing)
+
+  if (showFlyStick) {
     stickZone.classList.remove('hidden')
-    if (runKind === 'coop' && windZone) {
-      windZone.classList.remove('hidden')
-      root?.classList.add('coop-mode')
-    } else {
-      windZone?.classList.add('hidden')
-      root?.classList.remove('coop-mode')
-    }
-    root?.classList.add('joystick-mode')
-    root?.classList.remove('mouse-mode')
-  } else if (v && !joy) {
-    // Mouse aim: hide sticks (unless coop already handled)
-    stickZone.classList.add('hidden')
-    windZone?.classList.add('hidden')
-    root?.classList.remove('coop-mode')
-    root?.classList.add('mouse-mode')
-    root?.classList.remove('joystick-mode')
-    resetStick()
+    stickZone.setAttribute('aria-hidden', 'false')
   } else {
     stickZone.classList.add('hidden')
-    windZone?.classList.add('hidden')
-    root?.classList.remove('coop-mode', 'joystick-mode', 'mouse-mode')
+    stickZone.setAttribute('aria-hidden', 'true')
     resetStick()
+  }
+
+  if (showWindStick && windZone) {
+    windZone.classList.remove('hidden')
+    windZone.setAttribute('aria-hidden', 'false')
+  } else if (windZone) {
+    windZone.classList.add('hidden')
+    windZone.setAttribute('aria-hidden', 'true')
     windStick.x = windStick.y = 0
     windStick.active = false
   }
+
+  const hudCtrl = $('hud-ctrl')
+  if (hudCtrl) hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : 'Mouse'
 }
 
 function updateControlUI() {
-  const mode = settings.controlMode === 'joystick' ? 'joystick' : 'mouse'
+  const mode = wantsJoystick() && runKind !== 'coop'
+    ? (settings.controlMode === 'joystick' ? 'joystick' : 'mouse')
+    : settings.controlMode === 'joystick'
+      ? 'joystick'
+      : 'mouse'
+  const m = settings.controlMode === 'joystick' ? 'joystick' : 'mouse'
   document.querySelectorAll('.ctrl-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.ctrl === mode)
+    b.classList.toggle('active', b.dataset.ctrl === m)
   })
   const blurb = $('ctrl-blurb')
   if (blurb) {
     blurb.textContent =
-      mode === 'joystick'
-        ? 'Drag the stick or use arrows / WASD'
+      m === 'joystick'
+        ? 'On-screen stick + arrows / WASD · stick hidden in Mouse mode'
         : settings.invertY
-          ? 'Plane follows cursor · Y inverted'
-          : 'Plane follows your cursor'
+          ? 'Move cursor — plane tracks it · Y inverted'
+          : 'Move cursor — plane tracks left/right & up/down'
+  }
+  const invMenu = $('menu-invert-y')
+  if (invMenu) invMenu.checked = !!settings.invertY
+  const cm = $('set-control-mode')
+  if (cm) cm.value = m
+  // Keep root classes correct on menu too
+  const root = $('game-root')
+  root?.classList.toggle('joystick-mode', m === 'joystick')
+  root?.classList.toggle('mouse-mode', m === 'mouse')
+  // Always hide sticks on menu
+  if (state !== 'playing') {
+    stickZone.classList.add('hidden')
+    $('wind-stick-zone')?.classList.add('hidden')
   }
 }
 
@@ -1432,8 +1452,7 @@ function setControlMode(mode) {
   if (mode !== 'mouse' && mode !== 'joystick') return
   settings = saveSettings({ controlMode: mode })
   updateControlUI()
-  // Refresh stick visibility if mid-flight
-  if (state === 'playing') showStick(true)
+  showStick(state === 'playing')
 }
 
 document.querySelectorAll('.ctrl-btn').forEach((b) => {
@@ -1443,7 +1462,15 @@ document.querySelectorAll('.ctrl-btn').forEach((b) => {
     audio.unlock().then(() => audio.uiClick())
   })
 })
+$('menu-invert-y')?.addEventListener('change', (e) => {
+  settings = saveSettings({ invertY: e.target.checked })
+  const sy = $('set-invert-y')
+  if (sy) sy.checked = e.target.checked
+  updateControlUI()
+})
 updateControlUI()
+// Ensure sticks never flash on boot
+showStick(false)
 
 /** Map pointer to normalized -1..1 with invert options */
 function pointerAxesFromClient(clientX, clientY) {
@@ -1629,11 +1656,7 @@ muteBtn.addEventListener('click', async (e) => {
 // UI panels
 // ---------------------------------------------------------------------------
 function hideAllPanels() {
-  for (const id of [
-    'menu', 'gameover', 'missions-panel', 'skins-panel', 'board-panel',
-    'editor-panel', 'hotseat-intermission', 'settings-panel', 'stats-panel',
-    'upgrades-panel',
-  ]) {
+  for (const id of ['menu', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
     $(id)?.classList.add('hidden')
   }
 }
@@ -1645,7 +1668,50 @@ function showMenu() {
   hudEl.classList.add('hidden')
   showStick(false)
   refreshMissionBadge()
+  updateControlUI()
 }
+
+function openHangar(tab = 'upgrades') {
+  hideAllPanels()
+  const hangar = $('hangar-panel')
+  hangar?.classList.remove('hidden')
+  showHangarTab(tab)
+  refreshHangarWallet()
+}
+
+function refreshHangarWallet() {
+  const w = $('hangar-wallet')
+  const l = $('hangar-lifetime')
+  if (w) w.textContent = String(getWallet())
+  if (l) l.textContent = String(getLifetimeStars())
+  const w2 = $('wallet-stars')
+  if (w2) w2.textContent = String(getWallet())
+}
+
+function showHangarTab(tab) {
+  document.querySelectorAll('.hangar-tab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tab === tab)
+  })
+  document.querySelectorAll('.hangar-page').forEach((p) => {
+    p.classList.toggle('hidden', p.id !== `tab-${tab}`)
+  })
+  if (tab === 'upgrades') renderUpgrades()
+  if (tab === 'skins') renderSkins()
+  if (tab === 'missions') renderMissions()
+  if (tab === 'board') renderBoard('local')
+  if (tab === 'settings') renderSettings()
+  if (tab === 'stats') renderStats()
+  if (tab === 'editor') setupEditor()
+  refreshHangarWallet()
+}
+
+document.querySelectorAll('.hangar-tab').forEach((b) => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation()
+    showHangarTab(b.dataset.tab)
+    audio.unlock().then(() => audio.uiClick())
+  })
+})
 
 function refreshMissionBadge() {
   const n = unclaimedRewards()
@@ -1656,7 +1722,9 @@ function refreshMissionBadge() {
 }
 
 function renderMissions() {
+  refreshHangarWallet()
   const list = $('missions-list')
+  if (!list) return
   list.innerHTML = ''
   for (const m of getDailyMissions()) {
     const li = document.createElement('li')
@@ -1691,10 +1759,9 @@ function renderMissions() {
 
 function renderSkins() {
   refreshUnlocks(season.id)
-  $('lifetime-stars').textContent = String(getLifetimeStars())
-  const walletEl = $('wallet-stars')
-  if (walletEl) walletEl.textContent = String(getWallet())
+  refreshHangarWallet()
   const grid = $('skins-grid')
+  if (!grid) return
   grid.innerHTML = ''
   for (const s of listSkins(season.id)) {
     const card = document.createElement('button')
@@ -1726,40 +1793,45 @@ function renderSkins() {
 }
 
 function renderUpgrades() {
-  const wallet = getWallet()
-  const wEl = $('upgrade-wallet')
-  if (wEl) wEl.textContent = String(wallet)
-  const list = $('upgrades-list')
-  if (!list) return
-  list.innerHTML = ''
+  refreshHangarWallet()
+  const grid = $('upgrades-grid')
+  if (!grid) return
+  grid.innerHTML = ''
   for (const u of listUpgrades()) {
-    const li = document.createElement('li')
-    const bars = '●'.repeat(u.level) + '○'.repeat(u.max - u.level)
-    const right = document.createElement('span')
+    const card = document.createElement('div')
+    card.className = 'upgrade-card'
+    const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
+    const action = document.createElement(u.maxed ? 'span' : 'button')
     if (u.maxed) {
-      right.textContent = 'MAX'
-      right.className = 'done'
+      action.className = 'u-max'
+      action.textContent = 'MAX'
     } else {
-      const btn = document.createElement('button')
-      btn.className = 'claim-btn'
-      btn.textContent = `${u.cost}★`
-      btn.disabled = !u.canAfford
-      btn.onclick = () => {
+      action.type = 'button'
+      action.className = 'u-buy'
+      action.textContent = `Upgrade ${u.cost}★`
+      action.disabled = !u.canAfford
+      action.onclick = () => {
         const res = buyUpgrade(u.id)
         if (res.ok) {
           audio.uiClick()
-          Haptic.collect()
+          if (settings.haptics) Haptic.collect()
           applyUpgradeVisuals()
           renderUpgrades()
         }
       }
-      right.appendChild(btn)
     }
-    const left = document.createElement('span')
-    left.innerHTML = `<strong>${u.icon} ${u.name}</strong><br/><small>${u.blurb}</small><br/><span class="upgrade-bars">${bars}</span>`
-    li.appendChild(left)
-    li.appendChild(right)
-    list.appendChild(li)
+    card.innerHTML = `
+      <div>
+        <div class="u-title">${u.icon} ${u.name}</div>
+        <div class="u-blurb">${u.blurb}</div>
+      </div>
+    `
+    card.appendChild(action)
+    const barEl = document.createElement('div')
+    barEl.className = 'u-bars'
+    barEl.textContent = `${bars}  ${u.level}/${u.max}`
+    card.appendChild(barEl)
+    grid.appendChild(card)
   }
 }
 
@@ -1981,42 +2053,8 @@ $('hotseat-btn').onclick = () => {
   hotseat = { players: 2, turn: 0, scores: [0, 0], active: true }
   startGame('hotseat')
 }
-$('missions-btn').onclick = () => {
-  hideAllPanels()
-  renderMissions()
-  $('missions-panel').classList.remove('hidden')
-}
-$('skins-btn').onclick = () => {
-  hideAllPanels()
-  renderSkins()
-  $('skins-panel').classList.remove('hidden')
-}
-$('upgrades-btn')?.addEventListener('click', () => {
-  hideAllPanels()
-  renderUpgrades()
-  $('upgrades-panel')?.classList.remove('hidden')
-})
-$('board-btn').onclick = () => {
-  hideAllPanels()
-  renderBoard('local')
-  $('board-panel').classList.remove('hidden')
-}
-$('editor-btn').onclick = () => {
-  hideAllPanels()
-  setupEditor()
-  $('editor-panel').classList.remove('hidden')
-}
+$('hangar-btn')?.addEventListener('click', () => openHangar('upgrades'))
 $('coop-btn')?.addEventListener('click', () => startGame('coop'))
-$('settings-btn')?.addEventListener('click', () => {
-  hideAllPanels()
-  renderSettings()
-  $('settings-panel')?.classList.remove('hidden')
-})
-$('stats-btn')?.addEventListener('click', () => {
-  hideAllPanels()
-  renderStats()
-  $('stats-panel')?.classList.remove('hidden')
-})
 $('ar-btn')?.addEventListener('click', async () => {
   await audio.unlock()
   const on = await deskAR.toggle()
@@ -2701,43 +2739,30 @@ function update(dt) {
   }
 
   if (mouseMode) {
-    // Spring toward cursor — feel matches mouse movement
-    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 1.8)
-    const stiffness = 14 * sens * accelMul
-    const damping = 0.88
-    const ax = (mouseTarget.x - planeX) * stiffness
-    const ay = (mouseTarget.y - planeY) * stiffness
-    velX += ax * dt
-    velY += ay * dt
-    // Light sink so you still need to hold altitude a bit
-    velY -= difficulty.sink * sinkMul * 0.35 * dt
-    velX *= Math.pow(1 - damping * dt * 8, 1)
-    velY *= Math.pow(1 - damping * dt * 8, 1)
-    // Extra direct blend so cursor and plane stay locked
-    const blend = 1 - Math.pow(0.0002, dt * sens)
-    planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, blend * 0.55)
-    planeY = THREE.MathUtils.lerp(planeY, mouseTarget.y, blend * 0.55)
+    // Direct aim: plane tracks cursor position 1:1 with light smoothing
+    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 2)
+    // Higher sens = snappier (less lag)
+    const follow = 1 - Math.pow(0.00001, dt * (10 * sens))
+    const prevX = planeX
+    const prevY = planeY
+    planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, follow)
+    planeY = THREE.MathUtils.lerp(planeY, mouseTarget.y, follow)
+    // Velocity from actual motion (for bank / pitch only)
+    const invDt = 1 / Math.max(dt, 0.001)
+    velX = THREE.MathUtils.clamp((planeX - prevX) * invDt, -MAX_VEL, MAX_VEL)
+    velY = THREE.MathUtils.clamp((planeY - prevY) * invDt, -MAX_VEL, MAX_VEL)
   } else {
-    velX += inputX * 40 * accelMul * dt
-    velY += inputY * 40 * accelMul * dt
+    velX += inputX * 42 * accelMul * dt
+    velY += inputY * 42 * accelMul * dt
     velY -= difficulty.sink * sinkMul * dt
-    // Stronger drag at high speed for control
     const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
     const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
     velX *= Math.pow(dragX, dt)
     velY *= Math.pow(dragY, dt)
-  }
-
-  velX = THREE.MathUtils.clamp(velX, -MAX_VEL, MAX_VEL)
-  velY = THREE.MathUtils.clamp(velY, -MAX_VEL, MAX_VEL)
-
-  if (!mouseMode) {
+    velX = THREE.MathUtils.clamp(velX, -MAX_VEL, MAX_VEL)
+    velY = THREE.MathUtils.clamp(velY, -MAX_VEL, MAX_VEL)
     planeX += velX * dt
     planeY += velY * dt
-  } else {
-    // residual velocity for feel / banking
-    planeX += velX * dt * 0.35
-    planeY += velY * dt * 0.35
   }
 
   // Soft walls — bounce instead of hard clamp stick

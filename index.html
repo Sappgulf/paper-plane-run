@@ -12,14 +12,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#c8dff5" />
-    <meta name="description" content="Paper Plane Run — endless flyer with daily routes, skins, missions & more." />
+    <meta name="description" content="Paper Plane Run — endless flyer through a paper world." />
     <title>Paper Plane Run</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="game-root">
+    <div id="game-root" class="mouse-mode">
       <canvas id="c"></canvas>
 
       <div id="hud" class="hidden">
@@ -36,6 +36,7 @@
         </div>
         <div id="hotseat-hud" class="hud-card hidden"><span class="label">Player</span><span id="hotseat-player">1</span></div>
         <div id="coop-hud" class="hud-card hidden"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
+        <div id="ctrl-hud" class="hud-card mode-chip"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
       </div>
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute">🔊</button>
@@ -48,161 +49,158 @@
       <div id="combo-float" class="hidden">Near miss!</div>
       <div id="challenge-toast" class="hidden" role="status"></div>
 
+      <!-- Only visible in joystick / coop modes (CSS + JS enforced) -->
       <div id="stick-zone" class="hidden" aria-hidden="true">
         <div id="stick-base"><div id="stick-knob"></div></div>
-        <p class="stick-hint">P1 · Fly</p>
+        <p class="stick-hint">Fly</p>
       </div>
       <div id="wind-stick-zone" class="hidden" aria-hidden="true">
         <div id="wind-stick-base"><div id="wind-stick-knob"></div></div>
-        <p class="stick-hint">P2 · Wind</p>
+        <p class="stick-hint">Wind</p>
       </div>
 
       <!-- MAIN MENU -->
       <div id="menu" class="panel">
         <img class="logo" src="/assets/logo.jpg" alt="Paper plane" />
         <h1>Paper Plane Run</h1>
-        <p class="tagline">Co-op · bosses · AR desk · seasonal · a11y · analytics</p>
+        <p class="tagline">Pick difficulty &amp; controls, then take flight</p>
 
-        <div class="diff-row" role="group" aria-label="Difficulty">
-          <button type="button" class="diff-btn" data-diff="easy">Easy</button>
-          <button type="button" class="diff-btn active" data-diff="normal">Normal</button>
-          <button type="button" class="diff-btn" data-diff="hard">Hard</button>
+        <div class="chip-section">
+          <span class="chip-label">Difficulty</span>
+          <div class="diff-row" role="group" aria-label="Difficulty">
+            <button type="button" class="diff-btn" data-diff="easy">Easy</button>
+            <button type="button" class="diff-btn active" data-diff="normal">Normal</button>
+            <button type="button" class="diff-btn" data-diff="hard">Hard</button>
+          </div>
+          <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
         </div>
-        <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
 
-        <div class="diff-row control-row" role="group" aria-label="Control scheme">
-          <button type="button" class="diff-btn ctrl-btn" data-ctrl="mouse">🖱 Mouse</button>
-          <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick">🕹️ Joystick</button>
+        <div class="chip-section">
+          <span class="chip-label">Controls</span>
+          <div class="diff-row control-row" role="group" aria-label="Control scheme">
+            <button type="button" class="diff-btn ctrl-btn active" data-ctrl="mouse" id="ctrl-mouse-btn">🖱 Mouse aim</button>
+            <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick" id="ctrl-joy-btn">🕹️ Joystick</button>
+          </div>
+          <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
+          <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
         </div>
-        <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
 
-        <div class="mode-grid">
+        <div class="mode-grid compact">
           <button id="start-btn" type="button" class="primary-wide">✈ Take Flight</button>
-          <button id="daily-btn" type="button" class="mode-btn">📅 Daily Route</button>
+          <button id="daily-btn" type="button" class="mode-btn">📅 Daily</button>
           <button id="tutorial-btn" type="button" class="mode-btn">🎓 Tutorial</button>
-          <button id="coop-btn" type="button" class="mode-btn">🌬 Co-op Wind</button>
+          <button id="hangar-btn" type="button" class="mode-btn hangar-cta">🏠 Hangar</button>
+          <button id="coop-btn" type="button" class="mode-btn">🌬 Co-op</button>
           <button id="hotseat-btn" type="button" class="mode-btn">👥 Hot-seat</button>
-          <button id="missions-btn" type="button" class="mode-btn">🎯 Missions <span id="mission-badge" class="badge hidden">!</span></button>
-          <button id="skins-btn" type="button" class="mode-btn">🎨 Skins</button>
-          <button id="upgrades-btn" type="button" class="mode-btn">🔧 Upgrades</button>
-          <button id="board-btn" type="button" class="mode-btn">🏆 Board</button>
-          <button id="editor-btn" type="button" class="mode-btn">🛠 Editor</button>
-          <button id="settings-btn" type="button" class="mode-btn">⚙️ Settings</button>
-          <button id="stats-btn" type="button" class="mode-btn">📊 Stats</button>
         </div>
         <p id="daily-hint" class="mini-hint"></p>
-        <label class="name-row">Pilot name <input id="pilot-name" maxlength="16" placeholder="Pilot" /></label>
+        <label class="name-row">Pilot name <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
       </div>
 
-      <!-- SETTINGS / A11Y -->
-      <div id="settings-panel" class="panel hidden">
-        <h2>Settings &amp; Access</h2>
-        <p class="tagline">Season now: <strong id="season-now">—</strong></p>
-        <div class="settings-list">
-          <label class="set-row">Controls
-            <select id="set-control-mode">
-              <option value="mouse">Mouse aim (follow cursor)</option>
-              <option value="joystick">Joystick / stick</option>
-            </select>
-          </label>
-          <label class="set-row"><input type="checkbox" id="set-invert-y" /> Invert up/down</label>
-          <label class="set-row"><input type="checkbox" id="set-invert-x" /> Invert left/right</label>
-          <label class="set-row">Mouse feel
-            <select id="set-mouse-sens">
-              <option value="0.7">Relaxed</option>
-              <option value="1">Normal</option>
-              <option value="1.35">Snappy</option>
-            </select>
-          </label>
-          <label class="set-row"><input type="checkbox" id="set-reduced-motion" /> Reduced motion</label>
-          <label class="set-row"><input type="checkbox" id="set-large-stick" /> Larger touch sticks</label>
-          <label class="set-row"><input type="checkbox" id="set-auto-level" /> Auto-level assist (or hold Shift)</label>
-          <label class="set-row"><input type="checkbox" id="set-colorblind" /> Colorblind-safe power colors</label>
-          <label class="set-row"><input type="checkbox" id="set-low-power" /> Low-power graphics (mobile)</label>
-          <label class="set-row"><input type="checkbox" id="set-haptics" /> Haptics</label>
-          <label class="set-row"><input type="checkbox" id="set-ar" /> Desk AR (camera background)</label>
-          <label class="set-row">Season
-            <select id="set-season">
-              <option value="auto">Auto (calendar)</option>
-              <option value="default">Default</option>
-              <option value="halloween">Halloween</option>
-              <option value="winter">Winter</option>
-              <option value="valentine">Valentine</option>
-              <option value="spring">Spring</option>
-              <option value="summer">Summer</option>
-            </select>
-          </label>
+      <!-- UNIFIED HANGAR (tabs) -->
+      <div id="hangar-panel" class="panel hangar hidden">
+        <div class="hangar-top">
+          <h2>Hangar</h2>
+          <p class="tagline hangar-wallet">
+            Wallet <strong id="hangar-wallet">0</strong>★ · Lifetime <strong id="hangar-lifetime">0</strong>★
+          </p>
+          <div class="hangar-tabs" role="tablist">
+            <button type="button" class="hangar-tab active" data-tab="upgrades">🔧 Upgrades</button>
+            <button type="button" class="hangar-tab" data-tab="skins">🎨 Skins</button>
+            <button type="button" class="hangar-tab" data-tab="missions">🎯 Missions</button>
+            <button type="button" class="hangar-tab" data-tab="board">🏆 Board</button>
+            <button type="button" class="hangar-tab" data-tab="settings">⚙️ Settings</button>
+            <button type="button" class="hangar-tab" data-tab="stats">📊 Stats</button>
+            <button type="button" class="hangar-tab" data-tab="editor">🛠 Editor</button>
+          </div>
         </div>
-        <p class="mini-hint">Mouse: plane flies to cursor. Joystick: drag stick or arrows. Co-op always uses sticks + arrows/WASD.</p>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
 
-      <!-- ANALYTICS -->
-      <div id="stats-panel" class="panel hidden">
-        <h2>Flight Stats</h2>
-        <div id="stats-body"></div>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
+        <div class="hangar-body">
+          <section id="tab-upgrades" class="hangar-page">
+            <p class="page-intro">Spend stars from flights. Each rank makes the plane sharper.</p>
+            <div id="upgrades-grid" class="upgrade-grid"></div>
+          </section>
 
-      <!-- MISSIONS -->
-      <div id="missions-panel" class="panel hidden">
-        <h2>Daily Missions</h2>
-        <p class="tagline">Resets UTC midnight · claim stars for skins</p>
-        <ul id="missions-list" class="list-card"></ul>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
+          <section id="tab-skins" class="hangar-page hidden">
+            <p class="page-intro">Unlock skins with lifetime stars. Seasonal skins free in-season.</p>
+            <div id="skins-grid" class="skins-grid"></div>
+          </section>
 
-      <!-- SKINS -->
-      <div id="skins-panel" class="panel hidden">
-        <h2>Plane Skins</h2>
-        <p class="tagline">
-          Lifetime: <strong id="lifetime-stars">0</strong>★ · Wallet:
-          <strong id="wallet-stars">0</strong>★
-        </p>
-        <div id="skins-grid" class="skins-grid"></div>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
+          <section id="tab-missions" class="hangar-page hidden">
+            <p class="page-intro">Daily goals reset at UTC midnight. Claim rewards for wallet stars.</p>
+            <ul id="missions-list" class="list-card"></ul>
+          </section>
 
-      <!-- UPGRADES -->
-      <div id="upgrades-panel" class="panel hidden">
-        <h2>Plane Upgrades</h2>
-        <p class="tagline">
-          Spend run stars from your wallet:
-          <strong id="upgrade-wallet">0</strong>★
-        </p>
-        <ul id="upgrades-list" class="list-card"></ul>
-        <p class="mini-hint">Earn ★ in flights → wallet. Handling, lift, glide, magnet, shield, luck, wings &amp; trail.</p>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
+          <section id="tab-board" class="hangar-page hidden">
+            <div class="tab-row">
+              <button type="button" class="tab active" data-board="local">Device</button>
+              <button type="button" class="tab" data-board="daily">Daily</button>
+              <button type="button" class="tab" data-board="remote">Global</button>
+            </div>
+            <ol id="board-list" class="list-card board-list"></ol>
+          </section>
 
-      <!-- LEADERBOARD -->
-      <div id="board-panel" class="panel hidden">
-        <h2>Leaderboard</h2>
-        <div class="tab-row">
-          <button type="button" class="tab active" data-board="local">Device</button>
-          <button type="button" class="tab" data-board="daily">Daily</button>
-          <button type="button" class="tab" data-board="remote">Global</button>
+          <section id="tab-settings" class="hangar-page hidden">
+            <p class="tagline">Season: <strong id="season-now">—</strong></p>
+            <div class="settings-list">
+              <label class="set-row">Controls
+                <select id="set-control-mode">
+                  <option value="mouse">Mouse aim</option>
+                  <option value="joystick">Joystick</option>
+                </select>
+              </label>
+              <label class="set-row"><input type="checkbox" id="set-invert-y" /> Invert up/down</label>
+              <label class="set-row"><input type="checkbox" id="set-invert-x" /> Invert left/right</label>
+              <label class="set-row">Mouse feel
+                <select id="set-mouse-sens">
+                  <option value="0.75">Relaxed</option>
+                  <option value="1">Normal</option>
+                  <option value="1.4">Snappy</option>
+                  <option value="1.75">Locked-on</option>
+                </select>
+              </label>
+              <label class="set-row"><input type="checkbox" id="set-reduced-motion" /> Reduced motion</label>
+              <label class="set-row"><input type="checkbox" id="set-large-stick" /> Larger sticks</label>
+              <label class="set-row"><input type="checkbox" id="set-auto-level" /> Auto-level (or Shift)</label>
+              <label class="set-row"><input type="checkbox" id="set-colorblind" /> Colorblind powers</label>
+              <label class="set-row"><input type="checkbox" id="set-low-power" /> Low-power graphics</label>
+              <label class="set-row"><input type="checkbox" id="set-haptics" /> Haptics</label>
+              <label class="set-row"><input type="checkbox" id="set-ar" /> Desk AR camera</label>
+              <label class="set-row">Season
+                <select id="set-season">
+                  <option value="auto">Auto</option>
+                  <option value="default">Default</option>
+                  <option value="halloween">Halloween</option>
+                  <option value="winter">Winter</option>
+                  <option value="valentine">Valentine</option>
+                  <option value="spring">Spring</option>
+                  <option value="summer">Summer</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section id="tab-stats" class="hangar-page hidden">
+            <div id="stats-body"></div>
+          </section>
+
+          <section id="tab-editor" class="hangar-page hidden">
+            <p class="page-intro">Place hazards on the strip, then play or share a code.</p>
+            <div class="editor-toolbar" id="editor-palette"></div>
+            <canvas id="editor-canvas" width="360" height="200"></canvas>
+            <div class="btn-row wrap">
+              <button type="button" id="editor-undo" class="btn-secondary">Undo</button>
+              <button type="button" id="editor-clear" class="btn-secondary">Clear</button>
+              <button type="button" id="editor-export" class="btn-secondary">Copy link</button>
+              <button type="button" id="editor-play" class="primary-wide">▶ Play route</button>
+            </div>
+            <input id="editor-import" class="import-input" placeholder="Paste layout code or link…" />
+            <button type="button" id="editor-load" class="btn-secondary">Load</button>
+            <p id="editor-status" class="share-status"></p>
+          </section>
         </div>
-        <ol id="board-list" class="list-card board-list"></ol>
-        <button type="button" class="back-btn" data-back>Back</button>
-      </div>
 
-      <!-- EDITOR -->
-      <div id="editor-panel" class="panel hidden">
-        <h2>Route Editor</h2>
-        <p class="tagline">Tap palette, then place on the strip. Export a share code.</p>
-        <div class="editor-toolbar" id="editor-palette"></div>
-        <canvas id="editor-canvas" width="360" height="220"></canvas>
-        <div class="btn-row wrap">
-          <button type="button" id="editor-undo" class="btn-secondary">Undo</button>
-          <button type="button" id="editor-clear" class="btn-secondary">Clear</button>
-          <button type="button" id="editor-export" class="btn-secondary">Copy code</button>
-          <button type="button" id="editor-play" class="primary-wide">▶ Play route</button>
-        </div>
-        <input id="editor-import" class="import-input" placeholder="Paste layout code…" />
-        <button type="button" id="editor-load" class="btn-secondary">Load code</button>
-        <p id="editor-status" class="share-status"></p>
-        <button type="button" class="back-btn" data-back>Back</button>
+        <button type="button" class="back-btn hangar-back" data-back>← Main menu</button>
       </div>
 
       <!-- GAME OVER -->
@@ -229,7 +227,6 @@
         <button id="menu-btn" type="button" class="linkish">Main menu</button>
       </div>
 
-      <!-- HOTSEAT OVERLAY -->
       <div id="hotseat-intermission" class="panel hidden">
         <h2 id="hotseat-title">Player 2</h2>
         <p id="hotseat-scores" class="detail"></p>
