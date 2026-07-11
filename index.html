@@ -48,6 +48,15 @@
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute" aria-label="Mute">🔊</button>
       <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install">⬇️</button>
+
+      <div id="install-hint" class="hidden" role="dialog" aria-label="Install Paper Plane Run">
+        <div class="install-hint-card">
+          <div class="install-hint-icon">✈️</div>
+          <h3>Add to Home Screen</h3>
+          <p id="install-hint-body">Tap <b>Share</b>, then <b>Add to Home Screen</b> for a fullscreen, offline-ready app.</p>
+          <button id="install-hint-close" type="button" class="cta-main install-hint-btn">Got it</button>
+        </div>
+      </div>
       <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR">📷</button>
 
       <div id="banner-stack">
@@ -124,6 +133,7 @@
               <button type="button" class="hangar-tab active" data-tab="upgrades">🔧 Upgrades</button>
               <button type="button" class="hangar-tab" data-tab="skins">🎨 Skins</button>
               <button type="button" class="hangar-tab" data-tab="missions">🎯 Missions</button>
+              <button type="button" class="hangar-tab" data-tab="achievements">🎖️ Achievements</button>
               <button type="button" class="hangar-tab" data-tab="board">🏆 Board</button>
               <button type="button" class="hangar-tab" data-tab="settings">⚙️ Settings</button>
               <button type="button" class="hangar-tab" data-tab="stats">📊 Stats</button>
@@ -142,6 +152,10 @@
             <section id="tab-missions" class="hangar-page hidden">
               <p class="page-intro">Resets UTC midnight. Claim for wallet stars.</p>
               <ul id="missions-list" class="list-card"></ul>
+            </section>
+            <section id="tab-achievements" class="hangar-page hidden">
+              <p class="page-intro">Lifetime milestones — claim each tier once you clear it.</p>
+              <div id="achievements-list"></div>
             </section>
             <section id="tab-board" class="hangar-page hidden">
               <div class="tab-row">

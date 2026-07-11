@@ -1,6 +1,16 @@
 /**
  * Web Audio SFX + soft generative music bed.
  */
+// Per-zone motifs for the generative bed — same gentle pentatonic engine,
+// different mood so a zone transition is reinforced musically too.
+const ZONE_SCALES = {
+  city: [196, 220, 261.63, 293.66, 329.63, 392], // G major pentatonic — bright, default
+  harbor: [220, 246.94, 293.66, 329.63, 392, 440], // A major pentatonic — airy, open
+  storm: [220, 246.94, 261.63, 329.63, 349.23, 440], // A minor-ish — tense, overcast
+  sunset: [207.65, 233.08, 277.18, 311.13, 349.23, 415.3], // Ab major pentatonic — warm, golden
+  aurora: [220, 246.94, 277.18, 329.63, 369.99, 440], // wider spacing — shimmering, exotic
+}
+
 export class GameAudio {
   constructor() {
     this.ctx = null
@@ -15,6 +25,14 @@ export class GameAudio {
     this._musicTimer = null
     /** 0 (calm) – 1 (intense): driven by combo/speed, brightens & quickens the music bed */
     this.intensity = 0
+    /** Current zone's musical scale — swapped so each zone has its own motif */
+    this.scale = ZONE_SCALES.city
+  }
+
+  /** Swap the generative bed's scale for the zone we just entered. Takes
+   *  effect on the next note, no need to restart the music loop. */
+  setMusicZone(zoneId) {
+    this.scale = ZONE_SCALES[zoneId] || ZONE_SCALES.city
   }
 
   /** Live-adjust the generative music bed's tempo/brightness/volume. */
@@ -123,6 +141,7 @@ export class GameAudio {
 
   startFlight() {
     this.intensity = 0
+    this.scale = ZONE_SCALES.city
     this._tone(392, 0.12, 'triangle', 0.15)
     this._tone(523, 0.14, 'triangle', 0.12)
     this._tone(659, 0.2, 'sine', 0.1)
@@ -290,11 +309,11 @@ export class GameAudio {
   startMusic() {
     if (!this.ctx || !this.musicOn || this.muted) return
     this.stopMusic(false)
-    const scale = [196, 220, 261.63, 293.66, 329.63, 392]
     let step = 0
     const tick = () => {
       if (!this.ctx || !this.musicOn || this.muted) return
       const it = this.intensity
+      const scale = this.scale
       const t = this._now()
       const freq = scale[step % scale.length]
       step += (Math.random() < 0.3 + it * 0.3 ? 2 : 1)

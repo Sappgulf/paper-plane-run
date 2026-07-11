@@ -51,6 +51,12 @@ import { loadSettings, saveSettings, applyDocumentA11y, powerColors } from './se
 import { seasonInfo } from './seasonal.js'
 import { track, getFunnelSummary, recentEvents } from './analytics.js'
 import { DeskAR } from './ar.js'
+import {
+  addLifetimeDistance,
+  incrementRunCount,
+  getAchievementProgress,
+  claimAchievementTier,
+} from './achievements.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -360,22 +366,42 @@ let nearMissCooldown = new WeakMap()
 }
 
 // PWA
+const isStandalone =
+  window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream
+const installHintEl = $('install-hint')
+const installHintBody = $('install-hint-body')
 let deferredInstall = null
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault()
   deferredInstall = e
   installBtn.classList.remove('hidden')
 })
+
+// iOS Safari never fires beforeinstallprompt, so it never gets a way to
+// install at all unless we proactively surface the button ourselves.
+if (isIos && !isStandalone) installBtn.classList.remove('hidden')
+
 installBtn.addEventListener('click', async (e) => {
   e.stopPropagation()
-  if (!deferredInstall) {
-    alert('Install: browser menu → Install / Add to Home Screen')
+  if (deferredInstall) {
+    deferredInstall.prompt()
+    await deferredInstall.userChoice
+    deferredInstall = null
+    installBtn.classList.add('hidden')
     return
   }
-  deferredInstall.prompt()
-  await deferredInstall.userChoice
-  deferredInstall = null
-  installBtn.classList.add('hidden')
+  if (installHintBody) {
+    installHintBody.innerHTML = isIos
+      ? 'Tap the <b>Share</b> icon in Safari\'s toolbar, then <b>Add to Home Screen</b>.'
+      : 'Open your browser menu and choose <b>Install app</b> or <b>Add to Home Screen</b>.'
+  }
+  installHintEl?.classList.remove('hidden')
+})
+$('install-hint-close')?.addEventListener('click', () => installHintEl?.classList.add('hidden'))
+installHintEl?.addEventListener('click', (e) => {
+  if (e.target === installHintEl) installHintEl.classList.add('hidden')
 })
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
@@ -1314,15 +1340,19 @@ function createCloud() {
   // Soft gray underside lumps first (slightly lower/behind) for a hint of
   // volume, then bright puffs on top — randomized per-cloud so the sky
   // doesn't read as one shape copy-pasted everywhere.
-  const lumpCount = 4 + ((rng() * 3) | 0)
+  const lowPower = settings.lowPower
+  const lumpCount = lowPower ? 2 : 4 + ((rng() * 3) | 0)
+  const segs = lowPower ? 6 : 10
   for (let i = 0; i < lumpCount; i++) {
     const t = i / Math.max(1, lumpCount - 1)
     const x = (t - 0.5) * 2.6 + (rng() - 0.5) * 0.3
     const s = 0.75 + rng() * 0.7
-    const shade = new THREE.Mesh(new THREE.SphereGeometry(s * 0.92, 8, 8), cloudShadeMat)
-    shade.position.set(x, -s * 0.22, (rng() - 0.5) * 0.25 - 0.1)
-    g.add(shade)
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(s, 10, 10), cloudMat)
+    if (!lowPower) {
+      const shade = new THREE.Mesh(new THREE.SphereGeometry(s * 0.92, segs - 2, segs - 2), cloudShadeMat)
+      shade.position.set(x, -s * 0.22, (rng() - 0.5) * 0.25 - 0.1)
+      g.add(shade)
+    }
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(s, segs, segs), cloudMat)
     puff.position.set(x, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3)
     g.add(puff)
   }
@@ -1859,6 +1889,7 @@ function applyZone(z, announce) {
   }
   if (z.sky) setSkyTexture(z.sky, announce)
   if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
+  audio.setMusicZone(z.id)
   hudZoneEl.textContent = z.name
   if (announce && z.id !== currentZoneId) {
     zoneBanner.textContent = `✦ ${z.name}`
@@ -2399,6 +2430,7 @@ function showHangarTab(tab) {
   if (tab === 'upgrades') renderUpgrades()
   if (tab === 'skins') renderSkins()
   if (tab === 'missions') renderMissions()
+  if (tab === 'achievements') renderAchievements()
   if (tab === 'board') renderBoard('local')
   if (tab === 'settings') renderSettings()
   if (tab === 'stats') renderStats()
@@ -2430,10 +2462,24 @@ function renderMissions() {
   list.innerHTML = ''
   for (const m of getDailyMissions()) {
     const li = document.createElement('li')
-    li.className = m.done ? 'done' : ''
+    li.className = `mission-row${m.done ? ' done' : ''}`
+    const top = document.createElement('div')
+    top.className = 'mission-top'
     const left = document.createElement('span')
-    left.textContent = `${m.done ? '✓ ' : ''}${m.label} (${Math.min(m.progress, m.target)}/${m.target})`
-    li.appendChild(left)
+    left.textContent = `${m.done ? '✓ ' : ''}${m.label}`
+    top.appendChild(left)
+    const progress = document.createElement('span')
+    progress.className = 'mission-count'
+    progress.textContent = `${Math.min(m.progress, m.target)}/${m.target}`
+    top.appendChild(progress)
+    li.appendChild(top)
+    const bar = document.createElement('div')
+    bar.className = 'mission-bar'
+    const fill = document.createElement('div')
+    fill.className = 'mission-fill'
+    fill.style.width = `${Math.min(100, (m.progress / m.target) * 100)}%`
+    bar.appendChild(fill)
+    li.appendChild(bar)
     if (m.done && !m.claimed) {
       const btn = document.createElement('button')
       btn.className = 'claim-btn'
@@ -2452,10 +2498,58 @@ function renderMissions() {
       li.appendChild(btn)
     } else if (m.claimed) {
       const sp = document.createElement('span')
-      sp.textContent = 'Claimed'
+      sp.className = 'mission-claimed'
+      sp.textContent = 'Claimed ✓'
       li.appendChild(sp)
     }
     list.appendChild(li)
+  }
+}
+
+function renderAchievements() {
+  refreshHangarWallet()
+  const box = $('achievements-list')
+  if (!box) return
+  box.innerHTML = ''
+  for (const a of getAchievementProgress(getLifetimeStars())) {
+    const card = document.createElement('div')
+    card.className = 'achievement-card'
+    const nextTier = a.tiers.find((t) => !t.claimed)
+    const displayTier = nextTier || a.tiers[a.tiers.length - 1]
+    const prevThreshold = a.tiers[a.tiers.indexOf(displayTier) - 1]?.threshold ?? 0
+    const span = Math.max(1, displayTier.threshold - prevThreshold)
+    const pct = nextTier
+      ? Math.min(100, ((a.value - prevThreshold) / span) * 100)
+      : 100
+    card.innerHTML = `
+      <div class="achievement-top">
+        <span class="achievement-title">${a.icon} ${a.name}</span>
+        <span class="achievement-count">${a.value}${a.unit} / ${displayTier.threshold}${a.unit}</span>
+      </div>
+      <div class="mission-bar"><div class="mission-fill" style="width:${pct}%"></div></div>
+      <div class="achievement-tiers">
+        ${a.tiers.map((t, i) => `<span class="tier-dot${t.claimed ? ' claimed' : t.done ? ' done' : ''}" title="${t.threshold}${a.unit} · ${t.reward}★">${i + 1}</span>`).join('')}
+      </div>
+    `
+    const claimable = a.tiers.find((t) => t.claimable)
+    if (claimable) {
+      const btn = document.createElement('button')
+      btn.className = 'claim-btn achievement-claim'
+      btn.textContent = `Claim ${claimable.reward}★`
+      btn.onclick = () => {
+        const reward = claimAchievementTier(a.id, a.tiers.indexOf(claimable))
+        if (reward) {
+          addLifetimeStars(reward)
+          addWallet(reward)
+          audio.missionComplete()
+          Haptic.collect()
+          refreshUnlocks()
+          renderAchievements()
+        }
+      }
+      card.appendChild(btn)
+    }
+    box.appendChild(card)
   }
 }
 
@@ -2647,11 +2741,19 @@ async function renderBoard(tab = 'local') {
     list.innerHTML = '<li>No scores yet — go fly!</li>'
     return
   }
-  for (const r of rows) {
+  const myName = (pilotNameInput?.value || 'Pilot').slice(0, 16)
+  rows.forEach((r, i) => {
     const li = document.createElement('li')
-    li.innerHTML = `<span>${r.name || 'Pilot'} · ${r.mode || ''}</span><span>${r.distance}m · ${r.stars || 0}★</span>`
+    const rank = i + 1
+    const isMe = (r.name || 'Pilot') === myName
+    li.className = `board-row${rank <= 3 ? ` rank-${rank}` : ''}${isMe ? ' board-me' : ''}`
+    li.innerHTML = `
+      <span class="board-rank">${rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}</span>
+      <span class="board-name">${r.name || 'Pilot'}${isMe ? ' (you)' : ''}<small>${r.mode || ''}</small></span>
+      <span class="board-score">${r.distance}m<small>${r.stars || 0}★</small></span>
+    `
     list.appendChild(li)
-  }
+  })
 }
 
 // Editor
@@ -3090,6 +3192,10 @@ function finalizeDeath() {
   if (stars > 0) {
     addLifetimeStars(stars)
     addWallet(stars)
+  }
+  if (runKind !== 'tutorial' && runKind !== 'layout') {
+    addLifetimeDistance(d)
+    incrementRunCount()
   }
   refreshUnlocks(season.id)
   updateMissionsFromRun({
@@ -4022,7 +4128,9 @@ try {
   if (layoutPlay && dailyHint) {
     dailyHint.textContent = `Custom route loaded: ${layoutPlay.name}`
   }
-  if (season.id !== 'default' && challengeToast) {
+  // Don't clobber a shared-challenge/custom-route toast that's already claimed
+  // this same banner slot — whichever the visitor arrived for should win.
+  if (season.id !== 'default' && challengeToast && challengeToast.classList.contains('hidden')) {
     challengeToast.textContent = `✦ ${season.name} event — free seasonal skins!`
     challengeToast.classList.remove('hidden')
     setTimeout(() => challengeToast.classList.add('hidden'), 5000)
