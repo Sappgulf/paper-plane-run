@@ -226,6 +226,8 @@ html.a11y-colorblind .power-hud #power-fill {
   font-family: inherit; font-weight: 800; font-size: 11px; padding: 4px 8px;
   border-radius: 8px; border: none; background: #fbbf24; cursor: pointer;
 }
+.claim-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.upgrade-bars { letter-spacing: 2px; color: #d97706; font-size: 12px; }
 
 .skins-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;

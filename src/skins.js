@@ -44,6 +44,38 @@ export const SKINS = [
     map: '/assets/skin-gold.jpg',
   },
   {
+    id: 'neon',
+    name: 'Neon Crease',
+    cost: 160,
+    body: 0x1e3a5f,
+    accent: 0x38bdf8,
+    map: '/assets/skin-neon.jpg',
+  },
+  {
+    id: 'rainbow',
+    name: 'Rainbow Scrap',
+    cost: 200,
+    body: 0xfff7ed,
+    accent: 0xa855f7,
+    map: '/assets/skin-rainbow.jpg',
+  },
+  {
+    id: 'stormfoil',
+    name: 'Storm Foil',
+    cost: 150,
+    body: 0x4b5563,
+    accent: 0xa78bfa,
+    map: '/assets/skin-night.jpg',
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset Letter',
+    cost: 140,
+    body: 0xffedd5,
+    accent: 0xea580c,
+    map: '/assets/skin-coral.jpg',
+  },
+  {
     id: 'halloween',
     name: 'Jack-o-Plane',
     cost: 999,
@@ -121,7 +153,6 @@ export function unlockSkin(id) {
   if (unlocked.has(id)) return { ok: true, already: true }
   const stars = getLifetimeStars()
   if (stars < skin.cost) return { ok: false, reason: 'poor', need: skin.cost - stars }
-  // cost is unlock threshold (lifetime stars), not spend — arcade style
   unlocked.add(id)
   saveUnlocked(unlocked)
   return { ok: true }
@@ -150,7 +181,6 @@ export function listSkins(seasonId = 'default') {
   })
 }
 
-/** Auto-unlock skins when lifetime stars pass thresholds + seasonal free */
 export function refreshUnlocks(seasonId = 'default') {
   const stars = getLifetimeStars()
   const unlocked = loadUnlocked()

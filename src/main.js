@@ -25,7 +25,14 @@ import {
   saveGhostIfBest,
   ghostPoseAt,
 } from './ghost.js'
-import { zoneAt, nextZone } from './zones.js'
+import { zoneAt, nextZone, zoneProgress } from './zones.js'
+import {
+  getUpgradeEffects,
+  listUpgrades,
+  buyUpgrade,
+  getWallet,
+  addWallet,
+} from './upgrades.js'
 import {
   submitLocalScore,
   getLocalTop,
@@ -304,18 +311,28 @@ function loadTex(url) {
 }
 const paperTex = loadTex('/assets/paper.jpg')
 const buildingTex = loadTex('/assets/buildings.jpg')
-const skyTex = loadTex('/assets/sky.jpg')
+const skyTex = loadTex('/assets/sky-city.jpg')
 
-const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(300, 32, 16),
-  new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false }),
-)
-sky.name = 'sky'
-scene.add(sky)
+// Dual sky spheres for crossfade between zones
+const skyGeo = new THREE.SphereGeometry(300, 32, 16)
+const skyMatA = new THREE.MeshBasicMaterial({
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 1,
+})
+const skyMatB = new THREE.MeshBasicMaterial({
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0,
+})
+const skyA = new THREE.Mesh(skyGeo, skyMatA)
+const skyB = new THREE.Mesh(new THREE.SphereGeometry(298, 32, 16), skyMatB)
+skyA.name = 'sky'
+skyB.name = 'skyB'
+scene.add(skyA, skyB)
+let skyFade = 1 // 1 = show A, 0 = show B
+let skyFadeTarget = 1
+let activeSkyIsA = true
+let currentSkyUrl = '/assets/sky-city.jpg'
 
-const groundMap = paperTex.clone()
-groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping
-groundMap.repeat.set(4, 30)
+const groundMap = loadTex('/assets/ground-city.jpg')
+if (groundMap.repeat) groundMap.repeat.set(4, 30)
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(90, 700),
   new THREE.MeshStandardMaterial({ map: groundMap, color: 0xf2e6d8, roughness: 0.95 }),
@@ -324,6 +341,26 @@ ground.rotation.x = -Math.PI / 2
 ground.position.set(0, 0, 120)
 ground.receiveShadow = true
 scene.add(ground)
+let currentGroundUrl = '/assets/ground-city.jpg'
+
+// Upgrade sparkle trail
+const trailPts = []
+const TRAIL_N = 24
+{
+  const g = new THREE.BufferGeometry()
+  const arr = new Float32Array(TRAIL_N * 3)
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3))
+  const trail = new THREE.Points(
+    g,
+    new THREE.PointsMaterial({
+      color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
+    }),
+  )
+  trail.name = 'upgradeTrail'
+  trail.visible = false
+  scene.add(trail)
+  for (let i = 0; i < TRAIL_N; i++) trailPts.push(new THREE.Vector3())
+}
 
 const hemi = new THREE.HemisphereLight(0xffe8d6, 0x8fb8d8, 1.15)
 scene.add(hemi)
@@ -773,13 +810,14 @@ function spawnChunk(z) {
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
   }
 
-  if (rng() < cfg.starChance) {
+  const ufx = getUpgradeEffects()
+  if (rng() < cfg.starChance * ufx.starChanceMul) {
     const st = createStar()
     st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 5)
     scene.add(st)
     entities.push({ mesh: st, type: 'star', radius: 0.75 })
   }
-  if (rng() < cfg.powerChance + ramp * 0.04) {
+  if (rng() < (cfg.powerChance + ramp * 0.04) * ufx.powerChanceMul) {
     // Mix classic powers + paper physics toys
     const pool = rng() < 0.35 ? TOY_KINDS : POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
     const kind = pool[(rng() * pool.length) | 0]
@@ -892,7 +930,10 @@ function clearPower() {
 function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
-  activePower = { kind, timeLeft: meta.duration, duration: meta.duration, slingCharged: false }
+  const fx = getUpgradeEffects()
+  let duration = meta.duration
+  if (kind === 'shield') duration *= fx.shieldDurationMul
+  activePower = { kind, timeLeft: duration, duration, slingCharged: false }
   audio.powerUp(kind)
   Haptic.power()
   powerLabel.textContent = meta.label
@@ -923,6 +964,47 @@ function activatePower(kind) {
   }
 }
 
+function setSkyTexture(url, crossfade = true) {
+  if (url === currentSkyUrl) return
+  currentSkyUrl = url
+  const tex = loadTex(url)
+  if (!crossfade || settings.reducedMotion) {
+    skyMatA.map = tex
+    skyMatA.opacity = 1
+    skyMatB.opacity = 0
+    skyMatA.needsUpdate = true
+    activeSkyIsA = true
+    skyFade = 1
+    skyFadeTarget = 1
+    return
+  }
+  // Load next onto the hidden sphere, then fade
+  if (activeSkyIsA) {
+    skyMatB.map = tex
+    skyMatB.needsUpdate = true
+    skyFadeTarget = 0
+  } else {
+    skyMatA.map = tex
+    skyMatA.needsUpdate = true
+    skyFadeTarget = 1
+  }
+  activeSkyIsA = !activeSkyIsA
+}
+
+function setGroundTexture(url, tint = 0xf2e6d8) {
+  if (url === currentGroundUrl && ground.material.color.getHex() === tint) {
+    ground.material.color.setHex(tint)
+    return
+  }
+  currentGroundUrl = url
+  const tex = loadTex(url)
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(4, 30)
+  ground.material.map = tex
+  ground.material.color.setHex(tint)
+  ground.material.needsUpdate = true
+}
+
 function applyZone(z, announce) {
   scene.fog.color.setHex(z.fog)
   hemi.color.setHex(z.hemiSky)
@@ -930,6 +1012,8 @@ function applyZone(z, announce) {
   if (!activePower || activePower.kind !== 'slow') {
     renderer.toneMappingExposure = z.exposure
   }
+  if (z.sky) setSkyTexture(z.sky, announce)
+  if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
   hudZoneEl.textContent = z.name
   if (announce && z.id !== currentZoneId) {
     zoneBanner.textContent = `✦ ${z.name}`
@@ -937,6 +1021,27 @@ function applyZone(z, announce) {
     zoneBannerTimer = 2.5
   }
   currentZoneId = z.id
+}
+
+function updateSkyFade(dt) {
+  if (Math.abs(skyFade - skyFadeTarget) < 0.01) {
+    skyFade = skyFadeTarget
+  } else {
+    skyFade += (skyFadeTarget - skyFade) * Math.min(1, dt * 1.8)
+  }
+  skyMatA.opacity = skyFade
+  skyMatB.opacity = 1 - skyFade
+}
+
+function applyUpgradeVisuals() {
+  const fx = getUpgradeEffects()
+  plane.scale.setScalar(fx.planeScale)
+  const trail = scene.getObjectByName('upgradeTrail')
+  if (trail) {
+    trail.visible = fx.trailLevel > 0 && state === 'playing'
+    trail.material.opacity = 0.35 + fx.trailLevel * 0.2
+    trail.material.size = 0.16 + fx.trailLevel * 0.08
+  }
 }
 
 function resetGame() {
@@ -967,6 +1072,7 @@ function resetGame() {
   comboHud.classList.add('hidden')
   applySeasonVisuals()
   applySkin(getEquippedSkinId())
+  applyUpgradeVisuals()
 
   // RNG
   if (runKind === 'daily') {
@@ -982,6 +1088,8 @@ function resetGame() {
   camera.position.set(0, planeY + 4, -10)
   camera.lookAt(0, planeY, 12)
   ground.position.z = 120
+  currentSkyUrl = ''
+  currentGroundUrl = ''
   applyZone(zoneAt(0), false)
 
   ghostRecorder = createGhostRecorder()
@@ -1161,6 +1269,7 @@ function hideAllPanels() {
   for (const id of [
     'menu', 'gameover', 'missions-panel', 'skins-panel', 'board-panel',
     'editor-panel', 'hotseat-intermission', 'settings-panel', 'stats-panel',
+    'upgrades-panel',
   ]) {
     $(id)?.classList.add('hidden')
   }
@@ -1220,6 +1329,8 @@ function renderMissions() {
 function renderSkins() {
   refreshUnlocks(season.id)
   $('lifetime-stars').textContent = String(getLifetimeStars())
+  const walletEl = $('wallet-stars')
+  if (walletEl) walletEl.textContent = String(getWallet())
   const grid = $('skins-grid')
   grid.innerHTML = ''
   for (const s of listSkins(season.id)) {
@@ -1248,6 +1359,44 @@ function renderSkins() {
       }
     }
     grid.appendChild(card)
+  }
+}
+
+function renderUpgrades() {
+  const wallet = getWallet()
+  const wEl = $('upgrade-wallet')
+  if (wEl) wEl.textContent = String(wallet)
+  const list = $('upgrades-list')
+  if (!list) return
+  list.innerHTML = ''
+  for (const u of listUpgrades()) {
+    const li = document.createElement('li')
+    const bars = '●'.repeat(u.level) + '○'.repeat(u.max - u.level)
+    const right = document.createElement('span')
+    if (u.maxed) {
+      right.textContent = 'MAX'
+      right.className = 'done'
+    } else {
+      const btn = document.createElement('button')
+      btn.className = 'claim-btn'
+      btn.textContent = `${u.cost}★`
+      btn.disabled = !u.canAfford
+      btn.onclick = () => {
+        const res = buyUpgrade(u.id)
+        if (res.ok) {
+          audio.uiClick()
+          Haptic.collect()
+          applyUpgradeVisuals()
+          renderUpgrades()
+        }
+      }
+      right.appendChild(btn)
+    }
+    const left = document.createElement('span')
+    left.innerHTML = `<strong>${u.icon} ${u.name}</strong><br/><small>${u.blurb}</small><br/><span class="upgrade-bars">${bars}</span>`
+    li.appendChild(left)
+    li.appendChild(right)
+    list.appendChild(li)
   }
 }
 
@@ -1460,6 +1609,11 @@ $('skins-btn').onclick = () => {
   renderSkins()
   $('skins-panel').classList.remove('hidden')
 }
+$('upgrades-btn')?.addEventListener('click', () => {
+  hideAllPanels()
+  renderUpgrades()
+  $('upgrades-panel')?.classList.remove('hidden')
+})
 $('board-btn').onclick = () => {
   hideAllPanels()
   renderBoard('local')
@@ -1659,9 +1813,12 @@ function die(reason) {
     saveGhostIfBest(key, d, ghostRecorder.toJSON(), stars)
   }
 
-  // Lifetime stars + missions
-  if (stars > 0) addLifetimeStars(stars)
-  refreshUnlocks()
+  // Lifetime stars + spendable wallet + missions
+  if (stars > 0) {
+    addLifetimeStars(stars)
+    addWallet(stars)
+  }
+  refreshUnlocks(season.id)
   updateMissionsFromRun({
     stars,
     distance: d,
@@ -1843,7 +2000,9 @@ function update(dt) {
     zoneBannerTimer -= dt
     if (zoneBannerTimer <= 0) zoneBanner.classList.add('hidden')
   }
-  sky.position.copy(camera.position)
+  skyA.position.copy(camera.position)
+  skyB.position.copy(camera.position)
+  updateSkyFade(dt)
 
   if (state === 'menu') {
     plane.position.set(0, 7 + Math.sin(elapsed * 1.2) * 0.45, 10)
@@ -1967,17 +2126,19 @@ function update(dt) {
     }
   }
 
+  const ufx = getUpgradeEffects()
+
   // Physics toys modifiers
-  let sinkMul = 1
-  let accelMul = 1
+  let sinkMul = ufx.sinkMul
+  let accelMul = ufx.accelMul
   if (activePower?.kind === 'tear') {
     velX += tearSide * 14 * dt
-    accelMul = 0.85
+    accelMul *= 0.85
   }
   if (activePower?.kind === 'clip') {
-    sinkMul = 1.65
+    sinkMul *= 1.65
     velX *= Math.pow(0.03, dt) // more stable
-    accelMul = 0.75
+    accelMul *= 0.75
   }
   // Rubber-band slingshot: hold Space to charge, release to boost
   if (activePower?.kind === 'sling') {
@@ -2003,16 +2164,30 @@ function update(dt) {
   planeX = THREE.MathUtils.clamp(planeX + velX * dt, -MAX_X, MAX_X)
   planeY = THREE.MathUtils.clamp(planeY + velY * dt, MIN_Y, MAX_Y)
 
-  let speedMul = 1
-  if (activePower?.kind === 'slow') speedMul = 0.55
-  if (activePower?.kind === 'boost') speedMul = 1.55
+  let speedMul = ufx.speedMul
+  if (activePower?.kind === 'slow') speedMul *= 0.55
+  if (activePower?.kind === 'boost') speedMul *= 1.55
   const cfg = difficulty
   speed = (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
   const move = speed * dt
   const scoreFactor =
-    cfg.scoreMul * (activePower?.kind === 'boost' ? 1.1 : activePower?.kind === 'slow' ? 0.85 : 1) *
+    cfg.scoreMul * ufx.scoreMul *
+    (activePower?.kind === 'boost' ? 1.1 : activePower?.kind === 'slow' ? 0.85 : 1) *
     (1 + combo * 0.02)
   distance += move * scoreFactor
+
+  // Sparkle trail from upgrades
+  const trail = scene.getObjectByName('upgradeTrail')
+  if (trail && ufx.trailLevel > 0) {
+    trail.visible = true
+    for (let i = TRAIL_N - 1; i > 0; i--) trailPts[i].copy(trailPts[i - 1])
+    trailPts[0].set(planeX + (Math.random() - 0.5) * 0.3, planeY, -0.5 - Math.random())
+    const pos = trail.geometry.attributes.position
+    for (let i = 0; i < TRAIL_N; i++) {
+      pos.setXYZ(i, trailPts[i].x, trailPts[i].y, trailPts[i].z)
+    }
+    pos.needsUpdate = true
+  } else if (trail) trail.visible = false
 
   // Funnel milestones
   for (const m of [50, 100, 200, 500, 1000]) {
@@ -2049,9 +2224,14 @@ function update(dt) {
     } else if (ghostMesh) ghostMesh.visible = false
   }
 
-  // Zone
+  // Zone + soft progressive blend hint (banner only on change)
   const z = zoneAt(distance)
   if (z.id !== currentZoneId) applyZone(z, true)
+  const zp = zoneProgress(distance)
+  if (zp.next && zp.t > 0.92 && zp.t < 0.97) {
+    // gentle pre-transition fog lean
+    scene.fog.color.lerp(new THREE.Color(zp.next.fog), dt * 0.4)
+  }
 
   camera.position.lerp(new THREE.Vector3(planeX * 0.5, planeY + 3.1, -11), 1 - Math.pow(0.0006, dt))
   camera.lookAt(planeX * 0.25, planeY + 0.4, 16)
@@ -2072,7 +2252,8 @@ function update(dt) {
   }
 
   const p = plane.position
-  const magnetOn = activePower?.kind === 'magnet'
+  const magnetOn = activePower?.kind === 'magnet' || ufx.magnetBonus > 0
+  const magnetPull = (activePower?.kind === 'magnet' ? 1.2 : 0) + ufx.magnetBonus
   let ringsLeft = 0
 
   for (let i = entities.length - 1; i >= 0; i--) {
@@ -2097,15 +2278,16 @@ function update(dt) {
     }
 
     if (e.type === 'star') {
-      if (magnetOn) {
-        m.position.x += (p.x - m.position.x) * Math.min(1, 18 * dt * 0.15)
-        m.position.y += (p.y - m.position.y) * Math.min(1, 18 * dt * 0.15)
-        m.position.z += (p.z - m.position.z) * Math.min(1, 18 * dt * 0.08)
+      if (magnetOn && magnetPull > 0) {
+        const pull = 12 + magnetPull * 10
+        m.position.x += (p.x - m.position.x) * Math.min(1, pull * dt * 0.12)
+        m.position.y += (p.y - m.position.y) * Math.min(1, pull * dt * 0.12)
+        m.position.z += (p.z - m.position.z) * Math.min(1, pull * dt * 0.07)
       }
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = e.radius + PLANE_RADIUS + (magnetOn ? 1.2 : 0)
+      const catchR = e.radius + PLANE_RADIUS + magnetPull
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
         runStats.stars = stars
@@ -2159,7 +2341,7 @@ function update(dt) {
       const dx = Math.abs(m.position.x - p.x)
       const dz = Math.abs(m.position.z - p.z)
       const hitR = e.radius + PLANE_RADIUS * 0.55
-      const grazeR = e.radius + PLANE_RADIUS * 1.35
+      const grazeR = e.radius + PLANE_RADIUS * (1.35 + ufx.nearMissBonus)
       if (dx < hitR && dz < hitR && p.y < e.halfH + 0.35) {
         die('Hit a paper skyscraper')
         return

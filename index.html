@@ -78,6 +78,7 @@
           <button id="hotseat-btn" type="button" class="mode-btn">👥 Hot-seat</button>
           <button id="missions-btn" type="button" class="mode-btn">🎯 Missions <span id="mission-badge" class="badge hidden">!</span></button>
           <button id="skins-btn" type="button" class="mode-btn">🎨 Skins</button>
+          <button id="upgrades-btn" type="button" class="mode-btn">🔧 Upgrades</button>
           <button id="board-btn" type="button" class="mode-btn">🏆 Board</button>
           <button id="editor-btn" type="button" class="mode-btn">🛠 Editor</button>
           <button id="settings-btn" type="button" class="mode-btn">⚙️ Settings</button>
@@ -133,8 +134,23 @@
       <!-- SKINS -->
       <div id="skins-panel" class="panel hidden">
         <h2>Plane Skins</h2>
-        <p class="tagline">Lifetime stars: <strong id="lifetime-stars">0</strong></p>
+        <p class="tagline">
+          Lifetime: <strong id="lifetime-stars">0</strong>★ · Wallet:
+          <strong id="wallet-stars">0</strong>★
+        </p>
         <div id="skins-grid" class="skins-grid"></div>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- UPGRADES -->
+      <div id="upgrades-panel" class="panel hidden">
+        <h2>Plane Upgrades</h2>
+        <p class="tagline">
+          Spend run stars from your wallet:
+          <strong id="upgrade-wallet">0</strong>★
+        </p>
+        <ul id="upgrades-list" class="list-card"></ul>
+        <p class="mini-hint">Earn ★ in flights → wallet. Handling, lift, glide, magnet, shield, luck, wings &amp; trail.</p>
         <button type="button" class="back-btn" data-back>Back</button>
       </div>
 
