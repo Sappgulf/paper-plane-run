@@ -3616,7 +3616,12 @@ function update(dt) {
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
     }
     const inv = applyAxisInvert(inputX, inputY)
-    inputX = inv.x
+    // The chase camera looks toward +Z (opposite Three's default -Z forward),
+    // which mirrors its screen-right direction onto world -X. Relative input
+    // modes (stick/keys) set world X directly, so without this flip
+    // "right" would visibly steer left. Mouse-aim mode doesn't need this —
+    // it raycasts through the camera's real basis, so it's self-correcting.
+    inputX = -inv.x
     inputY = inv.y
   } else if (joyMode) {
     // Joystick / keyboard relative control
@@ -3629,13 +3634,16 @@ function update(dt) {
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
     }
     const inv = applyAxisInvert(inputX, inputY)
-    inputX = inv.x
+    // See the mirrored-camera note above — same correction applies here.
+    inputX = -inv.x
     inputY = inv.y
   } else {
     // Mouse aim: plane flies toward cursor world target
-    // Keyboard still nudges target for accessibility
-    if (keys.has('ArrowLeft') || keys.has('KeyA')) mouseTarget.x -= 18 * dt
-    if (keys.has('ArrowRight') || keys.has('KeyD')) mouseTarget.x += 18 * dt
+    // Keyboard still nudges target for accessibility. mouseTarget is a
+    // world position (not camera-relative), so it needs the same mirror
+    // flip as the relative-input modes above.
+    if (keys.has('ArrowLeft') || keys.has('KeyA')) mouseTarget.x += 18 * dt
+    if (keys.has('ArrowRight') || keys.has('KeyD')) mouseTarget.x -= 18 * dt
     if (keys.has('ArrowUp') || keys.has('KeyW')) mouseTarget.y += 18 * dt
     if (keys.has('ArrowDown') || keys.has('KeyS')) mouseTarget.y -= 18 * dt
     mouseTarget.x = THREE.MathUtils.clamp(mouseTarget.x, -MAX_X, MAX_X)
@@ -3666,7 +3674,9 @@ function update(dt) {
     if (keys.has('KeyS') || keys.has('KeyK')) coopWindY -= 1
     coopWindX = THREE.MathUtils.clamp(coopWindX + windStick.x, -1, 1)
     coopWindY = THREE.MathUtils.clamp(coopWindY + windStick.y, -1, 1)
-    velX += coopWindX * 28 * dt
+    // Same mirrored-camera correction as the main stick — P2 pushing "right"
+    // should blow P1 toward screen-right, i.e. world -X.
+    velX += -coopWindX * 28 * dt
     velY += coopWindY * 22 * dt
     const windHud = $('coop-wind-val')
     if (windHud) windHud.textContent = `${coopWindX.toFixed(1)},${coopWindY.toFixed(1)}`
