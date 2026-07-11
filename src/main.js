@@ -60,6 +60,7 @@ const canvas = $('c')
 const menuEl = $('menu')
 const gameoverEl = $('gameover')
 const hudEl = $('hud')
+const speedFxEl = $('speed-fx')
 const windBanner = $('wind-banner')
 const powerBanner = $('power-banner')
 const zoneBanner = $('zone-banner')
@@ -74,8 +75,75 @@ const bestEl = $('best')
 const starsEl = $('stars')
 const hudModeEl = $('hud-mode')
 const hudZoneEl = $('hud-zone')
+const nextZoneHud = $('next-zone-hud')
+const hudNextZoneEl = $('hud-next-zone')
+
+// Off-screen edge indicators: arrows pointing at nearby hazards/pickups
+// that have scrolled outside the camera frustum.
+const EDGE_KIND_BY_TYPE = { bird: 'hazard', scissors: 'hazard', star: 'star', power: 'power' }
+const edgeIndicatorEl = $('edge-indicators')
+const EDGE_POOL_SIZE = 5
+const edgePool = []
+if (edgeIndicatorEl) {
+  for (let i = 0; i < EDGE_POOL_SIZE; i++) {
+    const el = document.createElement('div')
+    el.className = 'edge-arrow'
+    el.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L22 20 L12 15.5 L2 20 Z"/></svg>'
+    edgeIndicatorEl.appendChild(el)
+    edgePool.push(el)
+  }
+}
+const _edgeNdc = new THREE.Vector3()
+function updateEdgeIndicators() {
+  if (!edgeIndicatorEl) return
+  const w = innerWidth
+  const h = innerHeight
+  const candidates = []
+  for (const e of entities) {
+    const kind = EDGE_KIND_BY_TYPE[e.type]
+    if (!kind) continue
+    const z = e.mesh.position.z
+    if (z < 2 || z > 55) continue
+    candidates.push({ e, kind, z })
+  }
+  candidates.sort((a, b) => a.z - b.z)
+  let used = 0
+  for (const { e, kind } of candidates) {
+    if (used >= EDGE_POOL_SIZE) break
+    _edgeNdc.copy(e.mesh.position).project(camera)
+    if (_edgeNdc.z > 1) continue // behind camera
+    const onScreen = Math.abs(_edgeNdc.x) < 0.94 && Math.abs(_edgeNdc.y) < 0.94
+    if (onScreen) continue
+    const el = edgePool[used++]
+    const cx = (_edgeNdc.x * 0.5 + 0.5) * w
+    const cy = (1 - (_edgeNdc.y * 0.5 + 0.5)) * h
+    const angle = Math.atan2(cy - h / 2, cx - w / 2)
+    const margin = 30
+    const clampedX = THREE.MathUtils.clamp(cx, margin, w - margin)
+    const clampedY = THREE.MathUtils.clamp(cy, margin, h - margin)
+    el.style.transform = `translate(${clampedX}px, ${clampedY}px) rotate(${angle + Math.PI / 2}rad)`
+    el.className = `edge-arrow visible kind-${kind}`
+  }
+  for (let i = used; i < EDGE_POOL_SIZE; i++) edgePool[i].classList.remove('visible')
+}
+function hideEdgeIndicators() {
+  for (const el of edgePool) el.classList.remove('visible')
+}
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
+const newBestBadge = $('new-best-badge')
+
+function animateCountUp(el, target, suffix, ms = 700) {
+  const start = performance.now()
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / ms)
+    const eased = 1 - Math.pow(1 - t, 3)
+    el.textContent = `${Math.round(target * eased)}${suffix}`
+    if (t < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
 const challengeToast = $('challenge-toast')
 const challengeResult = $('challenge-result')
 const shareStatus = $('share-status')
@@ -95,14 +163,16 @@ const hotseatScores = $('hotseat-scores')
 const diffBlurb = $('diff-blurb')
 const dailyHint = $('daily-hint')
 const pilotNameInput = $('pilot-name')
-const missionBadge = $('mission-badge')
+const missionBadge = $('mission-badge') // optional (hangar may omit badge)
 
 const audio = new GameAudio()
-muteBtn.textContent = audio.muted ? '🔇' : '🔊'
-pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
-pilotNameInput.addEventListener('change', () => {
-  localStorage.setItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
-})
+if (muteBtn) muteBtn.textContent = audio.muted ? '🔇' : '🔊'
+if (pilotNameInput) {
+  pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
+  pilotNameInput.addEventListener('change', () => {
+    localStorage.setItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
+  })
+}
 
 // Settings / season / AR / analytics
 let settings = loadSettings()
@@ -161,9 +231,9 @@ function saveBest(id, v) {
 
 let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
 let bestDistance = loadBest(difficulty.id)
-bestEl.textContent = `${Math.floor(bestDistance)}m`
-hudModeEl.textContent = difficulty.label
-diffBlurb.textContent = difficulty.blurb
+if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
+if (hudModeEl) hudModeEl.textContent = difficulty.label
+if (diffBlurb) diffBlurb.textContent = difficulty.blurb
 document.querySelectorAll('.diff-btn').forEach((b) => {
   b.classList.toggle('active', b.dataset.diff === difficulty.id)
   b.addEventListener('click', (e) => {
@@ -178,9 +248,9 @@ function setDifficulty(id, { persist = true } = {}) {
   difficulty = DIFFS[id]
   if (persist) localStorage.setItem(DIFF_KEY, id)
   bestDistance = loadBest(id)
-  bestEl.textContent = `${Math.floor(bestDistance)}m`
-  hudModeEl.textContent = difficulty.label
-  diffBlurb.textContent = difficulty.blurb
+  if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
+  if (hudModeEl) hudModeEl.textContent = difficulty.label
+  if (diffBlurb) diffBlurb.textContent = difficulty.blurb
   document.querySelectorAll('.diff-btn').forEach((b) =>
     b.classList.toggle('active', b.dataset.diff === id),
   )
@@ -188,7 +258,7 @@ function setDifficulty(id, { persist = true } = {}) {
 }
 
 function updateDailyHint() {
-  dailyHint.textContent = `📅 Daily ${dailyKey()} · seed race on ${difficulty.label}`
+  if (dailyHint) dailyHint.textContent = `📅 Daily ${dailyKey()} · seed race on ${difficulty.label}`
 }
 updateDailyHint()
 
@@ -308,6 +378,43 @@ function loadTex(url) {
     texCache[url] = t
   }
   return texCache[url]
+}
+const cutoutTexCache = {}
+function loadCutoutTex(url, threshold = 26, feather = 18) {
+  if (cutoutTexCache[url]) return cutoutTexCache[url]
+  const canvas = document.createElement('canvas')
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    const { width: w, height: h } = canvas
+    const data = ctx.getImageData(0, 0, w, h)
+    const px = data.data
+    // Sample the four corners to estimate the flat backdrop color
+    const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]
+    let br = 0, bg = 0, bb = 0
+    for (const [cx, cy] of corners) {
+      const i = (cy * w + cx) * 4
+      br += px[i]; bg += px[i + 1]; bb += px[i + 2]
+    }
+    br /= 4; bg /= 4; bb /= 4
+    for (let i = 0; i < px.length; i += 4) {
+      const dr = px[i] - br, dg = px[i + 1] - bg, db = px[i + 2] - bb
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db)
+      if (dist < threshold) px[i + 3] = 0
+      else if (dist < threshold + feather) px[i + 3] = ((dist - threshold) / feather) * 255
+    }
+    ctx.putImageData(data, 0, 0)
+    tex.needsUpdate = true
+  }
+  img.src = url
+  cutoutTexCache[url] = tex
+  return tex
 }
 const paperTex = loadTex('/assets/paper.jpg')
 const buildingTex = loadTex('/assets/buildings.jpg')
@@ -445,6 +552,73 @@ function applySeasonVisuals() {
   refreshUnlocks(season.id)
 }
 const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfffaf5, roughness: 1, transparent: true, opacity: 0.9 })
+const riverMat = new THREE.MeshStandardMaterial({
+  color: 0x6fb0d8, roughness: 0.25, metalness: 0.15, transparent: true, opacity: 0.9,
+})
+const riverRippleMat = new THREE.MeshStandardMaterial({
+  color: 0xdff3fb, roughness: 0.3, transparent: true, opacity: 0.55, depthWrite: false,
+})
+const parkMat = new THREE.MeshStandardMaterial({ color: 0x8fc98a, roughness: 0.95 })
+const treeFoliageMat = new THREE.MeshStandardMaterial({ color: 0x6fae6a, roughness: 0.85 })
+const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x9a7350, roughness: 0.8 })
+
+function createRiverPatch() {
+  const g = new THREE.Group()
+  const width = 80
+  const depth = 8 + rng() * 5
+  const river = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), riverMat)
+  river.rotation.x = -Math.PI / 2
+  g.add(river)
+  for (let i = 0; i < 3; i++) {
+    const ripple = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.9, 0.4), riverRippleMat)
+    ripple.rotation.x = -Math.PI / 2
+    ripple.position.set(0, 0.01, (rng() - 0.5) * depth * 0.7)
+    g.add(ripple)
+  }
+  g.position.y = 0.03
+  return g
+}
+
+function createParkPatch() {
+  const g = new THREE.Group()
+  const w = 11 + rng() * 8
+  const d = 11 + rng() * 8
+  const patch = new THREE.Mesh(new THREE.PlaneGeometry(w, d), parkMat)
+  patch.rotation.x = -Math.PI / 2
+  g.add(patch)
+  const treeCount = 2 + Math.floor(rng() * 3)
+  for (let i = 0; i < treeCount; i++) {
+    const tree = new THREE.Group()
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.6, 6), treeTrunkMat)
+    trunk.position.y = 0.3
+    tree.add(trunk)
+    const foliage = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.1, 7), treeFoliageMat)
+    foliage.position.y = 1.05
+    foliage.castShadow = true
+    tree.add(foliage)
+    tree.position.set((rng() - 0.5) * (w * 0.7), 0, (rng() - 0.5) * (d * 0.7))
+    g.add(tree)
+  }
+  g.position.y = 0.03
+  return g
+}
+
+function maybeSpawnGroundDecor(z) {
+  const roll = rng()
+  if (roll < 0.09) {
+    const river = createRiverPatch()
+    river.position.z = z
+    scene.add(river)
+    entities.push({ mesh: river, type: 'decor' })
+  } else if (roll < 0.26) {
+    const park = createParkPatch()
+    const side = rng() < 0.5 ? -1 : 1
+    park.position.x = side * (13 + rng() * 15)
+    park.position.z = z + (rng() - 0.5) * 8
+    scene.add(park)
+    entities.push({ mesh: park, type: 'decor' })
+  }
+}
 const windowMat = new THREE.MeshStandardMaterial({
   color: 0x6a8fb0, emissive: 0x3a5a70, emissiveIntensity: 0.18, roughness: 0.5,
 })
@@ -573,6 +747,68 @@ function createBossGate() {
   return g
 }
 
+const roofPropMats = {
+  tank: new THREE.MeshStandardMaterial({ color: 0xb0866a, roughness: 0.75 }),
+  antenna: new THREE.MeshStandardMaterial({ color: 0x8a8f98, metalness: 0.4, roughness: 0.4 }),
+  flagPole: new THREE.MeshStandardMaterial({ color: 0x8a8f98, metalness: 0.3, roughness: 0.5 }),
+}
+const flagCols = [0xef6f6c, 0x7ec8e3, 0xffd166, 0x9bd6a6]
+
+function addRoofProp(mesh, w, h, d) {
+  const minSpan = Math.min(w, d)
+  if (minSpan < 1.6) return // too small a roof to read a prop clearly
+  const roll = rng()
+  const top = h / 2 + 0.16
+  if (roll < 0.34) {
+    // Rooftop water tank: barrel on short stilts
+    const g = new THREE.Group()
+    const legH = 0.22
+    for (const [lx, lz] of [[-0.32, -0.32], [0.32, -0.32], [-0.32, 0.32], [0.32, 0.32]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, legH, 6), roofPropMats.antenna)
+      leg.position.set(lx, legH / 2, lz)
+      g.add(leg)
+    }
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.6, 10), roofPropMats.tank)
+    barrel.position.y = legH + 0.3
+    barrel.castShadow = true
+    g.add(barrel)
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.46, 0.22, 10), roofPropMats.tank)
+    cap.position.y = legH + 0.71
+    g.add(cap)
+    g.position.set((rng() - 0.5) * (w * 0.4), top, (rng() - 0.5) * (d * 0.4))
+    mesh.add(g)
+  } else if (roll < 0.68) {
+    // Antenna mast with a small blinking-red tip
+    const mastH = 1.1 + rng() * 1.3
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, mastH, 6), roofPropMats.antenna)
+    mast.position.set((rng() - 0.5) * (w * 0.4), top + mastH / 2, (rng() - 0.5) * (d * 0.4))
+    mast.castShadow = true
+    mesh.add(mast)
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xb91c1c, emissiveIntensity: 0.6 }),
+    )
+    tip.position.set(mast.position.x, top + mastH, mast.position.z)
+    mesh.add(tip)
+  } else if (roll < 0.9) {
+    // Small paper flag on a pole
+    const poleH = 0.9 + rng() * 0.4
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, poleH, 6), roofPropMats.flagPole)
+    pole.position.set((rng() - 0.5) * (w * 0.4), top + poleH / 2, (rng() - 0.5) * (d * 0.4))
+    mesh.add(pole)
+    const flag = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.34, 0.22),
+      new THREE.MeshStandardMaterial({
+        color: flagCols[(rng() * flagCols.length) | 0], side: THREE.DoubleSide, roughness: 0.8,
+      }),
+    )
+    flag.position.set(pole.position.x + 0.19, top + poleH - 0.12, pole.position.z)
+    flag.userData.flag = true
+    mesh.add(flag)
+  }
+  // else: bare roof — keeps some visual rest between busier ones
+}
+
 function createBuilding(w, h, d, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
   mesh.castShadow = true
@@ -581,6 +817,7 @@ function createBuilding(w, h, d, mat) {
   const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 1.06, 0.16, d * 1.06), planeAccentMat)
   roof.position.y = h / 2 + 0.08
   mesh.add(roof)
+  addRoofProp(mesh, w, h, d)
   return mesh
 }
 
@@ -596,7 +833,7 @@ const FLYER_DEFS = [
 
 function createBillboardFlyer(texUrl, scale = 1.5) {
   const g = new THREE.Group()
-  const tex = loadTex(texUrl)
+  const tex = loadCutoutTex(texUrl)
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
     transparent: true,
@@ -691,15 +928,33 @@ function createFlyer(kindId) {
     tip.position.y = -0.15
     g.add(a, b, tip)
   } else {
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 4), birdMat)
+    // Folded-paper crane: hinged triangular wings (same fold logic as the
+    // player's plane) so the existing flap animation bends them at the root
+    // instead of spinning a chunky box around its own middle.
+    const wingShape = new THREE.Shape()
+    wingShape.moveTo(0, 0)
+    wingShape.lineTo(0.62, -0.22)
+    wingShape.lineTo(0.18, 0.08)
+    wingShape.lineTo(0, 0)
+    const left = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
+    left.rotation.x = -Math.PI / 2
+    left.scale.x = -1
+    const right = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
+    right.rotation.x = -Math.PI / 2
+    g.add(left, right)
+
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 4), birdMat)
     body.rotation.x = Math.PI / 2
     g.add(body)
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.22), birdMat)
-    left.position.set(-0.3, 0.05, 0)
-    g.add(left)
-    const right = left.clone()
-    right.position.x = 0.3
-    g.add(right)
+    const neck = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.32, 4), birdMat)
+    neck.rotation.z = Math.PI * 0.62
+    neck.position.set(0, 0.06, 0.28)
+    g.add(neck)
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.4, 4), birdMat)
+    tail.rotation.z = -Math.PI / 2
+    tail.position.set(0, 0.02, -0.32)
+    g.add(tail)
+
     g.userData.wingL = left
     g.userData.wingR = right
   }
@@ -949,6 +1204,8 @@ function spawnChunk(z) {
   const cfg = difficulty
   const zone = zoneAt(distance)
   const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
+
+  maybeSpawnGroundDecor(z)
 
   for (const side of [-1, 1]) {
     if (rng() < 0.82) {
@@ -1616,23 +1873,25 @@ function bindWindStick() {
   base.addEventListener('pointercancel', end)
 }
 bindWindStick()
-stickBase.addEventListener('pointerdown', (e) => {
-  e.preventDefault()
-  e.stopPropagation()
-  stick.active = true
-  stick.pointerId = e.pointerId
-  stickBase.setPointerCapture(e.pointerId)
-  setStickFromEvent(e.clientX, e.clientY)
-})
-stickBase.addEventListener('pointermove', (e) => {
-  if (!stick.active || e.pointerId !== stick.pointerId) return
-  setStickFromEvent(e.clientX, e.clientY)
-})
-const endStick = (e) => {
-  if (e.pointerId === stick.pointerId) resetStick()
+if (stickBase) {
+  stickBase.addEventListener('pointerdown', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    stick.active = true
+    stick.pointerId = e.pointerId
+    stickBase.setPointerCapture(e.pointerId)
+    setStickFromEvent(e.clientX, e.clientY)
+  })
+  stickBase.addEventListener('pointermove', (e) => {
+    if (!stick.active || e.pointerId !== stick.pointerId) return
+    setStickFromEvent(e.clientX, e.clientY)
+  })
+  const endStick = (e) => {
+    if (e.pointerId === stick.pointerId) resetStick()
+  }
+  stickBase.addEventListener('pointerup', endStick)
+  stickBase.addEventListener('pointercancel', endStick)
 }
-stickBase.addEventListener('pointerup', endStick)
-stickBase.addEventListener('pointercancel', endStick)
 
 // Input
 window.addEventListener('keydown', (e) => {
@@ -1692,10 +1951,17 @@ function hideAllPanels() {
 function showMenu() {
   state = 'menu'
   hideAllPanels()
-  menuEl.classList.remove('hidden')
-  hudEl.classList.add('hidden')
+  menuEl?.classList.remove('hidden')
+  hudEl?.classList.add('hidden')
+  if (speedFxEl) speedFxEl.style.opacity = '0'
+  hideEdgeIndicators()
+  nextZoneHud?.classList.add('hidden')
   showStick(false)
-  refreshMissionBadge()
+  try {
+    refreshMissionBadge()
+  } catch {
+    /* optional badge */
+  }
   updateControlUI()
 }
 
@@ -1742,6 +2008,7 @@ document.querySelectorAll('.hangar-tab').forEach((b) => {
 })
 
 function refreshMissionBadge() {
+  if (!missionBadge) return
   const n = unclaimedRewards()
   if (n > 0) {
     missionBadge.classList.remove('hidden')
@@ -2074,13 +2341,17 @@ $('editor-play')?.addEventListener('click', () => {
 })
 
 // Menu buttons
-$('start-btn').onclick = () => startGame('classic')
-$('daily-btn').onclick = () => startGame('daily')
-$('tutorial-btn').onclick = () => startGame('tutorial')
-$('hotseat-btn').onclick = () => {
+const bindClick = (id, fn) => {
+  const el = $(id)
+  if (el) el.onclick = fn
+}
+bindClick('start-btn', () => startGame('classic'))
+bindClick('daily-btn', () => startGame('daily'))
+bindClick('tutorial-btn', () => startGame('tutorial'))
+bindClick('hotseat-btn', () => {
   hotseat = { players: 2, turn: 0, scores: [0, 0], active: true }
   startGame('hotseat')
-}
+})
 $('hangar-btn')?.addEventListener('click', () => openHangar('upgrades'))
 $('coop-btn')?.addEventListener('click', () => startGame('coop'))
 $('ar-btn')?.addEventListener('click', async () => {
@@ -2097,24 +2368,24 @@ document.querySelectorAll('[data-board]').forEach((t) =>
   t.addEventListener('click', () => renderBoard(t.dataset.board)),
 )
 
-$('retry-btn').onclick = () => startGame(runKind)
-$('menu-btn').onclick = () => {
+bindClick('retry-btn', () => startGame(runKind))
+bindClick('menu-btn', () => {
   if (state === 'dead' && crashT > 0) {
     crashT = 0
     finalizeDeath()
   }
   hotseat.active = false
   showMenu()
-}
-$('share-btn').onclick = () => shareScore()
-$('photo-save').onclick = () => {
+})
+bindClick('share-btn', () => shareScore())
+bindClick('photo-save', () => {
   if (!lastPhotoDataUrl) return
   const a = document.createElement('a')
   a.href = lastPhotoDataUrl
   a.download = `paper-plane-${Math.floor(lastRun.d)}m.png`
   a.click()
-}
-$('photo-share').onclick = async () => {
+})
+bindClick('photo-share', async () => {
   if (!lastPhotoDataUrl) return
   try {
     const blob = await (await fetch(lastPhotoDataUrl)).blob()
@@ -2123,16 +2394,16 @@ $('photo-share').onclick = async () => {
       await navigator.share({ files: [file], title: 'Paper Plane Run', text: shareText() })
     } else {
       await navigator.clipboard.writeText(shareText() + '\n' + buildShareUrl())
-      shareStatus.textContent = 'Link copied (photo save available)'
+      if (shareStatus) shareStatus.textContent = 'Link copied (photo save available)'
     }
   } catch {
-    shareStatus.textContent = 'Share cancelled'
+    if (shareStatus) shareStatus.textContent = 'Share cancelled'
   }
-}
-$('hotseat-go').onclick = () => {
-  hotseatInter.classList.add('hidden')
+})
+bindClick('hotseat-go', () => {
+  hotseatInter?.classList.add('hidden')
   startGame('hotseat', { continueHotseat: true })
-}
+})
 
 function shareText() {
   const { d, s, m, daily } = lastRun
@@ -2168,41 +2439,62 @@ async function shareScore() {
 }
 
 async function startGame(kind = 'classic', opts = {}) {
-  // Finish deferred death rewards if restarting mid-crash
-  if (state === 'dead' && crashT > 0) {
-    crashT = 0
-    finalizeDeath()
+  try {
+    // Finish deferred death rewards if restarting mid-crash
+    if (state === 'dead' && crashT > 0) {
+      crashT = 0
+      finalizeDeath()
+    }
+    await audio.unlock()
+    audio.uiClick()
+    runKind = kind
+    if (kind === 'layout' && !layoutPlay) {
+      if (editorLayout.items.length) layoutPlay = editorLayout
+    }
+    if (kind === 'hotseat' && !opts.continueHotseat) {
+      hotseat.turn = 0
+      hotseat.scores = [0, 0]
+      hotseat.active = true
+    }
+    if (kind === 'coop') hotseat.active = false
+    // Don't block play on AR permission failures
+    if (settings.arDesk && !deskAR.active) {
+      try {
+        await deskAR.start()
+        applyPerformanceSettings()
+      } catch (e) {
+        console.warn('AR start failed', e)
+      }
+    }
+    hideAllPanels()
+    resetGame()
+    state = 'playing'
+    hudEl?.classList.remove('hidden')
+    showStick(true)
+    if (hotseat.active) {
+      hotseatHud?.classList.remove('hidden')
+      if (hotseatPlayerEl) hotseatPlayerEl.textContent = String(hotseat.turn + 1)
+    } else hotseatHud?.classList.add('hidden')
+    const coopHud = $('coop-hud')
+    if (coopHud) coopHud.classList.toggle('hidden', kind !== 'coop')
+    audio.startFlight()
+    if (settings.haptics) Haptic.tap()
+    track('game_start', { kind, mode: difficulty.id, season: season.id })
+  } catch (err) {
+    console.error('startGame failed', err)
+    // Recover: ensure we're at least in a playable state
+    try {
+      hideAllPanels()
+      state = 'playing'
+      hudEl?.classList.remove('hidden')
+      if (planeX === undefined || Number.isNaN(planeX)) {
+        planeX = 0
+        planeY = 10
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  await audio.unlock()
-  audio.uiClick()
-  runKind = kind
-  if (kind === 'layout' && !layoutPlay) {
-    if (editorLayout.items.length) layoutPlay = editorLayout
-  }
-  if (kind === 'hotseat' && !opts.continueHotseat) {
-    hotseat.turn = 0
-    hotseat.scores = [0, 0]
-    hotseat.active = true
-  }
-  if (kind === 'coop') hotseat.active = false
-  if (settings.arDesk && !deskAR.active) {
-    await deskAR.start()
-    applyPerformanceSettings()
-  }
-  hideAllPanels()
-  resetGame()
-  state = 'playing'
-  hudEl.classList.remove('hidden')
-  showStick(true)
-  if (hotseat.active) {
-    hotseatHud.classList.remove('hidden')
-    hotseatPlayerEl.textContent = String(hotseat.turn + 1)
-  } else hotseatHud.classList.add('hidden')
-  const coopHud = $('coop-hud')
-  if (coopHud) coopHud.classList.toggle('hidden', kind !== 'coop')
-  audio.startFlight()
-  if (settings.haptics) Haptic.tap()
-  track('game_start', { kind, mode: difficulty.id, season: season.id })
 }
 
 function capturePhoto() {
@@ -2290,6 +2582,9 @@ function die(reason) {
 
 function finalizeDeath() {
   if (state !== 'dead') return
+  if (speedFxEl) speedFxEl.style.opacity = '0'
+  hideEdgeIndicators()
+  nextZoneHud?.classList.add('hidden')
   const reason = crashReason
   const isWin = reason === 'Tutorial complete!'
   const d = Math.floor(distance)
@@ -2297,11 +2592,14 @@ function finalizeDeath() {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily',
   }
 
-  if (!isWin && d > bestDistance && runKind !== 'tutorial' && runKind !== 'layout') {
+  const wasNewBest =
+    !isWin && d > bestDistance && d > 0 && runKind !== 'tutorial' && runKind !== 'layout'
+  if (wasNewBest) {
     bestDistance = d
     saveBest(difficulty.id, d)
   }
   bestEl.textContent = `${Math.floor(bestDistance)}m`
+  newBestBadge?.classList.toggle('hidden', !wasNewBest)
 
   if (ghostRecorder && runKind !== 'tutorial' && !isWin) {
     const key = difficulty.id + (runKind === 'daily' ? '-daily' : '')
@@ -2351,10 +2649,11 @@ function finalizeDeath() {
     $('gameover-title').textContent = `Player ${winner} wins!`
     finalScoreEl.textContent = `P1 ${hotseat.scores[0]}m · P2 ${hotseat.scores[1]}m`
     finalDetailEl.textContent = reason
+    newBestBadge?.classList.add('hidden')
     hotseat.active = false
   } else {
     $('gameover-title').textContent = isWin ? 'Tutorial complete!' : 'Crashed!'
-    finalScoreEl.textContent = `${d}m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`
+    animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
     finalDetailEl.textContent = reason
   }
 
@@ -2497,6 +2796,9 @@ function registerNearMiss() {
   comboTimer = 1.6
   comboVal.textContent = `${combo}x`
   comboHud.classList.remove('hidden')
+  comboHud.classList.remove('combo-pulse')
+  void comboHud.offsetWidth // restart the animation on rapid consecutive combos
+  comboHud.classList.add('combo-pulse')
   comboFloat.textContent = combo >= 3 ? `${combo}x NEAR MISS!` : 'Near miss!'
   comboFloat.classList.remove('hidden')
   setTimeout(() => comboFloat.classList.add('hidden'), 500)
@@ -2833,6 +3135,11 @@ function update(dt) {
   const cruise =
     (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
   speed = cruise + speedBoost
+  if (speedFxEl) {
+    const over = speed - cfg.speedBase
+    const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
+    speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.55))
+  }
   const move = speed * dt
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
@@ -2910,6 +3217,12 @@ function update(dt) {
     // gentle pre-transition fog lean
     scene.fog.color.lerp(new THREE.Color(zp.next.fog), dt * 0.4)
   }
+  if (nextZoneHud) {
+    const showHint = zp.next && zp.t > 0.7
+    nextZoneHud.classList.toggle('hidden', !showHint)
+    if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.next.from - distance))}m`
+  }
+  updateEdgeIndicators()
 
   // Camera: pull back slightly during boost
   const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
@@ -3119,40 +3432,52 @@ function update(dt) {
   if (distance > bestDistance) bestEl.textContent = `${Math.floor(distance)}m`
 }
 
-// Boot
+// Boot — start render loop first so a UI error never blanks the game
 const clock = new THREE.Clock()
 function frame() {
-  update(Math.min(clock.getDelta(), 0.05))
-  renderer.render(scene, camera)
+  try {
+    update(Math.min(clock.getDelta(), 0.05))
+  } catch (err) {
+    console.error('update error', err)
+  }
+  try {
+    renderer.render(scene, camera)
+  } catch (err) {
+    console.error('render error', err)
+  }
   requestAnimationFrame(frame)
 }
+requestAnimationFrame(frame)
 
-resetGame()
-state = 'menu'
-showMenu()
-applySeasonVisuals()
-if (!tutorialDone) {
-  dailyHint.textContent = 'New here? Try Tutorial — then Daily Route!'
-}
-if (layoutPlay) {
-  dailyHint.textContent = `Custom route loaded: ${layoutPlay.name}`
-}
-// Season banner on boot
-if (season.id !== 'default') {
-  challengeToast.textContent = `✦ ${season.name} event — free seasonal skins!`
-  challengeToast.classList.remove('hidden')
-  setTimeout(() => challengeToast.classList.add('hidden'), 5000)
-}
-// Restore AR if preferred
-if (settings.arDesk) {
-  deskAR.start().then((ok) => {
-    if (ok) applyPerformanceSettings()
-  })
-}
-
-// Reduced motion: soften camera sway in menu via CSS class already set
-if (settings.reducedMotion) {
-  scene.fog.far = 200
+try {
+  resetGame()
+  state = 'menu'
+  showMenu()
+  applySeasonVisuals()
+  if (!tutorialDone && dailyHint) {
+    dailyHint.textContent = 'New here? Try Tutorial — then Daily Route!'
+  }
+  if (layoutPlay && dailyHint) {
+    dailyHint.textContent = `Custom route loaded: ${layoutPlay.name}`
+  }
+  if (season.id !== 'default' && challengeToast) {
+    challengeToast.textContent = `✦ ${season.name} event — free seasonal skins!`
+    challengeToast.classList.remove('hidden')
+    setTimeout(() => challengeToast.classList.add('hidden'), 5000)
+  }
+  if (settings.arDesk) {
+    deskAR.start().then((ok) => {
+      if (ok) applyPerformanceSettings()
+    })
+  }
+  if (settings.reducedMotion) {
+    scene.fog.far = 200
+  }
+  refreshMissionBadge()
+} catch (err) {
+  console.error('boot error', err)
+  state = 'menu'
+  menuEl?.classList.remove('hidden')
 }
 
 window.addEventListener('resize', () => {
@@ -3160,6 +3485,3 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
 })
-
-requestAnimationFrame(frame)
-refreshMissionBadge()

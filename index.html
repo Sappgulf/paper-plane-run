@@ -21,6 +21,8 @@
   <body>
     <div id="game-root" class="mouse-mode">
       <canvas id="c"></canvas>
+      <div id="speed-fx" aria-hidden="true"></div>
+      <div id="edge-indicators" aria-hidden="true"></div>
 
       <div id="hud" class="hidden">
         <div class="hud-card"><span class="label">Distance</span><span id="distance">0m</span></div>
@@ -28,6 +30,7 @@
         <div class="hud-card stars"><span class="label">Stars</span><span id="stars">0</span></div>
         <div class="hud-card mode-chip"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
         <div class="hud-card zone-chip"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
+        <div id="next-zone-hud" class="hud-card next-zone-chip hidden"><span class="label">Next</span><span id="hud-next-zone">—</span></div>
         <div id="combo-hud" class="hud-card combo-hud hidden"><span class="label">Combo</span><span id="combo-val">1x</span></div>
         <div id="power-hud" class="hud-card power-hud hidden">
           <span class="label">Power</span>
@@ -205,6 +208,7 @@
       <div id="gameover" class="panel menu-panel hidden">
         <div class="menu-card">
           <h2 id="gameover-title">Crashed!</h2>
+          <p id="new-best-badge" class="new-best-badge hidden">🏆 New Best!</p>
           <p id="final-score" class="final"></p>
           <p id="final-detail" class="detail"></p>
           <p id="challenge-result" class="challenge-result hidden"></p>
