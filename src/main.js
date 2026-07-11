@@ -1878,6 +1878,7 @@ function resetStick() {
   stick.active = false
   stick.pointerId = null
   stickKnob.style.transform = 'translate(-50%, -50%)'
+  releaseFloatingBase(stickBase)
 }
 function wantsJoystick() {
   if (runKind === 'coop') return true
@@ -1914,6 +1915,7 @@ function showStick(playing) {
     windZone.setAttribute('aria-hidden', 'true')
     windStick.x = windStick.y = 0
     windStick.active = false
+    releaseFloatingBase(windBase())
   }
 
   const hudCtrl = $('hud-ctrl')
@@ -1993,7 +1995,15 @@ const _aimNdc = new THREE.Vector2()
 const _aimHit = new THREE.Vector3()
 const _flightPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0) // z = 0
 
-function mouseWorldTarget(clientX, clientY) {
+/**
+ * A finger covering its own touch point would hide the plane, so touch input
+ * aims from a spot above the fingertip instead of dead-on — the same "thumb
+ * offset" trick most mobile flight/shooter games use.
+ */
+const TOUCH_AIM_OFFSET_Y = 130
+
+function mouseWorldTarget(clientX, clientY, isTouch = false) {
+  if (isTouch) clientY = Math.max(20, clientY - TOUCH_AIM_OFFSET_Y)
   mouseScreen.x = clientX / innerWidth
   mouseScreen.y = clientY / innerHeight
   mouseScreen.has = true
@@ -2046,9 +2056,28 @@ function applyAxisInvert(x, y) {
   }
 }
 
+/** Float a joystick base so it re-centers under wherever the finger first
+ *  lands in its zone, clamped so it stays fully on-screen. */
+function anchorFloatingBase(baseEl, zoneEl, cx, cy) {
+  if (!baseEl || !zoneEl) return
+  const r = baseEl.offsetWidth / 2
+  const zr = zoneEl.getBoundingClientRect()
+  const x = THREE.MathUtils.clamp(cx, zr.left + r, zr.right - r)
+  const y = THREE.MathUtils.clamp(cy, zr.top + r, zr.bottom - r)
+  baseEl.classList.add('floating')
+  baseEl.style.left = `${x}px`
+  baseEl.style.top = `${y}px`
+}
+function releaseFloatingBase(baseEl) {
+  if (!baseEl) return
+  baseEl.classList.remove('floating')
+  baseEl.style.left = ''
+  baseEl.style.top = ''
+}
+
 // Wind stick (co-op P2)
-const windBase = () => $('wind-stick-base')
-const windKnob = () => $('wind-stick-knob')
+function windBase() { return $('wind-stick-base') }
+function windKnob() { return $('wind-stick-knob') }
 function setWindStick(cx, cy) {
   const base = windBase()
   const knob = windKnob()
@@ -2067,18 +2096,21 @@ function setWindStick(cx, cy) {
   knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
 }
 function bindWindStick() {
+  const zone = $('wind-stick-zone')
   const base = windBase()
-  if (!base || base.dataset.bound) return
-  base.dataset.bound = '1'
-  base.addEventListener('pointerdown', (e) => {
+  if (!zone || !base || zone.dataset.bound) return
+  zone.dataset.bound = '1'
+  zone.addEventListener('pointerdown', (e) => {
+    if (windStick.active) return
     e.preventDefault()
     e.stopPropagation()
     windStick.active = true
     windStick.pointerId = e.pointerId
-    base.setPointerCapture(e.pointerId)
+    zone.setPointerCapture(e.pointerId)
+    anchorFloatingBase(base, zone, e.clientX, e.clientY)
     setWindStick(e.clientX, e.clientY)
   })
-  base.addEventListener('pointermove', (e) => {
+  zone.addEventListener('pointermove', (e) => {
     if (!windStick.active || e.pointerId !== windStick.pointerId) return
     setWindStick(e.clientX, e.clientY)
   })
@@ -2089,29 +2121,34 @@ function bindWindStick() {
     windStick.pointerId = null
     const knob = windKnob()
     if (knob) knob.style.transform = 'translate(-50%, -50%)'
+    releaseFloatingBase(base)
   }
-  base.addEventListener('pointerup', end)
-  base.addEventListener('pointercancel', end)
+  zone.addEventListener('pointerup', end)
+  zone.addEventListener('pointercancel', end)
 }
 bindWindStick()
-if (stickBase) {
-  stickBase.addEventListener('pointerdown', (e) => {
+if (stickZone && stickBase) {
+  stickZone.addEventListener('pointerdown', (e) => {
+    if (stick.active) return
     e.preventDefault()
     e.stopPropagation()
     stick.active = true
     stick.pointerId = e.pointerId
-    stickBase.setPointerCapture(e.pointerId)
+    stickZone.setPointerCapture(e.pointerId)
+    anchorFloatingBase(stickBase, stickZone, e.clientX, e.clientY)
     setStickFromEvent(e.clientX, e.clientY)
   })
-  stickBase.addEventListener('pointermove', (e) => {
+  stickZone.addEventListener('pointermove', (e) => {
     if (!stick.active || e.pointerId !== stick.pointerId) return
     setStickFromEvent(e.clientX, e.clientY)
   })
   const endStick = (e) => {
-    if (e.pointerId === stick.pointerId) resetStick()
+    if (e.pointerId !== stick.pointerId) return
+    resetStick()
+    releaseFloatingBase(stickBase)
   }
-  stickBase.addEventListener('pointerup', endStick)
-  stickBase.addEventListener('pointercancel', endStick)
+  stickZone.addEventListener('pointerup', endStick)
+  stickZone.addEventListener('pointercancel', endStick)
 }
 
 // Input
@@ -2131,7 +2168,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code))
 window.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
-  mouseWorldTarget(e.clientX, e.clientY)
+  mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
   // Start game from canvas click on menu/dead
   if (state === 'menu' || (state === 'dead' && crashT <= 0)) {
     if (!e.target.closest('button')) {
@@ -2142,7 +2179,7 @@ window.addEventListener('pointerdown', (e) => {
 window.addEventListener('pointermove', (e) => {
   if (stick.active) return
   // Always track cursor for mouse-aim (and invert-aware axes for reference)
-  mouseWorldTarget(e.clientX, e.clientY)
+  mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
 })
 // Touch: also track for absolute aim if someone uses finger without stick in mouse mode
 window.addEventListener(
@@ -2150,7 +2187,7 @@ window.addEventListener(
   (e) => {
     if (stick.active || settings.controlMode === 'joystick') return
     const t = e.touches[0]
-    if (t) mouseWorldTarget(t.clientX, t.clientY)
+    if (t) mouseWorldTarget(t.clientX, t.clientY, true)
   },
   { passive: true },
 )

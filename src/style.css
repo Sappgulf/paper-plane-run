@@ -152,6 +152,14 @@ html, body, #game-root {
   position: relative; touch-action: none;
   box-shadow: inset 0 0 30px rgba(255,255,255,.25);
 }
+/* While a touch is active, the base floats to sit centered under the
+   finger wherever it first lands in the zone, instead of forcing players
+   to hunt for a small fixed circle. */
+#stick-base.floating, #wind-stick-base.floating {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+}
 #wind-stick-base { border-color: rgba(196,181,253,.7); background: rgba(167,139,250,.22); }
 #stick-knob, #wind-stick-knob {
   width: 54px; height: 54px; border-radius: 50%;
