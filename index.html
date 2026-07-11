@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#c8dff5" />
+    <meta name="description" content="Paper Plane Run — endless flyer with daily routes, skins, missions & more." />
+    <title>Paper Plane Run</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="game-root">
+      <canvas id="c"></canvas>
+
+      <div id="hud" class="hidden">
+        <div class="hud-card"><span class="label">Distance</span><span id="distance">0m</span></div>
+        <div class="hud-card"><span class="label">Best</span><span id="best">0m</span></div>
+        <div class="hud-card stars"><span class="label">Stars</span><span id="stars">0</span></div>
+        <div class="hud-card mode-chip"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
+        <div class="hud-card zone-chip"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
+        <div id="combo-hud" class="hud-card combo-hud hidden"><span class="label">Combo</span><span id="combo-val">1x</span></div>
+        <div id="power-hud" class="hud-card power-hud hidden">
+          <span class="label">Power</span>
+          <span id="power-label">—</span>
+          <div class="power-bar"><div id="power-fill"></div></div>
+        </div>
+        <div id="hotseat-hud" class="hud-card hidden"><span class="label">Player</span><span id="hotseat-player">1</span></div>
+        <div id="coop-hud" class="hud-card hidden"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
+      </div>
+
+      <button id="mute-btn" type="button" class="icon-btn" title="Mute">🔊</button>
+      <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install">⬇️</button>
+      <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR">📷</button>
+
+      <div id="wind-banner" class="hidden">💨 Wind gust!</div>
+      <div id="power-banner" class="hidden"></div>
+      <div id="zone-banner" class="hidden"></div>
+      <div id="combo-float" class="hidden">Near miss!</div>
+      <div id="challenge-toast" class="hidden" role="status"></div>
+
+      <div id="stick-zone" class="hidden" aria-hidden="true">
+        <div id="stick-base"><div id="stick-knob"></div></div>
+        <p class="stick-hint">P1 · Fly</p>
+      </div>
+      <div id="wind-stick-zone" class="hidden" aria-hidden="true">
+        <div id="wind-stick-base"><div id="wind-stick-knob"></div></div>
+        <p class="stick-hint">P2 · Wind</p>
+      </div>
+
+      <!-- MAIN MENU -->
+      <div id="menu" class="panel">
+        <img class="logo" src="/assets/logo.jpg" alt="Paper plane" />
+        <h1>Paper Plane Run</h1>
+        <p class="tagline">Co-op · bosses · AR desk · seasonal · a11y · analytics</p>
+
+        <div class="diff-row" role="group" aria-label="Difficulty">
+          <button type="button" class="diff-btn" data-diff="easy">Easy</button>
+          <button type="button" class="diff-btn active" data-diff="normal">Normal</button>
+          <button type="button" class="diff-btn" data-diff="hard">Hard</button>
+        </div>
+        <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
+
+        <div class="mode-grid">
+          <button id="start-btn" type="button" class="primary-wide">✈ Take Flight</button>
+          <button id="daily-btn" type="button" class="mode-btn">📅 Daily Route</button>
+          <button id="tutorial-btn" type="button" class="mode-btn">🎓 Tutorial</button>
+          <button id="coop-btn" type="button" class="mode-btn">🌬 Co-op Wind</button>
+          <button id="hotseat-btn" type="button" class="mode-btn">👥 Hot-seat</button>
+          <button id="missions-btn" type="button" class="mode-btn">🎯 Missions <span id="mission-badge" class="badge hidden">!</span></button>
+          <button id="skins-btn" type="button" class="mode-btn">🎨 Skins</button>
+          <button id="board-btn" type="button" class="mode-btn">🏆 Board</button>
+          <button id="editor-btn" type="button" class="mode-btn">🛠 Editor</button>
+          <button id="settings-btn" type="button" class="mode-btn">⚙️ Settings</button>
+          <button id="stats-btn" type="button" class="mode-btn">📊 Stats</button>
+        </div>
+        <p id="daily-hint" class="mini-hint"></p>
+        <label class="name-row">Pilot name <input id="pilot-name" maxlength="16" placeholder="Pilot" /></label>
+      </div>
+
+      <!-- SETTINGS / A11Y -->
+      <div id="settings-panel" class="panel hidden">
+        <h2>Settings &amp; Access</h2>
+        <p class="tagline">Season now: <strong id="season-now">—</strong></p>
+        <div class="settings-list">
+          <label class="set-row"><input type="checkbox" id="set-reduced-motion" /> Reduced motion</label>
+          <label class="set-row"><input type="checkbox" id="set-large-stick" /> Larger touch sticks</label>
+          <label class="set-row"><input type="checkbox" id="set-auto-level" /> Auto-level assist (or hold Shift)</label>
+          <label class="set-row"><input type="checkbox" id="set-colorblind" /> Colorblind-safe power colors</label>
+          <label class="set-row"><input type="checkbox" id="set-low-power" /> Low-power graphics (mobile)</label>
+          <label class="set-row"><input type="checkbox" id="set-haptics" /> Haptics</label>
+          <label class="set-row"><input type="checkbox" id="set-ar" /> Desk AR (camera background)</label>
+          <label class="set-row">Season
+            <select id="set-season">
+              <option value="auto">Auto (calendar)</option>
+              <option value="default">Default</option>
+              <option value="halloween">Halloween</option>
+              <option value="winter">Winter</option>
+              <option value="valentine">Valentine</option>
+              <option value="spring">Spring</option>
+              <option value="summer">Summer</option>
+            </select>
+          </label>
+        </div>
+        <p class="mini-hint">Co-op: P1 arrows/left stick · P2 WASD or right wind stick. Toys: torn wing, paperclip, rubber band (hold Space).</p>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- ANALYTICS -->
+      <div id="stats-panel" class="panel hidden">
+        <h2>Flight Stats</h2>
+        <div id="stats-body"></div>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- MISSIONS -->
+      <div id="missions-panel" class="panel hidden">
+        <h2>Daily Missions</h2>
+        <p class="tagline">Resets UTC midnight · claim stars for skins</p>
+        <ul id="missions-list" class="list-card"></ul>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- SKINS -->
+      <div id="skins-panel" class="panel hidden">
+        <h2>Plane Skins</h2>
+        <p class="tagline">Lifetime stars: <strong id="lifetime-stars">0</strong></p>
+        <div id="skins-grid" class="skins-grid"></div>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- LEADERBOARD -->
+      <div id="board-panel" class="panel hidden">
+        <h2>Leaderboard</h2>
+        <div class="tab-row">
+          <button type="button" class="tab active" data-board="local">Device</button>
+          <button type="button" class="tab" data-board="daily">Daily</button>
+          <button type="button" class="tab" data-board="remote">Global</button>
+        </div>
+        <ol id="board-list" class="list-card board-list"></ol>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- EDITOR -->
+      <div id="editor-panel" class="panel hidden">
+        <h2>Route Editor</h2>
+        <p class="tagline">Tap palette, then place on the strip. Export a share code.</p>
+        <div class="editor-toolbar" id="editor-palette"></div>
+        <canvas id="editor-canvas" width="360" height="220"></canvas>
+        <div class="btn-row wrap">
+          <button type="button" id="editor-undo" class="btn-secondary">Undo</button>
+          <button type="button" id="editor-clear" class="btn-secondary">Clear</button>
+          <button type="button" id="editor-export" class="btn-secondary">Copy code</button>
+          <button type="button" id="editor-play" class="primary-wide">▶ Play route</button>
+        </div>
+        <input id="editor-import" class="import-input" placeholder="Paste layout code…" />
+        <button type="button" id="editor-load" class="btn-secondary">Load code</button>
+        <p id="editor-status" class="share-status"></p>
+        <button type="button" class="back-btn" data-back>Back</button>
+      </div>
+
+      <!-- GAME OVER -->
+      <div id="gameover" class="panel hidden">
+        <h2 id="gameover-title">Crashed!</h2>
+        <p id="final-score" class="final"></p>
+        <p id="final-detail" class="detail"></p>
+        <p id="challenge-result" class="challenge-result hidden"></p>
+        <div id="photo-wrap" class="photo-wrap hidden">
+          <div class="polaroid">
+            <img id="photo-img" alt="Crash photo" />
+            <p id="photo-caption"></p>
+          </div>
+          <div class="btn-row wrap">
+            <button type="button" id="photo-save" class="btn-secondary">Save photo</button>
+            <button type="button" id="photo-share" class="btn-secondary">Share photo</button>
+          </div>
+        </div>
+        <div class="btn-row wrap">
+          <button id="share-btn" type="button" class="btn-secondary">Share Score</button>
+          <button id="retry-btn" type="button">Fly Again</button>
+        </div>
+        <p id="share-status" class="share-status"></p>
+        <button id="menu-btn" type="button" class="linkish">Main menu</button>
+      </div>
+
+      <!-- HOTSEAT OVERLAY -->
+      <div id="hotseat-intermission" class="panel hidden">
+        <h2 id="hotseat-title">Player 2</h2>
+        <p id="hotseat-scores" class="detail"></p>
+        <button id="hotseat-go" type="button">Start turn</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
