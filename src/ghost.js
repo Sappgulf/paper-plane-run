@@ -6,10 +6,10 @@ export function createGhostRecorder() {
   let lastD = -999
   return {
     samples,
-    push(distance, x, y) {
+    push(distance, x, y, elapsed) {
       if (distance - lastD < 2) return
       lastD = distance
-      samples.push([Math.round(distance), +x.toFixed(2), +y.toFixed(2)])
+      samples.push([Math.round(distance), +x.toFixed(2), +y.toFixed(2), +elapsed.toFixed(2)])
     },
     toJSON() {
       return samples
@@ -66,4 +66,23 @@ export function ghostPoseAt(path, distance) {
     x: a[1] + (b[1] - a[1]) * t,
     y: a[2] + (b[2] - a[2]) * t,
   }
+}
+
+/** Interpolate the ghost's distance at a given elapsed time (for a live ahead/behind readout). */
+export function ghostDistanceAtTime(path, elapsed) {
+  if (!path?.length || path[0][3] == null) return null
+  if (elapsed <= path[0][3]) return path[0][0]
+  const last = path[path.length - 1]
+  if (elapsed >= last[3]) return last[0]
+  let lo = 0
+  let hi = path.length - 1
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1
+    if (path[mid][3] <= elapsed) lo = mid
+    else hi = mid
+  }
+  const a = path[lo]
+  const b = path[hi]
+  const t = (elapsed - a[3]) / Math.max(0.001, b[3] - a[3])
+  return a[0] + (b[0] - a[0]) * t
 }

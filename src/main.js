@@ -24,6 +24,7 @@ import {
   loadGhost,
   saveGhostIfBest,
   ghostPoseAt,
+  ghostDistanceAtTime,
 } from './ghost.js'
 import { zoneAt, nextZone, zoneProgress } from './zones.js'
 import {
@@ -77,6 +78,8 @@ const hudModeEl = $('hud-mode')
 const hudZoneEl = $('hud-zone')
 const nextZoneHud = $('next-zone-hud')
 const hudNextZoneEl = $('hud-next-zone')
+const ghostDeltaHud = $('ghost-delta-hud')
+const ghostDeltaValEl = $('ghost-delta-val')
 
 // Off-screen edge indicators: arrows pointing at nearby hazards/pickups
 // that have scrolled outside the camera frustum.
@@ -92,6 +95,29 @@ if (edgeIndicatorEl) {
       '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L22 20 L12 15.5 L2 20 Z"/></svg>'
     edgeIndicatorEl.appendChild(el)
     edgePool.push(el)
+  }
+}
+// Hazard telegraphing: a one-shot warning ping when a fast/dangerous
+// hazard (scissors, boss gate, dive-bombing flyer) is about to close in.
+const TELEGRAPH_Z = 34
+const warnFlashEl = $('warn-flash')
+function isTelegraphHazard(e) {
+  return e.type === 'scissors' || e.type === 'boss' || (e.type === 'bird' && e.mesh.userData.dive)
+}
+function checkHazardTelegraph() {
+  for (const e of entities) {
+    if (e.warned || !isTelegraphHazard(e)) continue
+    const z = e.mesh.position.z
+    if (z <= TELEGRAPH_Z && z > 4) {
+      e.warned = true
+      audio.incoming()
+      Haptic.tap()
+      if (warnFlashEl) {
+        warnFlashEl.classList.remove('warn-pulse')
+        void warnFlashEl.offsetWidth
+        warnFlashEl.classList.add('warn-pulse')
+      }
+    }
   }
 }
 const _edgeNdc = new THREE.Vector3()
@@ -744,6 +770,72 @@ function createBossGate() {
   g.userData.right = right
   g.userData.phase = 0
   g.userData.gapY = 10
+  g.userData.kind = 'scissors'
+  return g
+}
+
+const windFanMat = new THREE.MeshStandardMaterial({ color: 0x9ab4cc, roughness: 0.5, metalness: 0.15 })
+const windDebrisMat = new THREE.MeshStandardMaterial({ color: 0xe8ddc8, roughness: 0.85 })
+
+function createFan(radius) {
+  const g = new THREE.Group()
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.3, 10), windFanMat)
+  hub.rotation.x = Math.PI / 2
+  g.add(hub)
+  for (let i = 0; i < 4; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(radius * 0.32, radius * 0.9, 0.06), windFanMat)
+    blade.position.set(0, radius * 0.45, 0)
+    const pivot = new THREE.Group()
+    pivot.add(blade)
+    pivot.rotation.z = (i / 4) * Math.PI * 2
+    g.add(pivot)
+  }
+  return g
+}
+
+/** A "wind tunnel" boss gauntlet: two spinning turbines with a drifting safe lane
+ *  and loose paper debris swirling in the danger zone, instead of closing blades. */
+function createWindTunnelGate() {
+  const g = new THREE.Group()
+  for (const sx of [-8, 8]) {
+    const tower = createBuilding(2.5, 18, 2.5, buildingMats[0])
+    tower.position.x = sx
+    g.add(tower)
+  }
+  const fanL = createFan(3.2)
+  fanL.position.set(-3.4, 10, 0)
+  const fanR = createFan(3.2)
+  fanR.position.set(3.4, 10, 0)
+  g.add(fanL, fanR)
+
+  const debris = []
+  for (let i = 0; i < 10; i++) {
+    const d = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), windDebrisMat)
+    d.userData.orbit = rng() * Math.PI * 2
+    d.userData.radius = 2.4 + rng() * 2.6
+    d.userData.speed = 2 + rng() * 2
+    g.add(d)
+    debris.push(d)
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.8, 0.1, 8, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0x7eb8e8, emissive: 0x2563eb, emissiveIntensity: 0.4, side: THREE.DoubleSide,
+      }),
+    )
+    ring.rotation.y = Math.PI / 2
+    ring.position.set(0, 6 + i * 4, 0)
+    ring.name = 'safeRing'
+    g.add(ring)
+  }
+  g.userData.fanL = fanL
+  g.userData.fanR = fanR
+  g.userData.debris = debris
+  g.userData.phase = 0
+  g.userData.gapY = 10
+  g.userData.kind = 'wind'
   return g
 }
 
@@ -1129,6 +1221,10 @@ let slingHold = 0
 let speedBoost = 0
 /** Post-hit invulnerability (shield break, etc.) */
 let invuln = 0
+/** Crumple/damage tint timer after a shield absorbs a hazard */
+let damageFlash = 0
+const _damageOrigColor = new THREE.Color()
+const _damageTint = new THREE.Color(0x6b5648)
 /** Crash sequence timer before game-over UI settles */
 let crashT = 0
 let crashReason = ''
@@ -1166,6 +1262,65 @@ const MIN_Y = 1.4
 const MAX_Y = 26
 const MAX_X = 13
 const MAX_VEL = 38
+
+// ---------------------------------------------------------------------------
+// Zone weather particles — rain in the storm zone, drifting motes in aurora
+// ---------------------------------------------------------------------------
+function createWeatherFx(count, color, size, opacity) {
+  const geo = new THREE.BufferGeometry()
+  const positions = new Float32Array(count * 3)
+  const baseX = new Float32Array(count)
+  const phase = new Float32Array(count)
+  for (let i = 0; i < count; i++) {
+    baseX[i] = (Math.random() - 0.5) * 40
+    positions[i * 3] = baseX[i]
+    positions[i * 3 + 1] = Math.random() * 30
+    positions[i * 3 + 2] = 4 + Math.random() * 50
+    phase[i] = Math.random() * Math.PI * 2
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  const mat = new THREE.PointsMaterial({
+    color, size, transparent: true, opacity, depthWrite: false, sizeAttenuation: true,
+  })
+  const pts = new THREE.Points(geo, mat)
+  pts.visible = false
+  pts.frustumCulled = false
+  pts.userData = { baseX, phase }
+  scene.add(pts)
+  return pts
+}
+const rainFx = createWeatherFx(320, 0xbcd6ea, 0.1, 0.55)
+const petalFx = createWeatherFx(70, 0xc8d4ff, 0.32, 0.65)
+
+function updateWeatherFx(dt) {
+  const wantRain = currentZoneId === 'storm' && state === 'playing'
+  const wantPetals = currentZoneId === 'aurora' && state === 'playing'
+  rainFx.visible = wantRain
+  petalFx.visible = wantPetals
+  if (wantRain) {
+    rainFx.position.copy(camera.position)
+    const pos = rainFx.geometry.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) - dt * 26
+      if (y < 0) y += 30
+      pos.setY(i, y)
+    }
+    pos.needsUpdate = true
+  }
+  if (wantPetals) {
+    petalFx.position.copy(camera.position)
+    const pos = petalFx.geometry.attributes.position
+    const { baseX, phase } = petalFx.userData
+    for (let i = 0; i < pos.count; i++) {
+      phase[i] += dt * 0.8
+      let y = pos.getY(i) - dt * 2.4
+      if (y < 0) y += 30
+      pos.setY(i, y)
+      pos.setX(i, baseX[i] + Math.sin(phase[i]) * 2.2)
+    }
+    pos.needsUpdate = true
+  }
+}
 
 function clearEntities() {
   for (const e of entities) scene.remove(e.mesh)
@@ -1294,22 +1449,28 @@ function spawnChunk(z) {
   }
 }
 
+let bossCount = 0
 function spawnBoss(z = 70) {
-  const gate = createBossGate()
+  const useWind = bossCount % 2 === 1
+  bossCount++
+  const gate = useWind ? createWindTunnelGate() : createBossGate()
   gate.position.set(0, 0, z)
   scene.add(gate)
   entities.push({
     mesh: gate,
     type: 'boss',
+    kind: useWind ? 'wind' : 'scissors',
     radius: 4,
     halfH: 20,
     isBoss: true,
   })
   bossActive = true
-  zoneBanner.textContent = '✂️ BOSS · Giant Scissors Gate!'
+  zoneBanner.textContent = useWind
+    ? '🌬️ BOSS · Wind Tunnel Gauntlet!'
+    : '✂️ BOSS · Giant Scissors Gate!'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 3
-  track('boss_start', { distance: Math.floor(distance) })
+  track('boss_start', { distance: Math.floor(distance), kind: useWind ? 'wind' : 'scissors' })
   audio.windGust()
   Haptic.power()
 }
@@ -1351,6 +1512,9 @@ function spawnLayoutItems() {
 }
 
 function spawnTutorial() {
+  tutorialHintsShown = new Set()
+  tutorialHintTimer = 0
+  tutorialHintEl?.classList.add('hidden')
   const rings = [
     [0, 8, 25], [2, 10, 45], [-2, 7, 65], [0, 12, 90], [3, 9, 115], [-3, 11, 140], [0, 8, 170],
   ]
@@ -1368,6 +1532,44 @@ function spawnTutorial() {
       scene.add(b)
       entities.push({ mesh: b, type: 'building', radius: 1.8, halfH: 6 })
     }
+  }
+  // A star and a boost power-up along the path so first-timers see what they do
+  const star = createStar()
+  star.position.set(2, 10, 55)
+  scene.add(star)
+  entities.push({ mesh: star, type: 'star', radius: 0.9 })
+  const boost = createPowerUp('boost')
+  boost.position.set(-3, 9, 128)
+  scene.add(boost)
+  entities.push({ mesh: boost, type: 'power', radius: 1.35, kind: 'boost' })
+}
+
+// One-time contextual tips shown as a first-time player progresses through the tutorial.
+const TUTORIAL_HINTS = [
+  { at: 0, text: 'Steer with your mouse, arrow keys, or drag — thread the glowing rings!' },
+  { at: 40, text: 'Nice flying! Keep chasing the rings ahead.' },
+  { at: 55, text: '⭐ Stars add to your score — fly through them.' },
+  { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
+  { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
+  { at: 160, text: 'Almost there — line up the last ring!' },
+]
+let tutorialHintsShown = new Set()
+const tutorialHintEl = $('tutorial-hint')
+let tutorialHintTimer = 0
+function checkTutorialHints(dt) {
+  if (runKind !== 'tutorial' || !tutorialHintEl) return
+  for (const hint of TUTORIAL_HINTS) {
+    if (!tutorialHintsShown.has(hint.at) && distance >= hint.at) {
+      tutorialHintsShown.add(hint.at)
+      tutorialHintEl.textContent = hint.text
+      tutorialHintEl.classList.remove('hidden')
+      tutorialHintTimer = 3.6
+      break
+    }
+  }
+  if (tutorialHintTimer > 0) {
+    tutorialHintTimer -= dt
+    if (tutorialHintTimer <= 0) tutorialHintEl.classList.add('hidden')
   }
 }
 
@@ -1956,6 +2158,8 @@ function showMenu() {
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
+  ghostDeltaHud?.classList.add('hidden')
+  tutorialHintEl?.classList.add('hidden')
   showStick(false)
   try {
     refreshMissionBadge()
@@ -2497,9 +2701,52 @@ async function startGame(kind = 'classic', opts = {}) {
   }
 }
 
+/** Composite the raw WebGL frame with a branded stat banner for sharing. */
+function buildRecapCard() {
+  const card = document.createElement('canvas')
+  card.width = canvas.width
+  card.height = canvas.height
+  const ctx = card.getContext('2d')
+  ctx.drawImage(canvas, 0, 0, card.width, card.height)
+
+  const barH = Math.round(card.height * 0.16)
+  const barY = card.height - barH
+  const grad = ctx.createLinearGradient(0, barY, 0, card.height)
+  grad.addColorStop(0, 'rgba(40,30,28,0)')
+  grad.addColorStop(0.35, 'rgba(40,30,28,.72)')
+  grad.addColorStop(1, 'rgba(40,30,28,.86)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, barY, card.width, barH)
+
+  const pad = card.width * 0.035
+  const big = Math.round(barH * 0.42)
+  const small = Math.round(barH * 0.2)
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#fff8ef'
+  ctx.font = `900 ${big}px system-ui, sans-serif`
+  ctx.fillText(`${Math.floor(distance)}m`, pad, card.height - barH * 0.42)
+  ctx.font = `700 ${small}px system-ui, sans-serif`
+  ctx.fillStyle = '#f0c94a'
+  const starsStr = `${stars}★`
+  ctx.fillText(starsStr, pad, card.height - barH * 0.13)
+  const starsW = ctx.measureText(starsStr).width
+  ctx.fillStyle = 'rgba(255,248,239,.85)'
+  ctx.fillText(
+    ` · ${difficulty.label} · ${zoneAt(distance).name}`,
+    pad + starsW,
+    card.height - barH * 0.13,
+  )
+  ctx.textAlign = 'right'
+  ctx.font = `800 ${small}px system-ui, sans-serif`
+  ctx.fillStyle = 'rgba(255,248,239,.9)'
+  ctx.fillText('Paper Plane Run', card.width - pad, card.height - barH * 0.13)
+  ctx.textAlign = 'left'
+  return card.toDataURL('image/jpeg', 0.88)
+}
+
 function capturePhoto() {
   try {
-    lastPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    lastPhotoDataUrl = buildRecapCard()
     photoImg.src = lastPhotoDataUrl
     photoCaption.textContent = `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
     photoWrap.classList.remove('hidden')
@@ -2525,6 +2772,8 @@ function die(reason) {
     clearPower()
     shake = 0.55
     invuln = 1.35
+    damageFlash = 1.1
+    _damageOrigColor.copy(planeBodyMat.color)
     velY = Math.max(velY, 0) + 12
     velX *= 0.4
     speedBoost = Math.max(speedBoost, 6)
@@ -2585,6 +2834,8 @@ function finalizeDeath() {
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
+  ghostDeltaHud?.classList.add('hidden')
+  tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
   const isWin = reason === 'Tutorial complete!'
   const d = Math.floor(distance)
@@ -2750,15 +3001,30 @@ function animateHazards(dt) {
     if (e.type === 'boss') {
       const u = e.mesh.userData
       u.phase += dt * 2.2
-      // Blades sweep; safe gap oscillates
+      // Safe gap oscillates
       u.gapY = 8 + Math.sin(u.phase) * 5
-      if (u.left) {
-        u.left.position.y = u.gapY + 3
-        u.left.rotation.z = 0.25 + Math.sin(u.phase * 1.3) * 0.2
-      }
-      if (u.right) {
-        u.right.position.y = u.gapY + 3
-        u.right.rotation.z = -0.25 - Math.sin(u.phase * 1.3) * 0.2
+      if (u.kind === 'wind') {
+        if (u.fanL) u.fanL.rotation.z += dt * 9
+        if (u.fanR) u.fanR.rotation.z -= dt * 9
+        u.fanL && (u.fanL.position.y = u.gapY + 3)
+        u.fanR && (u.fanR.position.y = u.gapY + 3)
+        if (u.debris) {
+          for (const d of u.debris) {
+            d.userData.orbit += dt * d.userData.speed
+            const r = d.userData.radius
+            d.position.set(Math.cos(d.userData.orbit) * r, u.gapY + 3 + Math.sin(d.userData.orbit * 1.3) * r * 0.6, Math.sin(d.userData.orbit) * 0.6)
+            d.rotation.z += dt * 3
+          }
+        }
+      } else {
+        if (u.left) {
+          u.left.position.y = u.gapY + 3
+          u.left.rotation.z = 0.25 + Math.sin(u.phase * 1.3) * 0.2
+        }
+        if (u.right) {
+          u.right.position.y = u.gapY + 3
+          u.right.rotation.z = -0.25 - Math.sin(u.phase * 1.3) * 0.2
+        }
       }
       // Highlight safe rings near gap
       e.mesh.traverse((ch) => {
@@ -2789,7 +3055,7 @@ function animateHazards(dt) {
   }
 }
 
-function registerNearMiss() {
+function registerNearMiss(kind = null) {
   combo++
   maxCombo = Math.max(maxCombo, combo)
   runStats.maxCombo = maxCombo
@@ -2802,7 +3068,7 @@ function registerNearMiss() {
   comboFloat.textContent = combo >= 3 ? `${combo}x NEAR MISS!` : 'Near miss!'
   comboFloat.classList.remove('hidden')
   setTimeout(() => comboFloat.classList.add('hidden'), 500)
-  audio.nearMiss(combo)
+  audio.nearMiss(combo, kind)
   Haptic.nearMiss()
   spawnConfetti(planeX, planeY, 2)
   distance += 5 * combo * 0.25
@@ -2885,6 +3151,12 @@ function update(dt) {
 
   // Playing
   if (invuln > 0) invuln -= dt
+  if (damageFlash > 0) {
+    damageFlash = Math.max(0, damageFlash - dt)
+    const t = damageFlash / 1.1
+    planeBodyMat.color.copy(_damageOrigColor).lerp(_damageTint, t * 0.85)
+    if (damageFlash <= 0) planeBodyMat.color.copy(_damageOrigColor)
+  }
 
   // Default mouse target to plane if we haven't moved yet
   if (!mouseScreen.has) {
@@ -2940,6 +3212,13 @@ function update(dt) {
       comboHud.classList.add('hidden')
     }
   }
+
+  // Adaptive music: brighter/quicker as speed climbs and near-miss combo builds.
+  const speedFactor = THREE.MathUtils.clamp(
+    (speed - difficulty.speedBase) / Math.max(1, difficulty.speedCap - difficulty.speedBase), 0, 1,
+  )
+  const comboFactor = Math.min(1, combo / 6)
+  audio.setIntensity(speedFactor * 0.55 + comboFactor * 0.55)
 
   let inputX = 0
   let inputY = 0
@@ -3200,14 +3479,26 @@ function update(dt) {
   }
 
   // Ghost
-  if (ghostRecorder) ghostRecorder.push(distance, planeX, planeY)
+  if (ghostRecorder) ghostRecorder.push(distance, planeX, planeY, elapsed)
   if (ghostMesh && ghostData) {
     const pose = ghostPoseAt(ghostData.path, distance)
     if (pose && !pose.done) {
       ghostMesh.position.set(pose.x, pose.y, 1.5)
       ghostMesh.visible = true
     } else if (ghostMesh) ghostMesh.visible = false
-  }
+    if (ghostDeltaHud) {
+      const ghostD = ghostDistanceAtTime(ghostData.path, elapsed)
+      if (ghostD == null) {
+        ghostDeltaHud.classList.add('hidden')
+      } else {
+        const delta = Math.round(distance - ghostD)
+        ghostDeltaHud.classList.remove('hidden')
+        ghostDeltaHud.classList.toggle('ahead', delta >= 0)
+        ghostDeltaHud.classList.toggle('behind', delta < 0)
+        ghostDeltaValEl.textContent = delta >= 0 ? `+${delta}m` : `${delta}m`
+      }
+    }
+  } else if (ghostDeltaHud) ghostDeltaHud.classList.add('hidden')
 
   // Zone + soft progressive blend hint (banner only on change)
   const z = zoneAt(distance)
@@ -3223,6 +3514,9 @@ function update(dt) {
     if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.next.from - distance))}m`
   }
   updateEdgeIndicators()
+  checkHazardTelegraph()
+  updateWeatherFx(dt)
+  checkTutorialHints(dt)
 
   // Camera: pull back slightly during boost
   const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
@@ -3340,7 +3634,7 @@ function update(dt) {
         const gapY = m.userData.gapY || 10
         const inGap = Math.abs(p.y - gapY) < 2.5 && Math.abs(p.x) < 2.6
         if (!inGap && Math.abs(dz) < 1.8) {
-          die('Snipped by the boss scissors!')
+          die(m.userData.kind === 'wind' ? 'Blown into the wind turbines!' : 'Snipped by the boss scissors!')
           return
         }
         if (dz < -1.2 && inGap) {
@@ -3413,7 +3707,7 @@ function update(dt) {
         const last = nearMissCooldown.get(m) || 0
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
-          registerNearMiss()
+          registerNearMiss(e.type === 'scissors' ? 'scissors' : e.flyerId)
         }
       }
     }

@@ -13,6 +13,18 @@ export class GameAudio {
     this.musicOn = localStorage.getItem('paper-plane-run-music') !== '0'
     this._musicNodes = []
     this._musicTimer = null
+    /** 0 (calm) – 1 (intense): driven by combo/speed, brightens & quickens the music bed */
+    this.intensity = 0
+  }
+
+  /** Live-adjust the generative music bed's tempo/brightness/volume. */
+  setIntensity(level) {
+    this.intensity = Math.max(0, Math.min(1, level))
+    if (this.music && this.musicOn && !this.muted) {
+      const t = this._now()
+      this.music.gain.cancelScheduledValues(t)
+      this.music.gain.linearRampToValueAtTime(0.12 + this.intensity * 0.07, t + 0.4)
+    }
   }
 
   async unlock() {
@@ -110,6 +122,7 @@ export class GameAudio {
   }
 
   startFlight() {
+    this.intensity = 0
     this._tone(392, 0.12, 'triangle', 0.15)
     this._tone(523, 0.14, 'triangle', 0.12)
     this._tone(659, 0.2, 'sine', 0.1)
@@ -123,10 +136,43 @@ export class GameAudio {
     this._tone(1568, 0.16, 'sine', 0.08)
   }
 
-  nearMiss(combo = 1) {
+  nearMiss(combo = 1, kind = null) {
     const f = 500 + combo * 80
-    this._tone(f, 0.07, 'triangle', 0.1)
-    this._tone(f * 1.5, 0.1, 'sine', 0.08)
+    // Per-flyer timbre flavor layered on top of the shared combo-pitch riser,
+    // so a near-miss with a biplane reads differently from grazing a kite.
+    switch (kind) {
+      case 'butterfly':
+        this._tone(f * 1.3, 0.1, 'sine', 0.07)
+        this._tone(f * 1.9, 0.14, 'sine', 0.05)
+        return
+      case 'balloon':
+        this._tone(f * 0.55, 0.14, 'sine', 0.1)
+        this._tone(f * 0.8, 0.1, 'triangle', 0.06)
+        return
+      case 'kite':
+        this._tone(f, 0.05, 'triangle', 0.09)
+        this._tone(f * 1.4, 0.05, 'triangle', 0.07, f * 0.9)
+        return
+      case 'biplane':
+        this._tone(f * 0.7, 0.09, 'sawtooth', 0.08)
+        this._tone(f * 1.05, 0.08, 'square', 0.05)
+        return
+      case 'dragonfly':
+        this._tone(f * 1.6, 0.05, 'sine', 0.08, f * 2.4)
+        return
+      case 'swarm':
+        this._tone(f * 0.9, 0.06, 'sawtooth', 0.06)
+        this._tone(f * 1.2, 0.06, 'triangle', 0.05)
+        this._tone(f * 1.6, 0.06, 'sine', 0.04)
+        return
+      case 'scissors':
+        this._tone(f * 1.1, 0.05, 'square', 0.09)
+        this._tone(f * 2.1, 0.06, 'sine', 0.06)
+        return
+      default:
+        this._tone(f, 0.07, 'triangle', 0.1)
+        this._tone(f * 1.5, 0.1, 'sine', 0.08)
+    }
   }
 
   powerUp(kind) {
@@ -181,6 +227,23 @@ export class GameAudio {
     this._tone(120, 0.4, 'sawtooth', 0.12, 40)
   }
 
+  incoming() {
+    if (!this.ctx || this.muted) return
+    const t = this._now()
+    const osc = this.ctx.createOscillator()
+    const g = this.ctx.createGain()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(340, t)
+    osc.frequency.exponentialRampToValueAtTime(620, t + 0.14)
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.1, t + 0.03)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16)
+    osc.connect(g)
+    g.connect(this.sfx || this.master)
+    osc.start(t)
+    osc.stop(t + 0.2)
+  }
+
   shieldHit() {
     this._tone(200, 0.15, 'triangle', 0.15, 80)
     this._tone(400, 0.1, 'sine', 0.1)
@@ -211,26 +274,43 @@ export class GameAudio {
     let step = 0
     const tick = () => {
       if (!this.ctx || !this.musicOn || this.muted) return
+      const it = this.intensity
       const t = this._now()
       const freq = scale[step % scale.length]
-      step += (Math.random() < 0.3 ? 2 : 1)
+      step += (Math.random() < 0.3 + it * 0.3 ? 2 : 1)
       const osc = this.ctx.createOscillator()
       const g = this.ctx.createGain()
       osc.type = 'sine'
       osc.frequency.value = freq
       g.gain.setValueAtTime(0.0001, t)
-      g.gain.exponentialRampToValueAtTime(0.045, t + 0.05)
+      g.gain.exponentialRampToValueAtTime(0.045 + it * 0.02, t + 0.05)
       g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2)
       const f = this.ctx.createBiquadFilter()
       f.type = 'lowpass'
-      f.frequency.value = 1200
+      f.frequency.value = 1200 + it * 900
       osc.connect(f)
       f.connect(g)
       g.connect(this.music)
       osc.start(t)
       osc.stop(t + 1.3)
       this._musicNodes.push(osc)
-      this._musicTimer = setTimeout(tick, 480 + Math.random() * 220)
+      // A brighter harmony note layers in as intensity climbs.
+      if (it > 0.45 && Math.random() < it * 0.5) {
+        const osc2 = this.ctx.createOscillator()
+        const g2 = this.ctx.createGain()
+        osc2.type = 'triangle'
+        osc2.frequency.value = scale[(step + 2) % scale.length] * 2
+        g2.gain.setValueAtTime(0.0001, t)
+        g2.gain.exponentialRampToValueAtTime(0.02 + it * 0.02, t + 0.04)
+        g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.5)
+        osc2.connect(g2)
+        g2.connect(this.music)
+        osc2.start(t)
+        osc2.stop(t + 0.55)
+        this._musicNodes.push(osc2)
+      }
+      const interval = (480 + Math.random() * 220) * (1 - it * 0.35)
+      this._musicTimer = setTimeout(tick, interval)
     }
     tick()
   }
