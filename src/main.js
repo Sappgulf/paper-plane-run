@@ -2923,11 +2923,21 @@ function buildRecapCard() {
 
   const pad = card.width * 0.035
   const big = Math.round(barH * 0.42)
-  const small = Math.round(barH * 0.2)
+  const small = Math.round(barH * 0.17)
   ctx.textBaseline = 'alphabetic'
+
+  // Watermark gets its own line at the top of the bar so it never has to
+  // share horizontal space (and possibly collide) with the stats line below.
+  ctx.textAlign = 'right'
+  ctx.font = `800 ${small}px system-ui, sans-serif`
+  ctx.fillStyle = 'rgba(255,248,239,.75)'
+  ctx.fillText('Paper Plane Run', card.width - pad, barY + small * 1.15)
+  ctx.textAlign = 'left'
+
   ctx.fillStyle = '#fff8ef'
   ctx.font = `900 ${big}px system-ui, sans-serif`
   ctx.fillText(`${Math.floor(distance)}m`, pad, card.height - barH * 0.42)
+
   ctx.font = `700 ${small}px system-ui, sans-serif`
   ctx.fillStyle = '#f0c94a'
   const starsStr = `${stars}★`
@@ -2939,11 +2949,6 @@ function buildRecapCard() {
     pad + starsW,
     card.height - barH * 0.13,
   )
-  ctx.textAlign = 'right'
-  ctx.font = `800 ${small}px system-ui, sans-serif`
-  ctx.fillStyle = 'rgba(255,248,239,.9)'
-  ctx.fillText('Paper Plane Run', card.width - pad, card.height - barH * 0.13)
-  ctx.textAlign = 'left'
   return card.toDataURL('image/jpeg', 0.88)
 }
 
