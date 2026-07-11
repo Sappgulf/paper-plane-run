@@ -619,10 +619,14 @@ const dragonflyEyeMat = new THREE.MeshStandardMaterial({
 const dragonflyWingMat = new THREE.MeshStandardMaterial({
   color: 0xe6f3ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.05,
 })
-const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.65, roughness: 0.22 })
-const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.75, roughness: 0.12 })
+// Kept low-metalness: the scene has no environment map, and Three's
+// metalness workflow renders highly metallic surfaces near-black without
+// one (no reflections to fill them in) — high metalness here previously
+// made the blades look like dark wood beams instead of shiny silver.
+const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.12, roughness: 0.4 })
+const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.15, roughness: 0.25 })
 const scissorsHandleMat = new THREE.MeshStandardMaterial({ color: 0xe0524a, roughness: 0.45, metalness: 0.1 })
-const scissorsPivotMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.8, roughness: 0.3 })
+const scissorsPivotMat = new THREE.MeshStandardMaterial({ color: 0x8a8f98, metalness: 0.2, roughness: 0.4 })
 const starMat = new THREE.MeshStandardMaterial({
   color: season.starColor, emissive: season.starEmissive, emissiveIntensity: 0.4, roughness: 0.4,
 })
@@ -802,7 +806,12 @@ function createPaperPlane(matBody = planeBodyMat, matAccent = planeAccentMat, wi
 
 /** A boss gate's "safe lane" marker ring — smoother torus than the old
  *  low-poly one, with a soft glow halo behind it so the safe gap reads as
- *  an inviting portal rather than a thin flat hoop. */
+ *  an inviting portal rather than a thin flat hoop.
+ *
+ *  IMPORTANT: this ring must face the camera (hole toward +Z, i.e. no
+ *  rotation) so it reads as a hoop to fly through. A torus viewed edge-on
+ *  projects as a solid bar spanning its full diameter, not a ring — that's
+ *  the "wood plank" look this hazard used to have when it was rotated 90°. */
 function createDangerRing(color, emissive) {
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(1.8, 0.13, 12, 32),
@@ -810,11 +819,10 @@ function createDangerRing(color, emissive) {
       color, emissive, emissiveIntensity: 0.55, roughness: 0.3, side: THREE.DoubleSide,
     }),
   )
-  ring.rotation.y = Math.PI / 2
   const glow = new THREE.Mesh(
-    new THREE.TorusGeometry(1.8, 0.34, 8, 32),
+    new THREE.TorusGeometry(1.8, 0.19, 8, 32),
     new THREE.MeshBasicMaterial({
-      color: emissive, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+      color: emissive, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide,
     }),
   )
   ring.add(glow)
@@ -1360,11 +1368,13 @@ function createCloud() {
 }
 
 function createRing() {
+  // No rotation: default torus orientation faces its hole toward +Z, i.e.
+  // toward the approaching player, so it reads as a hoop to fly through
+  // instead of projecting edge-on as a solid bar.
   const m = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.14, 12, 32), ringMat)
-  m.rotation.y = Math.PI / 2
   // Soft glow halo so the guide ring reads as an inviting target, not a thin hoop
   const glow = new THREE.Mesh(
-    new THREE.TorusGeometry(1.4, 0.36, 8, 32),
+    new THREE.TorusGeometry(1.4, 0.2, 8, 32),
     new THREE.MeshBasicMaterial({
       color: 0xf59e0b, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
     }),
