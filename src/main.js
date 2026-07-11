@@ -61,10 +61,25 @@ const canvas = $('c')
 const menuEl = $('menu')
 const gameoverEl = $('gameover')
 const hudEl = $('hud')
+const bannerStackEl = $('banner-stack')
 const speedFxEl = $('speed-fx')
 const windBanner = $('wind-banner')
 const powerBanner = $('power-banner')
 const zoneBanner = $('zone-banner')
+
+// Keep the wind/power/zone banner stack pinned just below the HUD's actual
+// rendered height — the HUD can wrap to 2-3 rows depending on how many
+// chips are active, so a fixed pixel offset would overlap it.
+if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
+  const syncBannerTop = () => {
+    const rect = hudEl.getBoundingClientRect()
+    const top = hudEl.classList.contains('hidden') ? rect.top : rect.bottom + 10
+    bannerStackEl.style.setProperty('--banner-top', `${Math.round(top)}px`)
+  }
+  new ResizeObserver(syncBannerTop).observe(hudEl)
+  window.addEventListener('resize', syncBannerTop)
+  syncBannerTop()
+}
 const comboFloat = $('combo-float')
 const powerHud = $('power-hud')
 const powerLabel = $('power-label')
@@ -756,6 +771,28 @@ function createPaperPlane(matBody = planeBodyMat, matAccent = planeAccentMat, wi
   return g
 }
 
+/** A boss gate's "safe lane" marker ring — smoother torus than the old
+ *  low-poly one, with a soft glow halo behind it so the safe gap reads as
+ *  an inviting portal rather than a thin flat hoop. */
+function createDangerRing(color, emissive) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.8, 0.13, 12, 32),
+    new THREE.MeshStandardMaterial({
+      color, emissive, emissiveIntensity: 0.55, roughness: 0.3, side: THREE.DoubleSide,
+    }),
+  )
+  ring.rotation.y = Math.PI / 2
+  const glow = new THREE.Mesh(
+    new THREE.TorusGeometry(1.8, 0.34, 8, 32),
+    new THREE.MeshBasicMaterial({
+      color: emissive, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+    }),
+  )
+  ring.add(glow)
+  ring.name = 'safeRing'
+  return ring
+}
+
 function createBossGate() {
   const g = new THREE.Group()
   // Two giant scissor blades forming a closing gate with a moving gap
@@ -774,15 +811,8 @@ function createBossGate() {
   }
   // Danger rings / guides
   for (let i = 0; i < 3; i++) {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(1.8, 0.1, 8, 20),
-      new THREE.MeshStandardMaterial({
-        color: 0xfb7185, emissive: 0xe11d48, emissiveIntensity: 0.4, side: THREE.DoubleSide,
-      }),
-    )
-    ring.rotation.y = Math.PI / 2
+    const ring = createDangerRing(0xfb7185, 0xe11d48)
     ring.position.set(0, 6 + i * 4, 0)
-    ring.name = 'safeRing'
     g.add(ring)
   }
   g.add(left, right)
@@ -839,15 +869,8 @@ function createWindTunnelGate() {
   }
 
   for (let i = 0; i < 3; i++) {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(1.8, 0.1, 8, 20),
-      new THREE.MeshStandardMaterial({
-        color: 0x7eb8e8, emissive: 0x2563eb, emissiveIntensity: 0.4, side: THREE.DoubleSide,
-      }),
-    )
-    ring.rotation.y = Math.PI / 2
+    const ring = createDangerRing(0x7eb8e8, 0x2563eb)
     ring.position.set(0, 6 + i * 4, 0)
-    ring.name = 'safeRing'
     g.add(ring)
   }
   g.userData.fanL = fanL
@@ -1956,6 +1979,7 @@ function resetGame() {
 
 // Stick
 const STICK_MAX = 48
+let stickKnobAngle = 0
 function setStickFromEvent(cx, cy) {
   const rect = stickBase.getBoundingClientRect()
   const ox = rect.left + rect.width / 2
@@ -1964,11 +1988,15 @@ function setStickFromEvent(cx, cy) {
   let dy = cy - oy
   const len = Math.hypot(dx, dy) || 1
   const c = Math.min(len, STICK_MAX)
+  // Point the knob's paper-dart glyph toward the drag direction (deadzone so
+  // it doesn't jitter near center).
+  if (len > 6) stickKnobAngle = Math.atan2(dx, -dy) * (180 / Math.PI)
   dx = (dx / len) * c
   dy = (dy / len) * c
   stick.x = dx / STICK_MAX
   stick.y = -dy / STICK_MAX
-  stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
+  stickKnob.style.transform =
+    `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${stickKnobAngle}deg)`
 }
 function resetStick() {
   stick.x = stick.y = 0
