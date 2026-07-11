@@ -9,11 +9,25 @@ const DEFAULTS = {
   haptics: true,
   arDesk: false,
   forceSeason: 'auto', // auto | default | halloween | winter | valentine | spring
+  /** @type {'mouse'|'joystick'} */
+  controlMode: 'mouse',
+  invertY: false,
+  invertX: false,
+  /** 0.5–1.5 style multiplier for mouse follow */
+  mouseSensitivity: 1,
 }
 
 export function loadSettings() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }
+    const raw = localStorage.getItem(KEY)
+    if (!raw) {
+      // First run: joysticks on touch devices, mouse on desktop
+      const touch =
+        typeof navigator !== 'undefined' &&
+        ('ontouchstart' in globalThis || navigator.maxTouchPoints > 0)
+      return { ...DEFAULTS, controlMode: touch ? 'joystick' : 'mouse' }
+    }
+    return { ...DEFAULTS, ...JSON.parse(raw) }
   } catch {
     return { ...DEFAULTS }
   }

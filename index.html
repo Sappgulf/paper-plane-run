@@ -70,6 +70,12 @@
         </div>
         <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
 
+        <div class="diff-row control-row" role="group" aria-label="Control scheme">
+          <button type="button" class="diff-btn ctrl-btn" data-ctrl="mouse">🖱 Mouse</button>
+          <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick">🕹️ Joystick</button>
+        </div>
+        <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
+
         <div class="mode-grid">
           <button id="start-btn" type="button" class="primary-wide">✈ Take Flight</button>
           <button id="daily-btn" type="button" class="mode-btn">📅 Daily Route</button>
@@ -93,6 +99,21 @@
         <h2>Settings &amp; Access</h2>
         <p class="tagline">Season now: <strong id="season-now">—</strong></p>
         <div class="settings-list">
+          <label class="set-row">Controls
+            <select id="set-control-mode">
+              <option value="mouse">Mouse aim (follow cursor)</option>
+              <option value="joystick">Joystick / stick</option>
+            </select>
+          </label>
+          <label class="set-row"><input type="checkbox" id="set-invert-y" /> Invert up/down</label>
+          <label class="set-row"><input type="checkbox" id="set-invert-x" /> Invert left/right</label>
+          <label class="set-row">Mouse feel
+            <select id="set-mouse-sens">
+              <option value="0.7">Relaxed</option>
+              <option value="1">Normal</option>
+              <option value="1.35">Snappy</option>
+            </select>
+          </label>
           <label class="set-row"><input type="checkbox" id="set-reduced-motion" /> Reduced motion</label>
           <label class="set-row"><input type="checkbox" id="set-large-stick" /> Larger touch sticks</label>
           <label class="set-row"><input type="checkbox" id="set-auto-level" /> Auto-level assist (or hold Shift)</label>
@@ -112,7 +133,7 @@
             </select>
           </label>
         </div>
-        <p class="mini-hint">Co-op: P1 arrows/left stick · P2 WASD or right wind stick. Toys: torn wing, paperclip, rubber band (hold Space).</p>
+        <p class="mini-hint">Mouse: plane flies to cursor. Joystick: drag stick or arrows. Co-op always uses sticks + arrows/WASD.</p>
         <button type="button" class="back-btn" data-back>Back</button>
       </div>
 

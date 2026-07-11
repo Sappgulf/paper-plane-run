@@ -714,8 +714,10 @@ let crashT = 0
 let crashReason = ''
 let baseFov = 60
 let fovPunch = 0
-/** Mouse only steers when pointer is held (desktop polish) */
-let pointerSteering = false
+/** Mouse screen position 0–1 (updated continuously for aim mode) */
+const mouseScreen = { x: 0.5, y: 0.5, has: false }
+/** Target world position for mouse-aim mode */
+const mouseTarget = { x: 0, y: 8 }
 
 let state = 'menu'
 let distance = 0
@@ -1119,7 +1121,9 @@ function resetGame() {
   crashReason = ''
   fovPunch = 0
   slingHold = 0
-  pointerSteering = false
+  mouseScreen.has = false
+  mouseTarget.x = 0
+  mouseTarget.y = 8
   camera.fov = baseFov
   camera.updateProjectionMatrix()
   plane.visible = true
@@ -1206,10 +1210,17 @@ function resetStick() {
   stick.pointerId = null
   stickKnob.style.transform = 'translate(-50%, -50%)'
 }
+function wantsJoystick() {
+  // Co-op always needs sticks; otherwise honor setting
+  if (runKind === 'coop') return true
+  return settings.controlMode === 'joystick'
+}
+
 function showStick(v) {
   const windZone = $('wind-stick-zone')
   const root = $('game-root')
-  if (v) {
+  const joy = wantsJoystick()
+  if (v && joy) {
     stickZone.classList.remove('hidden')
     if (runKind === 'coop' && windZone) {
       windZone.classList.remove('hidden')
@@ -1218,13 +1229,93 @@ function showStick(v) {
       windZone?.classList.add('hidden')
       root?.classList.remove('coop-mode')
     }
-  } else {
+    root?.classList.add('joystick-mode')
+    root?.classList.remove('mouse-mode')
+  } else if (v && !joy) {
+    // Mouse aim: hide sticks (unless coop already handled)
     stickZone.classList.add('hidden')
     windZone?.classList.add('hidden')
     root?.classList.remove('coop-mode')
+    root?.classList.add('mouse-mode')
+    root?.classList.remove('joystick-mode')
+    resetStick()
+  } else {
+    stickZone.classList.add('hidden')
+    windZone?.classList.add('hidden')
+    root?.classList.remove('coop-mode', 'joystick-mode', 'mouse-mode')
     resetStick()
     windStick.x = windStick.y = 0
     windStick.active = false
+  }
+}
+
+function updateControlUI() {
+  const mode = settings.controlMode === 'joystick' ? 'joystick' : 'mouse'
+  document.querySelectorAll('.ctrl-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.ctrl === mode)
+  })
+  const blurb = $('ctrl-blurb')
+  if (blurb) {
+    blurb.textContent =
+      mode === 'joystick'
+        ? 'Drag the stick or use arrows / WASD'
+        : settings.invertY
+          ? 'Plane follows cursor · Y inverted'
+          : 'Plane follows your cursor'
+  }
+}
+
+function setControlMode(mode) {
+  if (mode !== 'mouse' && mode !== 'joystick') return
+  settings = saveSettings({ controlMode: mode })
+  updateControlUI()
+  // Refresh stick visibility if mid-flight
+  if (state === 'playing') showStick(true)
+}
+
+document.querySelectorAll('.ctrl-btn').forEach((b) => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation()
+    setControlMode(b.dataset.ctrl)
+    audio.unlock().then(() => audio.uiClick())
+  })
+})
+updateControlUI()
+
+/** Map pointer to normalized -1..1 with invert options */
+function pointerAxesFromClient(clientX, clientY) {
+  let nx = (clientX / innerWidth) * 2 - 1
+  let ny = -((clientY / innerHeight) * 2 - 1) // screen up → +1
+  if (settings.invertX) nx = -nx
+  if (settings.invertY) ny = -ny
+  return { nx, ny }
+}
+
+/** Absolute world target from cursor (mouse-aim) */
+function mouseWorldTarget(clientX, clientY) {
+  mouseScreen.x = clientX / innerWidth
+  mouseScreen.y = clientY / innerHeight
+  mouseScreen.has = true
+  let nx = mouseScreen.x * 2 - 1
+  let ny = 1 - mouseScreen.y * 2 // top of screen = +1
+  if (settings.invertX) nx = -nx
+  if (settings.invertY) ny = -ny
+  // Slight margin so edges aren't maxed awkwardly
+  const margin = 0.92
+  mouseTarget.x = THREE.MathUtils.clamp(nx * MAX_X * margin, -MAX_X, MAX_X)
+  mouseTarget.y = THREE.MathUtils.clamp(
+    THREE.MathUtils.mapLinear(ny, -1, 1, MIN_Y + 0.5, MAX_Y - 0.5),
+    MIN_Y,
+    MAX_Y,
+  )
+  mouse.nx = nx
+  mouse.ny = ny
+}
+
+function applyAxisInvert(x, y) {
+  return {
+    x: settings.invertX ? -x : x,
+    y: settings.invertY ? -y : y,
   }
 }
 
@@ -1310,19 +1401,30 @@ window.addEventListener('keydown', (e) => {
 })
 window.addEventListener('keyup', (e) => keys.delete(e.code))
 window.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone')) return
-  pointerSteering = true
-  mouse.nx = (e.clientX / innerWidth) * 2 - 1
-  mouse.ny = -((e.clientY / innerHeight) * 2 - 1)
-})
-window.addEventListener('pointerup', () => {
-  pointerSteering = false
+  if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
+  mouseWorldTarget(e.clientX, e.clientY)
+  // Start game from canvas click on menu/dead
+  if (state === 'menu' || (state === 'dead' && crashT <= 0)) {
+    if (!e.target.closest('button')) {
+      /* panels handle their own; canvas play area starts */
+    }
+  }
 })
 window.addEventListener('pointermove', (e) => {
   if (stick.active) return
-  mouse.nx = (e.clientX / innerWidth) * 2 - 1
-  mouse.ny = -((e.clientY / innerHeight) * 2 - 1)
+  // Always track cursor for mouse-aim (and invert-aware axes for reference)
+  mouseWorldTarget(e.clientX, e.clientY)
 })
+// Touch: also track for absolute aim if someone uses finger without stick in mouse mode
+window.addEventListener(
+  'touchmove',
+  (e) => {
+    if (stick.active || settings.controlMode === 'joystick') return
+    const t = e.touches[0]
+    if (t) mouseWorldTarget(t.clientX, t.clientY)
+  },
+  { passive: true },
+)
 muteBtn.addEventListener('click', async (e) => {
   e.stopPropagation()
   await audio.unlock()
@@ -1469,7 +1571,7 @@ function renderUpgrades() {
 
 function renderSettings() {
   const s = settings
-  const bind = (id, key) => {
+  const bind = (id, key, { number = false } = {}) => {
     const el = $(id)
     if (!el) return
     if (el.type === 'checkbox') {
@@ -1479,6 +1581,7 @@ function renderSettings() {
         applyDocumentA11y(settings)
         applyPerformanceSettings()
         rebuildPowerPalette()
+        updateControlUI()
         if (key === 'arDesk') {
           if (el.checked) deskAR.start().then((ok) => {
             if (!ok) {
@@ -1493,16 +1596,24 @@ function renderSettings() {
           }
         }
         if (key === 'forceSeason' || key === 'colorblindPowers') applySeasonVisuals()
+        if (key === 'invertY' || key === 'invertX') updateControlUI()
       }
     } else {
-      el.value = s[key]
+      el.value = number ? String(s[key]) : s[key]
       el.onchange = () => {
-        settings = saveSettings({ [key]: el.value })
+        const val = number ? Number(el.value) : el.value
+        settings = saveSettings({ [key]: val })
         applySeasonVisuals()
         applyDocumentA11y(settings)
+        updateControlUI()
+        if (key === 'controlMode' && state === 'playing') showStick(true)
       }
     }
   }
+  bind('set-control-mode', 'controlMode')
+  bind('set-invert-y', 'invertY')
+  bind('set-invert-x', 'invertX')
+  bind('set-mouse-sens', 'mouseSensitivity', { number: true })
   bind('set-reduced-motion', 'reducedMotion')
   bind('set-large-stick', 'largeStick')
   bind('set-auto-level', 'autoLevel')
@@ -1513,6 +1624,16 @@ function renderSettings() {
   bind('set-season', 'forceSeason')
   const seasonLabel = $('season-now')
   if (seasonLabel) seasonLabel.textContent = `${season.name} (${season.id})`
+  // sync control mode select with saved
+  const cm = $('set-control-mode')
+  if (cm) cm.value = s.controlMode === 'joystick' ? 'joystick' : 'mouse'
+  const ms = $('set-mouse-sens')
+  if (ms) {
+    const v = Number(s.mouseSensitivity) || 1
+    if (v < 0.85) ms.value = '0.7'
+    else if (v > 1.15) ms.value = '1.35'
+    else ms.value = '1'
+  }
 }
 
 function renderStats() {
@@ -2180,6 +2301,12 @@ function update(dt) {
   // Playing
   if (invuln > 0) invuln -= dt
 
+  // Default mouse target to plane if we haven't moved yet
+  if (!mouseScreen.has) {
+    mouseTarget.x = planeX
+    mouseTarget.y = planeY
+  }
+
   if (activePower) {
     activePower.timeLeft -= dt
     powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
@@ -2229,8 +2356,10 @@ function update(dt) {
 
   let inputX = 0
   let inputY = 0
+  const joyMode = wantsJoystick()
+  const mouseMode = !joyMode && runKind !== 'coop'
+
   // Co-op: P1 = arrows/stick only; P2 wind = WASD / IJKL / wind stick
-  // Solo: all inputs available
   if (runKind === 'coop') {
     if (keys.has('ArrowLeft')) inputX -= 1
     if (keys.has('ArrowRight')) inputX += 1
@@ -2240,7 +2369,11 @@ function update(dt) {
       inputX = THREE.MathUtils.clamp(inputX + stick.x, -1, 1)
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
     }
-  } else {
+    const inv = applyAxisInvert(inputX, inputY)
+    inputX = inv.x
+    inputY = inv.y
+  } else if (joyMode) {
+    // Joystick / keyboard relative control
     if (keys.has('ArrowLeft') || keys.has('KeyA')) inputX -= 1
     if (keys.has('ArrowRight') || keys.has('KeyD')) inputX += 1
     if (keys.has('ArrowUp') || keys.has('KeyW')) inputY += 1
@@ -2248,21 +2381,33 @@ function update(dt) {
     if (stick.active || Math.abs(stick.x) + Math.abs(stick.y) > 0.02) {
       inputX = THREE.MathUtils.clamp(inputX + stick.x, -1, 1)
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
-    } else if (pointerSteering) {
-      // Deadzone so small pointer drift doesn't fight you
-      const mx = Math.abs(mouse.nx) > 0.08 ? mouse.nx : 0
-      const my = Math.abs(mouse.ny) > 0.08 ? mouse.ny : 0
-      inputX = THREE.MathUtils.clamp(inputX + mx * 1.05, -1, 1)
-      inputY = THREE.MathUtils.clamp(inputY + my * 1.05, -1, 1)
     }
+    const inv = applyAxisInvert(inputX, inputY)
+    inputX = inv.x
+    inputY = inv.y
+  } else {
+    // Mouse aim: plane flies toward cursor world target
+    // Keyboard still nudges target for accessibility
+    if (keys.has('ArrowLeft') || keys.has('KeyA')) mouseTarget.x -= 18 * dt
+    if (keys.has('ArrowRight') || keys.has('KeyD')) mouseTarget.x += 18 * dt
+    if (keys.has('ArrowUp') || keys.has('KeyW')) mouseTarget.y += 18 * dt
+    if (keys.has('ArrowDown') || keys.has('KeyS')) mouseTarget.y -= 18 * dt
+    mouseTarget.x = THREE.MathUtils.clamp(mouseTarget.x, -MAX_X, MAX_X)
+    mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y, MIN_Y, MAX_Y)
   }
 
   // Auto-level assist
   if (settings.autoLevel || keys.has('ShiftLeft') || keys.has('ShiftRight')) {
-    inputX *= 0.55
-    inputY *= 0.55
-    velX *= Math.pow(0.02, dt)
-    velY *= Math.pow(0.04, dt)
+    if (mouseMode) {
+      // Ease target back toward center-ish altitude, keep x
+      mouseTarget.y = THREE.MathUtils.lerp(mouseTarget.y, 8, 1 - Math.pow(0.05, dt))
+      mouseTarget.x = THREE.MathUtils.lerp(mouseTarget.x, 0, 1 - Math.pow(0.15, dt))
+    } else {
+      inputX *= 0.55
+      inputY *= 0.55
+      velX *= Math.pow(0.02, dt)
+      velY *= Math.pow(0.04, dt)
+    }
   }
 
   // Co-op wind from P2
@@ -2340,26 +2485,55 @@ function update(dt) {
     } else slingHold = 0
   }
 
-  velX += inputX * 40 * accelMul * dt
-  velY += inputY * 40 * accelMul * dt
-  velY -= difficulty.sink * sinkMul * dt
-  // Stronger drag at high speed for control
-  const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
-  const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
-  velX *= Math.pow(dragX, dt)
-  velY *= Math.pow(dragY, dt)
+  if (mouseMode) {
+    // Spring toward cursor — feel matches mouse movement
+    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 1.8)
+    const stiffness = 14 * sens * accelMul
+    const damping = 0.88
+    const ax = (mouseTarget.x - planeX) * stiffness
+    const ay = (mouseTarget.y - planeY) * stiffness
+    velX += ax * dt
+    velY += ay * dt
+    // Light sink so you still need to hold altitude a bit
+    velY -= difficulty.sink * sinkMul * 0.35 * dt
+    velX *= Math.pow(1 - damping * dt * 8, 1)
+    velY *= Math.pow(1 - damping * dt * 8, 1)
+    // Extra direct blend so cursor and plane stay locked
+    const blend = 1 - Math.pow(0.0002, dt * sens)
+    planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, blend * 0.55)
+    planeY = THREE.MathUtils.lerp(planeY, mouseTarget.y, blend * 0.55)
+  } else {
+    velX += inputX * 40 * accelMul * dt
+    velY += inputY * 40 * accelMul * dt
+    velY -= difficulty.sink * sinkMul * dt
+    // Stronger drag at high speed for control
+    const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
+    const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
+    velX *= Math.pow(dragX, dt)
+    velY *= Math.pow(dragY, dt)
+  }
+
   velX = THREE.MathUtils.clamp(velX, -MAX_VEL, MAX_VEL)
   velY = THREE.MathUtils.clamp(velY, -MAX_VEL, MAX_VEL)
 
-  planeX += velX * dt
-  planeY += velY * dt
+  if (!mouseMode) {
+    planeX += velX * dt
+    planeY += velY * dt
+  } else {
+    // residual velocity for feel / banking
+    planeX += velX * dt * 0.35
+    planeY += velY * dt * 0.35
+  }
+
   // Soft walls — bounce instead of hard clamp stick
   if (planeX < -MAX_X) {
     planeX = -MAX_X
     velX = Math.abs(velX) * 0.35
+    mouseTarget.x = Math.max(mouseTarget.x, -MAX_X)
   } else if (planeX > MAX_X) {
     planeX = MAX_X
     velX = -Math.abs(velX) * 0.35
+    mouseTarget.x = Math.min(mouseTarget.x, MAX_X)
   }
   if (planeY < MIN_Y) {
     planeY = MIN_Y
@@ -2369,9 +2543,11 @@ function update(dt) {
       return
     }
     velY = Math.max(0, -velY * 0.25)
+    mouseTarget.y = Math.max(mouseTarget.y, MIN_Y)
   } else if (planeY > MAX_Y) {
     planeY = MAX_Y
     velY = -Math.abs(velY) * 0.3
+    mouseTarget.y = Math.min(mouseTarget.y, MAX_Y)
   }
 
   let speedMul = ufx.speedMul

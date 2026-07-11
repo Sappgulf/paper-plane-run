@@ -55,6 +55,8 @@ html, body, #game-root {
 #game-root.ar-active .panel {
   background: linear-gradient(180deg, rgba(200,223,245,.75), rgba(255,236,220,.88));
 }
+#game-root.mouse-mode #c { cursor: crosshair; }
+#game-root.joystick-mode #c { cursor: default; }
 
 #wind-stick-zone {
   position: absolute; right: 0; bottom: 0; height: 40%; width: 45%;
@@ -178,6 +180,12 @@ html.a11y-colorblind .power-hud #power-fill {
 .diff-btn[data-diff=easy].active { background: linear-gradient(180deg,#86efac,#4ade80); border-color: #22c55e; }
 .diff-btn[data-diff=hard].active { background: linear-gradient(180deg,#f0956a,#e06b4a); border-color: #b84a30; }
 .diff-blurb { font-size: 12px; font-weight: 700; color: #8a6f68; margin-bottom: 10px; }
+.control-row { margin-top: 2px; }
+.ctrl-btn.active {
+  color: #fffaf2 !important;
+  background: linear-gradient(180deg, #a78bfa, #7c3aed) !important;
+  border-color: #6d28d9 !important;
+}
 
 .mode-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
