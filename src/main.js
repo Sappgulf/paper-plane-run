@@ -80,6 +80,8 @@ const nextZoneHud = $('next-zone-hud')
 const hudNextZoneEl = $('hud-next-zone')
 const ghostDeltaHud = $('ghost-delta-hud')
 const ghostDeltaValEl = $('ghost-delta-val')
+const guardianHud = $('guardian-hud')
+const guardianHudVal = $('guardian-hud-val')
 
 // Off-screen edge indicators: arrows pointing at nearby hazards/pickups
 // that have scrolled outside the camera frustum.
@@ -1221,6 +1223,8 @@ let slingHold = 0
 let speedBoost = 0
 /** Post-hit invulnerability (shield break, etc.) */
 let invuln = 0
+/** Guardian Crease upgrade: free crash-saves remaining this run */
+let guardianLeft = 0
 /** Crumple/damage tint timer after a shield absorbs a hazard */
 let damageFlash = 0
 const _damageOrigColor = new THREE.Color()
@@ -1625,12 +1629,16 @@ function activatePower(kind) {
   }
 
   if (kind === 'boost') {
-    // Strong, readable boost — additive impulse + sustained cruise
-    speedBoost = Math.max(speedBoost, 32)
+    // Strong, readable boost — additive impulse + sustained cruise.
+    // Kept modest (not a flat multiplier stack) so the sudden speed jump
+    // doesn't outrun the hazard density and cause an unavoidable crash.
+    speedBoost = Math.max(speedBoost, 18)
     fovPunch = 12
     shake = Math.max(shake, 0.3)
-    velY += 6
-    invuln = Math.max(invuln, 0.55)
+    velY += 3
+    // Grace window scales with the Turbo Fold upgrade so invested players
+    // get an even safer boost.
+    invuln = Math.max(invuln, 0.9 + fx.boostSafety * 0.15)
     spawnConfetti(planeX, planeY, 0)
   }
 
@@ -1763,6 +1771,9 @@ function resetGame() {
   distanceMilestones.clear()
   speedBoost = 0
   invuln = 0.4 // brief spawn grace
+  guardianLeft = getUpgradeEffects().guardianCharges
+  guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
+  if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
   crashT = 0
   crashReason = ''
   fovPunch = 0
@@ -2159,6 +2170,7 @@ function showMenu() {
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
   ghostDeltaHud?.classList.add('hidden')
+  guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   showStick(false)
   try {
@@ -2783,6 +2795,27 @@ function die(reason) {
     return
   }
 
+  // Guardian Crease: a purchased free save, used when no shield is active
+  if (guardianLeft > 0 && reason !== 'Tutorial complete!') {
+    guardianLeft--
+    if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
+    guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
+    audio.shieldHit()
+    if (settings.haptics) Haptic.nearMiss()
+    shake = 0.6
+    invuln = 1.4
+    damageFlash = 1.1
+    _damageOrigColor.copy(planeBodyMat.color)
+    velY = Math.max(velY, 0) + 12
+    velX *= 0.4
+    speedBoost = Math.max(speedBoost, 6)
+    spawnConfetti(planeX, planeY, 1)
+    powerBanner.textContent = '🛟 Guardian Crease saved you!'
+    powerBanner.classList.remove('hidden')
+    bannerTimer = 2.2
+    return
+  }
+
   const isWin = reason === 'Tutorial complete!'
   state = 'dead'
   crashT = isWin ? 0.35 : 1.05
@@ -2835,6 +2868,7 @@ function finalizeDeath() {
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
   ghostDeltaHud?.classList.add('hidden')
+  guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
   const isWin = reason === 'Tutorial complete!'
@@ -3175,8 +3209,8 @@ function update(dt) {
       }
     }
     if (activePower.kind === 'boost') {
-      // Sustain a strong boost for the full duration
-      speedBoost = Math.max(speedBoost, 18 + activePower.timeLeft * 2.2)
+      // Sustain a strong (but not overwhelming) boost for the full duration
+      speedBoost = Math.max(speedBoost, 10 + activePower.timeLeft * 1.6)
       fovPunch = THREE.MathUtils.lerp(fovPunch, 9, 1 - Math.pow(0.001, dt))
       // Boost trail confetti occasionally
       if (Math.random() < dt * 8) spawnConfetti(planeX, planeY - 0.2, -0.5)
@@ -3409,7 +3443,7 @@ function update(dt) {
 
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
-  if (activePower?.kind === 'boost') speedMul *= 1.55
+  if (activePower?.kind === 'boost') speedMul *= 1.22
   const cfg = difficulty
   const cruise =
     (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
@@ -3543,8 +3577,10 @@ function update(dt) {
   const p = plane.position
   const magnetOn = activePower?.kind === 'magnet' || ufx.magnetBonus > 0
   const magnetPull = (activePower?.kind === 'magnet' ? 1.2 : 0) + ufx.magnetBonus
-  // Slightly tighter hit while boosting (reward skill / speed lines)
-  const hitScale = activePower?.kind === 'boost' ? 0.88 : 1
+  // Forgiving hitbox while boosting — the world scrolls faster, so shrink
+  // the effective hit radius to compensate for the reduced reaction time.
+  // Turbo Fold levels make this even safer.
+  const hitScale = activePower?.kind === 'boost' ? Math.max(0.6, 0.78 - ufx.boostSafety * 0.06) : 1
   const canCollide = invuln <= 0
   let ringsLeft = 0
 

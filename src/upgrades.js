@@ -70,6 +70,22 @@ export const UPGRADES = [
     max: 3,
     costs: [15, 35, 65],
   },
+  {
+    id: 'turbo',
+    name: 'Turbo Fold',
+    icon: '🚀',
+    blurb: 'Smoother, safer speed boosts',
+    max: 3,
+    costs: [18, 38, 65],
+  },
+  {
+    id: 'guardian',
+    name: 'Guardian Crease',
+    icon: '🛟',
+    blurb: 'Auto-save from a crash once per run',
+    max: 2,
+    costs: [45, 90],
+  },
 ]
 
 function loadLevels() {
@@ -161,6 +177,8 @@ export function getUpgradeEffects() {
   const luck = getUpgradeLevel('luck')
   const wing = getUpgradeLevel('wingspan')
   const trail = getUpgradeLevel('trail')
+  const turbo = getUpgradeLevel('turbo')
+  const guardian = getUpgradeLevel('guardian')
   return {
     accelMul: 1 + h * 0.08,
     sinkMul: Math.max(0.55, 1 - lift * 0.08),
@@ -174,6 +192,8 @@ export function getUpgradeEffects() {
     nearMissBonus: wing * 0.15,
     trailLevel: trail,
     handlingLevel: h,
+    boostSafety: turbo,
+    guardianCharges: guardian,
   }
 }
 

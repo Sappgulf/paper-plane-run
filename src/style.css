@@ -89,6 +89,8 @@ html, body, #game-root {
 }
 .ghost-delta-chip.ahead > span:nth-child(2) { color: #16a34a; }
 .ghost-delta-chip.behind > span:nth-child(2) { color: #dc2626; }
+.guardian-chip { border-color: rgba(56,189,248,.4); background: rgba(232,249,255,.92); }
+.guardian-chip > span:nth-child(2) { color: #0369a1; }
 .power-hud { min-width: 108px; }
 .power-hud #power-label { font-size: 13px !important; display: block; }
 .power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
