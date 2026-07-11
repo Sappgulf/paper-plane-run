@@ -565,10 +565,23 @@ const buildingMats = [
   new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xd4c4f0, roughness: 0.9 }),
 ]
 const birdMat = new THREE.MeshStandardMaterial({
-  color: season.birdColor, roughness: 0.75, side: THREE.DoubleSide,
+  map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
 })
-const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xc0c8d0, metalness: 0.55, roughness: 0.35 })
-const scissorsHandleMat = new THREE.MeshStandardMaterial({ color: 0xe06b4a, roughness: 0.55 })
+const birdAccentMat = new THREE.MeshStandardMaterial({
+  map: paperTex, color: season.birdColor, roughness: 0.65, side: THREE.DoubleSide, emissive: 0x000000,
+})
+birdAccentMat.color.multiplyScalar(0.82) // subtle crease-shadow tone for the underside/accents
+const birdEyeMat = new THREE.MeshStandardMaterial({ color: 0x3d2c29, roughness: 0.5 })
+const dragonflyEyeMat = new THREE.MeshStandardMaterial({
+  color: 0x2563eb, emissive: 0x1d4ed8, emissiveIntensity: 0.3, roughness: 0.3,
+})
+const dragonflyWingMat = new THREE.MeshStandardMaterial({
+  color: 0xe6f3ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.05,
+})
+const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.65, roughness: 0.22 })
+const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.75, roughness: 0.12 })
+const scissorsHandleMat = new THREE.MeshStandardMaterial({ color: 0xe0524a, roughness: 0.45, metalness: 0.1 })
+const scissorsPivotMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.8, roughness: 0.3 })
 const starMat = new THREE.MeshStandardMaterial({
   color: season.starColor, emissive: season.starEmissive, emissiveIntensity: 0.4, roughness: 0.4,
 })
@@ -982,21 +995,46 @@ function createFlyer(kindId) {
     g.userData.wingL = left
     g.userData.wingR = right
   } else if (def.id === 'dragonfly') {
-    const bodyGeo =
+    // Round head with big compound eyes
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), birdAccentMat)
+    head.position.set(0, 0, 0.3)
+    g.add(head)
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), dragonflyEyeMat)
+      eye.position.set(sx * 0.075, 0.015, 0.34)
+      g.add(eye)
+    }
+    // Short thorax + long tapering segmented abdomen
+    const thoraxGeo =
       typeof THREE.CapsuleGeometry === 'function'
-        ? new THREE.CapsuleGeometry(0.08, 0.55, 4, 8)
-        : new THREE.CylinderGeometry(0.06, 0.08, 0.55, 6)
-    const body = new THREE.Mesh(bodyGeo, birdMat)
-    body.rotation.z = Math.PI / 2
-    g.add(body)
-    const wingMat = new THREE.MeshStandardMaterial({
-      color: 0xa7f3d0, transparent: true, opacity: 0.55, side: THREE.DoubleSide, roughness: 0.4,
-    })
+        ? new THREE.CapsuleGeometry(0.075, 0.16, 4, 10)
+        : new THREE.CylinderGeometry(0.07, 0.075, 0.24, 10)
+    const thorax = new THREE.Mesh(thoraxGeo, birdMat)
+    thorax.rotation.z = Math.PI / 2
+    thorax.position.z = 0.14
+    g.add(thorax)
+    const abdomen = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.75, 8), birdAccentMat)
+    abdomen.rotation.z = -Math.PI / 2
+    abdomen.position.z = -0.28
+    g.add(abdomen)
+    for (const bz of [-0.1, -0.3, -0.5]) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 10), birdMat)
+      band.rotation.y = Math.PI / 2
+      band.position.z = bz
+      g.add(band)
+    }
+    // Iridescent paper wings — a leaf-shaped outline instead of a plain rectangle
+    const wingShapeDF = new THREE.Shape()
+    wingShapeDF.moveTo(0, 0)
+    wingShapeDF.quadraticCurveTo(0.32, 0.1, 0.58, 0.02)
+    wingShapeDF.quadraticCurveTo(0.32, -0.06, 0, 0)
     for (const sx of [-1, 1]) {
       for (const sy of [-1, 1]) {
-        const w = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.2), wingMat)
-        w.position.set(sx * 0.2, sy * 0.12, 0)
-        w.rotation.y = sx * 0.4
+        const w = new THREE.Mesh(new THREE.ShapeGeometry(wingShapeDF), dragonflyWingMat)
+        w.scale.x = sx
+        w.position.set(sx * 0.06, sy * 0.03 + 0.02, 0.14 + sy * 0.05)
+        w.rotation.x = -Math.PI / 2
+        w.rotation.z = sx * 0.12
         g.add(w)
         if (sx < 0 && sy > 0) g.userData.wingL = w
         if (sx > 0 && sy > 0) g.userData.wingR = w
@@ -1022,24 +1060,48 @@ function createFlyer(kindId) {
     wingShape.lineTo(0.62, -0.22)
     wingShape.lineTo(0.18, 0.08)
     wingShape.lineTo(0, 0)
+    // A smaller inner panel along the fold line reads as a mountain-fold
+    // crease (mirrors the body/accent split on the player's own plane).
+    const creaseShape = new THREE.Shape()
+    creaseShape.moveTo(0, 0)
+    creaseShape.lineTo(0.34, -0.12)
+    creaseShape.lineTo(0.18, 0.08)
+    creaseShape.lineTo(0, 0)
     const left = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
     left.rotation.x = -Math.PI / 2
     left.scale.x = -1
+    // Crease panels are children so they flap in lockstep with their wing.
+    const leftCrease = new THREE.Mesh(new THREE.ShapeGeometry(creaseShape), birdAccentMat)
+    leftCrease.position.z = 0.003
+    left.add(leftCrease)
     const right = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
     right.rotation.x = -Math.PI / 2
+    const rightCrease = new THREE.Mesh(new THREE.ShapeGeometry(creaseShape), birdAccentMat)
+    rightCrease.position.z = 0.003
+    right.add(rightCrease)
     g.add(left, right)
 
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 4), birdMat)
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 8), birdMat)
     body.rotation.x = Math.PI / 2
     g.add(body)
-    const neck = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.32, 4), birdMat)
+    const neck = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.32, 8), birdAccentMat)
     neck.rotation.z = Math.PI * 0.62
     neck.position.set(0, 0.06, 0.28)
     g.add(neck)
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.4, 4), birdMat)
-    tail.rotation.z = -Math.PI / 2
-    tail.position.set(0, 0.02, -0.32)
-    g.add(tail)
+    // Tiny painted eye for character
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), birdEyeMat)
+    eye.position.set(0.035, 0.16, 0.42)
+    const eye2 = eye.clone()
+    eye2.position.x = -0.035
+    g.add(eye, eye2)
+    // Folded fan tail (three thin blades instead of one plain cone)
+    for (const a of [-0.22, 0, 0.22]) {
+      const feather = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.4, 6), birdAccentMat)
+      feather.rotation.z = -Math.PI / 2
+      feather.rotation.x = a
+      feather.position.set(0, 0.02, -0.32)
+      g.add(feather)
+    }
 
     g.userData.wingL = left
     g.userData.wingR = right
@@ -1068,19 +1130,46 @@ function pickFlyerKind() {
   return pool[0]
 }
 
+/** A tapered, double-pointed blade (instead of a plain box) with a bright
+ *  cutting-edge glint strip, built once and reused for every scissors hazard.
+ *  Symmetric front-to-back so it still reads as a spinning blade when
+ *  animated with a simple absolute rotation.z, like the box it replaces. */
+function createScissorBlade() {
+  const shape = new THREE.Shape()
+  shape.moveTo(0, -1.1)
+  shape.quadraticCurveTo(0.1, -0.32, 0.1, 0)
+  shape.quadraticCurveTo(0.1, 0.32, 0, 1.1)
+  shape.quadraticCurveTo(-0.06, 0.32, -0.06, 0)
+  shape.quadraticCurveTo(-0.06, -0.32, 0, -1.1)
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2,
+  })
+  geo.rotateX(Math.PI / 2)
+  const blade = new THREE.Mesh(geo, scissorsMat)
+  // Bright edge glint along the cutting side
+  const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 2.15), scissorsEdgeMat)
+  edge.rotation.x = -Math.PI / 2
+  edge.position.set(0.1, 0.026, 0)
+  blade.add(edge)
+  return blade
+}
+
 function createScissors() {
   const g = new THREE.Group()
-  const bladeGeo = new THREE.BoxGeometry(0.18, 0.06, 2.2)
-  const b1 = new THREE.Mesh(bladeGeo, scissorsMat)
+  const b1 = createScissorBlade()
   b1.position.set(0.12, 0, 0)
-  const b2 = new THREE.Mesh(bladeGeo, scissorsMat)
+  const b2 = createScissorBlade()
   b2.position.set(-0.12, 0, 0)
   g.add(b1, b2)
-  const h1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.07, 8, 16), scissorsHandleMat)
-  h1.position.set(0.35, 0, -1.35)
+  // Pivot bolt
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 12), scissorsPivotMat)
+  pivot.rotation.x = Math.PI / 2
+  g.add(pivot)
+  const h1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.065, 10, 20), scissorsHandleMat)
+  h1.position.set(0.32, 0, -1.35)
   h1.rotation.y = Math.PI / 2
   const h2 = h1.clone()
-  h2.position.x = -0.35
+  h2.position.x = -0.32
   g.add(h1, h2)
   g.userData.blade1 = b1
   g.userData.blade2 = b2
@@ -1414,6 +1503,14 @@ function spawnChunk(z) {
     sc.position.set((rng() - 0.5) * 9 * cfg.gap, 4 + rng() * 16, z)
     scene.add(sc)
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
+    // Scissor squadron — a rarer second blade further down the lane, more
+    // likely to appear the deeper into a run you get.
+    if (rng() < 0.12 + ramp * 0.22) {
+      const sc2 = createScissors()
+      sc2.position.set((rng() - 0.5) * 9 * cfg.gap, 4 + rng() * 16, z + 6 + rng() * 4)
+      scene.add(sc2)
+      entities.push({ mesh: sc2, type: 'scissors', radius: 1.6 })
+    }
   }
 
   // Occasional mixed flyer even on non-bird chunks
