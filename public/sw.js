@@ -1,5 +1,5 @@
 /* Paper Plane Run — lightweight offline shell */
-const CACHE = 'paper-plane-run-v5'
+const CACHE = 'paper-plane-run-v6'
 
 const PRECACHE = [
   '/',
@@ -30,6 +30,12 @@ const PRECACHE = [
   '/assets/skin-gold.jpg',
   '/assets/skin-neon.jpg',
   '/assets/skin-rainbow.jpg',
+  '/assets/flyer-butterfly.jpg',
+  '/assets/flyer-balloon.jpg',
+  '/assets/flyer-kite.jpg',
+  '/assets/flyer-biplane.jpg',
+  '/assets/pickup-boost.jpg',
+  '/assets/pickup-orb.jpg',
 ]
 
 self.addEventListener('install', (event) => {

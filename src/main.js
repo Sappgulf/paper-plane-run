@@ -584,10 +584,56 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-function createBird() {
+const FLYER_DEFS = [
+  { id: 'bird', label: 'paper bird', radius: 0.7, weight: 1 },
+  { id: 'butterfly', label: 'paper butterfly', radius: 0.65, weight: 0.7, tex: '/assets/flyer-butterfly.jpg', scale: 1.5 },
+  { id: 'balloon', label: 'runaway balloon', radius: 0.85, weight: 0.55, tex: '/assets/flyer-balloon.jpg', scale: 1.6, floaty: true },
+  { id: 'kite', label: 'loose kite', radius: 0.75, weight: 0.5, tex: '/assets/flyer-kite.jpg', scale: 1.55, weave: true },
+  { id: 'biplane', label: 'toy biplane', radius: 0.9, weight: 0.45, tex: '/assets/flyer-biplane.jpg', scale: 1.7, dive: true },
+  { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5 },
+  { id: 'swarm', label: 'paper scrap swarm', radius: 0.95, weight: 0.35 },
+]
+
+function createBillboardFlyer(texUrl, scale = 1.5) {
   const g = new THREE.Group()
-  // Seasonal silhouette: halloween bats use inverted V wings
-  if (season.id === 'halloween') {
+  const tex = loadTex(texUrl)
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    alphaTest: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale), mat)
+  // Face the player (camera comes from -Z looking +Z)
+  card.rotation.y = Math.PI
+  g.add(card)
+  g.userData.billboard = card
+  return g
+}
+
+function createBird() {
+  return createFlyer('bird')
+}
+
+function createFlyer(kindId) {
+  const def = FLYER_DEFS.find((f) => f.id === kindId) || FLYER_DEFS[0]
+  const g = new THREE.Group()
+  g.userData.flyerId = def.id
+  g.userData.phase = rng() * Math.PI * 2
+  g.userData.floaty = !!def.floaty
+  g.userData.weave = !!def.weave
+  g.userData.dive = !!def.dive
+
+  if (def.tex) {
+    const bill = createBillboardFlyer(def.tex, def.scale || 1.5)
+    g.add(bill)
+    g.userData.billboard = bill.userData.billboard
+    return g
+  }
+
+  // Seasonal / geometric variants
+  if (season.id === 'halloween' || def.id === 'bird' && season.id === 'halloween') {
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), birdMat)
     g.add(body)
     const left = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 3), birdMat)
@@ -599,12 +645,43 @@ function createBird() {
     g.add(left, right)
     g.userData.wingL = left
     g.userData.wingR = right
+  } else if (def.id === 'dragonfly') {
+    const bodyGeo =
+      typeof THREE.CapsuleGeometry === 'function'
+        ? new THREE.CapsuleGeometry(0.08, 0.55, 4, 8)
+        : new THREE.CylinderGeometry(0.06, 0.08, 0.55, 6)
+    const body = new THREE.Mesh(bodyGeo, birdMat)
+    body.rotation.z = Math.PI / 2
+    g.add(body)
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0xa7f3d0, transparent: true, opacity: 0.55, side: THREE.DoubleSide, roughness: 0.4,
+    })
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const w = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.2), wingMat)
+        w.position.set(sx * 0.2, sy * 0.12, 0)
+        w.rotation.y = sx * 0.4
+        g.add(w)
+        if (sx < 0 && sy > 0) g.userData.wingL = w
+        if (sx > 0 && sy > 0) g.userData.wingR = w
+      }
+    }
+  } else if (def.id === 'swarm') {
+    for (let i = 0; i < 7; i++) {
+      const scrap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15 + rng() * 0.2, 0.04, 0.2 + rng() * 0.15),
+        new THREE.MeshStandardMaterial({
+          color: [0xf0956a, 0xffe6a8, 0xb8e0d2, 0xd4c4f0][i % 4],
+          roughness: 0.9,
+        }),
+      )
+      scrap.position.set((rng() - 0.5) * 1.2, (rng() - 0.5) * 0.9, (rng() - 0.5) * 0.6)
+      scrap.rotation.set(rng(), rng(), rng())
+      g.add(scrap)
+    }
   } else if (season.id === 'winter') {
-    // snowflake-ish
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.25, 0), birdMat)
-    g.add(core)
+    g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), birdMat))
   } else if (season.id === 'valentine') {
-    // simple heart proxy: two spheres + cone
     const a = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), birdMat)
     a.position.set(-0.12, 0.05, 0)
     const b = a.clone()
@@ -626,8 +703,28 @@ function createBird() {
     g.userData.wingL = left
     g.userData.wingR = right
   }
-  g.userData.phase = rng() * Math.PI * 2
   return g
+}
+
+function pickFlyerKind() {
+  // Seasonal bias
+  let pool = FLYER_DEFS.map((f) => ({ ...f }))
+  if (season.id === 'halloween') {
+    pool = pool.map((f) => (f.id === 'bird' ? { ...f, weight: 1.4 } : f))
+  }
+  if (season.id === 'spring') {
+    pool = pool.map((f) => (f.id === 'butterfly' ? { ...f, weight: 1.6 } : f))
+  }
+  if (season.id === 'summer') {
+    pool = pool.map((f) => (f.id === 'kite' || f.id === 'balloon' ? { ...f, weight: f.weight * 1.5 } : f))
+  }
+  const total = pool.reduce((s, f) => s + f.weight, 0)
+  let r = rng() * total
+  for (const f of pool) {
+    r -= f.weight
+    if (r <= 0) return f
+  }
+  return pool[0]
 }
 
 function createScissors() {
@@ -651,27 +748,72 @@ function createScissors() {
 }
 
 function createStar() {
-  return new THREE.Mesh(new THREE.OctahedronGeometry(0.45, 0), starMat)
+  const g = new THREE.Group()
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), starMat)
+  g.add(core)
+  // Soft glow shell for readability
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.62, 12, 12),
+    new THREE.MeshBasicMaterial({
+      color: 0xfbbf24, transparent: true, opacity: 0.18, depthWrite: false,
+    }),
+  )
+  g.add(glow)
+  g.userData.core = core
+  return g
 }
 
 function createPowerUp(kind) {
-  const meta = POWER_META[kind]
+  const meta = POWER_META[kind] || buildPowerMeta()[kind]
   const g = new THREE.Group()
+  g.userData.kind = kind
+
+  // Boost gets a distinct rocket card; others use glowing orb + color ring
+  if (kind === 'boost') {
+    const tex = loadTex('/assets/pickup-boost.jpg')
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 1.5),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    )
+    card.rotation.y = Math.PI
+    g.add(card)
+    g.userData.billboard = card
+  } else {
+    const orbTex = loadTex('/assets/pickup-orb.jpg')
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.15, 1.15),
+      new THREE.MeshBasicMaterial({
+        map: orbTex, transparent: true, alphaTest: 0.08, side: THREE.DoubleSide, depthWrite: false,
+        color: new THREE.Color(meta.color),
+      }),
+    )
+    card.rotation.y = Math.PI
+    g.add(card)
+    g.userData.billboard = card
+  }
+
   const core = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.55, 0),
+    new THREE.IcosahedronGeometry(kind === 'boost' ? 0.35 : 0.42, 0),
     new THREE.MeshStandardMaterial({
-      color: meta.color, emissive: meta.color, emissiveIntensity: 0.45, roughness: 0.35,
+      color: meta.color, emissive: meta.color, emissiveIntensity: 0.65, roughness: 0.3,
     }),
   )
+  core.position.z = 0.05
   g.add(core)
+
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.75, 0.06, 8, 24),
-    new THREE.MeshStandardMaterial({ color: meta.color, emissive: meta.color, emissiveIntensity: 0.3 }),
+    new THREE.TorusGeometry(kind === 'boost' ? 0.95 : 0.85, 0.07, 8, 28),
+    new THREE.MeshStandardMaterial({
+      color: meta.color, emissive: meta.color, emissiveIntensity: 0.45, transparent: true, opacity: 0.9,
+    }),
   )
   ring.rotation.x = Math.PI / 2
   g.add(ring)
-  g.userData.kind = kind
   g.userData.ring = ring
+  g.userData.core = core
+  g.scale.setScalar(1.15)
   return g
 }
 
@@ -811,11 +953,17 @@ function spawnChunk(z) {
   } else if (ht === 'bird') {
     const count = Math.max(1, Math.round((1 + rng() * (2 + ramp * 3)) * cfg.birdCount))
     for (let i = 0; i < count; i++) {
-      const bird = createBird()
-      bird.position.set((rng() - 0.5) * 12 * cfg.gap, 3.5 + rng() * 18, z + i * 2.5)
-      bird.rotation.y = Math.PI
-      scene.add(bird)
-      entities.push({ mesh: bird, type: 'bird', radius: 0.7 })
+      const def = pickFlyerKind()
+      const flyer = createFlyer(def.id)
+      flyer.position.set((rng() - 0.5) * 12 * cfg.gap, 3.5 + rng() * 18, z + i * 2.5)
+      scene.add(flyer)
+      entities.push({
+        mesh: flyer,
+        type: 'bird',
+        flyerId: def.id,
+        label: def.label,
+        radius: def.radius,
+      })
     }
   } else if (ht === 'scissors') {
     const sc = createScissors()
@@ -824,21 +972,45 @@ function spawnChunk(z) {
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
   }
 
-  const ufx = getUpgradeEffects()
-  if (rng() < cfg.starChance * ufx.starChanceMul) {
-    const st = createStar()
-    st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 5)
-    scene.add(st)
-    entities.push({ mesh: st, type: 'star', radius: 0.75 })
+  // Occasional mixed flyer even on non-bird chunks
+  if (rng() < 0.18 + ramp * 0.1) {
+    const def = pickFlyerKind()
+    const flyer = createFlyer(def.id)
+    flyer.position.set((rng() - 0.5) * 11 * cfg.gap, 4 + rng() * 16, z + 4 + rng() * 6)
+    scene.add(flyer)
+    entities.push({
+      mesh: flyer,
+      type: 'bird',
+      flyerId: def.id,
+      label: def.label,
+      radius: def.radius,
+    })
   }
-  if (rng() < (cfg.powerChance + ramp * 0.04) * ufx.powerChanceMul) {
-    // Mix classic powers + paper physics toys
-    const pool = rng() < 0.35 ? TOY_KINDS : POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
+
+  const ufx = getUpgradeEffects()
+  // Stars — often 1–2
+  const starRolls = rng() < 0.25 * ufx.starChanceMul ? 2 : 1
+  for (let s = 0; s < starRolls; s++) {
+    if (rng() < cfg.starChance * ufx.starChanceMul) {
+      const st = createStar()
+      st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 8)
+      scene.add(st)
+      entities.push({ mesh: st, type: 'star', radius: 0.9 })
+    }
+  }
+  // Powers — boosted chance; boost is more common early in pool
+  if (rng() < (cfg.powerChance + 0.08 + ramp * 0.05) * ufx.powerChanceMul) {
+    const classic = POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
+    let pool
+    if (rng() < 0.28) pool = TOY_KINDS
+    else if (rng() < 0.35) pool = ['boost'] // weight boost higher
+    else pool = classic
     const kind = pool[(rng() * pool.length) | 0]
     const pu = createPowerUp(kind)
-    pu.position.set((rng() - 0.5) * 10, 5 + rng() * 14, z + 2)
+    // Prefer mid-lane height where player flies
+    pu.position.set((rng() - 0.5) * 8, 5 + rng() * 12, z + 1 + rng() * 5)
     scene.add(pu)
-    entities.push({ mesh: pu, type: 'power', radius: 1, kind })
+    entities.push({ mesh: pu, type: 'power', radius: 1.35, kind })
   }
 }
 
@@ -944,53 +1116,40 @@ function clearPower() {
 function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
-  // Replacing a power clears previous visual toys
-  if (activePower && activePower.kind !== kind) {
-    if (activePower.kind === 'tear') {
-      const wl = plane.userData.wingL
-      const wr = plane.userData.wingR
-      if (wl) {
-        wl.visible = true
-        wl.scale.set(1, 1, 1)
-        wl.rotation.z = 0
-      }
-      if (wr) {
-        wr.visible = true
-        wr.scale.set(1, 1, 1)
-        wr.rotation.z = 0
-      }
-      tearSide = 0
-    }
-    if (shieldBubble) shieldBubble.visible = false
-  }
+
+  // Always clear previous power visuals cleanly
+  clearPower()
+  // clearPower nulls activePower — restore wings/shield already handled
 
   const fx = getUpgradeEffects()
   let duration = meta.duration
   if (kind === 'shield') duration *= fx.shieldDurationMul
-  if (kind === 'boost') duration = 4.5 // crisp boost window
+  if (kind === 'boost') duration = 5.0
   activePower = { kind, timeLeft: duration, duration, slingCharged: false }
   audio.powerUp(kind)
-  Haptic.power()
+  if (settings.haptics) Haptic.power()
   powerLabel.textContent = meta.label
   powerFill.style.width = '100%'
   powerHud.classList.remove('hidden')
   powerBanner.textContent = meta.banner
   powerBanner.classList.remove('hidden')
-  bannerTimer = 2
+  bannerTimer = 2.4
   runStats.powers++
   track('power_pickup', { kind })
+
   if (kind === 'shield' && shieldBubble) {
     shieldBubble.visible = true
     shieldBubble.material.color.setHex(meta.color)
-  } else if (shieldBubble) shieldBubble.visible = false
+  }
 
   if (kind === 'boost') {
-    // Immediate punch + sustained mul while active
-    speedBoost = Math.max(speedBoost, 22)
-    fovPunch = 10
-    shake = Math.max(shake, 0.25)
-    velY += 4
-    invuln = Math.max(invuln, 0.45) // brief graze immunity at boost start
+    // Strong, readable boost — additive impulse + sustained cruise
+    speedBoost = Math.max(speedBoost, 32)
+    fovPunch = 12
+    shake = Math.max(shake, 0.3)
+    velY += 6
+    invuln = Math.max(invuln, 0.55)
+    spawnConfetti(planeX, planeY, 0)
   }
 
   if (kind === 'tear') {
@@ -1008,6 +1167,10 @@ function activatePower(kind) {
   }
 
   if (kind === 'sling') slingHold = 0
+  if (kind === 'magnet') {
+    // tiny juice so magnet feels instant
+    spawnConfetti(planeX, planeY, 1)
+  }
 }
 
 function setSkyTexture(url, crossfade = true) {
@@ -1291,28 +1454,59 @@ function pointerAxesFromClient(clientX, clientY) {
   return { nx, ny }
 }
 
-/** Absolute world target from cursor (mouse-aim) */
+/** Raycast cursor onto the flight plane (z=0) so left/right match the screen */
+const _aimRay = new THREE.Raycaster()
+const _aimNdc = new THREE.Vector2()
+const _aimHit = new THREE.Vector3()
+const _flightPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0) // z = 0
+
 function mouseWorldTarget(clientX, clientY) {
   mouseScreen.x = clientX / innerWidth
   mouseScreen.y = clientY / innerHeight
   mouseScreen.has = true
-  let nx = mouseScreen.x * 2 - 1
-  let ny = 1 - mouseScreen.y * 2 // top of screen = +1
-  if (settings.invertX) nx = -nx
-  if (settings.invertY) ny = -ny
-  // Slight margin so edges aren't maxed awkwardly
-  const margin = 0.92
-  mouseTarget.x = THREE.MathUtils.clamp(nx * MAX_X * margin, -MAX_X, MAX_X)
-  mouseTarget.y = THREE.MathUtils.clamp(
-    THREE.MathUtils.mapLinear(ny, -1, 1, MIN_Y + 0.5, MAX_Y - 0.5),
-    MIN_Y,
-    MAX_Y,
-  )
-  mouse.nx = nx
-  mouse.ny = ny
+
+  // Three.js NDC: x right, y up
+  _aimNdc.x = (clientX / innerWidth) * 2 - 1
+  _aimNdc.y = -((clientY / innerHeight) * 2 - 1)
+  _aimRay.setFromCamera(_aimNdc, camera)
+
+  const hit = _aimRay.ray.intersectPlane(_flightPlane, _aimHit)
+  if (hit) {
+    let tx = _aimHit.x
+    let ty = _aimHit.y
+    if (settings.invertX) tx = -tx
+    if (settings.invertY) {
+      // Invert around mid altitude band
+      const mid = (MIN_Y + MAX_Y) * 0.5
+      ty = mid - (ty - mid)
+    }
+    mouseTarget.x = THREE.MathUtils.clamp(tx, -MAX_X, MAX_X)
+    mouseTarget.y = THREE.MathUtils.clamp(ty, MIN_Y, MAX_Y)
+    mouse.nx = THREE.MathUtils.clamp(mouseTarget.x / MAX_X, -1, 1)
+    mouse.ny = THREE.MathUtils.clamp(
+      (mouseTarget.y - MIN_Y) / (MAX_Y - MIN_Y) * 2 - 1,
+      -1,
+      1,
+    )
+  } else {
+    // Fallback orthographic-style mapping (should rarely hit)
+    let nx = _aimNdc.x
+    let ny = _aimNdc.y
+    if (settings.invertX) nx = -nx
+    if (settings.invertY) ny = -ny
+    mouseTarget.x = THREE.MathUtils.clamp(nx * MAX_X * 0.9, -MAX_X, MAX_X)
+    mouseTarget.y = THREE.MathUtils.clamp(
+      THREE.MathUtils.mapLinear(ny, -1, 1, MIN_Y + 0.5, MAX_Y - 0.5),
+      MIN_Y,
+      MAX_Y,
+    )
+    mouse.nx = nx
+    mouse.ny = ny
+  }
 }
 
 function applyAxisInvert(x, y) {
+  // invertX/Y only flip when user opts in — default is natural
   return {
     x: settings.invertX ? -x : x,
     y: settings.invertY ? -y : y,
@@ -2151,10 +2345,29 @@ function animateHazards(dt) {
   for (const e of entities) {
     if (e.type === 'bird') {
       const u = e.mesh.userData
-      u.phase += dt * 8
+      u.phase = (u.phase || 0) + dt * 8
       const flap = Math.sin(u.phase) * 0.45
       if (u.wingL) u.wingL.rotation.z = 0.35 + flap
       if (u.wingR) u.wingR.rotation.z = -0.35 - flap
+      // Motion patterns by flyer type
+      if (u.floaty) {
+        e.mesh.position.y += Math.sin(u.phase * 0.5) * dt * 1.8
+      }
+      if (u.weave) {
+        e.mesh.position.x += Math.sin(u.phase * 0.7) * dt * 3.5
+      }
+      if (u.dive && e.mesh.position.z < 40) {
+        e.mesh.position.y += Math.sin(u.phase) * dt * 2.2
+        e.mesh.position.x += Math.cos(u.phase * 0.4) * dt * 1.5
+      }
+      // Face camera for billboards
+      if (u.billboard) u.billboard.rotation.y = Math.PI
+      if (e.mesh.userData.billboard && e.mesh.userData.billboard !== u.billboard) {
+        e.mesh.userData.billboard.rotation.y = Math.PI
+      }
+    }
+    if (e.type === 'power' || e.type === 'star') {
+      if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
     }
     if (e.type === 'scissors') {
       e.mesh.rotation.y += dt * 1.2
@@ -2318,23 +2531,25 @@ function update(dt) {
       }
     }
     if (activePower.kind === 'boost') {
-      // sustain boost impulse while active
-      speedBoost = Math.max(speedBoost, 14 + activePower.timeLeft * 1.5)
-      fovPunch = THREE.MathUtils.lerp(fovPunch, 8, 1 - Math.pow(0.001, dt))
+      // Sustain a strong boost for the full duration
+      speedBoost = Math.max(speedBoost, 18 + activePower.timeLeft * 2.2)
+      fovPunch = THREE.MathUtils.lerp(fovPunch, 9, 1 - Math.pow(0.001, dt))
+      // Boost trail confetti occasionally
+      if (Math.random() < dt * 8) spawnConfetti(planeX, planeY - 0.2, -0.5)
     }
     if (activePower.timeLeft <= 0) {
       if (activePower.kind === 'boost') {
-        // soft landing — keep a little leftover speedBoost
-        speedBoost = Math.max(speedBoost, 8)
+        speedBoost = Math.max(speedBoost * 0.5, 6)
         fovPunch = 2
       }
       clearPower()
     }
   }
 
-  // Decay temporary boost
+  // Decay temporary boost (slower while boost power is active)
   if (speedBoost > 0) {
-    speedBoost = Math.max(0, speedBoost - dt * (activePower?.kind === 'boost' ? 4 : 18))
+    const decay = activePower?.kind === 'boost' ? 2.5 : 16
+    speedBoost = Math.max(0, speedBoost - dt * decay)
   }
   // FOV punch
   {
@@ -2552,18 +2767,17 @@ function update(dt) {
 
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
-  if (activePower?.kind === 'boost') speedMul *= 1.45
+  if (activePower?.kind === 'boost') speedMul *= 1.55
   const cfg = difficulty
   const cruise =
     (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
-  // speedBoost is additive temporary burst (boost pickup / sling) — no longer discarded
   speed = cruise + speedBoost
   const move = speed * dt
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
-    (activePower?.kind === 'boost' ? 1.15 : activePower?.kind === 'slow' ? 0.85 : 1) *
+    (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
     (1 + combo * 0.02) *
-    (1 + Math.min(0.25, speedBoost * 0.008))
+    (1 + Math.min(0.35, speedBoost * 0.01))
   distance += move * scoreFactor
 
   // Sparkle trail from upgrades
@@ -2599,15 +2813,16 @@ function update(dt) {
   }
 
   plane.position.set(planeX, planeY, 0)
-  // Bank / pitch follow velocity — snappier with handling upgrades
-  const lean = 0.04 + ufx.handlingLevel * 0.006
+  // Bank / pitch follow velocity — roll matches screen left/right
+  // Camera looks +Z: +X is screen-right; positive roll.z banks right-wing-down when viewed from behind
+  const lean = 0.045 + ufx.handlingLevel * 0.007
   pitch = THREE.MathUtils.lerp(pitch, -velY * lean, 1 - Math.pow(0.0004, dt))
-  roll = THREE.MathUtils.lerp(roll, -velX * (lean + 0.01), 1 - Math.pow(0.0004, dt))
-  // Boost nose-down feel
-  if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.12, 0.1)
+  roll = THREE.MathUtils.lerp(roll, velX * (lean + 0.012), 1 - Math.pow(0.0004, dt))
+  if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.1, 0.12)
   plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.6, 0.55)
   plane.rotation.z = THREE.MathUtils.clamp(roll, -0.85, 0.85)
-  plane.rotation.y = THREE.MathUtils.clamp(-velX * 0.02, -0.35, 0.35)
+  // Yaw slightly into the turn (positive velX → slight +Y when looking along +Z feels wrong; keep subtle)
+  plane.rotation.y = THREE.MathUtils.clamp(velX * 0.015, -0.3, 0.3)
 
   // Invuln blink
   if (invuln > 0) {
@@ -2687,16 +2902,21 @@ function update(dt) {
     }
 
     if (e.type === 'star') {
-      if (magnetOn && magnetPull > 0) {
-        const pull = 12 + magnetPull * 10
-        m.position.x += (p.x - m.position.x) * Math.min(1, pull * dt * 0.12)
-        m.position.y += (p.y - m.position.y) * Math.min(1, pull * dt * 0.12)
-        m.position.z += (p.z - m.position.z) * Math.min(1, pull * dt * 0.07)
+      // Soft pull always when close; stronger with magnet
+      const dx0 = m.position.x - p.x
+      const dy0 = m.position.y - p.y
+      const dz0 = m.position.z - p.z
+      const d2near = dx0 * dx0 + dy0 * dy0 + dz0 * dz0
+      if (d2near < 12 * 12) {
+        const pull = (magnetOn ? 14 + magnetPull * 12 : 5)
+        m.position.x += (p.x - m.position.x) * Math.min(1, pull * dt * 0.14)
+        m.position.y += (p.y - m.position.y) * Math.min(1, pull * dt * 0.14)
+        m.position.z += (p.z - m.position.z) * Math.min(1, pull * dt * 0.09)
       }
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = e.radius + PLANE_RADIUS + magnetPull
+      const catchR = e.radius + PLANE_RADIUS + magnetPull + 0.35
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
         runStats.stars = stars
@@ -2704,6 +2924,7 @@ function update(dt) {
         distance += 18
         audio.collectStar()
         if (settings.haptics) Haptic.collect()
+        spawnConfetti(m.position.x, m.position.y, m.position.z)
         scene.remove(m)
         entities.splice(i, 1)
       }
@@ -2711,11 +2932,24 @@ function update(dt) {
     }
 
     if (e.type === 'power') {
+      // Generous pickup magnet so boost/orbs aren't frustrating
+      const dx0 = m.position.x - p.x
+      const dy0 = m.position.y - p.y
+      const dz0 = m.position.z - p.z
+      const d2 = dx0 * dx0 + dy0 * dy0 + dz0 * dz0
+      if (d2 < 14 * 14) {
+        const pull = 10 + (e.kind === 'boost' ? 4 : 0)
+        m.position.x += (p.x - m.position.x) * Math.min(1, pull * dt * 0.16)
+        m.position.y += (p.y - m.position.y) * Math.min(1, pull * dt * 0.16)
+        m.position.z += (p.z - m.position.z) * Math.min(1, pull * dt * 0.1)
+      }
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      if (dx * dx + dy * dy + dz * dz < (e.radius + PLANE_RADIUS * 1.05) ** 2) {
+      const catchR = (e.radius || 1.35) + PLANE_RADIUS * 1.25
+      if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         activatePower(e.kind)
+        spawnConfetti(m.position.x, m.position.y, m.position.z)
         scene.remove(m)
         entities.splice(i, 1)
       }
@@ -2792,9 +3026,13 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       const dist2 = dx * dx + dy * dy + dz * dz
-      const hit = (e.radius + PLANE_RADIUS * 0.85) * hitScale
+      const hit = ((e.radius || 0.7) + PLANE_RADIUS * 0.85) * hitScale
       if (dist2 < hit ** 2) {
-        die(e.type === 'bird' ? 'Tangled with paper birds' : 'Snipped by scissors')
+        const label =
+          e.type === 'scissors'
+            ? 'Snipped by scissors'
+            : `Tangled with ${e.label || 'paper birds'}`
+        die(label)
         return
       }
       if (dist2 < (hit * 1.9) ** 2 && m.position.z > -1 && m.position.z < 7) {
