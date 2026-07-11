@@ -705,6 +705,17 @@ const stick = { x: 0, y: 0, active: false, pointerId: null }
 /** Co-op player 2 wind stick */
 const windStick = { x: 0, y: 0, active: false, pointerId: null }
 let slingHold = 0
+/** Temporary speed impulse from boost power / sling (decays) */
+let speedBoost = 0
+/** Post-hit invulnerability (shield break, etc.) */
+let invuln = 0
+/** Crash sequence timer before game-over UI settles */
+let crashT = 0
+let crashReason = ''
+let baseFov = 60
+let fovPunch = 0
+/** Mouse only steers when pointer is held (desktop polish) */
+let pointerSteering = false
 
 let state = 'menu'
 let distance = 0
@@ -729,9 +740,10 @@ let zoneBannerTimer = 0
 const entities = []
 const clouds = []
 const PLANE_RADIUS = 0.7
-const MIN_Y = 1.2
-const MAX_Y = 28
-const MAX_X = 14
+const MIN_Y = 1.4
+const MAX_Y = 26
+const MAX_X = 13
+const MAX_VEL = 38
 
 function clearEntities() {
   for (const e of entities) scene.remove(e.mesh)
@@ -930,9 +942,30 @@ function clearPower() {
 function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
+  // Replacing a power clears previous visual toys
+  if (activePower && activePower.kind !== kind) {
+    if (activePower.kind === 'tear') {
+      const wl = plane.userData.wingL
+      const wr = plane.userData.wingR
+      if (wl) {
+        wl.visible = true
+        wl.scale.set(1, 1, 1)
+        wl.rotation.z = 0
+      }
+      if (wr) {
+        wr.visible = true
+        wr.scale.set(1, 1, 1)
+        wr.rotation.z = 0
+      }
+      tearSide = 0
+    }
+    if (shieldBubble) shieldBubble.visible = false
+  }
+
   const fx = getUpgradeEffects()
   let duration = meta.duration
   if (kind === 'shield') duration *= fx.shieldDurationMul
+  if (kind === 'boost') duration = 4.5 // crisp boost window
   activePower = { kind, timeLeft: duration, duration, slingCharged: false }
   audio.powerUp(kind)
   Haptic.power()
@@ -949,6 +982,15 @@ function activatePower(kind) {
     shieldBubble.material.color.setHex(meta.color)
   } else if (shieldBubble) shieldBubble.visible = false
 
+  if (kind === 'boost') {
+    // Immediate punch + sustained mul while active
+    speedBoost = Math.max(speedBoost, 22)
+    fovPunch = 10
+    shake = Math.max(shake, 0.25)
+    velY += 4
+    invuln = Math.max(invuln, 0.45) // brief graze immunity at boost start
+  }
+
   if (kind === 'tear') {
     tearSide = rng() < 0.5 ? -1 : 1
     const wl = plane.userData.wingL
@@ -962,6 +1004,8 @@ function activatePower(kind) {
       wr.rotation.z = -0.6
     }
   }
+
+  if (kind === 'sling') slingHold = 0
 }
 
 function setSkyTexture(url, crossfade = true) {
@@ -1069,6 +1113,17 @@ function resetGame() {
   nextBossAt = 500
   bossActive = false
   distanceMilestones.clear()
+  speedBoost = 0
+  invuln = 0
+  crashT = 0
+  crashReason = ''
+  fovPunch = 0
+  slingHold = 0
+  pointerSteering = false
+  camera.fov = baseFov
+  camera.updateProjectionMatrix()
+  plane.visible = true
+  plane.scale.setScalar(getUpgradeEffects().planeScale)
   comboHud.classList.add('hidden')
   applySeasonVisuals()
   applySkin(getEquippedSkinId())
@@ -1244,13 +1299,25 @@ window.addEventListener('keydown', (e) => {
   keys.add(e.code)
   if (e.code === 'Space') {
     e.preventDefault()
-    if (state === 'menu' || state === 'dead') startGame(runKind === 'layout' ? 'layout' : 'classic')
+    // Don't restart mid-sling charge during play
+    if (state === 'playing' && activePower?.kind === 'sling') return
+    if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
+    else if (state === 'dead' && crashT <= 0) startGame(runKind === 'layout' ? 'layout' : runKind)
   }
   if (e.code === 'KeyM') {
     muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
   }
 })
 window.addEventListener('keyup', (e) => keys.delete(e.code))
+window.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone')) return
+  pointerSteering = true
+  mouse.nx = (e.clientX / innerWidth) * 2 - 1
+  mouse.ny = -((e.clientY / innerHeight) * 2 - 1)
+})
+window.addEventListener('pointerup', () => {
+  pointerSteering = false
+})
 window.addEventListener('pointermove', (e) => {
   if (stick.active) return
   mouse.nx = (e.clientX / innerWidth) * 2 - 1
@@ -1651,6 +1718,10 @@ document.querySelectorAll('[data-board]').forEach((t) =>
 
 $('retry-btn').onclick = () => startGame(runKind)
 $('menu-btn').onclick = () => {
+  if (state === 'dead' && crashT > 0) {
+    crashT = 0
+    finalizeDeath()
+  }
   hotseat.active = false
   showMenu()
 }
@@ -1716,6 +1787,11 @@ async function shareScore() {
 }
 
 async function startGame(kind = 'classic', opts = {}) {
+  // Finish deferred death rewards if restarting mid-crash
+  if (state === 'dead' && crashT > 0) {
+    crashT = 0
+    finalizeDeath()
+  }
   await audio.unlock()
   audio.uiClick()
   runKind = kind
@@ -1761,28 +1837,57 @@ function capturePhoto() {
 
 function die(reason) {
   if (state !== 'playing') return
-  if (activePower?.kind === 'shield' && reason !== 'Nosed into the paper ground' && reason !== 'Tutorial complete!') {
+
+  // Invulnerability (after shield break / boost start)
+  if (invuln > 0 && reason !== 'Tutorial complete!') return
+
+  // Shield absorbs one hazard (not ground / tutorial end)
+  if (
+    activePower?.kind === 'shield' &&
+    reason !== 'Nosed into the paper ground' &&
+    reason !== 'Tutorial complete!'
+  ) {
     audio.shieldHit()
-    Haptic.nearMiss()
+    if (settings.haptics) Haptic.nearMiss()
     clearPower()
-    shake = 0.4
-    velY += 8
+    shake = 0.55
+    invuln = 1.35
+    velY = Math.max(velY, 0) + 12
+    velX *= 0.4
+    speedBoost = Math.max(speedBoost, 6)
+    // flash shield pop
+    spawnConfetti(planeX, planeY, 1)
+    if (shieldBubble) shieldBubble.visible = false
     return
   }
 
-  // Tutorial complete is soft win
   const isWin = reason === 'Tutorial complete!'
   state = 'dead'
-  shake = 0.85
+  crashT = isWin ? 0.35 : 1.05
+  crashReason = reason
+  shake = isWin ? 0.2 : 1.1
+  speedBoost = 0
+  fovPunch = isWin ? 0 : -6
+  showStick(false)
+  clearPower()
+
+  // Sync crash pose
+  plane.position.set(planeX, planeY, 0)
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
+    spawnConfetti(planeX, planeY, 0)
+    spawnConfetti(planeX, planeY + 0.5, 1)
+    // paper burst velocity
+    velX = (rng() - 0.5) * 20
+    velY = 6 + rng() * 4
   } else {
     audio.missionComplete()
     if (settings.haptics) Haptic.collect()
     localStorage.setItem('paper-plane-run-tutorial', '1')
     tutorialDone = true
   }
+
   track('death', {
     reason,
     distance: Math.floor(distance),
@@ -1792,10 +1897,20 @@ function die(reason) {
     combo: maxCombo,
     boss: bossActive,
   })
-  showStick(false)
-  clearPower()
-  capturePhoto()
 
+  // Capture after a short beat so crash pose is visible (async)
+  setTimeout(() => {
+    if (state === 'dead') capturePhoto()
+  }, isWin ? 50 : 180)
+
+  // Defer full game-over UI until crash anim plays
+  // finalizeDeath is called from update when crashT hits 0
+}
+
+function finalizeDeath() {
+  if (state !== 'dead') return
+  const reason = crashReason
+  const isWin = reason === 'Tutorial complete!'
   const d = Math.floor(distance)
   lastRun = {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily',
@@ -1807,13 +1922,11 @@ function die(reason) {
   }
   bestEl.textContent = `${Math.floor(bestDistance)}m`
 
-  // Ghost save
   if (ghostRecorder && runKind !== 'tutorial' && !isWin) {
     const key = difficulty.id + (runKind === 'daily' ? '-daily' : '')
     saveGhostIfBest(key, d, ghostRecorder.toJSON(), stars)
   }
 
-  // Lifetime stars + spendable wallet + missions
   if (stars > 0) {
     addLifetimeStars(stars)
     addWallet(stars)
@@ -1830,7 +1943,6 @@ function die(reason) {
   })
   refreshMissionBadge()
 
-  // Leaderboards
   const name = (pilotNameInput.value || 'Pilot').slice(0, 16)
   if (runKind !== 'tutorial') {
     submitLocalScore({
@@ -1842,7 +1954,6 @@ function die(reason) {
     })
   }
 
-  // Hotseat
   if (hotseat.active && runKind === 'hotseat') {
     hotseat.scores[hotseat.turn] = d
     if (hotseat.turn < hotseat.players - 1) {
@@ -1852,9 +1963,9 @@ function die(reason) {
       hotseatTitle.textContent = `Player ${hotseat.turn + 1}'s turn`
       hotseatScores.textContent = hotseat.scores.map((s, i) => `P${i + 1}: ${s}m`).join(' · ')
       hotseatInter.classList.remove('hidden')
+      crashT = -1
       return
     }
-    // final
     const winner = hotseat.scores[0] >= hotseat.scores[1] ? 1 : 2
     $('gameover-title').textContent = `Player ${winner} wins!`
     finalScoreEl.textContent = `P1 ${hotseat.scores[0]}m · P2 ${hotseat.scores[1]}m`
@@ -1879,6 +1990,7 @@ function die(reason) {
   windBanner.classList.add('hidden')
   powerBanner.classList.add('hidden')
   shareStatus.textContent = ''
+  crashT = -1
 }
 
 // ---------------------------------------------------------------------------
@@ -2020,27 +2132,91 @@ function update(dt) {
   }
 
   if (state === 'dead') {
-    plane.rotation.z += dt * 3
-    plane.position.y = Math.max(0.4, plane.position.y - dt * 7)
-    camera.position.lerp(new THREE.Vector3(plane.position.x * 0.6, plane.position.y + 5, -9), 1 - Math.pow(0.002, dt))
+    // Dramatic crash: tumble, drop, paper spin
+    const isWin = crashReason === 'Tutorial complete!'
+    if (!isWin) {
+      plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
+      plane.rotation.x += dt * 2.2
+      plane.rotation.y += dt * 1.4
+      plane.position.x += velX * dt
+      plane.position.y = Math.max(0.3, plane.position.y + velY * dt)
+      velY -= 28 * dt
+      velX *= Math.pow(0.15, dt)
+      // squash on ground
+      if (plane.position.y <= 0.35) {
+        plane.scale.y = THREE.MathUtils.lerp(plane.scale.y, 0.35, 1 - Math.pow(0.001, dt))
+        plane.scale.x = THREE.MathUtils.lerp(plane.scale.x, 1.35, 1 - Math.pow(0.001, dt))
+        velY = 0
+      }
+    } else {
+      plane.position.y += Math.sin(elapsed * 4) * 0.01
+      plane.rotation.y += dt * 0.8
+    }
+    camera.position.lerp(
+      new THREE.Vector3(plane.position.x * 0.5, Math.max(3, plane.position.y + 4.5), -8),
+      1 - Math.pow(0.002, dt),
+    )
     camera.lookAt(plane.position)
     if (shake > 0) {
       shake = Math.max(0, shake - dt)
-      camera.position.x += (Math.random() - 0.5) * shake
+      camera.position.x += (Math.random() - 0.5) * shake * 0.8
+      camera.position.y += (Math.random() - 0.5) * shake * 0.4
     }
-    scrollWorld(speed * 0.2 * dt)
+    // FOV settle
+    if (fovPunch !== 0) {
+      fovPunch = THREE.MathUtils.lerp(fovPunch, 0, 1 - Math.pow(0.001, dt))
+      camera.fov = baseFov + fovPunch
+      camera.updateProjectionMatrix()
+    }
+    scrollWorld(Math.max(4, speed * 0.15) * dt)
     animateHazards(dt)
+    if (crashT > 0) {
+      crashT -= dt
+      if (crashT <= 0) finalizeDeath()
+    }
     return
   }
 
   // Playing
+  if (invuln > 0) invuln -= dt
+
   if (activePower) {
     activePower.timeLeft -= dt
-    powerFill.style.width = `${(100 * activePower.timeLeft) / activePower.duration}%`
+    powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
     if (activePower.kind === 'shield' && shieldBubble) {
       shieldBubble.material.opacity = 0.15 + Math.sin(elapsed * 6) * 0.08
+      // flash when about to expire
+      if (activePower.timeLeft < 1.2) {
+        shieldBubble.visible = Math.sin(elapsed * 20) > 0
+      }
     }
-    if (activePower.timeLeft <= 0) clearPower()
+    if (activePower.kind === 'boost') {
+      // sustain boost impulse while active
+      speedBoost = Math.max(speedBoost, 14 + activePower.timeLeft * 1.5)
+      fovPunch = THREE.MathUtils.lerp(fovPunch, 8, 1 - Math.pow(0.001, dt))
+    }
+    if (activePower.timeLeft <= 0) {
+      if (activePower.kind === 'boost') {
+        // soft landing — keep a little leftover speedBoost
+        speedBoost = Math.max(speedBoost, 8)
+        fovPunch = 2
+      }
+      clearPower()
+    }
+  }
+
+  // Decay temporary boost
+  if (speedBoost > 0) {
+    speedBoost = Math.max(0, speedBoost - dt * (activePower?.kind === 'boost' ? 4 : 18))
+  }
+  // FOV punch
+  {
+    const targetFov = activePower?.kind === 'boost' ? 8 : 0
+    if (activePower?.kind !== 'boost') {
+      fovPunch = THREE.MathUtils.lerp(fovPunch, targetFov, 1 - Math.pow(0.0008, dt))
+    }
+    camera.fov = baseFov + fovPunch
+    camera.updateProjectionMatrix()
   }
 
   if (comboTimer > 0) {
@@ -2072,9 +2248,12 @@ function update(dt) {
     if (stick.active || Math.abs(stick.x) + Math.abs(stick.y) > 0.02) {
       inputX = THREE.MathUtils.clamp(inputX + stick.x, -1, 1)
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
-    } else {
-      inputX = THREE.MathUtils.clamp(inputX + mouse.nx * 1.1, -1, 1)
-      inputY = THREE.MathUtils.clamp(inputY + mouse.ny * 1.1, -1, 1)
+    } else if (pointerSteering) {
+      // Deadzone so small pointer drift doesn't fight you
+      const mx = Math.abs(mouse.nx) > 0.08 ? mouse.nx : 0
+      const my = Math.abs(mouse.ny) > 0.08 ? mouse.ny : 0
+      inputX = THREE.MathUtils.clamp(inputX + mx * 1.05, -1, 1)
+      inputY = THREE.MathUtils.clamp(inputY + my * 1.05, -1, 1)
     }
   }
 
@@ -2140,17 +2319,22 @@ function update(dt) {
     velX *= Math.pow(0.03, dt) // more stable
     accelMul *= 0.75
   }
-  // Rubber-band slingshot: hold Space to charge, release to boost
+  // Rubber-band slingshot: hold Space to charge, release to launch
   if (activePower?.kind === 'sling') {
     if (keys.has('Space')) {
-      slingHold = Math.min(1, slingHold + dt * 0.7)
+      slingHold = Math.min(1, slingHold + dt * 0.85)
       powerLabel.textContent = `🪢 Charge ${Math.floor(slingHold * 100)}%`
-    } else if (slingHold > 0.15) {
-      velY += 25 * slingHold
-      speed += 20 * slingHold
-      shake = 0.3
+      powerFill.style.width = `${slingHold * 100}%`
+    } else if (slingHold > 0.12) {
+      const power = slingHold
+      velY += 18 * power
+      speedBoost = Math.max(speedBoost, 28 * power)
+      fovPunch = 6 + 8 * power
+      shake = 0.35
+      invuln = Math.max(invuln, 0.35)
       audio.nearMiss(3)
       if (settings.haptics) Haptic.power()
+      spawnConfetti(planeX, planeY, 0)
       slingHold = 0
       powerLabel.textContent = '🪢 Rubber Band'
     } else slingHold = 0
@@ -2159,21 +2343,51 @@ function update(dt) {
   velX += inputX * 40 * accelMul * dt
   velY += inputY * 40 * accelMul * dt
   velY -= difficulty.sink * sinkMul * dt
-  velX *= Math.pow(0.06, dt)
-  velY *= Math.pow(0.1, dt)
-  planeX = THREE.MathUtils.clamp(planeX + velX * dt, -MAX_X, MAX_X)
-  planeY = THREE.MathUtils.clamp(planeY + velY * dt, MIN_Y, MAX_Y)
+  // Stronger drag at high speed for control
+  const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
+  const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
+  velX *= Math.pow(dragX, dt)
+  velY *= Math.pow(dragY, dt)
+  velX = THREE.MathUtils.clamp(velX, -MAX_VEL, MAX_VEL)
+  velY = THREE.MathUtils.clamp(velY, -MAX_VEL, MAX_VEL)
+
+  planeX += velX * dt
+  planeY += velY * dt
+  // Soft walls — bounce instead of hard clamp stick
+  if (planeX < -MAX_X) {
+    planeX = -MAX_X
+    velX = Math.abs(velX) * 0.35
+  } else if (planeX > MAX_X) {
+    planeX = MAX_X
+    velX = -Math.abs(velX) * 0.35
+  }
+  if (planeY < MIN_Y) {
+    planeY = MIN_Y
+    // soft floor — only crash if diving hard
+    if (velY < -14) {
+      die('Nosed into the paper ground')
+      return
+    }
+    velY = Math.max(0, -velY * 0.25)
+  } else if (planeY > MAX_Y) {
+    planeY = MAX_Y
+    velY = -Math.abs(velY) * 0.3
+  }
 
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
-  if (activePower?.kind === 'boost') speedMul *= 1.55
+  if (activePower?.kind === 'boost') speedMul *= 1.45
   const cfg = difficulty
-  speed = (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
+  const cruise =
+    (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
+  // speedBoost is additive temporary burst (boost pickup / sling) — no longer discarded
+  speed = cruise + speedBoost
   const move = speed * dt
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
-    (activePower?.kind === 'boost' ? 1.1 : activePower?.kind === 'slow' ? 0.85 : 1) *
-    (1 + combo * 0.02)
+    (activePower?.kind === 'boost' ? 1.15 : activePower?.kind === 'slow' ? 0.85 : 1) *
+    (1 + combo * 0.02) *
+    (1 + Math.min(0.25, speedBoost * 0.008))
   distance += move * scoreFactor
 
   // Sparkle trail from upgrades
@@ -2209,10 +2423,22 @@ function update(dt) {
   }
 
   plane.position.set(planeX, planeY, 0)
-  pitch = THREE.MathUtils.lerp(pitch, -velY * 0.045, 1 - Math.pow(0.001, dt))
-  roll = THREE.MathUtils.lerp(roll, -velX * 0.055, 1 - Math.pow(0.001, dt))
-  plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.55, 0.55)
-  plane.rotation.z = THREE.MathUtils.clamp(roll, -0.75, 0.75)
+  // Bank / pitch follow velocity — snappier with handling upgrades
+  const lean = 0.04 + ufx.handlingLevel * 0.006
+  pitch = THREE.MathUtils.lerp(pitch, -velY * lean, 1 - Math.pow(0.0004, dt))
+  roll = THREE.MathUtils.lerp(roll, -velX * (lean + 0.01), 1 - Math.pow(0.0004, dt))
+  // Boost nose-down feel
+  if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.12, 0.1)
+  plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.6, 0.55)
+  plane.rotation.z = THREE.MathUtils.clamp(roll, -0.85, 0.85)
+  plane.rotation.y = THREE.MathUtils.clamp(-velX * 0.02, -0.35, 0.35)
+
+  // Invuln blink
+  if (invuln > 0) {
+    plane.visible = Math.sin(elapsed * 28) > -0.2
+  } else {
+    plane.visible = true
+  }
 
   // Ghost
   if (ghostRecorder) ghostRecorder.push(distance, planeX, planeY)
@@ -2233,11 +2459,15 @@ function update(dt) {
     scene.fog.color.lerp(new THREE.Color(zp.next.fog), dt * 0.4)
   }
 
-  camera.position.lerp(new THREE.Vector3(planeX * 0.5, planeY + 3.1, -11), 1 - Math.pow(0.0006, dt))
-  camera.lookAt(planeX * 0.25, planeY + 0.4, 16)
+  // Camera: pull back slightly during boost
+  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
+  const camY = planeY + 3.1 + (activePower?.kind === 'boost' ? 0.4 : 0)
+  camera.position.lerp(new THREE.Vector3(planeX * 0.45, camY, camZ), 1 - Math.pow(0.0005, dt))
+  camera.lookAt(planeX * 0.2, planeY + 0.3, 16)
   if (shake > 0) {
-    shake = Math.max(0, shake - dt)
-    camera.position.x += (Math.random() - 0.5) * shake * 0.5
+    shake = Math.max(0, shake - dt * 1.2)
+    camera.position.x += (Math.random() - 0.5) * shake * 0.45
+    camera.position.y += (Math.random() - 0.5) * shake * 0.25
   }
   audio.setFlightWind(Math.min(1, speed / 70))
 
@@ -2254,6 +2484,9 @@ function update(dt) {
   const p = plane.position
   const magnetOn = activePower?.kind === 'magnet' || ufx.magnetBonus > 0
   const magnetPull = (activePower?.kind === 'magnet' ? 1.2 : 0) + ufx.magnetBonus
+  // Slightly tighter hit while boosting (reward skill / speed lines)
+  const hitScale = activePower?.kind === 'boost' ? 0.88 : 1
+  const canCollide = invuln <= 0
   let ringsLeft = 0
 
   for (let i = entities.length - 1; i >= 0; i--) {
@@ -2265,13 +2498,13 @@ function update(dt) {
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      if (dx * dx + dy * dy + dz * dz < 2.5 ** 2) {
+      if (dx * dx + dy * dy + dz * dz < 2.8 ** 2) {
         scene.remove(m)
         entities.splice(i, 1)
         stars++
         starsEl.textContent = String(stars)
         audio.collectStar()
-        Haptic.collect()
+        if (settings.haptics) Haptic.collect()
         ringsLeft--
       }
       continue
@@ -2294,7 +2527,7 @@ function update(dt) {
         starsEl.textContent = String(stars)
         distance += 18
         audio.collectStar()
-        Haptic.collect()
+        if (settings.haptics) Haptic.collect()
         scene.remove(m)
         entities.splice(i, 1)
       }
@@ -2305,7 +2538,7 @@ function update(dt) {
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      if (dx * dx + dy * dy + dz * dz < (e.radius + PLANE_RADIUS) ** 2) {
+      if (dx * dx + dy * dy + dz * dz < (e.radius + PLANE_RADIUS * 1.05) ** 2) {
         activatePower(e.kind)
         scene.remove(m)
         entities.splice(i, 1)
@@ -2313,25 +2546,37 @@ function update(dt) {
       continue
     }
 
+    // Hazards ignored during invuln
+    if (!canCollide) continue
+
     if (e.type === 'boss') {
-      const dz = Math.abs(m.position.z - p.z)
-      if (dz < 2.2) {
+      const dz = m.position.z - p.z
+      // Only test when gate is in the plane's path slice
+      if (dz < 3.5 && dz > -2.5) {
         const gapY = m.userData.gapY || 10
-        // Must fly through gap (within ~2.2m of gap center, |x| small)
-        const inGap = Math.abs(p.y - gapY) < 2.2 && Math.abs(p.x) < 2.4
-        if (!inGap) {
+        const inGap = Math.abs(p.y - gapY) < 2.5 && Math.abs(p.x) < 2.6
+        if (!inGap && Math.abs(dz) < 1.8) {
           die('Snipped by the boss scissors!')
           return
         }
-        // passed through
-        if (m.position.z < -1) {
-          bossActive = false
-          track('boss_clear', { distance: Math.floor(distance) })
-          stars += 5
-          starsEl.textContent = String(stars)
-          audio.missionComplete()
+        if (dz < -1.2 && inGap) {
+          // Successfully threaded — reward once
+          if (!e.cleared) {
+            e.cleared = true
+            bossActive = false
+            track('boss_clear', { distance: Math.floor(distance) })
+            stars += 5
+            starsEl.textContent = String(stars)
+            audio.missionComplete()
+            if (settings.haptics) Haptic.collect()
+            invuln = Math.max(invuln, 0.4)
+            spawnConfetti(planeX, planeY, 2)
+          }
+        }
+        if (m.position.z < -20) {
           scene.remove(m)
           entities.splice(i, 1)
+          bossActive = false
         }
       }
       continue
@@ -2340,23 +2585,25 @@ function update(dt) {
     if (e.type === 'building') {
       const dx = Math.abs(m.position.x - p.x)
       const dz = Math.abs(m.position.z - p.z)
-      const hitR = e.radius + PLANE_RADIUS * 0.55
-      const grazeR = e.radius + PLANE_RADIUS * (1.35 + ufx.nearMissBonus)
-      if (dx < hitR && dz < hitR && p.y < e.halfH + 0.35) {
+      // Buildings sit on ground: solid from y=0 to halfH
+      const hitR = (e.radius + PLANE_RADIUS * 0.5) * hitScale
+      const grazeR = e.radius + PLANE_RADIUS * (1.4 + ufx.nearMissBonus)
+      const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH + 0.25 && p.y > -0.5
+      if (hitsBuilding) {
         die('Hit a paper skyscraper')
         return
       }
-      // Near miss
       if (
         m.position.z > -2 &&
-        m.position.z < 8 &&
+        m.position.z < 9 &&
         dx < grazeR &&
-        dx > hitR * 0.85 &&
+        dx > hitR * 0.9 &&
         dz < grazeR &&
-        p.y < e.halfH + 2
+        p.y < e.halfH + 2.5 &&
+        p.y > e.halfH * 0.15
       ) {
         const last = nearMissCooldown.get(m) || 0
-        if (elapsed - last > 0.8) {
+        if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
           registerNearMiss()
         }
@@ -2369,14 +2616,14 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       const dist2 = dx * dx + dy * dy + dz * dz
-      const hit = e.radius + PLANE_RADIUS
+      const hit = (e.radius + PLANE_RADIUS * 0.85) * hitScale
       if (dist2 < hit ** 2) {
         die(e.type === 'bird' ? 'Tangled with paper birds' : 'Snipped by scissors')
         return
       }
-      if (dist2 < (hit * 1.8) ** 2 && m.position.z > -1 && m.position.z < 6) {
+      if (dist2 < (hit * 1.9) ** 2 && m.position.z > -1 && m.position.z < 7) {
         const last = nearMissCooldown.get(m) || 0
-        if (elapsed - last > 0.8) {
+        if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
           registerNearMiss()
         }
@@ -2384,14 +2631,13 @@ function update(dt) {
     }
   }
 
-  if (runKind === 'tutorial' && ringsLeft === 0 && entities.every((e) => e.type === 'building')) {
-    die('Tutorial complete!')
-    return
-  }
-
-  if (planeY <= MIN_Y + 0.04 && velY < -2) {
-    die('Nosed into the paper ground')
-    return
+  if (runKind === 'tutorial' && ringsLeft === 0 && entities.every((e) => e.type === 'building' || e.type === 'ring')) {
+    // only buildings left (or empty of rings)
+    const stillRings = entities.some((e) => e.type === 'ring')
+    if (!stillRings) {
+      die('Tutorial complete!')
+      return
+    }
   }
 
   distanceEl.textContent = `${Math.floor(distance)}m`
