@@ -1,5 +1,5 @@
 /* Paper Plane Run — lightweight offline shell */
-const CACHE = 'paper-plane-run-v15'
+const CACHE = 'paper-plane-run-v16'
 
 const PRECACHE = [
   '/',

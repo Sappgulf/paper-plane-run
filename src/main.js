@@ -613,6 +613,9 @@ function applySeasonVisuals() {
   refreshUnlocks(season.id)
 }
 const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfffaf5, roughness: 1, transparent: true, opacity: 0.9 })
+const cloudShadeMat = new THREE.MeshStandardMaterial({
+  color: 0xd8dde8, roughness: 1, transparent: true, opacity: 0.55,
+})
 const riverMat = new THREE.MeshStandardMaterial({
   color: 0x6fb0d8, roughness: 0.25, metalness: 0.15, transparent: true, opacity: 0.9,
 })
@@ -1308,17 +1311,35 @@ function createPowerUp(kind) {
 
 function createCloud() {
   const g = new THREE.Group()
-  for (const [x, y, z, s] of [[0, 0, 0, 1.4], [1.1, 0.15, 0.2, 1], [-1, 0.1, -0.15, 1.1]]) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(s, 10, 10), cloudMat)
-    m.position.set(x, y, z)
-    g.add(m)
+  // Soft gray underside lumps first (slightly lower/behind) for a hint of
+  // volume, then bright puffs on top — randomized per-cloud so the sky
+  // doesn't read as one shape copy-pasted everywhere.
+  const lumpCount = 4 + ((rng() * 3) | 0)
+  for (let i = 0; i < lumpCount; i++) {
+    const t = i / Math.max(1, lumpCount - 1)
+    const x = (t - 0.5) * 2.6 + (rng() - 0.5) * 0.3
+    const s = 0.75 + rng() * 0.7
+    const shade = new THREE.Mesh(new THREE.SphereGeometry(s * 0.92, 8, 8), cloudShadeMat)
+    shade.position.set(x, -s * 0.22, (rng() - 0.5) * 0.25 - 0.1)
+    g.add(shade)
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(s, 10, 10), cloudMat)
+    puff.position.set(x, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3)
+    g.add(puff)
   }
   return g
 }
 
 function createRing() {
-  const m = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 8, 24), ringMat)
+  const m = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.14, 12, 32), ringMat)
   m.rotation.y = Math.PI / 2
+  // Soft glow halo so the guide ring reads as an inviting target, not a thin hoop
+  const glow = new THREE.Mesh(
+    new THREE.TorusGeometry(1.4, 0.36, 8, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xf59e0b, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+    }),
+  )
+  m.add(glow)
   return m
 }
 
@@ -3804,6 +3825,7 @@ function update(dt) {
         starsEl.textContent = String(stars)
         audio.collectStar()
         if (settings.haptics) Haptic.collect()
+        spawnConfetti(m.position.x, m.position.y, m.position.z)
         ringsLeft--
       }
       continue
