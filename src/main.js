@@ -767,53 +767,76 @@ function createPowerUp(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   const g = new THREE.Group()
   g.userData.kind = kind
+  const col = meta.color
 
-  // Boost gets a distinct rocket card; others use glowing orb + color ring
-  if (kind === 'boost') {
-    const tex = loadTex('/assets/pickup-boost.jpg')
-    const card = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.5, 1.5),
-      new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide, depthWrite: false,
-      }),
-    )
-    card.rotation.y = Math.PI
-    g.add(card)
-    g.userData.billboard = card
-  } else {
-    const orbTex = loadTex('/assets/pickup-orb.jpg')
-    const card = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.15, 1.15),
-      new THREE.MeshBasicMaterial({
-        map: orbTex, transparent: true, alphaTest: 0.08, side: THREE.DoubleSide, depthWrite: false,
-        color: new THREE.Color(meta.color),
-      }),
-    )
-    card.rotation.y = Math.PI
-    g.add(card)
-    g.userData.billboard = card
-  }
-
-  const core = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(kind === 'boost' ? 0.35 : 0.42, 0),
-    new THREE.MeshStandardMaterial({
-      color: meta.color, emissive: meta.color, emissiveIntensity: 0.65, roughness: 0.3,
+  // Outer soft glow shell
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.95, 20, 16),
+    new THREE.MeshBasicMaterial({
+      color: col, transparent: true, opacity: 0.16, depthWrite: false,
     }),
   )
-  core.position.z = 0.05
+  g.add(glow)
+
+  // Crystal core
+  const core = new THREE.Mesh(
+    kind === 'boost'
+      ? new THREE.ConeGeometry(0.38, 0.95, 6)
+      : new THREE.IcosahedronGeometry(0.48, 0),
+    new THREE.MeshStandardMaterial({
+      color: col,
+      emissive: col,
+      emissiveIntensity: 0.75,
+      roughness: 0.22,
+      metalness: 0.35,
+    }),
+  )
+  if (kind === 'boost') {
+    core.rotation.x = Math.PI
+    core.position.y = 0.05
+  }
+  core.castShadow = true
   g.add(core)
 
+  // Spinning halo ring
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(kind === 'boost' ? 0.95 : 0.85, 0.07, 8, 28),
+    new THREE.TorusGeometry(0.78, 0.06, 10, 32),
     new THREE.MeshStandardMaterial({
-      color: meta.color, emissive: meta.color, emissiveIntensity: 0.45, transparent: true, opacity: 0.9,
+      color: 0xfffaf2,
+      emissive: col,
+      emissiveIntensity: 0.55,
+      roughness: 0.3,
+      metalness: 0.4,
     }),
   )
   ring.rotation.x = Math.PI / 2
   g.add(ring)
+
+  // Icon sprite facing player (clean PNG)
+  const iconUrl = `/assets/power-${kind}.png`
+  try {
+    const tex = loadTex(iconUrl)
+    const icon = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.85, 0.85),
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    )
+    icon.position.z = 0.55
+    icon.rotation.y = Math.PI
+    g.add(icon)
+    g.userData.billboard = icon
+  } catch {
+    /* icons optional */
+  }
+
   g.userData.ring = ring
   g.userData.core = core
-  g.scale.setScalar(1.15)
+  g.userData.glow = glow
+  g.scale.setScalar(1.2)
   return g
 }
 
@@ -1259,8 +1282,9 @@ function resetGame() {
   distance = 0
   stars = 0
   speed = difficulty.speedBase
-  planeY = 8
+  // Dead-center spawn every run
   planeX = 0
+  planeY = 10
   velY = 0
   velX = 0
   pitch = 0
@@ -1279,14 +1303,18 @@ function resetGame() {
   bossActive = false
   distanceMilestones.clear()
   speedBoost = 0
-  invuln = 0
+  invuln = 0.4 // brief spawn grace
   crashT = 0
   crashReason = ''
   fovPunch = 0
   slingHold = 0
-  mouseScreen.has = false
+  mouseScreen.has = true
+  mouseScreen.x = 0.5
+  mouseScreen.y = 0.5
   mouseTarget.x = 0
-  mouseTarget.y = 8
+  mouseTarget.y = 10
+  mouse.nx = 0
+  mouse.ny = 0
   camera.fov = baseFov
   camera.updateProjectionMatrix()
   plane.visible = true
@@ -1307,8 +1335,8 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + 4, -10)
-  camera.lookAt(0, planeY, 12)
+  camera.position.set(0, planeY + 3.2, -11)
+  camera.lookAt(0, planeY, 14)
   ground.position.z = 120
   currentSkyUrl = ''
   currentGroundUrl = ''
@@ -2404,8 +2432,12 @@ function animateHazards(dt) {
         e.mesh.userData.billboard.rotation.y = Math.PI
       }
     }
-    if (e.type === 'power' || e.type === 'star') {
+    if (e.type === 'power') {
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
+      if (e.mesh.userData.glow) {
+        e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(elapsed * 5 + e.mesh.position.z) * 0.06
+      }
+      if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
     if (e.type === 'scissors') {
       e.mesh.rotation.y += dt * 1.2
@@ -2739,15 +2771,19 @@ function update(dt) {
   }
 
   if (mouseMode) {
-    // Direct aim: plane tracks cursor position 1:1 with light smoothing
-    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 2)
-    // Higher sens = snappier (less lag)
-    const follow = 1 - Math.pow(0.00001, dt * (10 * sens))
+    // Dead-accurate aim: plane sits on cursor ray hit with near-instant follow
+    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 2.2)
+    // follow rate: locked-on ≈ 1.0 each frame
+    const follow = Math.min(1, dt * (22 * sens))
     const prevX = planeX
     const prevY = planeY
     planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, follow)
     planeY = THREE.MathUtils.lerp(planeY, mouseTarget.y, follow)
-    // Velocity from actual motion (for bank / pitch only)
+    // If very close, snap for pixel-perfect feel
+    if (Math.hypot(mouseTarget.x - planeX, mouseTarget.y - planeY) < 0.08 * sens) {
+      planeX = mouseTarget.x
+      planeY = mouseTarget.y
+    }
     const invDt = 1 / Math.max(dt, 0.001)
     velX = THREE.MathUtils.clamp((planeX - prevX) * invDt, -MAX_VEL, MAX_VEL)
     velY = THREE.MathUtils.clamp((planeY - prevY) * invDt, -MAX_VEL, MAX_VEL)
@@ -2838,16 +2874,16 @@ function update(dt) {
   }
 
   plane.position.set(planeX, planeY, 0)
-  // Bank / pitch follow velocity — roll matches screen left/right
-  // Camera looks +Z: +X is screen-right; positive roll.z banks right-wing-down when viewed from behind
-  const lean = 0.045 + ufx.handlingLevel * 0.007
-  pitch = THREE.MathUtils.lerp(pitch, -velY * lean, 1 - Math.pow(0.0004, dt))
-  roll = THREE.MathUtils.lerp(roll, velX * (lean + 0.012), 1 - Math.pow(0.0004, dt))
+  // Visual bank from motion (clamped so mouse snaps don't spin the plane)
+  const bx = THREE.MathUtils.clamp(velX, -24, 24)
+  const by = THREE.MathUtils.clamp(velY, -24, 24)
+  const aimOffX = mouseMode ? THREE.MathUtils.clamp(mouseTarget.x - planeX, -2, 2) * 0.12 : 0
+  pitch = THREE.MathUtils.lerp(pitch, -by * 0.022, 1 - Math.pow(0.0006, dt))
+  roll = THREE.MathUtils.lerp(roll, bx * 0.028 + aimOffX, 1 - Math.pow(0.0006, dt))
   if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.1, 0.12)
-  plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.6, 0.55)
-  plane.rotation.z = THREE.MathUtils.clamp(roll, -0.85, 0.85)
-  // Yaw slightly into the turn (positive velX → slight +Y when looking along +Z feels wrong; keep subtle)
-  plane.rotation.y = THREE.MathUtils.clamp(velX * 0.015, -0.3, 0.3)
+  plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
+  plane.rotation.z = THREE.MathUtils.clamp(roll, -0.75, 0.75)
+  plane.rotation.y = THREE.MathUtils.clamp(bx * 0.012, -0.28, 0.28)
 
   // Invuln blink
   if (invuln > 0) {
