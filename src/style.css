@@ -654,9 +654,18 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   .action-pill { font-size: 12px; padding: 9px 12px; }
   .hud-card { min-width: 54px; padding: 5px 9px; }
   .hud-card > span:nth-child(2) { font-size: 15px; }
+  #hud:not(.hidden) .hud-card[data-hud-priority="secondary"] { display: none !important; }
   .icon-btn { width: 42px; height: 42px; }
   .hangar-body { max-height: min(52vh, 420px); }
   .skins-grid { gap: 8px; }
+  #gameover { justify-content: flex-start; }
+  #gameover .menu-card { margin: auto 0; }
+  #gameover .polaroid { padding: 8px 8px 20px; }
+  #gameover .polaroid img { width: min(200px, 58vw); }
+  #gameover .photo-wrap { margin-bottom: 4px; }
+  #gameover .gameover-actions-primary { margin-top: 4px; }
+  #gameover .gameover-actions-primary .cta-main { min-width: 180px; }
+  #gameover .gameover-actions-secondary { margin-top: 2px; }
 }
 /* Phones (portrait or landscape): the wrapped HUD row can run wide enough
    to collide with the top-right icon buttons, so drop it below them instead

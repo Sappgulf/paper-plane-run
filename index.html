@@ -27,25 +27,25 @@
       <div id="warn-flash" aria-hidden="true"></div>
 
       <div id="hud" class="hidden">
-        <div class="hud-card"><span class="label">Distance</span><span id="distance">0m</span></div>
-        <div class="hud-card"><span class="label">Best</span><span id="best">0m</span></div>
-        <div class="hud-card stars"><span class="label">Stars</span><span id="stars">0</span></div>
-        <div class="hud-card mode-chip"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
-        <div class="hud-card zone-chip"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
-        <div id="next-zone-hud" class="hud-card next-zone-chip hidden"><span class="label">Next</span><span id="hud-next-zone">—</span></div>
-        <div id="ghost-delta-hud" class="hud-card ghost-delta-chip hidden"><span class="label">Ghost</span><span id="ghost-delta-val">+0m</span></div>
-        <div id="guardian-hud" class="hud-card guardian-chip hidden"><span class="label">Guardian</span><span id="guardian-hud-val">0</span></div>
-        <div id="combo-hud" class="hud-card combo-hud hidden"><span class="label">Combo</span><span id="combo-val">1x</span></div>
-        <div id="streak-hud" class="hud-card streak-hud hidden"><span class="label">Streak</span><span id="streak-val">0</span></div>
-        <div id="fever-hud" class="hud-card fever-hud hidden"><span class="label">🔥 Fever</span><span id="fever-val">1.5x</span></div>
-        <div id="power-hud" class="hud-card power-hud hidden">
+        <div class="hud-card" data-hud-priority="primary"><span class="label">Distance</span><span id="distance">0m</span></div>
+        <div class="hud-card" data-hud-priority="secondary"><span class="label">Best</span><span id="best">0m</span></div>
+        <div class="hud-card stars" data-hud-priority="primary"><span class="label">Stars</span><span id="stars">0</span></div>
+        <div class="hud-card mode-chip" data-hud-priority="secondary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
+        <div class="hud-card zone-chip" data-hud-priority="secondary"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
+        <div id="next-zone-hud" class="hud-card next-zone-chip hidden" data-hud-priority="secondary"><span class="label">Next</span><span id="hud-next-zone">—</span></div>
+        <div id="ghost-delta-hud" class="hud-card ghost-delta-chip hidden" data-hud-priority="secondary"><span class="label">Ghost</span><span id="ghost-delta-val">+0m</span></div>
+        <div id="guardian-hud" class="hud-card guardian-chip hidden" data-hud-priority="secondary"><span class="label">Guardian</span><span id="guardian-hud-val">0</span></div>
+        <div id="combo-hud" class="hud-card combo-hud hidden" data-hud-priority="primary"><span class="label">Combo</span><span id="combo-val">1x</span></div>
+        <div id="streak-hud" class="hud-card streak-hud hidden" data-hud-priority="primary"><span class="label">Streak</span><span id="streak-val">0</span></div>
+        <div id="fever-hud" class="hud-card fever-hud hidden" data-hud-priority="primary"><span class="label">🔥 Fever</span><span id="fever-val">1.5x</span></div>
+        <div id="power-hud" class="hud-card power-hud hidden" data-hud-priority="primary">
           <span class="label">Power</span>
           <span id="power-label">—</span>
           <div class="power-bar"><div id="power-fill"></div></div>
         </div>
-        <div id="hotseat-hud" class="hud-card hidden"><span class="label">Player</span><span id="hotseat-player">1</span></div>
-        <div id="coop-hud" class="hud-card hidden"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
-        <div id="ctrl-hud" class="hud-card mode-chip"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
+        <div id="hotseat-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">Player</span><span id="hotseat-player">1</span></div>
+        <div id="coop-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
+        <div id="ctrl-hud" class="hud-card mode-chip" data-hud-priority="secondary"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
       </div>
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute" aria-label="Mute">🔊</button>
@@ -245,9 +245,11 @@
               <button type="button" id="photo-share" class="btn-secondary">Share photo</button>
             </div>
           </div>
-          <div class="btn-row wrap">
-            <button id="share-btn" type="button" class="btn-secondary">Share Score</button>
+          <div class="btn-row wrap gameover-actions gameover-actions-primary">
             <button id="retry-btn" type="button" class="cta-main cta-inline">Fly Again</button>
+          </div>
+          <div class="btn-row wrap gameover-actions gameover-actions-secondary">
+            <button id="share-btn" type="button" class="btn-secondary">Share Score</button>
           </div>
           <p id="share-status" class="share-status"></p>
           <button id="menu-btn" type="button" class="linkish">Main menu</button>
