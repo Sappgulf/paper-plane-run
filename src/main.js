@@ -640,8 +640,11 @@ const birdEyeMat = new THREE.MeshStandardMaterial({ color: 0x3d2c29, roughness: 
 const dragonflyEyeMat = new THREE.MeshStandardMaterial({
   color: 0x2563eb, emissive: 0x1d4ed8, emissiveIntensity: 0.3, roughness: 0.3,
 })
+// Was near-white at 0.6 opacity, which nearly vanished against the light
+// sky color — a deeper cyan tint at higher opacity keeps the "iridescent"
+// look while staying readable as a silhouette from any angle.
 const dragonflyWingMat = new THREE.MeshStandardMaterial({
-  color: 0xe6f3ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.05,
+  color: 0x8fd8e8, transparent: true, opacity: 0.85, side: THREE.DoubleSide, roughness: 0.25, metalness: 0.05,
 })
 // Kept low-metalness: the scene has no environment map, and Three's
 // metalness workflow renders highly metallic surfaces near-black without
@@ -1079,22 +1082,50 @@ function createBird() {
 // frequently spawned hazard in the game, so building fresh Shape/Cone/Sphere
 // geometry on every single spawn was pure GC churn. Geometry is stateless
 // and safe to share across many mesh instances; only transforms differ.
+// Wings are folded via a per-frame rotation.z "dihedral" hinge (see
+// animateHazards) so they read from the side. But a perfectly flat
+// ShapeGeometry rotated purely around that hinge axis has a degenerate
+// case: dead-on from the front (the actual angle the player meets an
+// oncoming hazard at) its whole surface projects to a 1D line no matter
+// the hinge angle, since flat-shape area and hinge rotation share the
+// same axis. Giving the wing real extruded thickness guarantees a
+// minimum visible cross-section from every angle, including head-on.
+function extrudeFlat(shape, depth = 0.06) {
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false })
+  geo.translate(0, 0, -depth / 2)
+  return geo
+}
 const birdWingShape = new THREE.Shape()
 birdWingShape.moveTo(0, 0)
 birdWingShape.lineTo(0.62, -0.22)
 birdWingShape.lineTo(0.18, 0.08)
 birdWingShape.lineTo(0, 0)
-const birdWingGeo = new THREE.ShapeGeometry(birdWingShape)
+const birdWingGeo = extrudeFlat(birdWingShape, 0.07)
 const birdCreaseShape = new THREE.Shape()
 birdCreaseShape.moveTo(0, 0)
 birdCreaseShape.lineTo(0.34, -0.12)
 birdCreaseShape.lineTo(0.18, 0.08)
 birdCreaseShape.lineTo(0, 0)
-const birdCreaseGeo = new THREE.ShapeGeometry(birdCreaseShape)
+const birdCreaseGeo = extrudeFlat(birdCreaseShape, 0.075)
 const birdBodyGeo = new THREE.ConeGeometry(0.08, 0.5, 8)
 const birdNeckGeo = new THREE.ConeGeometry(0.05, 0.32, 8)
 const birdEyeGeo = new THREE.SphereGeometry(0.025, 8, 8)
 const birdFeatherGeo = new THREE.ConeGeometry(0.045, 0.4, 6)
+
+// Shared geometry for the dragonfly hazard (same reasoning as the bird above)
+const dragonflyHeadGeo = new THREE.SphereGeometry(0.13, 10, 8)
+const dragonflyEyeGeo = new THREE.SphereGeometry(0.08, 8, 8)
+const dragonflyThoraxGeo =
+  typeof THREE.CapsuleGeometry === 'function'
+    ? new THREE.CapsuleGeometry(0.075, 0.16, 4, 10)
+    : new THREE.CylinderGeometry(0.07, 0.075, 0.24, 10)
+const dragonflyAbdomenGeo = new THREE.ConeGeometry(0.06, 0.75, 8)
+const dragonflyBandGeo = new THREE.TorusGeometry(0.045, 0.012, 6, 10)
+const dragonflyWingShape = new THREE.Shape()
+dragonflyWingShape.moveTo(0, 0)
+dragonflyWingShape.quadraticCurveTo(0.42, 0.16, 0.78, 0.03)
+dragonflyWingShape.quadraticCurveTo(0.42, -0.09, 0, 0)
+const dragonflyWingGeo = extrudeFlat(dragonflyWingShape, 0.05)
 
 function createFlyer(kindId) {
   const def = FLYER_DEFS.find((f) => f.id === kindId) || FLYER_DEFS[0]
@@ -1126,50 +1157,49 @@ function createFlyer(kindId) {
     g.userData.wingL = left
     g.userData.wingR = right
   } else if (def.id === 'dragonfly') {
-    // Round head with big compound eyes
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), birdAccentMat)
-    head.position.set(0, 0, 0.3)
+    // Round head with big compound eyes — enlarged so the face reads as a
+    // distinct silhouette element even head-on, when the body/wings foreshorten.
+    const head = new THREE.Mesh(dragonflyHeadGeo, birdAccentMat)
+    head.position.set(0, 0, 0.32)
     g.add(head)
     for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), dragonflyEyeMat)
-      eye.position.set(sx * 0.075, 0.015, 0.34)
+      const eye = new THREE.Mesh(dragonflyEyeGeo, dragonflyEyeMat)
+      eye.position.set(sx * 0.11, 0.02, 0.36)
       g.add(eye)
     }
     // Short thorax + long tapering segmented abdomen
-    const thoraxGeo =
-      typeof THREE.CapsuleGeometry === 'function'
-        ? new THREE.CapsuleGeometry(0.075, 0.16, 4, 10)
-        : new THREE.CylinderGeometry(0.07, 0.075, 0.24, 10)
-    const thorax = new THREE.Mesh(thoraxGeo, birdMat)
+    const thorax = new THREE.Mesh(dragonflyThoraxGeo, birdMat)
     thorax.rotation.z = Math.PI / 2
     thorax.position.z = 0.14
     g.add(thorax)
-    const abdomen = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.75, 8), birdAccentMat)
+    const abdomen = new THREE.Mesh(dragonflyAbdomenGeo, birdAccentMat)
     abdomen.rotation.z = -Math.PI / 2
     abdomen.position.z = -0.28
     g.add(abdomen)
     for (const bz of [-0.1, -0.3, -0.5]) {
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 10), birdMat)
+      const band = new THREE.Mesh(dragonflyBandGeo, birdMat)
       band.rotation.y = Math.PI / 2
       band.position.z = bz
       g.add(band)
     }
-    // Iridescent paper wings — a leaf-shaped outline instead of a plain rectangle
-    const wingShapeDF = new THREE.Shape()
-    wingShapeDF.moveTo(0, 0)
-    wingShapeDF.quadraticCurveTo(0.32, 0.1, 0.58, 0.02)
-    wingShapeDF.quadraticCurveTo(0.32, -0.06, 0, 0)
+    // Iridescent paper wings — bigger leaf-shaped panels in a deeper tinted
+    // material so they stay visible against a light sky instead of nearly
+    // disappearing like the old pale/translucent version.
+    // Each side is a group of its two wings (fore + hind) so the shared
+    // flap/dihedral animation in animateHazards — which only knows about
+    // a single wingL/wingR target per bird — lifts both panels together.
     for (const sx of [-1, 1]) {
+      const side = new THREE.Group()
       for (const sy of [-1, 1]) {
-        const w = new THREE.Mesh(new THREE.ShapeGeometry(wingShapeDF), dragonflyWingMat)
+        const w = new THREE.Mesh(dragonflyWingGeo, dragonflyWingMat)
         w.scale.x = sx
-        w.position.set(sx * 0.06, sy * 0.03 + 0.02, 0.14 + sy * 0.05)
+        w.position.set(sx * 0.06, sy * 0.025, 0.14 + sy * 0.06)
         w.rotation.x = -Math.PI / 2
-        w.rotation.z = sx * 0.12
-        g.add(w)
-        if (sx < 0 && sy > 0) g.userData.wingL = w
-        if (sx > 0 && sy > 0) g.userData.wingR = w
+        side.add(w)
       }
+      g.add(side)
+      if (sx < 0) g.userData.wingL = side
+      else g.userData.wingR = side
     }
   } else if (season.id === 'winter') {
     g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), birdMat))
@@ -3416,9 +3446,13 @@ function animateHazards(dt) {
     if (e.type === 'bird') {
       const u = e.mesh.userData
       u.phase = (u.phase || 0) + dt * 8
-      const flap = Math.sin(u.phase) * 0.45
-      if (u.wingL) u.wingL.rotation.z = 0.35 + flap
-      if (u.wingR) u.wingR.rotation.z = -0.35 - flap
+      // Steep gull-wing baseline (not just a shallow tilt) so the wings
+      // still show real frontal cross-section head-on, where the player
+      // actually meets these hazards — a flat/shallow dihedral collapses
+      // to a thin edge-on line from that angle and reads as a spike.
+      const flap = Math.sin(u.phase) * 0.35
+      if (u.wingL) u.wingL.rotation.z = 0.85 + flap
+      if (u.wingR) u.wingR.rotation.z = -0.85 - flap
       // Motion patterns by flyer type
       if (u.floaty) {
         e.mesh.position.y += Math.sin(u.phase * 0.5) * dt * 1.8
