@@ -21,11 +21,13 @@ export function loadSettings() {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) {
-      // First run: joysticks on touch devices, mouse on desktop
+      // First run: joysticks + low-power rendering on touch devices (phones
+      // are the ones most likely to stutter at full shadow/DPR settings),
+      // mouse + full quality on desktop.
       const touch =
         typeof navigator !== 'undefined' &&
         ('ontouchstart' in globalThis || navigator.maxTouchPoints > 0)
-      return { ...DEFAULTS, controlMode: touch ? 'joystick' : 'mouse' }
+      return { ...DEFAULTS, controlMode: touch ? 'joystick' : 'mouse', lowPower: touch }
     }
     return { ...DEFAULTS, ...JSON.parse(raw) }
   } catch {

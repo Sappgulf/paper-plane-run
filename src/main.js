@@ -204,6 +204,8 @@ const finalDetailEl = $('final-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
+const timeAttackHud = $('timeattack-hud')
+const timeAttackValEl = $('timeattack-val')
 
 function animateCountUp(el, target, suffix, ms = 700) {
   const start = performance.now()
@@ -342,6 +344,8 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 /** @type {'classic'|'daily'|'tutorial'|'hotseat'|'layout'} */
 let runKind = 'classic'
+const TIME_ATTACK_SECONDS = 60
+let timeAttackLeft = 0
 let challenge = null
 let lastRun = { d: 0, s: 0, m: 'normal', daily: false }
 let layoutPlay = null
@@ -2346,6 +2350,9 @@ function resetGame() {
   guardianLeft = getUpgradeEffects().guardianCharges
   guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
   if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
+  timeAttackLeft = TIME_ATTACK_SECONDS
+  timeAttackHud?.classList.toggle('hidden', runKind !== 'timeattack')
+  if (timeAttackValEl) timeAttackValEl.textContent = String(TIME_ATTACK_SECONDS)
   crashT = 0
   crashReason = ''
   fovPunch = 0
@@ -3310,6 +3317,21 @@ const bindClick = (id, fn) => {
 }
 bindClick('start-btn', () => startGame('classic'))
 bindClick('daily-btn', () => startGame('daily'))
+bindClick('timeattack-btn', () => startGame('timeattack'))
+
+// One-time nudge for touch players sitting in portrait — dismissible, never
+// forced, and never shown again once seen.
+;(() => {
+  const hint = $('landscape-hint')
+  if (!hint || !isTouchPrimary) return
+  const SEEN_KEY = 'paper-plane-run-landscape-hint-seen'
+  if (localStorage.getItem(SEEN_KEY)) return
+  if (innerHeight > innerWidth) hint.classList.remove('hidden')
+  hint.addEventListener('click', () => {
+    hint.classList.add('hidden')
+    localStorage.setItem(SEEN_KEY, '1')
+  })
+})()
 bindClick('tutorial-btn', () => startGame('tutorial'))
 bindClick('hotseat-btn', () => {
   hotseat = { players: 2, turn: 0, scores: [0, 0], active: true }
@@ -3526,15 +3548,19 @@ function capturePhoto() {
 
 function die(reason) {
   if (state !== 'playing') return
+  // Clean, non-crash endings: the tutorial finish line and a Time Attack
+  // clock running out. Neither should be absorbed by shield/guardian, and
+  // neither plays the tumble-crash animation.
+  const isCleanEnd = reason === 'Tutorial complete!' || reason === "Time's up!"
 
   // Invulnerability (after shield break / boost start)
-  if (invuln > 0 && reason !== 'Tutorial complete!') return
+  if (invuln > 0 && !isCleanEnd) return
 
-  // Shield absorbs one hazard (not ground / tutorial end)
+  // Shield absorbs one hazard (not ground / tutorial end / time-up)
   if (
     activePower?.kind === 'shield' &&
     reason !== 'Nosed into the paper ground' &&
-    reason !== 'Tutorial complete!'
+    !isCleanEnd
   ) {
     audio.shieldHit()
     if (settings.haptics) Haptic.nearMiss()
@@ -3553,7 +3579,7 @@ function die(reason) {
   }
 
   // Guardian Crease: a purchased free save, used when no shield is active
-  if (guardianLeft > 0 && reason !== 'Tutorial complete!') {
+  if (guardianLeft > 0 && !isCleanEnd) {
     guardianLeft--
     if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
     guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
@@ -3573,7 +3599,7 @@ function die(reason) {
     return
   }
 
-  const isWin = reason === 'Tutorial complete!'
+  const isWin = isCleanEnd
   state = 'dead'
   crashT = isWin ? 0.35 : 1.05
   crashReason = reason
@@ -3629,14 +3655,16 @@ function finalizeDeath() {
   guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
-  const isWin = reason === 'Tutorial complete!'
+  const isWin = reason === 'Tutorial complete!' || reason === "Time's up!"
+  // Time Attack scores on stars-in-60s, not distance, so it shouldn't
+  // pollute the distance best/ghost/leaderboards the other modes share.
+  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack'
   const d = Math.floor(distance)
   lastRun = {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily',
   }
 
-  const wasNewBest =
-    !isWin && d > bestDistance && d > 0 && runKind !== 'tutorial' && runKind !== 'layout'
+  const wasNewBest = !isWin && d > bestDistance && d > 0 && isDistanceRun
   if (wasNewBest) {
     bestDistance = d
     saveBest(difficulty.id, d)
@@ -3644,7 +3672,7 @@ function finalizeDeath() {
   bestEl.textContent = `${Math.floor(bestDistance)}m`
   newBestBadge?.classList.toggle('hidden', !wasNewBest)
 
-  if (ghostRecorder && runKind !== 'tutorial' && !isWin) {
+  if (ghostRecorder && isDistanceRun && !isWin) {
     const key = difficulty.id + (runKind === 'daily' ? '-daily' : '')
     saveGhostIfBest(key, d, ghostRecorder.toJSON(), stars)
   }
@@ -3677,7 +3705,7 @@ function finalizeDeath() {
   refreshMissionBadge()
 
   const name = (pilotNameInput.value || 'Pilot').slice(0, 16)
-  if (runKind !== 'tutorial') {
+  if (isDistanceRun) {
     submitLocalScore({
       name, distance: d, stars, mode: difficulty.id,
       daily: runKind === 'daily', dailyKey: dailyKey(),
@@ -3706,9 +3734,14 @@ function finalizeDeath() {
     newBestBadge?.classList.add('hidden')
     hotseat.active = false
   } else {
-    $('gameover-title').textContent = isWin ? 'Tutorial complete!' : 'Crashed!'
-    animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
-    finalDetailEl.textContent = reason
+    $('gameover-title').textContent = isWin ? reason : 'Crashed!'
+    if (runKind === 'timeattack') {
+      animateCountUp(finalScoreEl, stars, `★ in ${TIME_ATTACK_SECONDS}s · ${Math.floor(distance)}m flown`)
+      finalDetailEl.textContent = 'Nice reflexes!'
+    } else {
+      animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
+      finalDetailEl.textContent = reason
+    }
   }
 
   if (challenge && challenge.m === difficulty.id) {
@@ -4016,6 +4049,15 @@ function update(dt) {
     spawnUnfold = Math.min(1, spawnUnfold + dt / 0.4)
     const eased = 1 - Math.pow(1 - spawnUnfold, 3)
     plane.scale.setScalar(getUpgradeEffects().planeScale * (0.15 + eased * 0.85))
+  }
+  if (runKind === 'timeattack' && timeAttackLeft > 0) {
+    timeAttackLeft = Math.max(0, timeAttackLeft - dt)
+    if (timeAttackValEl) timeAttackValEl.textContent = String(Math.ceil(timeAttackLeft))
+    timeAttackHud?.classList.toggle('combo-pulse', timeAttackLeft <= 10)
+    if (timeAttackLeft <= 0) {
+      die("Time's up!")
+      return
+    }
   }
   if (invuln > 0) invuln -= dt
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)

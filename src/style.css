@@ -120,6 +120,8 @@ html.a11y-reduced-motion .hud-card.fever-hud { animation: none !important; }
 .ghost-delta-chip.behind > span:nth-child(2) { color: #dc2626; }
 .guardian-chip { border-color: rgba(56,189,248,.4); background: rgba(232,249,255,.92); }
 .guardian-chip > span:nth-child(2) { color: #0369a1; }
+.timeattack-hud { border-color: rgba(244,63,94,.4); background: rgba(255,241,242,.92); }
+.timeattack-hud > span:nth-child(2) { color: #be123c; }
 .power-hud { min-width: 108px; }
 .power-hud #power-label { font-size: 13px !important; display: block; }
 .power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
@@ -443,6 +445,11 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 
 .mini-hint { font-size: 12px; font-weight: 700; color: #6b554f; margin: 4px 0 8px; min-height: 1.1em; }
+.landscape-hint {
+  display: block; width: 100%; font-family: inherit; font-size: 12px; font-weight: 700;
+  color: #5b21b6; background: rgba(237,233,254,.8); border: 1.5px dashed rgba(124,58,237,.35);
+  border-radius: 12px; padding: 8px 12px; margin: 4px 0 8px; cursor: pointer;
+}
 .name-row {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   font-size: 13px; font-weight: 800; color: #5c4540;

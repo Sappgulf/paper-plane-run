@@ -29,6 +29,7 @@
       <div id="hud" class="hidden">
         <div class="hud-card" data-hud-priority="primary"><span class="label">Distance</span><span id="distance">0m</span></div>
         <div class="hud-card" data-hud-priority="secondary"><span class="label">Best</span><span id="best">0m</span></div>
+        <div id="timeattack-hud" class="hud-card timeattack-hud hidden" data-hud-priority="primary"><span class="label">Time</span><span id="timeattack-val">60</span></div>
         <div class="hud-card stars" data-hud-priority="primary"><span class="label">Stars</span><span id="stars">0</span></div>
         <div class="hud-card mode-chip" data-hud-priority="secondary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
         <div class="hud-card zone-chip" data-hud-priority="secondary"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
@@ -112,14 +113,16 @@
           <button id="start-btn" type="button" class="cta-main">✈ Take Flight</button>
 
           <div class="menu-actions">
-            <button id="daily-btn" type="button" class="action-pill">📅 Daily</button>
-            <button id="tutorial-btn" type="button" class="action-pill">🎓 Tutorial</button>
-            <button id="hangar-btn" type="button" class="action-pill action-hangar">🏠 Hangar</button>
-            <button id="coop-btn" type="button" class="action-pill">🌬 Co-op</button>
-            <button id="hotseat-btn" type="button" class="action-pill">👥 Hot-seat</button>
+            <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores">📅 Daily</button>
+            <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓 Tutorial</button>
+            <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠 Hangar</button>
+            <button id="timeattack-btn" type="button" class="action-pill" title="60 seconds — grab as many stars as you can">⏱ Time Attack</button>
+            <button id="coop-btn" type="button" class="action-pill" title="Two players, one plane — P2 throws wind gusts to help or hinder">🌬 Co-op</button>
+            <button id="hotseat-btn" type="button" class="action-pill" title="Take turns — highest distance wins">👥 Hot-seat</button>
           </div>
 
           <p id="daily-hint" class="mini-hint"></p>
+          <button id="landscape-hint" type="button" class="landscape-hint hidden">📱↔️ Tip: rotate to landscape for a wider view — tap to dismiss</button>
           <label class="name-row">Pilot <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
         </div>
       </div>

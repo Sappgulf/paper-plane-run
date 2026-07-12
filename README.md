@@ -34,6 +34,9 @@ npm install && npm run dev
 | 18 | **Low-power mode** — DPR/shadows/dust |
 | 19 | **A11y** — reduced motion, large sticks, auto-level, colorblind powers |
 | 20 | **Analytics** — local funnel + `/api/analytics` |
+| — | **Time Attack** — 60s, most stars wins |
+| — | **Ink Blast weapon** — pop birds/scissors for bonus stars |
+| — | **Prestige** — max the upgrade tree, reset for a permanent bonus + cosmetic |
 
 ## Co-op controls
 
