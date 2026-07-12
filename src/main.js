@@ -55,10 +55,16 @@ import { track, getFunnelSummary, recentEvents } from './analytics.js'
 import { DeskAR } from './ar.js'
 import {
   addLifetimeDistance,
+  getRunCount,
   incrementRunCount,
   getAchievementProgress,
   claimAchievementTier,
 } from './achievements.js'
+import {
+  FIRST_FLIGHT_GRACE_SECONDS,
+  isLaunchGraceActive,
+  shouldGrantLaunchGrace,
+} from './game/firstFlight.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -1735,6 +1741,7 @@ let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
 let elapsed = 0
+let launchGraceSeconds = 0
 let activePower = null
 let bannerTimer = 0
 let zoneBannerTimer = 0
@@ -2288,6 +2295,11 @@ function resetGame() {
   nextSpawnZ = 35
   shake = 0
   elapsed = 0
+  launchGraceSeconds = shouldGrantLaunchGrace({
+    runKind,
+    tutorialDone,
+    completedRuns: getRunCount(),
+  }) ? FIRST_FLIGHT_GRACE_SECONDS : 0
   combo = 0
   maxCombo = 0
   comboTimer = 0
@@ -3355,6 +3367,11 @@ async function startGame(kind = 'classic', opts = {}) {
     const coopHud = $('coop-hud')
     if (coopHud) coopHud.classList.toggle('hidden', kind !== 'coop')
     audio.startFlight()
+    if (launchGraceSeconds > 0) {
+      powerBanner.textContent = '✈️ Get ready — launch protection active'
+      powerBanner.classList.remove('hidden')
+      bannerTimer = launchGraceSeconds
+    }
     if (settings.haptics) Haptic.tap()
     track('game_start', { kind, mode: difficulty.id, season: season.id })
   } catch (err) {
@@ -4188,7 +4205,7 @@ function update(dt) {
   if (planeY < MIN_Y) {
     planeY = MIN_Y
     // soft floor — only crash if diving hard
-    if (velY < -14) {
+    if (velY < -14 && !isLaunchGraceActive(elapsed, launchGraceSeconds)) {
       die('Nosed into the paper ground')
       return
     }
@@ -4368,7 +4385,10 @@ function update(dt) {
   // Phase power: pass through airborne hazards (birds/scissors/boss) but
   // buildings and the ground are checked separately and still solid — this
   // is a "dodge the sky" power, not a full no-clip.
-  const canCollide = invuln <= 0 && activePower?.kind !== 'phase'
+  const canCollide =
+    invuln <= 0 &&
+    activePower?.kind !== 'phase' &&
+    !isLaunchGraceActive(elapsed, launchGraceSeconds)
   let ringsLeft = 0
 
   for (let i = entities.length - 1; i >= 0; i--) {
