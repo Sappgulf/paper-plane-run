@@ -4,6 +4,7 @@
 const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
 const MIGRATED = 'paper-plane-run-wallet-migrated'
+const PRESTIGE_KEY = 'paper-plane-run-prestige'
 
 export const UPGRADES = [
   {
@@ -144,6 +145,23 @@ function migrateWalletOnce() {
   localStorage.setItem(MIGRATED, '1')
 }
 
+/** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
+export function getPrestigeLevel() {
+  return Math.max(0, Math.min(50, Number(localStorage.getItem(PRESTIGE_KEY) || 0)))
+}
+
+export function canPrestige() {
+  return UPGRADES.every((u) => getUpgradeLevel(u.id) >= u.max)
+}
+
+export function doPrestige() {
+  if (!canPrestige()) return { ok: false, reason: 'not-maxed' }
+  const level = getPrestigeLevel() + 1
+  localStorage.setItem(PRESTIGE_KEY, String(level))
+  saveLevels({})
+  return { ok: true, level }
+}
+
 export function nextCost(id) {
   const u = UPGRADES.find((x) => x.id === id)
   if (!u) return null
@@ -179,14 +197,17 @@ export function getUpgradeEffects() {
   const trail = getUpgradeLevel('trail')
   const turbo = getUpgradeLevel('turbo')
   const guardian = getUpgradeLevel('guardian')
+  const prestige = getPrestigeLevel()
+  const prestigeMul = 1 + prestige * 0.03
+  const synergyGold = wing >= 3 && trail >= 3
   return {
     accelMul: 1 + h * 0.08,
     sinkMul: Math.max(0.55, 1 - lift * 0.08),
     speedMul: 1 + glide * 0.04,
-    scoreMul: 1 + glide * 0.03 + trail * 0.02,
+    scoreMul: (1 + glide * 0.03 + trail * 0.02) * prestigeMul,
     magnetBonus: mag * 0.55,
     shieldDurationMul: 1 + sh * 0.2,
-    starChanceMul: 1 + luck * 0.12,
+    starChanceMul: (1 + luck * 0.12) * prestigeMul,
     powerChanceMul: 1 + luck * 0.1,
     planeScale: 1.2 + wing * 0.08,
     nearMissBonus: wing * 0.15,
@@ -194,6 +215,8 @@ export function getUpgradeEffects() {
     handlingLevel: h,
     boostSafety: turbo,
     guardianCharges: guardian,
+    prestigeLevel: prestige,
+    synergyGold,
   }
 }
 

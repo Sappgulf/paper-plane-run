@@ -20,6 +20,9 @@ import {
   updateMissionsFromRun,
   claimMission,
   unclaimedRewards,
+  updatePlayStreak,
+  getPlayStreak,
+  claimWeeklyStreakBonus,
 } from './missions.js'
 import {
   createGhostRecorder,
@@ -35,6 +38,9 @@ import {
   buyUpgrade,
   getWallet,
   addWallet,
+  canPrestige,
+  doPrestige,
+  getPrestigeLevel,
 } from './upgrades.js'
 import {
   submitLocalScore,
@@ -196,6 +202,7 @@ function hideEdgeIndicators() {
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
 const newBestBadge = $('new-best-badge')
+const streakBadge = $('streak-badge')
 
 function animateCountUp(el, target, suffix, ms = 700) {
   const start = performance.now()
@@ -2216,6 +2223,8 @@ function applyUpgradeVisuals() {
     trail.visible = fx.trailLevel > 0 && state === 'playing'
     trail.material.opacity = 0.35 + fx.trailLevel * 0.2
     trail.material.size = 0.16 + fx.trailLevel * 0.08
+    // Wide Wings + Paper Trail both maxed unlocks a distinct "Aurora Trail" color.
+    trail.material.color.setHex(fx.synergyGold ? 0x7cf9ff : 0xfff0c0)
   }
 }
 
@@ -2294,6 +2303,7 @@ function resetGame() {
     rng = Math.random
     activeTwist = null
   }
+  scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
@@ -2911,8 +2921,45 @@ function renderSkins() {
   }
 }
 
+function renderPrestige() {
+  const panel = $('prestige-panel')
+  if (!panel) return
+  const level = getPrestigeLevel()
+  const ready = canPrestige()
+  if (level === 0 && !ready) {
+    panel.classList.add('hidden')
+    return
+  }
+  panel.classList.remove('hidden')
+  panel.innerHTML = ''
+  const info = document.createElement('div')
+  info.className = 'prestige-info'
+  info.innerHTML = level > 0
+    ? `<strong>✦ Golden Fold ${level}</strong><span>+${level * 3}% score & star luck, permanently</span>`
+    : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus</span>`
+  panel.appendChild(info)
+  if (ready) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'prestige-btn'
+    btn.textContent = level > 0 ? 'Prestige again' : 'Prestige'
+    btn.onclick = () => {
+      if (!confirm('Reset all upgrade levels for a permanent +3% score & star luck bonus?')) return
+      const res = doPrestige()
+      if (res.ok) {
+        audio.uiClick()
+        if (settings.haptics) Haptic.collect()
+        applyUpgradeVisuals()
+        renderUpgrades()
+      }
+    }
+    panel.appendChild(btn)
+  }
+}
+
 function renderUpgrades() {
   refreshHangarWallet()
+  renderPrestige()
   const grid = $('upgrades-grid')
   if (!grid) return
   grid.innerHTML = ''
@@ -3521,9 +3568,16 @@ function finalizeDeath() {
     addLifetimeStars(stars)
     addWallet(stars)
   }
+  let weeklyBonus = 0
   if (runKind !== 'tutorial' && runKind !== 'layout') {
     addLifetimeDistance(d)
     incrementRunCount()
+    updatePlayStreak()
+    weeklyBonus = claimWeeklyStreakBonus()
+    if (weeklyBonus > 0) {
+      addLifetimeStars(weeklyBonus)
+      addWallet(weeklyBonus)
+    }
   }
   refreshUnlocks(season.id)
   updateMissionsFromRun({
@@ -3579,6 +3633,11 @@ function finalizeDeath() {
         ? `You beat the challenge! (${challenge.d}m → ${d}m)`
         : `Challenge was ${challenge.d}m · ${challenge.s}★ — you got ${d}m · ${stars}★`
   } else challengeResult.classList.add('hidden')
+
+  if (streakBadge) {
+    streakBadge.textContent = `🔥 ${getPlayStreak()}-day streak${weeklyBonus > 0 ? ` · +${weeklyBonus}★ bonus!` : ''}`
+    streakBadge.classList.toggle('hidden', getPlayStreak() < 2)
+  }
 
   hudEl.classList.add('hidden')
   gameoverEl.classList.remove('hidden')
@@ -3739,6 +3798,8 @@ function registerNearMiss(kind = null) {
   Haptic.nearMiss()
   spawnConfetti(planeX, planeY, 2)
   distance += 5 * combo * 0.25
+  // Small camera punch that grows with the streak — bigger chains feel bigger.
+  shake = Math.max(shake, 0.1 + Math.min(combo, 10) * 0.02)
   if (combo >= FEVER_COMBO_THRESHOLD) triggerFever()
 }
 
@@ -3746,6 +3807,7 @@ function registerNearMiss(kind = null) {
 function triggerFever() {
   feverActive = true
   feverTimer = FEVER_DURATION
+  shake = Math.max(shake, 0.45)
   feverFx?.classList.add('fever-active')
   feverHud?.classList.remove('hidden')
   comboFloat.textContent = 'FEVER!'
@@ -4065,7 +4127,7 @@ function update(dt) {
   const ufx = getUpgradeEffects()
 
   // Physics toys modifiers
-  let sinkMul = ufx.sinkMul
+  let sinkMul = ufx.sinkMul * (activeTwist?.sinkMul ?? 1)
   let accelMul = ufx.accelMul
   if (activePower?.kind === 'tear') {
     velX += tearSide * 14 * dt
@@ -4238,8 +4300,11 @@ function update(dt) {
   pitch = THREE.MathUtils.lerp(pitch, -by * 0.022, 1 - Math.pow(0.0006, dt))
   roll = THREE.MathUtils.lerp(roll, bx * 0.028 + aimOffX, 1 - Math.pow(0.0006, dt))
   if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.1, 0.12)
+  // Fever adds a light shimmy on top of normal banking — a readable "turbo" feel
+  // without fighting the player's actual steering input.
+  const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
   plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
-  plane.rotation.z = THREE.MathUtils.clamp(roll, -0.75, 0.75)
+  plane.rotation.z = THREE.MathUtils.clamp(roll + feverWobble, -0.8, 0.8)
   plane.rotation.y = THREE.MathUtils.clamp(bx * 0.012, -0.28, 0.28)
 
   // Invuln blink
@@ -4326,6 +4391,9 @@ function update(dt) {
     activePower?.kind !== 'phase' &&
     !isLaunchGraceActive(elapsed, launchGraceSeconds)
   let ringsLeft = 0
+  // Near-miss window tightens (up to 15%) as the combo climbs, so long chains
+  // require flying genuinely closer rather than staying free once started.
+  const nmTighten = 1 - Math.min(combo, 10) * 0.015
 
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
@@ -4446,7 +4514,7 @@ function update(dt) {
       const dz = Math.abs(m.position.z - p.z)
       // Buildings sit on ground: solid from y=0 to halfH
       const hitR = (e.radius + PLANE_RADIUS * 0.5) * hitScale
-      const grazeR = e.radius + PLANE_RADIUS * (1.4 + ufx.nearMissBonus)
+      const grazeR = e.radius + PLANE_RADIUS * (1.4 + ufx.nearMissBonus) * nmTighten
       const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH + 0.25 && p.y > -0.5
       if (hitsBuilding) {
         die('Hit a paper skyscraper')
@@ -4484,7 +4552,8 @@ function update(dt) {
         die(label)
         return
       }
-      if (dist2 < (hit * 1.9) ** 2 && m.position.z > -1 && m.position.z < 7) {
+      const grazeMul = 1 + 0.9 * nmTighten
+      if (dist2 < (hit * grazeMul) ** 2 && m.position.z > -1 && m.position.z < 7) {
         const last = nearMissCooldown.get(m) || 0
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)

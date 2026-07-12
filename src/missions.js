@@ -117,3 +117,31 @@ export function claimMission(id) {
 export function unclaimedRewards() {
   return getDailyMissions().filter((m) => m.done && !m.claimed).length
 }
+
+/** Consecutive-day play streak. Call once per finished run; every 7th day pays a bonus. */
+export function updatePlayStreak() {
+  const day = dailyKey()
+  const s = loadState()
+  if (s.lastPlayDay === day) return s.streakDays || 0
+  const yesterday = dailyKey(new Date(Date.now() - 86400000))
+  s.streakDays = s.lastPlayDay === yesterday ? (s.streakDays || 0) + 1 : 1
+  s.lastPlayDay = day
+  saveState(s)
+  return s.streakDays
+}
+
+export function getPlayStreak() {
+  return loadState().streakDays || 0
+}
+
+/** Returns a wallet-star bonus the first time a 7-day multiple streak is reached. */
+export function claimWeeklyStreakBonus() {
+  const s = loadState()
+  const streak = s.streakDays || 0
+  if (streak > 0 && streak % 7 === 0 && s.lastWeeklyClaim !== streak) {
+    s.lastWeeklyClaim = streak
+    saveState(s)
+    return 40
+  }
+  return 0
+}
