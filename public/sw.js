@@ -1,5 +1,5 @@
 /* Paper Plane Run — lightweight offline shell */
-const CACHE = 'paper-plane-run-v29'
+const CACHE = 'paper-plane-run-v30'
 
 const PRECACHE = [
   '/',
@@ -23,17 +23,21 @@ const PRECACHE = [
   '/assets/ground-harbor.jpg',
   '/assets/ground-storm.jpg',
   '/assets/buildings.jpg',
-  '/assets/birds.jpg',
   '/assets/skin-mint.jpg',
   '/assets/skin-coral.jpg',
   '/assets/skin-night.jpg',
   '/assets/skin-gold.jpg',
   '/assets/skin-neon.jpg',
   '/assets/skin-rainbow.jpg',
-  '/assets/flyer-butterfly.jpg',
-  '/assets/flyer-balloon.jpg',
-  '/assets/flyer-kite.jpg',
-  '/assets/flyer-biplane.jpg',
+  '/assets/obstacles/obstacle-bird.png',
+  '/assets/obstacles/obstacle-butterfly.png',
+  '/assets/obstacles/obstacle-balloon.png',
+  '/assets/obstacles/obstacle-kite.png',
+  '/assets/obstacles/obstacle-biplane.png',
+  '/assets/obstacles/obstacle-dragonfly.png',
+  '/assets/obstacles/obstacle-swarm.png',
+  '/assets/obstacles/obstacle-wasp.png',
+  '/assets/obstacles/obstacle-scissors.png',
   '/assets/obstacles/obstacle-origami-hawk.png',
   '/assets/obstacles/obstacle-paper-pinwheel.png',
   '/assets/obstacles/obstacle-paperclip-meteor.png',

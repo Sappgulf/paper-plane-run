@@ -1,27 +1,29 @@
+const OBSTACLE_ASSET = '/assets/obstacles/obstacle-'
+
 export const FLYER_DEFS = [
-  { id: 'bird', label: 'paper bird', radius: 0.7, weight: 1 },
+  { id: 'bird', label: 'paper bird', radius: 0.7, weight: 1, tex: `${OBSTACLE_ASSET}bird.png`, scale: 1.55, alpha: true },
   {
     id: 'butterfly', label: 'paper butterfly', radius: 0.65, weight: 0.7,
-    tex: '/assets/flyer-butterfly.jpg', scale: 1.5,
+    tex: `${OBSTACLE_ASSET}butterfly.png`, scale: 1.5, alpha: true,
   },
   {
     id: 'balloon', label: 'runaway balloon', radius: 0.85, weight: 0.55,
-    tex: '/assets/flyer-balloon.jpg', scale: 1.6, floaty: true,
+    tex: `${OBSTACLE_ASSET}balloon.png`, scale: 1.65, alpha: true, floaty: true,
   },
   {
     id: 'kite', label: 'loose kite', radius: 0.75, weight: 0.5,
-    tex: '/assets/flyer-kite.jpg', scale: 1.55, weave: true,
+    tex: `${OBSTACLE_ASSET}kite.png`, scale: 1.6, alpha: true, weave: true,
   },
   {
     id: 'biplane', label: 'toy biplane', radius: 0.9, weight: 0.45,
-    tex: '/assets/flyer-biplane.jpg', scale: 1.7, dive: true,
+    tex: `${OBSTACLE_ASSET}biplane.png`, scale: 1.7, alpha: true, dive: true,
   },
-  { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5 },
+  { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5, tex: `${OBSTACLE_ASSET}dragonfly.png`, scale: 1.55, alpha: true },
   {
     id: 'swarm', label: 'flock of paper cranes', radius: 0.95, weight: 0.35,
-    tex: '/assets/birds.jpg', scale: 1.9,
+    tex: `${OBSTACLE_ASSET}swarm.png`, scale: 1.9, alpha: true,
   },
-  { id: 'wasp', label: 'paper wasp', radius: 0.45, weight: 0.4, dive: true, weave: true },
+  { id: 'wasp', label: 'paper wasp', radius: 0.45, weight: 0.4, tex: `${OBSTACLE_ASSET}wasp.png`, scale: 1.45, alpha: true, dive: true, weave: true },
   {
     id: 'hawk', label: 'diving origami hawk', radius: 0.9, weight: 0.3,
     tex: '/assets/obstacles/obstacle-origami-hawk.png', scale: 1.9, alpha: true, dive: true,

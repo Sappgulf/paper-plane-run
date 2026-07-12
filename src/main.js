@@ -783,8 +783,6 @@ const dragonflyWingMat = new THREE.MeshStandardMaterial({
 // made the blades look like dark wood beams instead of shiny silver.
 const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.12, roughness: 0.4 })
 const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.15, roughness: 0.25 })
-const scissorsHandleMat = new THREE.MeshStandardMaterial({ color: 0xe0524a, roughness: 0.45, metalness: 0.1 })
-const scissorsPivotMat = new THREE.MeshStandardMaterial({ color: 0x8a8f98, metalness: 0.2, roughness: 0.4 })
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
@@ -1197,6 +1195,7 @@ function createBuilding(w, h, d, mat) {
 function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
   const g = new THREE.Group()
   const tex = hasAlpha ? loadTex(texUrl) : loadCutoutTex(texUrl)
+  if (hasAlpha) tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
     transparent: !hasAlpha,
@@ -1456,7 +1455,6 @@ function createFlyer(kindId) {
 function pickFlyerKind() {
   // Seasonal bias
   let pool = FLYER_DEFS
-    .filter((flyer) => state !== 'menu' || !flyer.alpha)
     .map((flyer) => ({ ...flyer }))
   if (season.id === 'halloween') {
     pool = pool.map((f) => (f.id === 'bird' ? { ...f, weight: 1.4 } : f))
@@ -1476,64 +1474,11 @@ function pickFlyerKind() {
   return pool[0]
 }
 
-/** A tapered, double-pointed blade (instead of a plain box) with a bright
- *  cutting-edge glint strip, built once and reused for every scissors hazard.
- *  Symmetric front-to-back so it still reads as a spinning blade when
- *  animated with a simple absolute rotation.z, like the box it replaces. */
-// Shared blade geometry: ExtrudeGeometry (with bevels) is by far the most
-// expensive geometry type built in this file, and scissors hazards spawn
-// often (regular hazard rolls, gauntlets, boss gates) — build it once.
-//
-// The blade's length runs along local Y (screen-plane) with only a thin
-// extrusion depth in Z (toward the camera) — deliberately NOT rotated to
-// point its length down Z. The whole hazard spins around its own Z axis
-// (see animateHazards), so a blade whose length already lies in the XY
-// plane sweeps through a full pinwheel rotation always facing the
-// camera. Pointing the blade's length at the camera (the old orientation,
-// spun around Y) meant it swept edge-on twice per rotation and briefly
-// vanished into a thin line — "you can hardly tell what they are."
-const scissorBladeShape = new THREE.Shape()
-scissorBladeShape.moveTo(0, -1.1)
-scissorBladeShape.quadraticCurveTo(0.1, -0.32, 0.1, 0)
-scissorBladeShape.quadraticCurveTo(0.1, 0.32, 0, 1.1)
-scissorBladeShape.quadraticCurveTo(-0.06, 0.32, -0.06, 0)
-scissorBladeShape.quadraticCurveTo(-0.06, -0.32, 0, -1.1)
-const scissorBladeGeo = new THREE.ExtrudeGeometry(scissorBladeShape, {
-  depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2,
-})
-const scissorEdgeGeo = new THREE.PlaneGeometry(0.05, 2.15)
-
-function createScissorBlade() {
-  const blade = new THREE.Mesh(scissorBladeGeo, scissorsMat)
-  // Bright edge glint along the cutting side, flush against the blade's
-  // camera-facing side.
-  const edge = new THREE.Mesh(scissorEdgeGeo, scissorsEdgeMat)
-  edge.position.set(0.1, 0, 0.028)
-  blade.add(edge)
-  return blade
-}
-
 function createScissors() {
   const g = new THREE.Group()
-  const b1 = createScissorBlade()
-  b1.position.set(0.12, 0, 0)
-  const b2 = createScissorBlade()
-  b2.position.set(-0.12, 0, 0)
-  g.add(b1, b2)
-  // Pivot bolt — a small disc facing the camera
-  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 12), scissorsPivotMat)
-  pivot.rotation.x = Math.PI / 2
-  g.add(pivot)
-  // Finger-loop handles, ring hole facing the camera so they read as
-  // circles (never edge-on) — same fix as the boss-gate danger rings.
-  const h1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.065, 10, 20), scissorsHandleMat)
-  h1.position.set(0.32, -1.35, 0)
-  const h2 = h1.clone()
-  h2.position.x = -0.32
-  g.add(h1, h2)
-  g.userData.blade1 = b1
-  g.userData.blade2 = b2
-  g.scale.setScalar(1.45)
+  const bill = createBillboardFlyer('/assets/obstacles/obstacle-scissors.png', 3.15, true)
+  g.add(bill)
+  g.userData.billboard = bill.userData.billboard
   return g
 }
 
@@ -3715,17 +3660,8 @@ function animateHazards(dt) {
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
     if (e.type === 'scissors') {
-      // Spin around Z (the camera-facing axis), not Y — the blades' length
-      // now lies in the screen plane, so a Z-spin sweeps them through a
-      // full pinwheel rotation always facing the player instead of
-      // tumbling edge-on twice per revolution.
       e.mesh.rotation.z += dt * 1.2
-      const u = e.mesh.userData
-      if (u.blade1) {
-        const open = 0.12 + Math.sin(elapsed * 7) * 0.12
-        u.blade1.rotation.z = open
-        u.blade2.rotation.z = -open
-      }
+      if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
     }
     if (e.type === 'boss') {
       const u = e.mesh.userData
@@ -4667,19 +4603,22 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   plane.visible = false
   camera.position.set(0, 11, -11)
   camera.lookAt(0, 11, 18)
-  const lineup = [
-    ['hawk', -5.4, 2],
-    ['pinwheel', -1.8, 2],
-    ['meteor', 1.8, 2],
-    ['clothespinDragonfly', 5.4, 2],
-  ]
+  const lineup = FLYER_DEFS.map((def, index) => [
+    def.id,
+    (index % 5 - 2) * 3,
+    8 + Math.floor(index / 5) * 5,
+  ])
   for (const [id, x, z] of lineup) {
     const def = FLYER_DEFS.find((flyer) => flyer.id === id)
     const flyer = createFlyer(id)
-    flyer.position.set(x, 11, z)
+    flyer.position.set(x, 13 - Math.floor((z - 8) / 5) * 3, z)
     scene.add(flyer)
     entities.push({ mesh: flyer, type: 'bird', flyerId: id, label: def.label, radius: def.radius })
   }
+  const scissors = createScissors()
+  scissors.position.set(6, 7, 18)
+  scene.add(scissors)
+  entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
 }
 
 window.addEventListener('resize', () => {
