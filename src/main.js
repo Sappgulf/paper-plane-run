@@ -471,6 +471,24 @@ const renderer = new THREE.WebGLRenderer({
   alpha: true,
   powerPreference: settings.lowPower ? 'low-power' : 'high-performance',
 })
+// Mobile GPUs can drop the WebGL context under memory pressure or after a
+// long background stint — without handling this, the canvas just freezes
+// on a garbled last frame with no way back in. Pause and tell the player,
+// then do a clean reload once the context comes back (re-uploading every
+// texture/geometry by hand is fragile; a reload is the reliable recovery).
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault()
+  simulationPaused = true
+  keys.clear()
+  if (challengeToast) {
+    challengeToast.textContent = '⚠️ Graphics connection lost — reconnecting…'
+    challengeToast.classList.remove('hidden')
+  }
+}, false)
+canvas.addEventListener('webglcontextrestored', () => {
+  location.reload()
+}, false)
+
 function applyPerformanceSettings() {
   const cap = settings.lowPower ? 1.25 : 2
   renderer.setPixelRatio(Math.min(devicePixelRatio, cap))
@@ -2767,6 +2785,10 @@ window.addEventListener('keydown', (e) => {
   }
 })
 window.addEventListener('keyup', (e) => keys.delete(e.code))
+// A key held down when focus leaves the window (alt-tab, clicking another
+// app) never gets its keyup event, so it would otherwise stay "held"
+// forever — endless Ink Blast fire, a slingshot stuck mid-charge, etc.
+window.addEventListener('blur', () => keys.clear())
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
@@ -3665,6 +3687,24 @@ function die(reason) {
 
 function finalizeDeath() {
   if (state !== 'dead') return
+  try {
+    finalizeDeathUnsafe()
+  } catch (err) {
+    // A single localStorage write failure (Safari private browsing throws
+    // on any setItem, or a full quota) used to leave the player stuck on a
+    // frozen crash frame forever, since nothing else re-triggers this call.
+    // Always surface *some* game-over screen even if stats/saves broke.
+    console.error('finalizeDeath failed', err)
+    $('gameover-title').textContent = 'Crashed!'
+    finalScoreEl.textContent = `${Math.floor(distance)}m · ${stars}★`
+    finalDetailEl.textContent = crashReason || ''
+    hudEl.classList.add('hidden')
+    gameoverEl.classList.remove('hidden')
+  }
+  crashT = -1
+}
+
+function finalizeDeathUnsafe() {
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
@@ -3788,7 +3828,6 @@ function finalizeDeath() {
   windBanner.classList.add('hidden')
   powerBanner.classList.add('hidden')
   shareStatus.textContent = ''
-  crashT = -1
 }
 
 // ---------------------------------------------------------------------------
@@ -4753,6 +4792,7 @@ document.addEventListener('visibilitychange', () => {
   const transition = nextPauseState(simulationPaused, document.visibilityState)
   simulationPaused = transition.paused
   if (simulationPaused) {
+    keys.clear()
     audio.ctx?.suspend().catch(() => {})
     return
   }
