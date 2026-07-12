@@ -468,7 +468,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, settings.lowPower ? 1.25 : 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.shadowMap.enabled = !settings.lowPower
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1.05
 renderer.setClearColor(0xc8dff5, 1)
@@ -4574,7 +4574,7 @@ function update(dt) {
 }
 
 // Boot — start render loop first so a UI error never blanks the game
-const clock = new THREE.Clock()
+const timer = new THREE.Timer()
 document.addEventListener('visibilitychange', () => {
   const transition = nextPauseState(simulationPaused, document.visibilityState)
   simulationPaused = transition.paused
@@ -4585,7 +4585,7 @@ document.addEventListener('visibilitychange', () => {
 
   // Flush time accumulated while the page was hidden so simulation resumes
   // from a fresh frame instead of consuming a large background delta.
-  clock.getDelta()
+  timer.reset()
   audio.ctx?.resume().catch(() => {})
   if (transition.resumed && state === 'playing') {
     powerBanner.textContent = '▶ Resumed'
@@ -4596,7 +4596,8 @@ document.addEventListener('visibilitychange', () => {
 function frame() {
   if (!simulationPaused) {
     try {
-      update(Math.min(clock.getDelta(), 0.05))
+      timer.update()
+      update(Math.min(timer.getDelta(), 0.05))
     } catch (err) {
       console.error('update error', err)
     }
