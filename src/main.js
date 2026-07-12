@@ -89,6 +89,8 @@ if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
   syncBannerTop()
 }
 const comboFloat = $('combo-float')
+const feverFx = $('fever-fx')
+const feverHud = $('fever-hud')
 const powerHud = $('power-hud')
 const powerLabel = $('power-label')
 const powerFill = $('power-fill')
@@ -335,6 +337,13 @@ let currentZoneId = 'city'
 let combo = 0
 let maxCombo = 0
 let comboTimer = 0
+/** Combo Fever: a short score-multiplier burst triggered by a big near-miss streak */
+const FEVER_COMBO_THRESHOLD = 8
+const FEVER_DURATION = 4
+const FEVER_SCORE_MUL = 1.5
+let feverActive = false
+let feverTimer = 0
+let feverFloatTimeout = null
 /** Consecutive star pickups within a short window — separate from the near-miss combo */
 let starStreak = 0
 let starStreakTimer = 0
@@ -2196,6 +2205,10 @@ function resetGame() {
   starStreak = 0
   starStreakTimer = 0
   streakHud?.classList.add('hidden')
+  feverActive = false
+  feverTimer = 0
+  feverFx?.classList.remove('fever-active')
+  feverHud?.classList.add('hidden')
   runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
   nextBossAt = 500
   nextGauntletAt = 250
@@ -3666,12 +3679,33 @@ function registerNearMiss(kind = null) {
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
   comboHud.classList.add('combo-pulse')
   comboFloat.textContent = combo >= 3 ? `${combo}x NEAR MISS!` : 'Near miss!'
+  comboFloat.classList.remove('fever-float')
   comboFloat.classList.remove('hidden')
   setTimeout(() => comboFloat.classList.add('hidden'), 500)
   audio.nearMiss(combo, kind)
   Haptic.nearMiss()
   spawnConfetti(planeX, planeY, 2)
   distance += 5 * combo * 0.25
+  if (combo >= FEVER_COMBO_THRESHOLD) triggerFever()
+}
+
+/** A short score-multiplier burst for stringing together a big near-miss streak. */
+function triggerFever() {
+  feverActive = true
+  feverTimer = FEVER_DURATION
+  feverFx?.classList.add('fever-active')
+  feverHud?.classList.remove('hidden')
+  comboFloat.textContent = 'FEVER!'
+  comboFloat.classList.add('fever-float')
+  comboFloat.classList.remove('hidden')
+  clearTimeout(feverFloatTimeout)
+  feverFloatTimeout = setTimeout(() => comboFloat.classList.add('hidden'), 900)
+  audio.fever()
+  Haptic.power()
+  // A bigger celebratory burst than a regular near-miss's single spawnConfetti call
+  spawnConfetti(planeX, planeY, 0)
+  spawnConfetti(planeX, planeY + 0.6, 1)
+  spawnConfetti(planeX, planeY - 0.6, -1)
 }
 
 /** Consecutive star pickups within a short window — every 5th grants bonus stars. */
@@ -3843,6 +3877,14 @@ function update(dt) {
     if (starStreakTimer <= 0) {
       starStreak = 0
       streakHud?.classList.add('hidden')
+    }
+  }
+  if (feverActive) {
+    feverTimer -= dt
+    if (feverTimer <= 0) {
+      feverActive = false
+      feverFx?.classList.remove('fever-active')
+      feverHud?.classList.add('hidden')
     }
   }
 
@@ -4069,7 +4111,8 @@ function update(dt) {
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
     (1 + combo * 0.02) *
-    (1 + Math.min(0.35, speedBoost * 0.01))
+    (1 + Math.min(0.35, speedBoost * 0.01)) *
+    (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
 
   // Sparkle trail from upgrades

@@ -266,6 +266,27 @@ export class GameAudio {
     })
   }
 
+  /** Bigger ascending fanfare for hitting a Combo Fever streak. */
+  fever() {
+    if (!this.ctx || this.muted) return
+    const t = this._now()
+    const notes = [523, 659, 784, 1047, 1319] // C-E-G-C-E, bright major arpeggio
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator()
+      const g = this.ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.value = f
+      const start = t + i * 0.06
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.16, start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.24)
+      osc.connect(g)
+      g.connect(this.sfx || this.master)
+      osc.start(start)
+      osc.stop(start + 0.26)
+    })
+  }
+
   incoming() {
     if (!this.ctx || this.muted) return
     const t = this._now()
