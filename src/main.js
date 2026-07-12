@@ -361,6 +361,7 @@ let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
 
 // URL params
+const devTestState = import.meta.env.DEV ? location.hash : ''
 {
   const params = new URLSearchParams(location.search)
   const d = Number(params.get('d') || params.get('score'))
@@ -4642,6 +4643,20 @@ try {
   console.error('boot error', err)
   state = 'menu'
   menuEl?.classList.remove('hidden')
+}
+
+// Deterministic browser-test state. Vite replaces this guard at build time,
+// so the production bundle cannot activate the shortcut through a URL.
+if (import.meta.env.DEV && devTestState === '#test-gameover') {
+  hideAllPanels()
+  state = 'dead'
+  hudEl?.classList.add('hidden')
+  gameoverEl?.classList.remove('hidden')
+  photoWrap?.classList.add('hidden')
+  $('gameover-title').textContent = 'Crashed!'
+  newBestBadge?.classList.add('hidden')
+  finalScoreEl.textContent = '188m · 3★ · Normal'
+  finalDetailEl.textContent = 'Hit a paper skyscraper'
 }
 
 window.addEventListener('resize', () => {

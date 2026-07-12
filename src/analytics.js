@@ -29,6 +29,10 @@ export function track(event, props = {}) {
   all.push(row)
   save(all)
 
+  // The plain Vite development server does not mount Vercel functions.
+  // Keep local funnel data without generating a noisy 404 for every event.
+  if (import.meta.env.DEV) return row
+
   // Fire-and-forget remote
   try {
     if (navigator.sendBeacon) {
