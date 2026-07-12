@@ -235,6 +235,7 @@ track('session_start', { season: season.id, dpr: devicePixelRatio })
 // Distance milestones for funnel
 const distanceMilestones = new Set()
 let nextBossAt = 500
+let nextGauntletAt = 250
 let bossActive = false
 let planeWingL = null
 let planeWingR = null
@@ -768,14 +769,34 @@ function createPaperPlane(matBody = planeBodyMat, matAccent = planeAccentMat, wi
   rightShape.lineTo(1.4, -0.15)
   rightShape.lineTo(0, 0.35)
   rightShape.lineTo(0, 0)
+  // Mountain-fold crease panel near the wing root, in the accent color —
+  // same trick used on the redesigned bird — so the hero plane doesn't look
+  // flatter than the hazards it dodges.
+  const creaseShapeL = new THREE.Shape()
+  creaseShapeL.moveTo(0, 0)
+  creaseShapeL.lineTo(-0.55, -0.07)
+  creaseShapeL.lineTo(0, 0.14)
+  creaseShapeL.lineTo(0, 0)
+  const creaseShapeR = new THREE.Shape()
+  creaseShapeR.moveTo(0, 0)
+  creaseShapeR.lineTo(0.55, -0.07)
+  creaseShapeR.lineTo(0, 0.14)
+  creaseShapeR.lineTo(0, 0)
+
   const wingL = new THREE.Mesh(new THREE.ShapeGeometry(leftShape), matBody)
   wingL.rotation.x = -Math.PI / 2
   wingL.castShadow = true
   wingL.name = 'wingL'
+  const creaseL = new THREE.Mesh(new THREE.ShapeGeometry(creaseShapeL), matAccent)
+  creaseL.position.z = 0.004
+  wingL.add(creaseL)
   const wingR = new THREE.Mesh(new THREE.ShapeGeometry(rightShape), matBody)
   wingR.rotation.x = -Math.PI / 2
   wingR.castShadow = true
   wingR.name = 'wingR'
+  const creaseR = new THREE.Mesh(new THREE.ShapeGeometry(creaseShapeR), matAccent)
+  creaseR.position.z = 0.004
+  wingR.add(creaseR)
   g.add(wingL, wingR)
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 1.6), matAccent)
   body.position.set(0, 0.04, -0.1)
@@ -1665,6 +1686,42 @@ function spawnBoss(z = 70) {
   Haptic.power()
 }
 
+/** A lighter-weight "event" spawned at the midpoint between boss gates
+ *  (every 250m, offset from the 500m boss cadence) — a deliberate cluster
+ *  of hazards instead of the usual sparse random spawns, so the mid-run
+ *  pacing has more texture than "quiet until the next boss". */
+function spawnMiniGauntlet(z = 60) {
+  if (rng() < 0.5) {
+    // Scissors zigzag: weave between alternating sides
+    const sides = [-1, 1, -1]
+    sides.forEach((side, i) => {
+      const sc = createScissors()
+      sc.position.set(side * 5, 8 + rng() * 6, z + i * 9)
+      scene.add(sc)
+      entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
+    })
+  } else {
+    // Flyer wall: a row of flyers spanning most of the lane at one z,
+    // forcing an altitude or lane pick rather than a lucky dodge.
+    const count = 4
+    for (let i = 0; i < count; i++) {
+      const def = pickFlyerKind()
+      const flyer = createFlyer(def.id)
+      const t = i / (count - 1)
+      flyer.position.set((t - 0.5) * 20, 6 + rng() * 12, z + (rng() - 0.5) * 4)
+      scene.add(flyer)
+      entities.push({
+        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius,
+      })
+    }
+  }
+  zoneBanner.textContent = '⚡ Hazard Gauntlet!'
+  zoneBanner.classList.remove('hidden')
+  zoneBannerTimer = 2
+  audio.windGust()
+  Haptic.tap()
+}
+
 function spawnLayoutItems() {
   if (!layoutPlay) return
   for (const it of layoutPlay.items) {
@@ -1957,6 +2014,7 @@ function resetGame() {
   streakHud?.classList.add('hidden')
   runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
   nextBossAt = 500
+  nextGauntletAt = 250
   bossActive = false
   distanceMilestones.clear()
   speedBoost = 0
@@ -3836,6 +3894,17 @@ function update(dt) {
       distanceMilestones.add(m)
       track(`distance_${m}`, { mode: difficulty.id, kind: runKind })
     }
+  }
+
+  // Mini-gauntlets at the 250m midpoint between boss gates
+  if (
+    runKind !== 'tutorial' &&
+    runKind !== 'layout' &&
+    distance >= nextGauntletAt &&
+    !bossActive
+  ) {
+    spawnMiniGauntlet(60)
+    nextGauntletAt += 500
   }
 
   // Boss gates every 500m
