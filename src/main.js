@@ -1,5 +1,6 @@
 import './style.css'
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
 import { dailyKey, dailySeed, mulberry32 } from './rng.js'
@@ -447,6 +448,18 @@ const scene = new THREE.Scene()
 scene.fog = new THREE.Fog(0xc8dff5, 50, 240)
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400)
 
+// A soft generic room environment so metallic/reflective materials (scissors
+// blades, power crystals, upgrade halos) pick up real reflections instead of
+// rendering flat/near-black — this scene never had any environment lighting,
+// which is why metalness had to be kept very low everywhere as a workaround.
+// Skipped in low-power mode: it's a one-time cost, not per-frame, but the
+// PMREM render pass itself is non-trivial on weak/mobile GPUs.
+if (!settings.lowPower) {
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
+}
+
 const loader = new THREE.TextureLoader()
 const texCache = {}
 function loadTex(url) {
@@ -741,15 +754,10 @@ const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness:
 const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.15, roughness: 0.25 })
 const scissorsHandleMat = new THREE.MeshStandardMaterial({ color: 0xe0524a, roughness: 0.45, metalness: 0.1 })
 const scissorsPivotMat = new THREE.MeshStandardMaterial({ color: 0x8a8f98, metalness: 0.2, roughness: 0.4 })
-const starMat = new THREE.MeshStandardMaterial({
-  color: season.starColor, emissive: season.starEmissive, emissiveIntensity: 0.4, roughness: 0.4,
-})
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
   birdMat.color.setHex(season.birdColor)
-  starMat.color.setHex(season.starColor)
-  starMat.emissive.setHex(season.starEmissive)
   if (season.fogBoost != null && scene.fog) {
     // blend toward seasonal fog
     scene.fog.color.lerp(new THREE.Color(season.fogBoost), 0.35)
@@ -856,6 +864,10 @@ const TOY_KINDS = ['tear', 'clip', 'sling']
 function rebuildPowerPalette() {
   POWER_META = buildPowerMeta()
   POWER_KINDS = Object.keys(POWER_META)
+  // Cached power-up materials are keyed by kind and colored from the old
+  // palette — drop them so the next spawn of each kind rebuilds with the
+  // new (e.g. colorblind-safe) colors.
+  powerMatCache = {}
 }
 
 function applySkin(skinId) {
@@ -1429,60 +1441,74 @@ function createScissors() {
   return g
 }
 
+// Stars are by far the most frequently spawned entity in the game (every
+// chunk rolls 1-2), so building fresh geometry + material per spawn was
+// pure per-frame GC churn for an object that never changes shape or color.
+const starCoreGeo = new THREE.PlaneGeometry(1.1, 1.1)
+const starCoreMat = new THREE.MeshBasicMaterial({
+  map: loadCutoutTex('/assets/pickup-orb.jpg'), transparent: true, alphaTest: 0.12, side: THREE.DoubleSide, depthWrite: false,
+})
+const starGlowGeo = new THREE.SphereGeometry(0.62, 12, 12)
+const starGlowMat = new THREE.MeshBasicMaterial({
+  color: 0xfbbf24, transparent: true, opacity: 0.18, depthWrite: false,
+})
+
 function createStar() {
   const g = new THREE.Group()
-  // Hero origami-star art (glowing gold star), billboard-facing
-  const tex = loadCutoutTex('/assets/pickup-orb.jpg')
-  const core = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.1, 1.1),
-    new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, alphaTest: 0.12, side: THREE.DoubleSide, depthWrite: false,
-    }),
-  )
+  const core = new THREE.Mesh(starCoreGeo, starCoreMat)
   core.rotation.y = Math.PI
   g.add(core)
   // Soft glow shell for readability
-  const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.62, 12, 12),
-    new THREE.MeshBasicMaterial({
-      color: 0xfbbf24, transparent: true, opacity: 0.18, depthWrite: false,
-    }),
-  )
+  const glow = new THREE.Mesh(starGlowGeo, starGlowMat)
   g.add(glow)
   g.userData.core = core
   g.userData.billboard = core
   return g
 }
 
+// Shared geometry across every power-up kind — only material color varies.
+// Power-ups spawn often enough over a run that per-spawn geometry/material
+// construction was avoidable GC churn, same fix as stars/bird/scissors.
+const powerGlowGeo = new THREE.SphereGeometry(0.95, 20, 16)
+const powerCoreGeoBoost = new THREE.ConeGeometry(0.38, 0.95, 6)
+const powerCoreGeoDefault = new THREE.IcosahedronGeometry(0.48, 0)
+const powerRingGeo = new THREE.TorusGeometry(0.78, 0.06, 10, 32)
+const powerIconGeoBoost = new THREE.PlaneGeometry(1.3, 1.3)
+const powerIconGeoDefault = new THREE.PlaneGeometry(0.85, 0.85)
+// Materials DO depend on kind (color), but that color is otherwise fixed
+// per kind for the session — cache one material set per kind instead of
+// rebuilding on every spawn. Cleared on colorblind-palette changes below.
+let powerMatCache = {}
+
 function createPowerUp(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   const g = new THREE.Group()
   g.userData.kind = kind
   const col = meta.color
+  const isBoostHero = kind === 'boost'
+
+  let mats = powerMatCache[kind]
+  if (!mats) {
+    mats = {
+      glowMat: new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, depthWrite: false }),
+      coreMat: new THREE.MeshStandardMaterial({
+        color: col, emissive: col, emissiveIntensity: 0.75, roughness: 0.22, metalness: 0.35,
+      }),
+      ringMat: new THREE.MeshStandardMaterial({
+        color: 0xfffaf2, emissive: col, emissiveIntensity: 0.55, roughness: 0.3, metalness: 0.4,
+      }),
+      iconMat: null, // built lazily below since texture load can throw
+    }
+    powerMatCache[kind] = mats
+  }
 
   // Outer soft glow shell
-  const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.95, 20, 16),
-    new THREE.MeshBasicMaterial({
-      color: col, transparent: true, opacity: 0.16, depthWrite: false,
-    }),
-  )
+  const glow = new THREE.Mesh(powerGlowGeo, mats.glowMat)
   g.add(glow)
 
   // Crystal core
-  const core = new THREE.Mesh(
-    kind === 'boost'
-      ? new THREE.ConeGeometry(0.38, 0.95, 6)
-      : new THREE.IcosahedronGeometry(0.48, 0),
-    new THREE.MeshStandardMaterial({
-      color: col,
-      emissive: col,
-      emissiveIntensity: 0.75,
-      roughness: 0.22,
-      metalness: 0.35,
-    }),
-  )
-  if (kind === 'boost') {
+  const core = new THREE.Mesh(isBoostHero ? powerCoreGeoBoost : powerCoreGeoDefault, mats.coreMat)
+  if (isBoostHero) {
     core.rotation.x = Math.PI
     core.position.y = 0.05
   }
@@ -1490,36 +1516,21 @@ function createPowerUp(kind) {
   g.add(core)
 
   // Spinning halo ring
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.78, 0.06, 10, 32),
-    new THREE.MeshStandardMaterial({
-      color: 0xfffaf2,
-      emissive: col,
-      emissiveIntensity: 0.55,
-      roughness: 0.3,
-      metalness: 0.4,
-    }),
-  )
+  const ring = new THREE.Mesh(powerRingGeo, mats.ringMat)
   ring.rotation.x = Math.PI / 2
   g.add(ring)
 
   // Icon sprite facing player — boost gets the hero origami-rocket art,
   // everything else uses its clean flat icon.
-  const isBoostHero = kind === 'boost'
   const iconUrl = isBoostHero ? '/assets/pickup-boost.jpg' : `/assets/power-${kind}.png`
-  const iconSize = isBoostHero ? 1.3 : 0.85
   try {
-    const tex = isBoostHero ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
-    const icon = new THREE.Mesh(
-      new THREE.PlaneGeometry(iconSize, iconSize),
-      new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        alphaTest: isBoostHero ? 0.12 : 0,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    )
+    if (!mats.iconMat) {
+      const tex = isBoostHero ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
+      mats.iconMat = new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, alphaTest: isBoostHero ? 0.12 : 0, depthWrite: false, side: THREE.DoubleSide,
+      })
+    }
+    const icon = new THREE.Mesh(isBoostHero ? powerIconGeoBoost : powerIconGeoDefault, mats.iconMat)
     icon.position.z = 0.55
     icon.rotation.y = Math.PI
     g.add(icon)
