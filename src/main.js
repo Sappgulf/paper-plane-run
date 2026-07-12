@@ -459,7 +459,30 @@ function loadTex(url) {
   return texCache[url]
 }
 const cutoutTexCache = {}
-function loadCutoutTex(url, threshold = 26, feather = 18) {
+/**
+ * Cuts a product photo's flat backdrop out into real alpha, via a
+ * border-seeded flood fill (grow-by-neighbor-similarity) rather than a
+ * single global color distance. A single threshold against one sampled
+ * color leaves soft drop-shadows and paper-fold creases in the backdrop
+ * behind — connected to the edge but far enough from the corner sample
+ * to survive — which read as a visible box/smudge around the cutout.
+ * Growing from the border and comparing each pixel only to its
+ * already-classified neighbor follows shadow gradients smoothly while
+ * still stopping at a real silhouette edge, so pale subject regions
+ * (e.g. a cream-white paper wing) aren't eaten just for being close in
+ * color to a cream backdrop — they're not *connected* to the border by
+ * a smooth gradient.
+ *
+ * A pure neighbor-to-neighbor check is exploitable by JPEG compression's
+ * soft anti-aliased edges though: each individual step is small, but a
+ * long enough smooth ramp lets the fill "climb" all the way from the
+ * backdrop into fully saturated subject colors and hollow the subject
+ * out. So growth also requires staying within maxDistance of the
+ * original sampled backdrop color — a shadow drifts gradually but never
+ * far from the backdrop tone, while climbing into real subject color
+ * blows that cap even if no single step looked suspicious.
+ */
+function loadCutoutTex(url, growThreshold = 20, maxDistance = 70) {
   if (cutoutTexCache[url]) return cutoutTexCache[url]
   const canvas = document.createElement('canvas')
   const tex = new THREE.CanvasTexture(canvas)
@@ -474,20 +497,84 @@ function loadCutoutTex(url, threshold = 26, feather = 18) {
     const { width: w, height: h } = canvas
     const data = ctx.getImageData(0, 0, w, h)
     const px = data.data
-    // Sample the four corners to estimate the flat backdrop color
-    const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]
-    let br = 0, bg = 0, bb = 0
-    for (const [cx, cy] of corners) {
-      const i = (cy * w + cx) * 4
-      br += px[i]; bg += px[i + 1]; bb += px[i + 2]
+    const n = w * h
+    // Reference backdrop color, averaged over the full border rather than
+    // just 4 corners, so a corner that happens to fall on a shadow/subject
+    // doesn't skew the reference.
+    let br = 0, bg0 = 0, bb0 = 0, borderCount = 0
+    for (let x = 0; x < w; x++) {
+      for (const y of [0, h - 1]) {
+        const i = (y * w + x) * 4
+        br += px[i]; bg0 += px[i + 1]; bb0 += px[i + 2]; borderCount++
+      }
     }
-    br /= 4; bg /= 4; bb /= 4
-    for (let i = 0; i < px.length; i += 4) {
-      const dr = px[i] - br, dg = px[i + 1] - bg, db = px[i + 2] - bb
-      const dist = Math.sqrt(dr * dr + dg * dg + db * db)
-      if (dist < threshold) px[i + 3] = 0
-      else if (dist < threshold + feather) px[i + 3] = ((dist - threshold) / feather) * 255
+    for (let y = 1; y < h - 1; y++) {
+      for (const x of [0, w - 1]) {
+        const i = (y * w + x) * 4
+        br += px[i]; bg0 += px[i + 1]; bb0 += px[i + 2]; borderCount++
+      }
     }
+    br /= borderCount; bg0 /= borderCount; bb0 /= borderCount
+    const bg = new Uint8Array(n)
+    const visited = new Uint8Array(n)
+    const queue = new Int32Array(n)
+    let qTail = 0
+    const pushSeed = (x, y) => {
+      const id = y * w + x
+      if (!visited[id]) {
+        visited[id] = 1
+        bg[id] = 1
+        queue[qTail++] = id
+      }
+    }
+    for (let x = 0; x < w; x++) { pushSeed(x, 0); pushSeed(x, h - 1) }
+    for (let y = 0; y < h; y++) { pushSeed(0, y); pushSeed(w - 1, y) }
+    for (let qHead = 0; qHead < qTail; qHead++) {
+      const id = queue[qHead]
+      const x = id % w, y = (id / w) | 0
+      const i = id * 4
+      const r0 = px[i], g0 = px[i + 1], b0 = px[i + 2]
+      const neighbors = []
+      if (x > 0) neighbors.push(id - 1)
+      if (x < w - 1) neighbors.push(id + 1)
+      if (y > 0) neighbors.push(id - w)
+      if (y < h - 1) neighbors.push(id + w)
+      for (const nb of neighbors) {
+        if (visited[nb]) continue
+        const j = nb * 4
+        const nr = px[j], ng = px[j + 1], nb_ = px[j + 2]
+        const stepDist = Math.hypot(nr - r0, ng - g0, nb_ - b0)
+        const refDist = Math.hypot(nr - br, ng - bg0, nb_ - bb0)
+        visited[nb] = 1
+        if (stepDist < growThreshold && refDist < maxDistance) {
+          bg[nb] = 1
+          queue[qTail++] = nb
+        }
+      }
+    }
+    // Cheap box-blur pass on the alpha channel alone so the flood-fill's
+    // jagged pixel boundary softens into a feathered edge instead of a
+    // hard cutout line.
+    const alpha = new Uint8ClampedArray(n)
+    for (let id = 0; id < n; id++) alpha[id] = bg[id] ? 0 : 255
+    const blurred = new Uint8ClampedArray(n)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sum = 0, count = 0
+        for (let oy = -1; oy <= 1; oy++) {
+          const ny = y + oy
+          if (ny < 0 || ny >= h) continue
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = x + ox
+            if (nx < 0 || nx >= w) continue
+            sum += alpha[ny * w + nx]
+            count++
+          }
+        }
+        blurred[y * w + x] = sum / count
+      }
+    }
+    for (let id = 0; id < n; id++) px[id * 4 + 3] = blurred[id]
     ctx.putImageData(data, 0, 0)
     tex.needsUpdate = true
   }
@@ -1288,6 +1375,15 @@ function pickFlyerKind() {
 // Shared blade geometry: ExtrudeGeometry (with bevels) is by far the most
 // expensive geometry type built in this file, and scissors hazards spawn
 // often (regular hazard rolls, gauntlets, boss gates) — build it once.
+//
+// The blade's length runs along local Y (screen-plane) with only a thin
+// extrusion depth in Z (toward the camera) — deliberately NOT rotated to
+// point its length down Z. The whole hazard spins around its own Z axis
+// (see animateHazards), so a blade whose length already lies in the XY
+// plane sweeps through a full pinwheel rotation always facing the
+// camera. Pointing the blade's length at the camera (the old orientation,
+// spun around Y) meant it swept edge-on twice per rotation and briefly
+// vanished into a thin line — "you can hardly tell what they are."
 const scissorBladeShape = new THREE.Shape()
 scissorBladeShape.moveTo(0, -1.1)
 scissorBladeShape.quadraticCurveTo(0.1, -0.32, 0.1, 0)
@@ -1297,15 +1393,14 @@ scissorBladeShape.quadraticCurveTo(-0.06, -0.32, 0, -1.1)
 const scissorBladeGeo = new THREE.ExtrudeGeometry(scissorBladeShape, {
   depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2,
 })
-scissorBladeGeo.rotateX(Math.PI / 2)
 const scissorEdgeGeo = new THREE.PlaneGeometry(0.05, 2.15)
 
 function createScissorBlade() {
   const blade = new THREE.Mesh(scissorBladeGeo, scissorsMat)
-  // Bright edge glint along the cutting side
+  // Bright edge glint along the cutting side, flush against the blade's
+  // camera-facing side.
   const edge = new THREE.Mesh(scissorEdgeGeo, scissorsEdgeMat)
-  edge.rotation.x = -Math.PI / 2
-  edge.position.set(0.1, 0.026, 0)
+  edge.position.set(0.1, 0, 0.028)
   blade.add(edge)
   return blade
 }
@@ -1317,13 +1412,14 @@ function createScissors() {
   const b2 = createScissorBlade()
   b2.position.set(-0.12, 0, 0)
   g.add(b1, b2)
-  // Pivot bolt
+  // Pivot bolt — a small disc facing the camera
   const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 12), scissorsPivotMat)
   pivot.rotation.x = Math.PI / 2
   g.add(pivot)
+  // Finger-loop handles, ring hole facing the camera so they read as
+  // circles (never edge-on) — same fix as the boss-gate danger rings.
   const h1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.065, 10, 20), scissorsHandleMat)
-  h1.position.set(0.32, 0, -1.35)
-  h1.rotation.y = Math.PI / 2
+  h1.position.set(0.32, -1.35, 0)
   const h2 = h1.clone()
   h2.position.x = -0.32
   g.add(h1, h2)
@@ -3478,7 +3574,11 @@ function animateHazards(dt) {
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
     if (e.type === 'scissors') {
-      e.mesh.rotation.y += dt * 1.2
+      // Spin around Z (the camera-facing axis), not Y — the blades' length
+      // now lies in the screen plane, so a Z-spin sweeps them through a
+      // full pinwheel rotation always facing the player instead of
+      // tumbling edge-on twice per revolution.
+      e.mesh.rotation.z += dt * 1.2
       const u = e.mesh.userData
       if (u.blade1) {
         const open = 0.12 + Math.sin(elapsed * 7) * 0.12
