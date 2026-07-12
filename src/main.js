@@ -864,6 +864,7 @@ function buildPowerMeta() {
     tear: { label: '📄 Torn Wing', color: c.tear, banner: '📄 Torn wing — lopsided!', duration: 7 },
     clip: { label: '📎 Paperclip', color: c.clip, banner: '📎 Weighted — stable dive!', duration: 8 },
     sling: { label: '🪢 Rubber Band', color: c.sling, banner: '🪢 Slingshot ready — hold Space!', duration: 10 },
+    phase: { label: '👻 Phase', color: c.phase, banner: '👻 Phasing through hazards!', duration: 4 },
   }
 }
 let POWER_META = buildPowerMeta()
@@ -991,14 +992,31 @@ function createDangerRing(color, emissive) {
   return ring
 }
 
+// Giant closing-gate blade for the boss fight. Was a BoxGeometry(0.4, 0.15, 8)
+// — width, thin-height, LENGTH along Z (pointing straight at the camera) —
+// the same "length axis pointed at the player" mistake fixed on the regular
+// flying scissors and the bird/dragonfly wings: it foreshortened to a nearly
+// invisible thin diagonal line instead of reading as a dramatic giant blade.
+// Length now runs along Y (vertical, in the screen plane) so it's always
+// visible edge-to-edge, with a bright edge glint for a bit of shine.
+const bossBladeGeo = new THREE.BoxGeometry(0.5, 9, 0.2)
+const bossBladeEdgeGeo = new THREE.PlaneGeometry(0.06, 9)
+
+function createBossBlade() {
+  const blade = new THREE.Mesh(bossBladeGeo, scissorsMat)
+  const edge = new THREE.Mesh(bossBladeEdgeGeo, scissorsEdgeMat)
+  edge.position.set(0.22, 0, 0.11)
+  blade.add(edge)
+  return blade
+}
+
 function createBossGate() {
   const g = new THREE.Group()
   // Two giant scissor blades forming a closing gate with a moving gap
-  const bladeGeo = new THREE.BoxGeometry(0.4, 0.15, 8)
-  const left = new THREE.Mesh(bladeGeo, scissorsMat)
+  const left = createBossBlade()
   left.position.set(-3.5, 10, 0)
   left.rotation.z = 0.35
-  const right = new THREE.Mesh(bladeGeo, scissorsMat)
+  const right = createBossBlade()
   right.position.set(3.5, 10, 0)
   right.rotation.z = -0.35
   // Frame towers
@@ -1162,6 +1180,7 @@ const FLYER_DEFS = [
   { id: 'biplane', label: 'toy biplane', radius: 0.9, weight: 0.45, tex: '/assets/flyer-biplane.jpg', scale: 1.7, dive: true },
   { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5 },
   { id: 'swarm', label: 'flock of paper cranes', radius: 0.95, weight: 0.35, tex: '/assets/birds.jpg', scale: 1.9 },
+  { id: 'wasp', label: 'paper wasp', radius: 0.45, weight: 0.4, dive: true, weave: true },
 ]
 
 function createBillboardFlyer(texUrl, scale = 1.5) {
@@ -1234,6 +1253,27 @@ dragonflyWingShape.moveTo(0, 0)
 dragonflyWingShape.quadraticCurveTo(0.42, 0.16, 0.78, 0.03)
 dragonflyWingShape.quadraticCurveTo(0.42, -0.09, 0, 0)
 const dragonflyWingGeo = extrudeFlat(dragonflyWingShape, 0.05)
+
+// Shared geometry/materials for the wasp hazard — small, fast, erratic
+// (spawns with dive+weave motion). Same extruded-wing trick as the bird
+// and dragonfly so it stays readable head-on.
+const waspBodyGeo = new THREE.ConeGeometry(0.09, 0.42, 8)
+const waspStingerGeo = new THREE.ConeGeometry(0.035, 0.16, 6)
+const waspBandGeo = new THREE.TorusGeometry(0.075, 0.02, 6, 10)
+const waspEyeGeo = new THREE.SphereGeometry(0.035, 8, 8)
+const waspWingShape = new THREE.Shape()
+waspWingShape.moveTo(0, 0)
+waspWingShape.quadraticCurveTo(0.2, 0.14, 0.4, 0.03)
+waspWingShape.quadraticCurveTo(0.2, -0.04, 0, 0)
+const waspWingGeo = extrudeFlat(waspWingShape, 0.035)
+const waspBodyMat = new THREE.MeshStandardMaterial({ color: 0x2b2320, roughness: 0.55 })
+const waspBandMat = new THREE.MeshStandardMaterial({
+  color: 0xfbbf24, emissive: 0x92400e, emissiveIntensity: 0.15, roughness: 0.45,
+})
+const waspWingMat = new THREE.MeshStandardMaterial({
+  color: 0xe8eef5, transparent: true, opacity: 0.55, side: THREE.DoubleSide, roughness: 0.3,
+})
+const waspEyeMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, emissive: 0x7f1d1d, emissiveIntensity: 0.4, roughness: 0.4 })
 
 function createFlyer(kindId) {
   const def = FLYER_DEFS.find((f) => f.id === kindId) || FLYER_DEFS[0]
@@ -1309,6 +1349,37 @@ function createFlyer(kindId) {
       if (sx < 0) g.userData.wingL = side
       else g.userData.wingR = side
     }
+  } else if (def.id === 'wasp') {
+    const body = new THREE.Mesh(waspBodyGeo, waspBodyMat)
+    body.rotation.x = Math.PI / 2
+    g.add(body)
+    const stinger = new THREE.Mesh(waspStingerGeo, waspBodyMat)
+    stinger.rotation.x = Math.PI / 2
+    stinger.position.z = -0.28
+    g.add(stinger)
+    for (const bz of [-0.02, -0.11, -0.2]) {
+      const band = new THREE.Mesh(waspBandGeo, waspBandMat)
+      band.rotation.y = Math.PI / 2
+      band.position.z = bz
+      g.add(band)
+    }
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(waspEyeGeo, waspEyeMat)
+      eye.position.set(sx * 0.07, 0.01, 0.19)
+      g.add(eye)
+    }
+    // Small angular wings — same extruded-shape + shared dihedral flap
+    // animation as the bird/dragonfly so they stay visible head-on.
+    const left = new THREE.Mesh(waspWingGeo, waspWingMat)
+    left.scale.x = -1
+    left.position.set(0.05, 0.03, 0.05)
+    left.rotation.x = -Math.PI / 2
+    const right = new THREE.Mesh(waspWingGeo, waspWingMat)
+    right.position.set(-0.05, 0.03, 0.05)
+    right.rotation.x = -Math.PI / 2
+    g.add(left, right)
+    g.userData.wingL = left
+    g.userData.wingR = right
   } else if (season.id === 'winter') {
     g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), birdMat))
   } else if (season.id === 'valentine') {
@@ -1530,9 +1601,14 @@ function createPowerUp(kind) {
   g.add(ring)
 
   // Icon sprite facing player — boost gets the hero origami-rocket art,
-  // everything else uses its clean flat icon.
+  // everything else uses its clean flat icon. A few kinds (like phase)
+  // don't have a matching power-${kind}.png yet; skip the icon plane for
+  // those rather than firing a doomed texture load — the crystal color,
+  // glow, and HUD emoji label already make the kind readable.
+  const NO_ICON_KINDS = new Set(['phase'])
   const iconUrl = isBoostHero ? '/assets/pickup-boost.jpg' : `/assets/power-${kind}.png`
   try {
+    if (NO_ICON_KINDS.has(kind)) throw new Error('no icon asset')
     if (!mats.iconMat) {
       const tex = isBoostHero ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
       mats.iconMat = new THREE.MeshBasicMaterial({
@@ -2059,7 +2135,7 @@ function activatePower(kind) {
   runStats.powers++
   track('power_pickup', { kind })
 
-  if (kind === 'shield' && shieldBubble) {
+  if ((kind === 'shield' || kind === 'phase') && shieldBubble) {
     shieldBubble.visible = true
     shieldBubble.material.color.setHex(meta.color)
   }
@@ -3834,6 +3910,13 @@ function update(dt) {
         shieldBubble.visible = Math.sin(elapsed * 20) > 0
       }
     }
+    if (activePower.kind === 'phase' && shieldBubble) {
+      // Faster, spookier flicker than the shield's slow pulse
+      shieldBubble.material.opacity = 0.12 + Math.abs(Math.sin(elapsed * 11)) * 0.14
+      if (activePower.timeLeft < 1) {
+        shieldBubble.visible = Math.sin(elapsed * 24) > 0
+      }
+    }
     if (activePower.kind === 'boost') {
       // Sustain a strong (but not overwhelming) boost for the full duration
       speedBoost = Math.max(speedBoost, 10 + activePower.timeLeft * 1.6)
@@ -4258,7 +4341,10 @@ function update(dt) {
   // the effective hit radius to compensate for the reduced reaction time.
   // Turbo Fold levels make this even safer.
   const hitScale = activePower?.kind === 'boost' ? Math.max(0.6, 0.78 - ufx.boostSafety * 0.06) : 1
-  const canCollide = invuln <= 0
+  // Phase power: pass through airborne hazards (birds/scissors/boss) but
+  // buildings and the ground are checked separately and still solid — this
+  // is a "dodge the sky" power, not a full no-clip.
+  const canCollide = invuln <= 0 && activePower?.kind !== 'phase'
   let ringsLeft = 0
 
   for (let i = entities.length - 1; i >= 0; i--) {

@@ -188,6 +188,10 @@ export class GameAudio {
         this._tone(f * 1.1, 0.05, 'square', 0.09)
         this._tone(f * 2.1, 0.06, 'sine', 0.06)
         return
+      case 'wasp':
+        this._tone(f * 0.5, 0.08, 'sawtooth', 0.09, f * 0.4)
+        this._tone(f * 1.15, 0.04, 'square', 0.06)
+        return
       default:
         this._tone(f, 0.07, 'triangle', 0.1)
         this._tone(f * 1.5, 0.1, 'sine', 0.08)
@@ -195,7 +199,7 @@ export class GameAudio {
   }
 
   powerUp(kind) {
-    const base = { shield: 300, slow: 220, magnet: 480, boost: 550 }[kind] || 400
+    const base = { shield: 300, slow: 220, magnet: 480, boost: 550, phase: 260 }[kind] || 400
     this._tone(base, 0.1, 'square', 0.08)
     this._tone(base * 1.5, 0.18, 'triangle', 0.12)
     this._tone(base * 2, 0.22, 'sine', 0.1)

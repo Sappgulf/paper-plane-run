@@ -50,6 +50,7 @@ export function powerColors(colorblind) {
       tear: 0xfbbf24,
       clip: 0x94a3b8,
       sling: 0xf97316,
+      phase: 0xe9d5ff,
     }
   }
   // High-contrast / pattern-friendly hues
@@ -61,6 +62,7 @@ export function powerColors(colorblind) {
     tear: 0xee3377, // magenta
     clip: 0x33bbee, // cyan
     sling: 0xbbbb00, // yellow
+    phase: 0xaa4499, // purple
   }
 }
 
