@@ -65,6 +65,7 @@ import {
   isLaunchGraceActive,
   shouldGrantLaunchGrace,
 } from './game/firstFlight.js'
+import { nextPauseState } from './game/pause.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -1725,6 +1726,7 @@ const mouseScreen = { x: 0.5, y: 0.5, has: false }
 const mouseTarget = { x: 0, y: 8 }
 
 let state = 'menu'
+let simulationPaused = false
 let distance = 0
 let stars = 0
 let speed = 28
@@ -4573,11 +4575,31 @@ function update(dt) {
 
 // Boot — start render loop first so a UI error never blanks the game
 const clock = new THREE.Clock()
+document.addEventListener('visibilitychange', () => {
+  const transition = nextPauseState(simulationPaused, document.visibilityState)
+  simulationPaused = transition.paused
+  if (simulationPaused) {
+    audio.ctx?.suspend().catch(() => {})
+    return
+  }
+
+  // Flush time accumulated while the page was hidden so simulation resumes
+  // from a fresh frame instead of consuming a large background delta.
+  clock.getDelta()
+  audio.ctx?.resume().catch(() => {})
+  if (transition.resumed && state === 'playing') {
+    powerBanner.textContent = '▶ Resumed'
+    powerBanner.classList.remove('hidden')
+    bannerTimer = 1.5
+  }
+})
 function frame() {
-  try {
-    update(Math.min(clock.getDelta(), 0.05))
-  } catch (err) {
-    console.error('update error', err)
+  if (!simulationPaused) {
+    try {
+      update(Math.min(clock.getDelta(), 0.05))
+    } catch (err) {
+      console.error('update error', err)
+    }
   }
   try {
     renderer.render(scene, camera)
