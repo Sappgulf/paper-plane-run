@@ -383,7 +383,20 @@ let nearMissCooldown = new WeakMap()
 // PWA
 const isStandalone =
   window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
-const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream
+// iPadOS 13+ Safari masquerades as desktop Mac Safari in its user-agent
+// string (no "iPad" substring), specifically so desktop sites don't serve
+// it a stripped-down mobile layout. That means a plain UA sniff misses
+// every modern iPad. The standard workaround: real Macs report
+// maxTouchPoints === 0, but an iPad reporting the "MacIntel" platform
+// still reports real touch points — that combination is iPad-only.
+const isIos =
+  (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+// "Mouse" mode's copy ("Move cursor…") and 🖱 icon read as confusing on a
+// touch-only tablet like an iPad, where there's no cursor and the same
+// mode is actually driven by dragging a finger. Relabel it for touch
+// devices without touching the underlying 'mouse' setting value.
+const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches && navigator.maxTouchPoints > 0
 const installHintEl = $('install-hint')
 const installHintBody = $('install-hint-body')
 let deferredInstall = null
@@ -2440,7 +2453,9 @@ function showStick(playing) {
   }
 
   const hudCtrl = $('hud-ctrl')
-  if (hudCtrl) hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : 'Mouse'
+  if (hudCtrl) {
+    hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : isTouchPrimary ? 'Touch' : 'Mouse'
+  }
 }
 
 function updateControlUI() {
@@ -2453,14 +2468,23 @@ function updateControlUI() {
   document.querySelectorAll('.ctrl-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.ctrl === m)
   })
+  const mouseBtn = document.querySelector('.ctrl-btn[data-ctrl="mouse"]')
+  if (mouseBtn) mouseBtn.textContent = isTouchPrimary ? '👆 Touch Aim' : '🖱 Mouse'
   const blurb = $('ctrl-blurb')
   if (blurb) {
-    blurb.textContent =
-      m === 'joystick'
-        ? 'On-screen stick + arrows / WASD · stick hidden in Mouse mode'
-        : settings.invertY
-          ? 'Move cursor — plane tracks it · Y inverted'
-          : 'Move cursor — plane tracks left/right & up/down'
+    if (m === 'joystick') {
+      blurb.textContent = isTouchPrimary
+        ? 'On-screen stick + arrows · stick hidden in Touch Aim mode'
+        : 'On-screen stick + arrows / WASD · stick hidden in Mouse mode'
+    } else if (isTouchPrimary) {
+      blurb.textContent = settings.invertY
+        ? 'Drag anywhere — plane tracks your finger · Y inverted'
+        : 'Drag anywhere — plane tracks your finger'
+    } else {
+      blurb.textContent = settings.invertY
+        ? 'Move cursor — plane tracks it · Y inverted'
+        : 'Move cursor — plane tracks left/right & up/down'
+    }
   }
   const invMenu = $('menu-invert-y')
   if (invMenu) invMenu.checked = !!settings.invertY

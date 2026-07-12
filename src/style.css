@@ -228,6 +228,14 @@ html.a11y-large-stick #stick-base,
 html.a11y-large-stick #wind-stick-base { width: min(160px, 42vw); height: min(160px, 42vw); }
 html.a11y-large-stick #stick-knob,
 html.a11y-large-stick #wind-stick-knob { width: 66px; height: 66px; }
+/* Tablets (iPad and similar): the 132px cap above was sized for phones —
+   on a touch device with real screen real estate to spare, a bigger pad
+   is comfortable, not cramped. Gated on pointer:coarse so mouse/trackpad
+   desktop users at a similar window width aren't affected. */
+@media (pointer: coarse) and (min-width: 700px) {
+  #stick-base, #wind-stick-base { width: min(170px, 20vw); height: min(170px, 20vw); }
+  #stick-knob, #wind-stick-knob { width: 68px; height: 68px; }
+}
 .stick-hint { margin-top: 8px; font-size: 12px; font-weight: 900; color: rgba(61,44,41,.45); }
 
 /* Banners stack below the HUD's actual (possibly wrapped) height instead of
