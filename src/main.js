@@ -48,6 +48,8 @@ import {
   getDailyTop,
   fetchRemoteTop,
   submitRemoteScore,
+  submitTimeAttackScore,
+  getTimeAttackTop,
 } from './leaderboard.js'
 import {
   emptyLayout,
@@ -65,6 +67,7 @@ import {
   incrementRunCount,
   getAchievementProgress,
   claimAchievementTier,
+  addLifetimePopped,
 } from './achievements.js'
 import {
   FIRST_FLIGHT_GRACE_SECONDS,
@@ -305,6 +308,7 @@ function saveBest(id, v) {
 
 let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
 let bestDistance = loadBest(difficulty.id)
+let bestTimeAttackStars = loadBest('timeattack-stars')
 if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
 if (hudModeEl) hudModeEl.textContent = difficulty.label
 if (diffBlurb) diffBlurb.textContent = difficulty.blurb
@@ -346,8 +350,9 @@ updateDailyHint()
 let runKind = 'classic'
 const TIME_ATTACK_SECONDS = 60
 let timeAttackLeft = 0
+let timeAttackLastTickSecond = -1
 let challenge = null
-let lastRun = { d: 0, s: 0, m: 'normal', daily: false }
+let lastRun = { d: 0, s: 0, m: 'normal', daily: false, timeAttack: false }
 let layoutPlay = null
 let rng = Math.random
 let ghostRecorder = null
@@ -367,7 +372,7 @@ let feverFloatTimeout = null
 /** Consecutive star pickups within a short window — separate from the near-miss combo */
 let starStreak = 0
 let starStreakTimer = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
 let lastPhotoDataUrl = null
@@ -780,6 +785,7 @@ function updateShots(dt) {
         toRemove.add(e)
         stars += 2
         starsEl.textContent = String(stars)
+        runStats.popped++
         audio.popTarget()
         if (settings.haptics) Haptic.collect()
         spawnConfetti(target.mesh.position.x, target.mesh.position.y, target.mesh.position.z)
@@ -2340,7 +2346,7 @@ function resetGame() {
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0 }
   nextBossAt = 500
   nextGauntletAt = 250
   bossActive = false
@@ -2351,6 +2357,7 @@ function resetGame() {
   guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
   if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
   timeAttackLeft = TIME_ATTACK_SECONDS
+  timeAttackLastTickSecond = -1
   timeAttackHud?.classList.toggle('hidden', runKind !== 'timeattack')
   if (timeAttackValEl) timeAttackValEl.textContent = String(TIME_ATTACK_SECONDS)
   crashT = 0
@@ -3190,6 +3197,7 @@ async function renderBoard(tab = 'local') {
   let rows = []
   if (tab === 'local') rows = getLocalTop(12)
   else if (tab === 'daily') rows = getDailyTop(dailyKey(), difficulty.id, 12)
+  else if (tab === 'timeattack') rows = getTimeAttackTop(12)
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
     rows = remote?.scores || []
@@ -3208,10 +3216,13 @@ async function renderBoard(tab = 'local') {
     const rank = i + 1
     const isMe = (r.name || 'Pilot') === myName
     li.className = `board-row${rank <= 3 ? ` rank-${rank}` : ''}${isMe ? ' board-me' : ''}`
+    const scoreHtml = tab === 'timeattack'
+      ? `${r.stars || 0}★<small>${r.distance}m</small>`
+      : `${r.distance}m<small>${r.stars || 0}★</small>`
     li.innerHTML = `
       <span class="board-rank">${rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}</span>
       <span class="board-name">${r.name || 'Pilot'}${isMe ? ' (you)' : ''}<small>${r.mode || ''}</small></span>
-      <span class="board-score">${r.distance}m<small>${r.stars || 0}★</small></span>
+      <span class="board-score">${scoreHtml}</span>
     `
     list.appendChild(li)
   })
@@ -3391,7 +3402,10 @@ bindClick('hotseat-go', () => {
 })
 
 function shareText() {
-  const { d, s, m, daily } = lastRun
+  const { d, s, m, daily, timeAttack } = lastRun
+  if (timeAttack) {
+    return `I grabbed ${s}★ in 60 seconds of Time Attack on ${DIFFS[m]?.label || m} in Paper Plane Run!`
+  }
   return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ' (Daily)' : ''} in Paper Plane Run!`
 }
 function buildShareUrl() {
@@ -3401,6 +3415,7 @@ function buildShareUrl() {
   u.searchParams.set('s', String(lastRun.s))
   u.searchParams.set('m', lastRun.m)
   if (lastRun.daily) u.searchParams.set('daily', '1')
+  if (lastRun.timeAttack) u.searchParams.set('ta', '1')
   return u.toString()
 }
 async function shareScore() {
@@ -3539,7 +3554,9 @@ function capturePhoto() {
   try {
     lastPhotoDataUrl = buildRecapCard()
     photoImg.src = lastPhotoDataUrl
-    photoCaption.textContent = `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
+    photoCaption.textContent = runKind === 'timeattack'
+      ? `${stars}★ in 60s · ${difficulty.label}`
+      : `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
     photoWrap.classList.remove('hidden')
   } catch {
     photoWrap.classList.add('hidden')
@@ -3661,7 +3678,7 @@ function finalizeDeath() {
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack'
   const d = Math.floor(distance)
   lastRun = {
-    d, s: stars, m: difficulty.id, daily: runKind === 'daily',
+    d, s: stars, m: difficulty.id, daily: runKind === 'daily', timeAttack: runKind === 'timeattack',
   }
 
   const wasNewBest = !isWin && d > bestDistance && d > 0 && isDistanceRun
@@ -3670,7 +3687,12 @@ function finalizeDeath() {
     saveBest(difficulty.id, d)
   }
   bestEl.textContent = `${Math.floor(bestDistance)}m`
-  newBestBadge?.classList.toggle('hidden', !wasNewBest)
+  const wasNewTimeAttackBest = runKind === 'timeattack' && stars > bestTimeAttackStars
+  if (wasNewTimeAttackBest) {
+    bestTimeAttackStars = stars
+    saveBest('timeattack-stars', stars)
+  }
+  newBestBadge?.classList.toggle('hidden', !wasNewBest && !wasNewTimeAttackBest)
 
   if (ghostRecorder && isDistanceRun && !isWin) {
     const key = difficulty.id + (runKind === 'daily' ? '-daily' : '')
@@ -3684,6 +3706,7 @@ function finalizeDeath() {
   let weeklyBonus = 0
   if (runKind !== 'tutorial' && runKind !== 'layout') {
     addLifetimeDistance(d)
+    addLifetimePopped(runStats.popped)
     incrementRunCount()
     updatePlayStreak()
     weeklyBonus = claimWeeklyStreakBonus()
@@ -3699,6 +3722,7 @@ function finalizeDeath() {
     maxCombo,
     powers: runStats.powers,
     winds: runStats.winds,
+    popped: runStats.popped,
     mode: difficulty.id,
     daily: runKind === 'daily',
   })
@@ -3713,6 +3737,8 @@ function finalizeDeath() {
     submitRemoteScore({
       name, distance: d, stars, mode: difficulty.id, daily: runKind === 'daily',
     })
+  } else if (runKind === 'timeattack') {
+    submitTimeAttackScore({ name, stars, distance: d, mode: difficulty.id })
   }
 
   if (hotseat.active && runKind === 'hotseat') {
@@ -4052,8 +4078,15 @@ function update(dt) {
   }
   if (runKind === 'timeattack' && timeAttackLeft > 0) {
     timeAttackLeft = Math.max(0, timeAttackLeft - dt)
-    if (timeAttackValEl) timeAttackValEl.textContent = String(Math.ceil(timeAttackLeft))
+    const secLeft = Math.ceil(timeAttackLeft)
+    if (timeAttackValEl) timeAttackValEl.textContent = String(secLeft)
     timeAttackHud?.classList.toggle('combo-pulse', timeAttackLeft <= 10)
+    // One tick per second crossed, only for the final urgent stretch.
+    if (secLeft <= 10 && secLeft >= 1 && secLeft !== timeAttackLastTickSecond) {
+      timeAttackLastTickSecond = secLeft
+      audio.timeTick(secLeft)
+      if (settings.haptics) Haptic.tap()
+    }
     if (timeAttackLeft <= 0) {
       die("Time's up!")
       return

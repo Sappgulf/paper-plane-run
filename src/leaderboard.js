@@ -1,5 +1,6 @@
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
+const TIME_ATTACK_KEY = 'paper-plane-run-lb-timeattack'
 
 function load(key) {
   try {
@@ -37,6 +38,26 @@ export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey 
 
 export function getLocalTop(limit = 10) {
   return load(LOCAL_KEY).slice(0, limit)
+}
+
+/** Time Attack scores on stars-in-60s, not distance — a separate board. */
+export function submitTimeAttackScore({ name, stars, distance, mode }) {
+  const entry = {
+    name: (name || 'Pilot').slice(0, 16),
+    stars: stars | 0,
+    distance: Math.floor(distance),
+    mode,
+    at: Date.now(),
+  }
+  const list = load(TIME_ATTACK_KEY)
+  list.push(entry)
+  list.sort((a, b) => b.stars - a.stars || b.distance - a.distance)
+  save(TIME_ATTACK_KEY, list)
+  return list.slice(0, 10)
+}
+
+export function getTimeAttackTop(limit = 10) {
+  return load(TIME_ATTACK_KEY).slice(0, limit)
 }
 
 export function getDailyTop(dailyKey, mode, limit = 10) {

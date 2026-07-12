@@ -5,6 +5,7 @@
  */
 const DIST_KEY = 'paper-plane-run-lifetime-distance'
 const RUNS_KEY = 'paper-plane-run-total-runs'
+const POPPED_KEY = 'paper-plane-run-lifetime-popped'
 const CLAIMED_KEY = 'paper-plane-run-achievements-claimed'
 
 export function getLifetimeDistance() {
@@ -19,6 +20,13 @@ export function getRunCount() {
 }
 export function incrementRunCount() {
   localStorage.setItem(RUNS_KEY, String(getRunCount() + 1))
+}
+export function getLifetimePopped() {
+  return Number(localStorage.getItem(POPPED_KEY) || 0)
+}
+export function addLifetimePopped(n) {
+  if (!(n > 0)) return
+  localStorage.setItem(POPPED_KEY, String(getLifetimePopped() + Math.floor(n)))
 }
 
 function loadClaimed() {
@@ -70,6 +78,19 @@ export const ACHIEVEMENTS = [
       { threshold: 50, reward: 16 },
       { threshold: 200, reward: 32 },
       { threshold: 1000, reward: 64 },
+    ],
+  },
+  {
+    id: 'popped',
+    name: 'Sharpshooter',
+    icon: '🎯',
+    getValue: getLifetimePopped,
+    unit: ' popped',
+    tiers: [
+      { threshold: 25, reward: 10 },
+      { threshold: 100, reward: 20 },
+      { threshold: 400, reward: 40 },
+      { threshold: 1500, reward: 80 },
     ],
   },
 ]

@@ -149,6 +149,12 @@ export class GameAudio {
     this.startMusic()
   }
 
+  /** Time Attack countdown tick — sharper and higher as the clock runs out. */
+  timeTick(secondsLeft) {
+    const urgent = secondsLeft <= 3
+    this._tone(urgent ? 1040 : 760, urgent ? 0.09 : 0.06, urgent ? 'square' : 'triangle', urgent ? 0.14 : 0.09)
+  }
+
   shoot() {
     this._tone(760, 0.05, 'square', 0.08, 380)
   }
