@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
 import { dailyKey, dailySeed, mulberry32 } from './rng.js'
+import { todaysTwist } from './twists.js'
 import {
   SKINS,
   getEquippedSkinId,
@@ -310,7 +311,10 @@ function setDifficulty(id, { persist = true } = {}) {
 }
 
 function updateDailyHint() {
-  if (dailyHint) dailyHint.textContent = `📅 Daily ${dailyKey()} · seed race on ${difficulty.label}`
+  const twist = todaysTwist()
+  if (dailyHint) {
+    dailyHint.textContent = `📅 Daily ${dailyKey()} · seed race on ${difficulty.label} · ${twist.icon} ${twist.name}: ${twist.desc}`
+  }
 }
 updateDailyHint()
 
@@ -542,6 +546,25 @@ const TRAIL_N = 24
   trail.visible = false
   scene.add(trail)
   for (let i = 0; i < TRAIL_N; i++) trailPts.push(new THREE.Vector3())
+}
+
+// Ambient wisp trail — always present at speed, independent of upgrades
+const wispPts = []
+const WISP_N = 14
+{
+  const g = new THREE.BufferGeometry()
+  const arr = new Float32Array(WISP_N * 3)
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3))
+  const wisp = new THREE.Points(
+    g,
+    new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
+    }),
+  )
+  wisp.name = 'ambientWisp'
+  wisp.visible = false
+  scene.add(wisp)
+  for (let i = 0; i < WISP_N; i++) wispPts.push(new THREE.Vector3())
 }
 
 const hemi = new THREE.HemisphereLight(0xffe8d6, 0x8fb8d8, 1.15)
@@ -833,15 +856,21 @@ function createPaperPlane(matBody = planeBodyMat, matAccent = planeAccentMat, wi
  *  rotation) so it reads as a hoop to fly through. A torus viewed edge-on
  *  projects as a solid bar spanning its full diameter, not a ring — that's
  *  the "wood plank" look this hazard used to have when it was rotated 90°. */
+// Geometry shared across both boss variants (scissors=red, wind=blue) — only
+// the material color differs, so no need to rebuild the torus mesh data
+// each of the 3 rings per boss gate.
+const dangerRingGeo = new THREE.TorusGeometry(1.8, 0.13, 12, 32)
+const dangerRingGlowGeo = new THREE.TorusGeometry(1.8, 0.19, 8, 32)
+
 function createDangerRing(color, emissive) {
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(1.8, 0.13, 12, 32),
+    dangerRingGeo,
     new THREE.MeshStandardMaterial({
       color, emissive, emissiveIntensity: 0.55, roughness: 0.3, side: THREE.DoubleSide,
     }),
   )
   const glow = new THREE.Mesh(
-    new THREE.TorusGeometry(1.8, 0.19, 8, 32),
+    dangerRingGlowGeo,
     new THREE.MeshBasicMaterial({
       color: emissive, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide,
     }),
@@ -1046,6 +1075,27 @@ function createBird() {
   return createFlyer('bird')
 }
 
+// Shared geometries for the default paper-crane bird — birds are the most
+// frequently spawned hazard in the game, so building fresh Shape/Cone/Sphere
+// geometry on every single spawn was pure GC churn. Geometry is stateless
+// and safe to share across many mesh instances; only transforms differ.
+const birdWingShape = new THREE.Shape()
+birdWingShape.moveTo(0, 0)
+birdWingShape.lineTo(0.62, -0.22)
+birdWingShape.lineTo(0.18, 0.08)
+birdWingShape.lineTo(0, 0)
+const birdWingGeo = new THREE.ShapeGeometry(birdWingShape)
+const birdCreaseShape = new THREE.Shape()
+birdCreaseShape.moveTo(0, 0)
+birdCreaseShape.lineTo(0.34, -0.12)
+birdCreaseShape.lineTo(0.18, 0.08)
+birdCreaseShape.lineTo(0, 0)
+const birdCreaseGeo = new THREE.ShapeGeometry(birdCreaseShape)
+const birdBodyGeo = new THREE.ConeGeometry(0.08, 0.5, 8)
+const birdNeckGeo = new THREE.ConeGeometry(0.05, 0.32, 8)
+const birdEyeGeo = new THREE.SphereGeometry(0.025, 8, 8)
+const birdFeatherGeo = new THREE.ConeGeometry(0.045, 0.4, 6)
+
 function createFlyer(kindId) {
   const def = FLYER_DEFS.find((f) => f.id === kindId) || FLYER_DEFS[0]
   const g = new THREE.Group()
@@ -1135,49 +1185,39 @@ function createFlyer(kindId) {
   } else {
     // Folded-paper crane: hinged triangular wings (same fold logic as the
     // player's plane) so the existing flap animation bends them at the root
-    // instead of spinning a chunky box around its own middle.
-    const wingShape = new THREE.Shape()
-    wingShape.moveTo(0, 0)
-    wingShape.lineTo(0.62, -0.22)
-    wingShape.lineTo(0.18, 0.08)
-    wingShape.lineTo(0, 0)
-    // A smaller inner panel along the fold line reads as a mountain-fold
-    // crease (mirrors the body/accent split on the player's own plane).
-    const creaseShape = new THREE.Shape()
-    creaseShape.moveTo(0, 0)
-    creaseShape.lineTo(0.34, -0.12)
-    creaseShape.lineTo(0.18, 0.08)
-    creaseShape.lineTo(0, 0)
-    const left = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
+    // instead of spinning a chunky box around its own middle. Geometry is
+    // shared module-level (see birdWingGeo etc.) since birds are the most
+    // frequently spawned hazard — only per-instance transforms differ.
+    const left = new THREE.Mesh(birdWingGeo, birdMat)
     left.rotation.x = -Math.PI / 2
     left.scale.x = -1
     // Crease panels are children so they flap in lockstep with their wing.
-    const leftCrease = new THREE.Mesh(new THREE.ShapeGeometry(creaseShape), birdAccentMat)
+    const leftCrease = new THREE.Mesh(birdCreaseGeo, birdAccentMat)
     leftCrease.position.z = 0.003
     left.add(leftCrease)
-    const right = new THREE.Mesh(new THREE.ShapeGeometry(wingShape), birdMat)
+    const right = new THREE.Mesh(birdWingGeo, birdMat)
     right.rotation.x = -Math.PI / 2
-    const rightCrease = new THREE.Mesh(new THREE.ShapeGeometry(creaseShape), birdAccentMat)
+    const rightCrease = new THREE.Mesh(birdCreaseGeo, birdAccentMat)
     rightCrease.position.z = 0.003
     right.add(rightCrease)
     g.add(left, right)
 
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 8), birdMat)
+    const body = new THREE.Mesh(birdBodyGeo, birdMat)
     body.rotation.x = Math.PI / 2
     g.add(body)
-    const neck = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.32, 8), birdAccentMat)
+    const neck = new THREE.Mesh(birdNeckGeo, birdAccentMat)
     neck.rotation.z = Math.PI * 0.62
     neck.position.set(0, 0.06, 0.28)
     g.add(neck)
     // Tiny painted eye for character
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), birdEyeMat)
+    const eye = new THREE.Mesh(birdEyeGeo, birdEyeMat)
     eye.position.set(0.035, 0.16, 0.42)
     const eye2 = eye.clone()
     eye2.position.x = -0.035
     g.add(eye, eye2)
     // Folded fan tail (three thin blades instead of one plain cone)
     for (const a of [-0.22, 0, 0.22]) {
-      const feather = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.4, 6), birdAccentMat)
+      const feather = new THREE.Mesh(birdFeatherGeo, birdAccentMat)
       feather.rotation.z = -Math.PI / 2
       feather.rotation.x = a
       feather.position.set(0, 0.02, -0.32)
@@ -1215,20 +1255,25 @@ function pickFlyerKind() {
  *  cutting-edge glint strip, built once and reused for every scissors hazard.
  *  Symmetric front-to-back so it still reads as a spinning blade when
  *  animated with a simple absolute rotation.z, like the box it replaces. */
+// Shared blade geometry: ExtrudeGeometry (with bevels) is by far the most
+// expensive geometry type built in this file, and scissors hazards spawn
+// often (regular hazard rolls, gauntlets, boss gates) — build it once.
+const scissorBladeShape = new THREE.Shape()
+scissorBladeShape.moveTo(0, -1.1)
+scissorBladeShape.quadraticCurveTo(0.1, -0.32, 0.1, 0)
+scissorBladeShape.quadraticCurveTo(0.1, 0.32, 0, 1.1)
+scissorBladeShape.quadraticCurveTo(-0.06, 0.32, -0.06, 0)
+scissorBladeShape.quadraticCurveTo(-0.06, -0.32, 0, -1.1)
+const scissorBladeGeo = new THREE.ExtrudeGeometry(scissorBladeShape, {
+  depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2,
+})
+scissorBladeGeo.rotateX(Math.PI / 2)
+const scissorEdgeGeo = new THREE.PlaneGeometry(0.05, 2.15)
+
 function createScissorBlade() {
-  const shape = new THREE.Shape()
-  shape.moveTo(0, -1.1)
-  shape.quadraticCurveTo(0.1, -0.32, 0.1, 0)
-  shape.quadraticCurveTo(0.1, 0.32, 0, 1.1)
-  shape.quadraticCurveTo(-0.06, 0.32, -0.06, 0)
-  shape.quadraticCurveTo(-0.06, -0.32, 0, -1.1)
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2,
-  })
-  geo.rotateX(Math.PI / 2)
-  const blade = new THREE.Mesh(geo, scissorsMat)
+  const blade = new THREE.Mesh(scissorBladeGeo, scissorsMat)
   // Bright edge glint along the cutting side
-  const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 2.15), scissorsEdgeMat)
+  const edge = new THREE.Mesh(scissorEdgeGeo, scissorsEdgeMat)
   edge.rotation.x = -Math.PI / 2
   edge.position.set(0.1, 0.026, 0)
   blade.add(edge)
@@ -1451,6 +1496,7 @@ let roll = 0
 let windTimer = 7
 let windActive = 0
 let windForce = 0
+let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
 let elapsed = 0
@@ -1634,10 +1680,11 @@ function spawnChunk(z) {
   }
 
   const ufx = getUpgradeEffects()
+  const twistStarMul = activeTwist?.starMul || 1
   // Stars — often 1–2
-  const starRolls = rng() < 0.25 * ufx.starChanceMul ? 2 : 1
+  const starRolls = rng() < 0.25 * ufx.starChanceMul * twistStarMul ? 2 : 1
   for (let s = 0; s < starRolls; s++) {
-    if (rng() < cfg.starChance * ufx.starChanceMul) {
+    if (rng() < cfg.starChance * ufx.starChanceMul * twistStarMul) {
       const st = createStar()
       st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 8)
       scene.add(st)
@@ -2045,10 +2092,13 @@ function resetGame() {
   // RNG
   if (runKind === 'daily') {
     rng = mulberry32(dailySeed(difficulty.id))
+    activeTwist = todaysTwist()
   } else if (runKind === 'layout') {
     rng = Math.random
+    activeTwist = null
   } else {
     rng = Math.random
+    activeTwist = null
   }
 
   plane.position.set(0, planeY, 0)
@@ -3745,11 +3795,12 @@ function update(dt) {
     windActive -= dt
     velX += windForce * dt * (activePower?.kind === 'slow' ? 0.5 : 1)
     if (windActive <= 0) windBanner.classList.add('hidden')
-  } else if (windTimer <= 0 && runKind !== 'tutorial' && runKind !== 'coop') {
+  } else if (windTimer <= 0 && runKind !== 'tutorial' && runKind !== 'coop' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
+    // Calm Skies twist sets windMul to 0, which is handled by the guard above
     windActive = 1.6 + rng() * 1.4
     windForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
-    windTimer = (6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)
+    windTimer = ((6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)) * (activeTwist?.windMul ?? 1)
     windBanner.classList.remove('hidden')
     audio.windGust()
     if (settings.haptics) Haptic.wind()
@@ -3858,6 +3909,7 @@ function update(dt) {
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
   if (activePower?.kind === 'boost') speedMul *= 1.22
+  if (activeTwist?.speedMul) speedMul *= activeTwist.speedMul
   const cfg = difficulty
   const cruise =
     (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
@@ -3887,6 +3939,18 @@ function update(dt) {
     }
     pos.needsUpdate = true
   } else if (trail) trail.visible = false
+
+  // Ambient wisp trail — subtle always-on speed cue, skipped in low-power mode
+  const wisp = scene.getObjectByName('ambientWisp')
+  if (wisp && !settings.lowPower && speed > cfg.speedBase * 1.15) {
+    wisp.visible = true
+    for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])
+    wispPts[0].set(planeX + (Math.random() - 0.5) * 0.5, planeY - 0.15 + (Math.random() - 0.5) * 0.2, -0.8 - Math.random() * 0.6)
+    const wpos = wisp.geometry.attributes.position
+    for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
+    wpos.needsUpdate = true
+    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.3)
+  } else if (wisp) wisp.visible = false
 
   // Funnel milestones
   for (const m of [50, 100, 200, 500, 1000]) {
