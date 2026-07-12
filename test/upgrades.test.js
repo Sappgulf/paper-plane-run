@@ -67,6 +67,24 @@ describe('prestige', () => {
   })
 })
 
+describe('ink blast weapon', () => {
+  beforeEach(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+  })
+
+  test('is inert until purchased, then fires faster per level', () => {
+    expect(getUpgradeEffects().weaponLevel).toBe(0)
+
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 1 }))
+    const lvl1 = getUpgradeEffects()
+    expect(lvl1.weaponLevel).toBe(1)
+    expect(lvl1.weaponCooldown).toBeCloseTo(0.92)
+
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 4 }))
+    expect(getUpgradeEffects().weaponCooldown).toBeCloseTo(0.38)
+  })
+})
+
 describe('wide wings + paper trail synergy', () => {
   beforeEach(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')

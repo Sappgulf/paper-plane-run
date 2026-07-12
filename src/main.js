@@ -203,6 +203,7 @@ const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
+const fireBtn = $('fire-btn')
 
 function animateCountUp(el, target, suffix, ms = 700) {
   const start = performance.now()
@@ -737,6 +738,60 @@ applyPerformanceSettings()
 // Confetti pool for near-miss
 const confetti = []
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
+/** Ink Blast: fires a forward projectile that pops small airborne hazards. */
+function fireWeapon() {
+  if (state !== 'playing') return
+  const fx = getUpgradeEffects()
+  if (fx.weaponLevel <= 0 || fireCooldown > 0) return
+  fireCooldown = fx.weaponCooldown
+  const m = createShot()
+  m.position.set(planeX, planeY, 4)
+  scene.add(m)
+  entities.push({ mesh: m, type: 'shot', radius: 0.5, ttl: 1.4 })
+  audio.shoot()
+  if (settings.haptics) Haptic.nearMiss()
+  fireBtn?.classList.add('firing')
+  setTimeout(() => fireBtn?.classList.remove('firing'), 90)
+}
+
+/** Advance in-flight ink shots and pop any bird/scissors hazard they touch. */
+function updateShots(dt) {
+  const toRemove = new Set()
+  for (const e of entities) {
+    if (e.type !== 'shot' || toRemove.has(e)) continue
+    e.mesh.position.z += 46 * dt
+    e.ttl -= dt
+    if (e.ttl <= 0) {
+      toRemove.add(e)
+      continue
+    }
+    for (const target of entities) {
+      if (toRemove.has(target) || (target.type !== 'bird' && target.type !== 'scissors')) continue
+      const dx = target.mesh.position.x - e.mesh.position.x
+      const dy = target.mesh.position.y - e.mesh.position.y
+      const dz = target.mesh.position.z - e.mesh.position.z
+      const hitR = (target.radius || 0.7) + e.radius
+      if (dx * dx + dy * dy + dz * dz < hitR * hitR) {
+        toRemove.add(target)
+        toRemove.add(e)
+        stars += 2
+        starsEl.textContent = String(stars)
+        audio.popTarget()
+        if (settings.haptics) Haptic.collect()
+        spawnConfetti(target.mesh.position.x, target.mesh.position.y, target.mesh.position.z)
+        break
+      }
+    }
+  }
+  if (!toRemove.size) return
+  for (let i = entities.length - 1; i >= 0; i--) {
+    if (toRemove.has(entities[i])) {
+      scene.remove(entities[i].mesh)
+      entities.splice(i, 1)
+    }
+  }
+}
+
 function spawnConfetti(x, y, z) {
   for (let i = 0; i < 10; i++) {
     const m = new THREE.Mesh(
@@ -1599,6 +1654,18 @@ function createPowerUp(kind) {
   return g
 }
 
+// Ink Blast projectile — shared geometry/material like every other spawned
+// entity here, since a run can fire dozens of these.
+const shotGeo = new THREE.ConeGeometry(0.22, 0.6, 8)
+const shotMat = new THREE.MeshStandardMaterial({
+  color: 0x2b2540, emissive: 0x4c3d80, emissiveIntensity: 0.9, roughness: 0.35, metalness: 0.2,
+})
+function createShot() {
+  const m = new THREE.Mesh(shotGeo, shotMat)
+  m.rotation.x = Math.PI / 2
+  return m
+}
+
 function createCloud() {
   const g = new THREE.Group()
   // Soft gray underside lumps first (slightly lower/behind) for a hint of
@@ -1690,6 +1757,9 @@ let windForce = 0
 let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
+let hitStopTimer = 0
+let spawnUnfold = 1
+let fireCooldown = 0
 let elapsed = 0
 let launchGraceSeconds = 0
 let activePower = null
@@ -2226,6 +2296,7 @@ function applyUpgradeVisuals() {
     // Wide Wings + Paper Trail both maxed unlocks a distinct "Aurora Trail" color.
     trail.material.color.setHex(fx.synergyGold ? 0x7cf9ff : 0xfff0c0)
   }
+  fireBtn?.classList.toggle('hidden', fx.weaponLevel <= 0)
 }
 
 function resetGame() {
@@ -2246,6 +2317,8 @@ function resetGame() {
   windForce = 0
   nextSpawnZ = 35
   shake = 0
+  hitStopTimer = 0
+  fireCooldown = 0
   elapsed = 0
   launchGraceSeconds = shouldGrantLaunchGrace({
     runKind,
@@ -2286,11 +2359,12 @@ function resetGame() {
   camera.fov = baseFov
   camera.updateProjectionMatrix()
   plane.visible = true
-  plane.scale.setScalar(getUpgradeEffects().planeScale)
   comboHud.classList.add('hidden')
   applySeasonVisuals()
   applySkin(getEquippedSkinId())
   applyUpgradeVisuals()
+  spawnUnfold = 0
+  plane.scale.setScalar(getUpgradeEffects().planeScale * 0.15)
 
   // RNG
   if (runKind === 'daily') {
@@ -2421,6 +2495,7 @@ function showStick(playing) {
   if (hudCtrl) {
     hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : isTouchPrimary ? 'Touch' : 'Mouse'
   }
+  fireBtn?.classList.toggle('hidden', !playing || getUpgradeEffects().weaponLevel <= 0)
 }
 
 function updateControlUI() {
@@ -2676,6 +2751,11 @@ window.addEventListener('keydown', (e) => {
   }
 })
 window.addEventListener('keyup', (e) => keys.delete(e.code))
+fireBtn?.addEventListener('pointerdown', (e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  fireWeapon()
+})
 window.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
   mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
@@ -2904,9 +2984,11 @@ function renderSkins() {
           ? s.cost && s.cost < 900
             ? `${s.cost}★ unlock`
             : 'Unlocked'
-          : s.seasonal
-            ? `Season: ${s.seasonal}`
-            : `Need ${s.cost}★`
+          : s.prestigeReq
+            ? `Prestige ${s.prestigeReq} required`
+            : s.seasonal
+              ? `Season: ${s.seasonal}`
+              : `Need ${s.cost}★`
     card.innerHTML = `<img src="${s.map}" alt=""/><div class="name">${s.name}</div><div class="meta">${meta}</div>`
     card.onclick = () => {
       refreshUnlocks(season.id)
@@ -3494,6 +3576,7 @@ function die(reason) {
   crashT = isWin ? 0.35 : 1.05
   crashReason = reason
   shake = isWin ? 0.2 : 1.1
+  hitStopTimer = isWin ? 0 : 0.09
   speedBoost = 0
   fovPunch = isWin ? 0 : -6
   showStick(false)
@@ -3925,7 +4008,17 @@ function update(dt) {
   }
 
   // Playing
+  // Brief unfold flourish right after launch — the plane pops in from a
+  // crease instead of just appearing at full size.
+  if (spawnUnfold < 1) {
+    spawnUnfold = Math.min(1, spawnUnfold + dt / 0.4)
+    const eased = 1 - Math.pow(1 - spawnUnfold, 3)
+    plane.scale.setScalar(getUpgradeEffects().planeScale * (0.15 + eased * 0.85))
+  }
   if (invuln > 0) invuln -= dt
+  if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
+  if (keys.has('KeyX')) fireWeapon()
+  updateShots(dt)
   if (damageFlash > 0) {
     damageFlash = Math.max(0, damageFlash - dt)
     const t = damageFlash / 1.1
@@ -4491,6 +4584,7 @@ function update(dt) {
           if (!e.cleared) {
             e.cleared = true
             bossActive = false
+            hitStopTimer = 0.07
             track('boss_clear', { distance: Math.floor(distance) })
             stars += 5
             starsEl.textContent = String(stars)
@@ -4600,7 +4694,15 @@ function frame() {
   if (!simulationPaused) {
     try {
       timer.update()
-      update(Math.min(timer.getDelta(), 0.05))
+      const rawDt = Math.min(timer.getDelta(), 0.05)
+      if (hitStopTimer > 0) {
+        // Freeze-frame punch: barely advance the sim for a couple of ticks
+        // while still rendering, so crashes/boss clears read as an impact.
+        hitStopTimer -= rawDt
+        update(rawDt * 0.05)
+      } else {
+        update(rawDt)
+      }
     } catch (err) {
       console.error('update error', err)
     }

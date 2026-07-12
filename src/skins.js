@@ -1,3 +1,5 @@
+import { getPrestigeLevel } from './upgrades.js'
+
 const KEY = 'paper-plane-run-skins'
 const EQUIP = 'paper-plane-run-skin'
 const STARS_KEY = 'paper-plane-run-lifetime-stars'
@@ -111,6 +113,15 @@ export const SKINS = [
     accent: 0x65a30d,
     map: '/assets/skin-mint.jpg',
   },
+  {
+    id: 'goldenfold',
+    name: 'Golden Fold',
+    cost: 0,
+    prestigeReq: 1,
+    body: 0xfff3c4,
+    accent: 0x7c3aed,
+    map: '/assets/skin-gold.jpg',
+  },
 ]
 
 function loadUnlocked() {
@@ -166,11 +177,19 @@ export function getSkin(id) {
   return SKINS.find((s) => s.id === id) || SKINS[0]
 }
 
+function prestigeMet(s) {
+  return s.prestigeReq != null && getPrestigeLevel() >= s.prestigeReq
+}
+
 export function listSkins(seasonId = 'default') {
   const stars = getLifetimeStars()
   return SKINS.map((s) => {
     const seasonalFree = s.seasonal && s.seasonal === seasonId
-    const unlocked = isUnlocked(s.id) || (!s.seasonal && stars >= s.cost) || seasonalFree
+    const unlocked =
+      isUnlocked(s.id) ||
+      (!s.seasonal && !s.prestigeReq && stars >= s.cost) ||
+      seasonalFree ||
+      prestigeMet(s)
     return {
       ...s,
       unlocked,
@@ -187,7 +206,7 @@ export function refreshUnlocks(seasonId = 'default') {
   let changed = false
   for (const s of SKINS) {
     const seasonalFree = s.seasonal && s.seasonal === seasonId
-    if ((stars >= s.cost && !s.seasonal) || seasonalFree) {
+    if ((stars >= s.cost && !s.seasonal && !s.prestigeReq) || seasonalFree || prestigeMet(s)) {
       if (!unlocked.has(s.id)) {
         unlocked.add(s.id)
         changed = true

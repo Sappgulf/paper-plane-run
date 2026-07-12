@@ -149,6 +149,16 @@ export class GameAudio {
     this.startMusic()
   }
 
+  shoot() {
+    this._tone(760, 0.05, 'square', 0.08, 380)
+  }
+
+  popTarget() {
+    this._tone(300, 0.05, 'square', 0.09)
+    this._tone(620, 0.08, 'triangle', 0.1)
+    this._tone(940, 0.1, 'sine', 0.07)
+  }
+
   collectStar() {
     this._tone(880, 0.08, 'sine', 0.14)
     this._tone(1175, 0.12, 'triangle', 0.12)

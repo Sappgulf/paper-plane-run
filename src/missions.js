@@ -11,6 +11,7 @@ const TEMPLATES = [
   { id: 'hard_dist', label: (n) => `Reach ${n}m on Hard`, type: 'hard_distance', min: 60, max: 200 },
   { id: 'no_crash_easy', label: (n) => `Fly ${n}m on Easy without crashing early`, type: 'easy_distance', min: 120, max: 300 },
   { id: 'daily', label: (n) => `Score ${n}m on today's Daily Route`, type: 'daily_distance', min: 70, max: 250 },
+  { id: 'clean_run', label: (n) => `Fly ${n}m without a single power-up`, type: 'clean_distance', min: 90, max: 280 },
 ]
 
 function loadState() {
@@ -85,6 +86,9 @@ export function updateMissionsFromRun(stats) {
         break
       case 'daily_distance':
         val = stats.daily ? stats.distance : 0
+        break
+      case 'clean_distance':
+        val = stats.powers === 0 ? stats.distance : 0
         break
       default:
         val = 0

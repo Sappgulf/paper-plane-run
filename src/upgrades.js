@@ -87,6 +87,14 @@ export const UPGRADES = [
     max: 2,
     costs: [45, 90],
   },
+  {
+    id: 'weapon',
+    name: 'Ink Blast',
+    icon: '🖋️',
+    blurb: 'Fire ink blots to pop birds & scissors for bonus stars',
+    max: 4,
+    costs: [30, 55, 90, 130],
+  },
 ]
 
 function loadLevels() {
@@ -197,6 +205,7 @@ export function getUpgradeEffects() {
   const trail = getUpgradeLevel('trail')
   const turbo = getUpgradeLevel('turbo')
   const guardian = getUpgradeLevel('guardian')
+  const weapon = getUpgradeLevel('weapon')
   const prestige = getPrestigeLevel()
   const prestigeMul = 1 + prestige * 0.03
   const synergyGold = wing >= 3 && trail >= 3
@@ -215,6 +224,8 @@ export function getUpgradeEffects() {
     handlingLevel: h,
     boostSafety: turbo,
     guardianCharges: guardian,
+    weaponLevel: weapon,
+    weaponCooldown: Math.max(0.35, 1.1 - weapon * 0.18),
     prestigeLevel: prestige,
     synergyGold,
   }

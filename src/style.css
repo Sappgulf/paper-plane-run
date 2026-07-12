@@ -199,6 +199,18 @@ html.a11y-reduced-motion .hud-card.fever-hud { animation: none !important; }
   transform: translate(-50%, -50%);
   z-index: 9;
 }
+#fire-btn {
+  position: absolute; z-index: 12; border: none; cursor: pointer;
+  right: max(22px, calc(env(safe-area-inset-right) + 14px));
+  bottom: max(120px, calc(env(safe-area-inset-bottom) + 34vh));
+  width: 62px; height: 62px; border-radius: 50%; font-size: 26px;
+  display: grid; place-items: center; padding: 0;
+  background: linear-gradient(180deg, #4c3d80, #2b2540); color: #fff;
+  box-shadow: 0 8px 20px rgba(43,37,64,.5), inset 0 0 0 2px rgba(255,255,255,.15);
+  touch-action: none; user-select: none;
+  transition: transform .08s ease;
+}
+#fire-btn.firing { transform: scale(0.85); }
 #wind-stick-base { border-color: rgba(124,58,237,.4); }
 #wind-stick-base::before { opacity: .4; }
 #stick-knob, #wind-stick-knob {
