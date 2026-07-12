@@ -66,6 +66,7 @@ import {
   shouldGrantLaunchGrace,
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
+import { FLYER_DEFS } from './game/flyers.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -1193,26 +1194,16 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-const FLYER_DEFS = [
-  { id: 'bird', label: 'paper bird', radius: 0.7, weight: 1 },
-  { id: 'butterfly', label: 'paper butterfly', radius: 0.65, weight: 0.7, tex: '/assets/flyer-butterfly.jpg', scale: 1.5 },
-  { id: 'balloon', label: 'runaway balloon', radius: 0.85, weight: 0.55, tex: '/assets/flyer-balloon.jpg', scale: 1.6, floaty: true },
-  { id: 'kite', label: 'loose kite', radius: 0.75, weight: 0.5, tex: '/assets/flyer-kite.jpg', scale: 1.55, weave: true },
-  { id: 'biplane', label: 'toy biplane', radius: 0.9, weight: 0.45, tex: '/assets/flyer-biplane.jpg', scale: 1.7, dive: true },
-  { id: 'dragonfly', label: 'paper dragonfly', radius: 0.55, weight: 0.5 },
-  { id: 'swarm', label: 'flock of paper cranes', radius: 0.95, weight: 0.35, tex: '/assets/birds.jpg', scale: 1.9 },
-  { id: 'wasp', label: 'paper wasp', radius: 0.45, weight: 0.4, dive: true, weave: true },
-]
-
-function createBillboardFlyer(texUrl, scale = 1.5) {
+function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
   const g = new THREE.Group()
-  const tex = loadCutoutTex(texUrl)
+  const tex = hasAlpha ? loadTex(texUrl) : loadCutoutTex(texUrl)
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
-    transparent: true,
-    alphaTest: 0.12,
+    transparent: !hasAlpha,
+    alphaTest: hasAlpha ? 0.03 : 0.12,
+    alphaToCoverage: hasAlpha,
     side: THREE.DoubleSide,
-    depthWrite: false,
+    depthWrite: hasAlpha,
   })
   const card = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale), mat)
   // Face the player (camera comes from -Z looking +Z)
@@ -1304,9 +1295,11 @@ function createFlyer(kindId) {
   g.userData.floaty = !!def.floaty
   g.userData.weave = !!def.weave
   g.userData.dive = !!def.dive
+  g.userData.spin = !!def.spin
+  g.userData.barrel = !!def.barrel
 
   if (def.tex) {
-    const bill = createBillboardFlyer(def.tex, def.scale || 1.5)
+    const bill = createBillboardFlyer(def.tex, def.scale || 1.5, !!def.alpha)
     g.add(bill)
     g.userData.billboard = bill.userData.billboard
     return g
@@ -1462,7 +1455,9 @@ function createFlyer(kindId) {
 
 function pickFlyerKind() {
   // Seasonal bias
-  let pool = FLYER_DEFS.map((f) => ({ ...f }))
+  let pool = FLYER_DEFS
+    .filter((flyer) => state !== 'menu' || !flyer.alpha)
+    .map((flyer) => ({ ...flyer }))
   if (season.id === 'halloween') {
     pool = pool.map((f) => (f.id === 'bird' ? { ...f, weight: 1.4 } : f))
   }
@@ -3704,6 +3699,8 @@ function animateHazards(dt) {
         e.mesh.position.y += Math.sin(u.phase) * dt * 2.2
         e.mesh.position.x += Math.cos(u.phase * 0.4) * dt * 1.5
       }
+      if (u.spin && u.billboard) u.billboard.rotation.z += dt * 4.5
+      if (u.barrel) e.mesh.rotation.z += dt * 2.6
       // Face camera for billboards
       if (u.billboard) u.billboard.rotation.y = Math.PI
       if (e.mesh.userData.billboard && e.mesh.userData.billboard !== u.billboard) {
@@ -4657,6 +4654,32 @@ if (import.meta.env.DEV && devTestState === '#test-gameover') {
   newBestBadge?.classList.add('hidden')
   finalScoreEl.textContent = '188m · 3★ · Normal'
   finalDetailEl.textContent = 'Hit a paper skyscraper'
+}
+
+if (import.meta.env.DEV && devTestState === '#test-obstacles') {
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  simulationPaused = true
+  hudEl?.classList.add('hidden')
+  plane.visible = false
+  camera.position.set(0, 11, -11)
+  camera.lookAt(0, 11, 18)
+  const lineup = [
+    ['hawk', -5.4, 2],
+    ['pinwheel', -1.8, 2],
+    ['meteor', 1.8, 2],
+    ['clothespinDragonfly', 5.4, 2],
+  ]
+  for (const [id, x, z] of lineup) {
+    const def = FLYER_DEFS.find((flyer) => flyer.id === id)
+    const flyer = createFlyer(id)
+    flyer.position.set(x, 11, z)
+    scene.add(flyer)
+    entities.push({ mesh: flyer, type: 'bird', flyerId: id, label: def.label, radius: def.radius })
+  }
 }
 
 window.addEventListener('resize', () => {
