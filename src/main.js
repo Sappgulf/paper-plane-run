@@ -1730,6 +1730,7 @@ let guardianLeft = 0
 let damageFlash = 0
 const _damageOrigColor = new THREE.Color()
 const _damageTint = new THREE.Color(0x6b5648)
+const _zoneFogColor = new THREE.Color()
 /** Crash sequence timer before game-over UI settles */
 let crashT = 0
 let crashReason = ''
@@ -2578,6 +2579,7 @@ function pointerAxesFromClient(clientX, clientY) {
 const _aimRay = new THREE.Raycaster()
 const _aimNdc = new THREE.Vector2()
 const _aimHit = new THREE.Vector3()
+const _camTarget = new THREE.Vector3()
 const _flightPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0) // z = 0
 
 /**
@@ -3983,7 +3985,7 @@ function update(dt) {
       plane.rotation.y += dt * 0.8
     }
     camera.position.lerp(
-      new THREE.Vector3(plane.position.x * 0.5, Math.max(3, plane.position.y + 4.5), -8),
+      _camTarget.set(plane.position.x * 0.5, Math.max(3, plane.position.y + 4.5), -8),
       1 - Math.pow(0.002, dt),
     )
     camera.lookAt(plane.position)
@@ -4435,7 +4437,7 @@ function update(dt) {
   const zp = zoneProgress(distance)
   if (zp.next && zp.t > 0.92 && zp.t < 0.97) {
     // gentle pre-transition fog lean
-    scene.fog.color.lerp(new THREE.Color(zp.next.fog), dt * 0.4)
+    scene.fog.color.lerp(_zoneFogColor.set(zp.next.fog), dt * 0.4)
   }
   if (nextZoneHud) {
     const showHint = zp.next && zp.t > 0.7
@@ -4450,7 +4452,7 @@ function update(dt) {
   // Camera: pull back slightly during boost
   const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
   const camY = planeY + 3.1 + (activePower?.kind === 'boost' ? 0.4 : 0)
-  camera.position.lerp(new THREE.Vector3(planeX * 0.45, camY, camZ), 1 - Math.pow(0.0005, dt))
+  camera.position.lerp(_camTarget.set(planeX * 0.45, camY, camZ), 1 - Math.pow(0.0005, dt))
   camera.lookAt(planeX * 0.2, planeY + 0.3, 16)
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
