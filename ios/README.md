@@ -1,7 +1,9 @@
 # Paper Plane Run — iOS
 
 A native Swift/Xcode app shell that embeds the *exact* web build (same code,
-same assets, same physics) in a `WKWebView`, bundled offline. This is
+same assets, same physics) in a `WKWebView`, bundled offline. The bundle is
+served through the app-private `paper-plane://game/` origin so WebKit can load
+Vite's ES modules without a network connection. This is
 deliberate: it guarantees pixel- and feel-identical parity with
 [paper-plane-run.vercel.app](https://paper-plane-run.vercel.app) instead of
 re-deriving every formula in a separate native engine.
@@ -28,20 +30,19 @@ brew install xcodegen   # generates PaperPlaneRun.xcodeproj from project.yml
 From the **repo root**:
 
 ```bash
-npm run build:ios                       # → ios-dist/ (relative paths, absolute API base)
-rm -rf ios/PaperPlaneRun/web && cp -R ios-dist ios/PaperPlaneRun/web
-cd ios && xcodegen generate
+npm run ios:generate                    # builds, syncs the web bundle, generates Xcode project
 open PaperPlaneRun.xcodeproj            # or: xcodebuild -scheme PaperPlaneRun ...
 ```
 
-Re-run all three steps after any change to `src/`, `index.html`, or
-`public/` — the web bundle is a plain copy, not a live symlink.
+Re-run `npm run build:ios` after any change to `src/`, `index.html`, or
+`public/`. It creates the iOS-specific Vite build and refreshes the app's
+bundled `web/` copy. `npm run verify:ios-parity` provides a byte-for-byte drift
+check; it is also useful in CI or before archiving the native app.
 
 ## Why this needed real fixes, not just "wrap it"
 
-Three things in the web build only work because a real HTTP server resolves
-them — none of that exists under WKWebView's `file://` bundle load, so each
-had to be fixed at the source rather than papered over in Swift:
+Three things in the web build need explicit handling outside a normal HTTP
+deployment, so the iOS build and native shell establish equivalent contracts:
 
 1. **Root-absolute asset paths** (`/assets/sky-city.jpg` etc.) — authored
    that way for the hosted site, where they're correct. Every runtime
@@ -55,7 +56,7 @@ had to be fixed at the source rather than papered over in Swift:
    server to resolve against. `build:ios` sets `VITE_API_BASE` to the
    production URL so remote leaderboard/analytics calls still work from the
    offline-bundled app.
-3. **`crossorigin` on the module script and stylesheet tags** — Vite adds
+3. **Offline ES modules and `crossorigin` tags** — Vite adds
    this by default for real HTTPS deployments. Under `file://` origins,
    WKWebView fetches the resource fine at the network layer (confirmed via
    `log stream`: correct MIME type, correct byte count) and then silently
@@ -63,7 +64,9 @@ had to be fixed at the source rather than papered over in Swift:
    the page just never renders styled or scripted. `scripts/postprocess-ios.mjs`
    strips `crossorigin` from those two local tags after each `build:ios` run
    (the external Google Fonts `preconnect` keeps it, since that one's a real
-   cross-origin request).
+   cross-origin request). The native shell serves all bundled resources from
+   one `paper-plane://game/` origin with `WKURLSchemeHandler`, allowing current
+   WebKit to execute the ES module while the game remains fully offline.
 
 ## Project layout
 

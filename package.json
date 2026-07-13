@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:ios": "BASE_PATH=./ VITE_API_BASE=https://paper-plane-run.vercel.app vite build --outDir ios-dist --emptyOutDir && node scripts/postprocess-ios.mjs",
+    "build:ios": "BASE_PATH=./ VITE_API_BASE=https://paper-plane-run.vercel.app vite build --outDir ios-dist --emptyOutDir && node scripts/postprocess-ios.mjs && node scripts/sync-ios-web.mjs",
+    "verify:ios-parity": "node scripts/verify-ios-parity.mjs",
+    "ios:generate": "npm run build:ios && cd ios && xcodegen generate",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

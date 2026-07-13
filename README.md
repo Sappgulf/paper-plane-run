@@ -58,4 +58,8 @@ Menu → **⚙️ Settings** for AR, season override, graphics, accessibility.
 
 A native Swift/Xcode app shell (`ios/`) embeds this exact web build offline
 in a `WKWebView` — same code, same assets, same physics, not a separate
-reimplementation. See [ios/README.md](ios/README.md) for build steps.
+reimplementation. A private `paper-plane://game/` origin lets WebKit execute
+the shared ES-module bundle without a network connection.
+`npm run ios:generate` builds and syncs that shared game into the native app,
+while `npm run verify:ios-parity` detects bundle drift. See
+[ios/README.md](ios/README.md) for build steps.

@@ -1,5 +1,58 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
+
+/// Serves the bundled Vite output from one private origin. ES modules loaded
+/// from `file://` are rejected by current WebKit even when their files are
+/// readable, leaving the styled menu visible but without any JavaScript.
+final class GameBundleSchemeHandler: NSObject, WKURLSchemeHandler {
+    private let rootURL: URL?
+
+    override init() {
+        rootURL = Bundle.main.resourceURL?.appendingPathComponent("web", isDirectory: true).standardizedFileURL
+        super.init()
+    }
+
+    func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
+        guard
+            let requestURL = urlSchemeTask.request.url,
+            requestURL.scheme == "paper-plane",
+            requestURL.host == "game",
+            let rootURL
+        else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+
+        let requestedPath = requestURL.path == "/" ? "index.html" : String(requestURL.path.dropFirst())
+        let fileURL = rootURL.appendingPathComponent(requestedPath).standardizedFileURL
+        let allowedRoot = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+
+        guard fileURL.path.hasPrefix(allowedRoot), FileManager.default.isReadableFile(atPath: fileURL.path) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+            let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+            let encoding = mimeType.hasPrefix("text/") || mimeType == "application/javascript" ? "utf-8" : nil
+            let response = URLResponse(
+                url: requestURL,
+                mimeType: mimeType,
+                expectedContentLength: data.count,
+                textEncodingName: encoding
+            )
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {}
+}
 
 /// Hosts the exact same web build that ships at paper-plane-run.vercel.app,
 /// bundled locally so the game runs fully offline. This is a deliberate
@@ -16,6 +69,7 @@ struct GameView: UIViewControllerRepresentable {
 
 final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     private var webView: WKWebView!
+    private let gameBundleSchemeHandler = GameBundleSchemeHandler()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -48,6 +102,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
         let config = WKWebViewConfiguration()
         config.userContentController = contentController
+        config.setURLSchemeHandler(gameBundleSchemeHandler, forURLScheme: "paper-plane")
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
 
@@ -76,14 +131,11 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     private func loadGame() {
-        guard
-            let indexURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "web"),
-            let webRoot = Bundle.main.url(forResource: "web", withExtension: nil)
-        else {
+        guard let indexURL = URL(string: "paper-plane://game/index.html") else {
             presentLoadFailure()
             return
         }
-        webView.loadFileURL(indexURL, allowingReadAccessTo: webRoot)
+        webView.load(URLRequest(url: indexURL))
     }
 
     private func presentLoadFailure() {
