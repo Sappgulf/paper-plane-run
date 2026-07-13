@@ -53,3 +53,14 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - The next serialized run cleared settings/AR but the two-play custom-layout smoke likewise exhausted 45s under current host load; marked that WebGL-heavy regression `test.slow()` as well.
 - A subsequent rerun showed even the inherited delayed/retry HUD assertions exceeding their explicit 15s under sustained host load; extended those two WebGL startup assertions to 45s and marked them slow without changing behavior assertions.
 - Final exact affected desktop lane passed all 5 tests in 52.8s after the timeout hardening.
+
+### Balanced game polish — Task 5 silhouettes and preview
+
+- Geometry RED failed on the required missing `src/plane-models.js` module; the extracted registry is now green at 4 tests across Classic Fold, Dart, Glider, and Stunt Fold.
+- All four families expose positive normalized dimensions and the same `0.7` collision radius, with no runtime stat fields. The model builder retains `wingL`, `wingR`, `shieldBubble`, and `upgradeTrail` names.
+- The live-preview browser RED failed on the absent preview surface. The deferred engine now owns the Three.js preview renderer, while the shell passes only a canvas and skin ID; portrait cards use the generated WebP assets.
+- Focused plane/skin verification passes 2 files and 19 tests. Desktop/mobile visual inspection and the full verification matrix remain pending.
+- Desktop/mobile Plane Collection capture rerun passed 2 tests in 35.3s. Both screenshots were inspected at original resolution: the equipped Coral Dart live model, generated portrait cards, refreshed wallet/status, and responsive mobile layout are all visible without preview clipping.
+- The web-game client produced three inspected Classic-flight frames at 14m, 27m, and 38m; text state reports `classic`, collision radius `0.7`, and matching rightward movement with no console-error artifact.
+- Final affected collection lane passed 4 desktop/mobile tests in 33.9s after marking the new WebGL-backed Hangar flows slow and excluding only optional `fonts.gstatic.com` resource errors from runtime-console assertions.
+- Full Vitest is green at 29 files / 119 tests. The final full Playwright rerun was interrupted before its summary; fresh exact-diff iOS/build/budget verification remains a documented Task 5 concern.

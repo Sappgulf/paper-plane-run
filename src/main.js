@@ -7,7 +7,16 @@ import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './
 import { getFunnelSummary, track } from './analytics.js'
 import { claimAchievementTier, getAchievementProgress } from './achievements.js'
 import { claimMission, getDailyMissions, unclaimedRewards } from './missions.js'
-import { addLifetimeStars, claimPlane, equipSkin, getLifetimeStars, listSkins, purchasePlane, refreshUnlocks } from './skins.js'
+import {
+  addLifetimeStars,
+  claimPlane,
+  equipSkin,
+  getEquippedSkinId,
+  getLifetimeStars,
+  listSkins,
+  purchasePlane,
+  refreshUnlocks,
+} from './skins.js'
 import { addWallet, buyUpgrade, canPrestige, doPrestige, getPrestigeLevel, getWallet, listUpgrades } from './upgrades.js'
 import { buildRunConfiguration, createJourney, getRouteChoices, selectJourneyPilot, selectJourneyRoute } from './journey.js'
 import { clearJourney, loadJourney, saveJourney } from './journey-storage.js'
@@ -37,6 +46,8 @@ let journey = loadJourney(localStorage).journey
 let mastery = loadMastery(localStorage).mastery
 let journeyRunConfig = null
 let postcardFocusReturn = null
+let activePlanePreview = null
+let planePreviewRequest = 0
 const missionBadge = $('mission-badge')
 const pilotNameInput = $('pilot-name')
 let difficulty = { id: localStorage.getItem('paper-plane-run-diff') || 'normal' }
@@ -113,7 +124,14 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
 }
 
+function stopPlanePreview() {
+  planePreviewRequest += 1
+  activePlanePreview?.dispose?.()
+  activePlanePreview = null
+}
+
 function hideAllPanels() {
+  stopPlanePreview()
   for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
     $(id)?.classList.add('hidden')
   }
@@ -238,6 +256,7 @@ function refreshHangarWallet() {
 }
 
 function showHangarTab(tab) {
+  if (tab !== 'skins') stopPlanePreview()
   document.querySelectorAll('.hangar-tab').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab)
   })
@@ -365,6 +384,61 @@ function renderAchievements() {
   }
 }
 
+function planeRequirementLabel(plane) {
+  if (plane.requirement.type === 'season') return `Season ${plane.requirement.value}`
+  if (plane.requirement.type === 'prestige') return `Prestige ${plane.requirement.value}`
+  return `Lifetime ${plane.requirement.value}★`
+}
+
+function planePriceLabel(plane) {
+  return plane.price ? `Wallet ${plane.price.value}★` : 'Free claim'
+}
+
+async function showPlanePreview(stage, canvas, planeDefinition) {
+  stage.dataset.planeId = planeDefinition.id
+  stage.dataset.silhouette = planeDefinition.silhouette
+  stage.querySelector('[data-preview-name]').textContent = planeDefinition.name
+  stage.querySelector('[data-preview-family]').textContent = planeDefinition.silhouette === 'stunt'
+    ? 'Stunt Fold'
+    : `${planeDefinition.silhouette[0].toUpperCase()}${planeDefinition.silhouette.slice(1)}${planeDefinition.silhouette === 'classic' ? ' Fold' : ''}`
+  canvas.setAttribute('aria-label', `${planeDefinition.name} live 3D preview`)
+
+  if (activePlanePreview?.canvas === canvas && activePlanePreview.updateSkin) {
+    activePlanePreview.updateSkin(planeDefinition.id)
+    stage.dataset.previewStatus = 'ready'
+    stage.querySelector('[data-preview-message]').textContent = 'Live flight model'
+    return
+  }
+
+  stopPlanePreview()
+  const request = planePreviewRequest
+  stage.dataset.previewStatus = 'loading'
+  stage.querySelector('[data-preview-message]').textContent = 'Folding live preview…'
+
+  try {
+    const engine = await engineLoader.preload()
+    if (request !== planePreviewRequest || !canvas.isConnected) return
+    const preview = engine.createPlanePreview?.({
+      canvas,
+      skinId: planeDefinition.id,
+      reducedMotion: settings.reducedMotion,
+    })
+    if (!preview) throw new Error('Flight engine did not provide a plane preview')
+    if (request !== planePreviewRequest || !canvas.isConnected) {
+      preview.dispose?.()
+      return
+    }
+    activePlanePreview = preview
+    stage.dataset.previewStatus = 'ready'
+    stage.querySelector('[data-preview-message]').textContent = 'Live flight model'
+  } catch (error) {
+    if (request !== planePreviewRequest || !canvas.isConnected) return
+    stage.dataset.previewStatus = 'unavailable'
+    stage.querySelector('[data-preview-message]').textContent = 'Portrait shown · live preview unavailable'
+    console.warn('Plane preview unavailable', error)
+  }
+}
+
 function renderSkins(statusMessage = '') {
   refreshUnlocks(season.id)
   refreshHangarWallet()
@@ -372,25 +446,79 @@ function renderSkins(statusMessage = '') {
   if (!grid) return
   const status = $('skins-status')
   if (status) status.textContent = statusMessage
+  stopPlanePreview()
   grid.innerHTML = ''
-  for (const s of listSkins(season.id)) {
+
+  const planes = listSkins(season.id)
+  const previewPlane = planes.find((planeDefinition) => planeDefinition.id === getEquippedSkinId()) || planes[0]
+  const preview = document.createElement('section')
+  preview.className = 'plane-preview'
+  preview.setAttribute('data-plane-preview', '')
+  preview.innerHTML = `
+    <div class="plane-preview-copy">
+      <span class="plane-preview-kicker">Plane Collection</span>
+      <h3 data-preview-name></h3>
+      <span data-preview-family></span>
+    </div>
+    <div class="plane-preview-stage">
+      <canvas width="640" height="360"></canvas>
+      <span class="plane-preview-message" data-preview-message role="status"></span>
+    </div>
+  `
+  grid.appendChild(preview)
+  const previewCanvas = preview.querySelector('canvas')
+  void showPlanePreview(preview, previewCanvas, previewPlane)
+
+  for (const s of planes) {
     const card = document.createElement('button')
     card.type = 'button'
-    card.className = `skin-card${s.equipped ? ' equipped' : ''}${s.state === 'locked' ? ' locked' : ''}`
-    const meta = s.equipped
-      ? 'Equipped'
+    card.dataset.planeId = s.id
+    card.className = `skin-card state-${s.state}${s.equipped ? ' equipped' : ''}${s.state === 'locked' ? ' locked' : ''}`
+    card.setAttribute('aria-pressed', String(s.equipped))
+
+    const image = document.createElement('img')
+    image.src = resolveAssetUrl(s.portrait)
+    image.alt = `${s.name} portrait`
+    card.appendChild(image)
+
+    const heading = document.createElement('div')
+    heading.className = 'skin-card-heading'
+    const name = document.createElement('div')
+    name.className = 'name'
+    name.textContent = s.name
+    const stateLabel = document.createElement('span')
+    stateLabel.className = `plane-state plane-state-${s.state}`
+    stateLabel.textContent = s.state[0].toUpperCase() + s.state.slice(1)
+    heading.append(name, stateLabel)
+    card.appendChild(heading)
+
+    const economy = document.createElement('div')
+    economy.className = 'plane-economy'
+    const requirement = document.createElement('span')
+    requirement.className = 'plane-requirement'
+    requirement.textContent = planeRequirementLabel(s)
+    const price = document.createElement('span')
+    price.className = 'plane-price'
+    price.textContent = planePriceLabel(s)
+    economy.append(requirement, price)
+    card.appendChild(economy)
+
+    const action = document.createElement('div')
+    action.className = 'meta'
+    action.textContent = s.equipped
+      ? 'Ready to fly'
       : s.state === 'owned'
-        ? 'Owned · Equip'
+        ? 'Equip'
         : s.state === 'available'
           ? s.price
             ? `Purchase ${s.price.value}★`
             : 'Claim free'
-          : s.prestigeReq
-            ? `Prestige ${s.prestigeReq} required`
-            : s.seasonal
-              ? `Season: ${s.seasonal}`
-              : `Need ${s.requirement.value}★`
-    card.innerHTML = `<img src="${resolveAssetUrl(s.map)}" alt=""/><div class="name">${s.name}</div><div class="meta">${meta}</div>`
+          : 'Locked'
+    card.appendChild(action)
+
+    const previewThisPlane = () => void showPlanePreview(preview, previewCanvas, s)
+    card.addEventListener('focus', previewThisPlane)
+    card.addEventListener('pointerenter', previewThisPlane)
     card.onclick = () => {
       refreshUnlocks(season.id)
       if (s.state === 'owned') {

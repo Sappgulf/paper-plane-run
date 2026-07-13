@@ -11,7 +11,12 @@ function tap(locator) {
 function collectConsoleErrors(page) {
   const errors = []
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(`${message.text()} @ ${message.location().url || 'inline'}`)
+    const url = message.location().url || 'inline'
+    // Nunito is optional presentation with a system-font fallback. A blocked
+    // third-party font host must not hide real app/runtime console failures.
+    if (message.type() === 'error' && !url.startsWith('https://fonts.gstatic.com/')) {
+      errors.push(`${message.text()} @ ${url}`)
+    }
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
@@ -31,6 +36,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 })
 
 test('Hangar purchases wallet-priced planes and claims free seasonal planes before equipping', async ({ page }) => {
+  test.slow()
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
@@ -62,6 +68,67 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
     equipped: localStorage.getItem('paper-plane-run-skin'),
     owned: JSON.parse(localStorage.getItem('paper-plane-run-skins')),
   }))).toMatchObject({ equipped: 'halloween', owned: expect.arrayContaining(['mint', 'halloween']) })
+  expect(errors).toEqual([])
+})
+
+test('Plane Collection previews the shared equipped silhouette across card states and flight', async ({ page }, testInfo) => {
+  test.slow()
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-wallet', '100')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '50')
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic', 'mint']))
+    localStorage.setItem('paper-plane-run-skin', 'classic')
+    localStorage.setItem('paper-plane-run-skins-version', '1')
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: '🎨 Skins' }))
+
+  const preview = page.locator('[data-plane-preview]')
+  await expect(preview).toHaveAttribute('data-plane-id', 'classic')
+  await expect(preview).toHaveAttribute('data-silhouette', 'classic')
+  await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
+  await expect(preview.locator('canvas')).toBeVisible()
+
+  const classic = page.locator('.skin-card[data-plane-id="classic"]')
+  const mint = page.locator('.skin-card[data-plane-id="mint"]')
+  const coral = page.locator('.skin-card[data-plane-id="coral"]')
+  const night = page.locator('.skin-card[data-plane-id="night"]')
+  await expect(classic).toHaveClass(/state-equipped/)
+  await expect(mint).toHaveClass(/state-owned/)
+  await expect(coral).toHaveClass(/state-available/)
+  await expect(night).toHaveClass(/state-locked/)
+  await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 50★')
+  await expect(coral.locator('.plane-price')).toHaveText('Wallet 50★')
+  await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
+
+  await mint.focus()
+  await expect(preview).toHaveAttribute('data-plane-id', 'mint')
+  await expect(preview).toHaveAttribute('data-silhouette', 'glider')
+  await expect(preview).toHaveAttribute('data-preview-status', 'ready')
+
+  await tap(coral)
+  await expect(page.locator('.skin-card[data-plane-id="coral"]')).toHaveClass(/state-equipped/)
+  await expect(page.locator('#hangar-wallet')).toHaveText('50')
+  await expect(page.locator('#skins-status')).toHaveText('Coral Wash purchased and equipped.')
+  await expect(preview).toHaveAttribute('data-plane-id', 'coral')
+  await expect(preview).toHaveAttribute('data-silhouette', 'dart')
+  await expect(preview).toHaveAttribute('data-preview-status', 'ready')
+  await page.locator('.hangar-body').evaluate((element) => { element.scrollTop = 0 })
+  if (process.env.CAPTURE_TASK5_PROOF === '1') {
+    await page.screenshot({
+      path: `output/task-5-browser-proof/plane-collection-${testInfo.project.name}.png`,
+      animations: 'disabled',
+    })
+  }
+
+  await tap(page.getByRole('button', { name: '← Main menu' }))
+  await tap(page.locator('#start-btn'))
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
+  const gameState = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(gameState.plane).toMatchObject({ skinId: 'coral', silhouette: 'dart', collisionRadius: 0.7 })
   expect(errors).toEqual([])
 })
 

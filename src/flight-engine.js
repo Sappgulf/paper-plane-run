@@ -67,7 +67,27 @@ import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
+import { PLANE_COLLISION_RADIUS, createPaperPlane } from './plane-models.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
+
+// Passing the complete module namespace through the injected plane-model API
+// makes the bundler retain every Three.js export. Keep the public injection
+// contract while exposing only the constructors the registry actually uses.
+const PLANE_THREE = Object.freeze({
+  BoxGeometry: THREE.BoxGeometry,
+  BufferAttribute: THREE.BufferAttribute,
+  BufferGeometry: THREE.BufferGeometry,
+  ConeGeometry: THREE.ConeGeometry,
+  DoubleSide: THREE.DoubleSide,
+  Group: THREE.Group,
+  Mesh: THREE.Mesh,
+  MeshStandardMaterial: THREE.MeshStandardMaterial,
+  Points: THREE.Points,
+  PointsMaterial: THREE.PointsMaterial,
+  Shape: THREE.Shape,
+  ShapeGeometry: THREE.ShapeGeometry,
+  SphereGeometry: THREE.SphereGeometry,
+})
 
 let engineInstance = null
 let engineBootFailure = null
@@ -667,24 +687,10 @@ ground.receiveShadow = true
 scene.add(ground)
 let currentGroundUrl = '/assets/ground-city.jpg'
 
-// Upgrade sparkle trail
+// Upgrade sparkle trail points stay in world space so the trail follows the
+// plane's path instead of inheriting its current bank and position.
 const trailPts = []
 const TRAIL_N = 24
-{
-  const g = new THREE.BufferGeometry()
-  const arr = new Float32Array(TRAIL_N * 3)
-  g.setAttribute('position', new THREE.BufferAttribute(arr, 3))
-  const trail = new THREE.Points(
-    g,
-    new THREE.PointsMaterial({
-      color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
-    }),
-  )
-  trail.name = 'upgradeTrail'
-  trail.visible = false
-  scene.add(trail)
-  for (let i = 0; i < TRAIL_N; i++) trailPts.push(new THREE.Vector3())
-}
 
 // Ambient wisp trail — always present at speed, independent of upgrades
 const wispPts = []
@@ -815,6 +821,9 @@ const planeBodyMat = new THREE.MeshStandardMaterial({
 })
 const planeAccentMat = new THREE.MeshStandardMaterial({
   color: 0xf0956a, roughness: 0.7, side: THREE.DoubleSide,
+})
+const planeTrailMat = new THREE.PointsMaterial({
+  color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
 })
 const buildingMats = [
   new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffc9b8, roughness: 0.9 }),
@@ -966,85 +975,170 @@ function rebuildPowerPalette() {
   powerMatCache = {}
 }
 
+let plane = null
+let shieldBubble = null
+let upgradeTrail = null
+let activePlaneSkinId = 'classic'
+let activePlaneSilhouette = 'classic'
+
+function disposeFlightPlane(model, trail) {
+  if (model) {
+    model.traverse((child) => {
+      child.geometry?.dispose?.()
+      if (child.name === 'shieldBubble' && child.material !== planeBodyMat && child.material !== planeAccentMat) {
+        child.material?.dispose?.()
+      }
+    })
+    scene.remove(model)
+  }
+  if (trail) {
+    scene.remove(trail)
+    trail.geometry?.dispose?.()
+  }
+}
+
+function installFlightPlane(skin) {
+  const nextPlane = createPaperPlane({
+    THREE: PLANE_THREE,
+    silhouette: skin.silhouette,
+    materials: { body: planeBodyMat, accent: planeAccentMat, trail: planeTrailMat },
+    withShield: true,
+  })
+  const nextTrail = nextPlane.getObjectByName('upgradeTrail')
+  nextPlane.remove(nextTrail)
+
+  if (plane) {
+    nextPlane.position.copy(plane.position)
+    nextPlane.quaternion.copy(plane.quaternion)
+    nextPlane.scale.copy(plane.scale)
+    nextPlane.visible = plane.visible
+  }
+  disposeFlightPlane(plane, upgradeTrail)
+
+  plane = nextPlane
+  shieldBubble = plane.getObjectByName('shieldBubble')
+  upgradeTrail = nextTrail
+  activePlaneSilhouette = plane.userData.silhouette
+  trailPts.length = 0
+  for (let i = 0; i < TRAIL_N; i++) trailPts.push(new THREE.Vector3())
+  scene.add(upgradeTrail)
+  scene.add(plane)
+}
+
 function applySkin(skinId) {
   const skin = getSkin(skinId)
+  if (!plane || activePlaneSilhouette !== skin.silhouette) installFlightPlane(skin)
   const map = loadTex(skin.map || '/assets/paper.jpg')
   planeBodyMat.map = map
   planeBodyMat.color.setHex(skin.body)
   planeBodyMat.needsUpdate = true
   planeAccentMat.color.setHex(skin.accent)
   planeAccentMat.needsUpdate = true
+  activePlaneSkinId = skin.id
+  activePlaneSilhouette = skin.silhouette
+  return skin
+}
+
+function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
+  if (!canvas) throw new TypeError('Plane preview requires a canvas')
+  const previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+  previewRenderer.outputColorSpace = THREE.SRGBColorSpace
+  previewRenderer.toneMapping = THREE.ACESFilmicToneMapping
+  previewRenderer.toneMappingExposure = 1.05
+  previewRenderer.setClearColor(0x000000, 0)
+  previewRenderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))
+
+  const previewScene = new THREE.Scene()
+  const previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 50)
+  previewCamera.position.set(3.2, 2.5, 4.5)
+  previewCamera.lookAt(0, 0, 0)
+  previewScene.add(new THREE.HemisphereLight(0xfff7ed, 0x7c8ea6, 2.2))
+  const key = new THREE.DirectionalLight(0xffe7cc, 3)
+  key.position.set(-3, 5, 4)
+  previewScene.add(key)
+
+  let disposed = false
+  let animationFrame = 0
+  let skin = null
+  let model = null
+  let previewMaterials = null
+  const disposeModel = () => {
+    if (!model) return
+    previewScene.remove(model)
+    model.traverse((child) => child.geometry?.dispose?.())
+    model.getObjectByName('upgradeTrail')?.material?.dispose?.()
+    previewMaterials.body.dispose()
+    previewMaterials.accent.dispose()
+  }
+  const installPreviewSkin = (nextSkinId) => {
+    disposeModel()
+    skin = getSkin(nextSkinId)
+    previewMaterials = {
+      body: new THREE.MeshStandardMaterial({
+        map: loadTex(skin.map || '/assets/paper.jpg'),
+        color: skin.body,
+        roughness: 0.82,
+        side: THREE.DoubleSide,
+      }),
+      accent: new THREE.MeshStandardMaterial({
+        color: skin.accent,
+        roughness: 0.7,
+        side: THREE.DoubleSide,
+      }),
+    }
+    model = createPaperPlane({
+      THREE: PLANE_THREE,
+      silhouette: skin.silhouette,
+      materials: previewMaterials,
+      withShield: false,
+    })
+    model.rotation.x = 0.1
+    model.rotation.z = -0.04
+    previewScene.add(model)
+  }
+  const resize = () => {
+    const bounds = canvas.getBoundingClientRect()
+    const width = Math.max(1, Math.round(bounds.width || 360))
+    const height = Math.max(1, Math.round(bounds.height || 210))
+    if (canvas.width !== Math.round(width * previewRenderer.getPixelRatio()) ||
+        canvas.height !== Math.round(height * previewRenderer.getPixelRatio())) {
+      previewRenderer.setSize(width, height, false)
+      previewCamera.aspect = width / height
+      previewCamera.updateProjectionMatrix()
+    }
+  }
+  const renderPreview = (time = 0) => {
+    if (disposed) return
+    resize()
+    model.rotation.y = -0.28 + (reducedMotion ? 0 : time * 0.00028)
+    previewRenderer.render(previewScene, previewCamera)
+    if (!reducedMotion) animationFrame = requestAnimationFrame(renderPreview)
+  }
+  installPreviewSkin(skinId)
+  renderPreview()
+
+  const previewSession = {
+    canvas,
+    get skinId() { return skin.id },
+    get silhouette() { return skin.silhouette },
+    updateSkin(nextSkinId) {
+      if (disposed || nextSkinId === skin.id) return
+      installPreviewSkin(nextSkinId)
+      cancelAnimationFrame(animationFrame)
+      renderPreview(performance.now())
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      cancelAnimationFrame(animationFrame)
+      disposeModel()
+      previewRenderer.dispose()
+    },
+  }
+  return previewSession
 }
 
 // Builders
-function createPaperPlane(matBody = planeBodyMat, matAccent = planeAccentMat, withShield = true) {
-  const g = new THREE.Group()
-  // Split wings for tear-off physics toy
-  const leftShape = new THREE.Shape()
-  leftShape.moveTo(0, 0)
-  leftShape.lineTo(-1.4, -0.15)
-  leftShape.lineTo(0, 0.35)
-  leftShape.lineTo(0, 0)
-  const rightShape = new THREE.Shape()
-  rightShape.moveTo(0, 0)
-  rightShape.lineTo(1.4, -0.15)
-  rightShape.lineTo(0, 0.35)
-  rightShape.lineTo(0, 0)
-  // Mountain-fold crease panel near the wing root, in the accent color —
-  // same trick used on the redesigned bird — so the hero plane doesn't look
-  // flatter than the hazards it dodges.
-  const creaseShapeL = new THREE.Shape()
-  creaseShapeL.moveTo(0, 0)
-  creaseShapeL.lineTo(-0.55, -0.07)
-  creaseShapeL.lineTo(0, 0.14)
-  creaseShapeL.lineTo(0, 0)
-  const creaseShapeR = new THREE.Shape()
-  creaseShapeR.moveTo(0, 0)
-  creaseShapeR.lineTo(0.55, -0.07)
-  creaseShapeR.lineTo(0, 0.14)
-  creaseShapeR.lineTo(0, 0)
-
-  const wingL = new THREE.Mesh(new THREE.ShapeGeometry(leftShape), matBody)
-  wingL.rotation.x = -Math.PI / 2
-  wingL.castShadow = true
-  wingL.name = 'wingL'
-  const creaseL = new THREE.Mesh(new THREE.ShapeGeometry(creaseShapeL), matAccent)
-  creaseL.position.z = 0.004
-  wingL.add(creaseL)
-  const wingR = new THREE.Mesh(new THREE.ShapeGeometry(rightShape), matBody)
-  wingR.rotation.x = -Math.PI / 2
-  wingR.castShadow = true
-  wingR.name = 'wingR'
-  const creaseR = new THREE.Mesh(new THREE.ShapeGeometry(creaseShapeR), matAccent)
-  creaseR.position.z = 0.004
-  wingR.add(creaseR)
-  g.add(wingL, wingR)
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 1.6), matAccent)
-  body.position.set(0, 0.04, -0.1)
-  g.add(body)
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 4), matAccent)
-  nose.rotation.x = -Math.PI / 2
-  nose.position.set(0, 0.02, 0.85)
-  g.add(nose)
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.28), matBody)
-  tail.position.set(0, 0.16, -0.7)
-  g.add(tail)
-  if (withShield) {
-    const shield = new THREE.Mesh(
-      new THREE.SphereGeometry(1.5, 16, 12),
-      new THREE.MeshStandardMaterial({
-        color: 0x60a5fa, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide,
-      }),
-    )
-    shield.visible = false
-    shield.name = 'shieldBubble'
-    g.add(shield)
-  }
-  g.userData.wingL = wingL
-  g.userData.wingR = wingR
-  g.scale.setScalar(1.2)
-  return g
-}
 
 /** A boss gate's "safe lane" marker ring — smoother torus than the old
  *  low-poly one, with a soft glow halo behind it so the safe gap reads as
@@ -1713,9 +1807,6 @@ function createRing() {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const plane = createPaperPlane()
-const shieldBubble = plane.getObjectByName('shieldBubble')
-scene.add(plane)
 applySkin(getEquippedSkinId())
 
 const keys = new Set()
@@ -1773,7 +1864,6 @@ let zoneBannerTimer = 0
 /** @type {any[]} */
 const entities = []
 const clouds = []
-const PLANE_RADIUS = 0.7
 const MIN_Y = 1.4
 const MAX_Y = 26
 const MAX_X = 13
@@ -2376,7 +2466,7 @@ function updateSkyFade(dt) {
 function applyUpgradeVisuals() {
   const fx = getUpgradeEffects()
   plane.scale.setScalar(fx.planeScale)
-  const trail = scene.getObjectByName('upgradeTrail')
+  const trail = upgradeTrail
   if (trail) {
     trail.visible = fx.trailLevel > 0 && state === 'playing'
     trail.material.opacity = 0.35 + fx.trailLevel * 0.2
@@ -2511,7 +2601,12 @@ function resetGame() {
   ghostData = runKind === 'tutorial' || journeyRivalState ? null : loadGhost(difficulty.id + (runKind === 'daily' ? '-daily' : ''))
   if (journeyRivalState || ghostData?.path?.length) {
     const material = journeyRivalState ? rivalMat : ghostMat
-    ghostMesh = createPaperPlane(material, material, false)
+    ghostMesh = createPaperPlane({
+      THREE: PLANE_THREE,
+      silhouette: activePlaneSilhouette,
+      materials: { body: material, accent: material },
+      withShield: false,
+    })
     ghostMesh.scale.setScalar(1.05)
     scene.add(ghostMesh)
   }
@@ -4162,7 +4257,7 @@ function update(dt) {
   }
 
   // Sparkle trail from upgrades
-  const trail = scene.getObjectByName('upgradeTrail')
+  const trail = upgradeTrail
   if (trail && ufx.trailLevel > 0) {
     trail.visible = true
     for (let i = TRAIL_N - 1; i > 0; i--) trailPts[i].copy(trailPts[i - 1])
@@ -4373,7 +4468,7 @@ function update(dt) {
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = e.radius + PLANE_RADIUS + magnetPull + 0.35
+      const catchR = e.radius + PLANE_COLLISION_RADIUS + magnetPull + 0.35
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
@@ -4405,7 +4500,7 @@ function update(dt) {
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = (e.radius || 1.35) + PLANE_RADIUS * 1.25
+      const catchR = (e.radius || 1.35) + PLANE_COLLISION_RADIUS * 1.25
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         activatePower(e.kind)
         spawnConfetti(m.position.x, m.position.y, m.position.z)
@@ -4464,8 +4559,8 @@ function update(dt) {
       const dx = Math.abs(m.position.x - p.x)
       const dz = Math.abs(m.position.z - p.z)
       // Buildings sit on ground: solid from y=0 to halfH
-      const hitR = (e.radius + PLANE_RADIUS * 0.5) * hitScale
-      const grazeR = e.radius + PLANE_RADIUS * (1.4 + ufx.nearMissBonus) * nmTighten
+      const hitR = (e.radius + PLANE_COLLISION_RADIUS * 0.5) * hitScale
+      const grazeR = e.radius + PLANE_COLLISION_RADIUS * (1.4 + ufx.nearMissBonus) * nmTighten
       const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH + 0.25 && p.y > -0.5
       if (hitsBuilding) {
         die('Hit a paper skyscraper')
@@ -4494,7 +4589,7 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       const dist2 = dx * dx + dy * dy + dz * dz
-      const hit = ((e.radius || 0.7) + PLANE_RADIUS * 0.85) * hitScale
+      const hit = ((e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.85) * hitScale
       if (dist2 < hit ** 2) {
         const label =
           e.type === 'scissors'
@@ -4606,6 +4701,11 @@ window.render_game_to_text = () => JSON.stringify({
   distance: Math.floor(distance),
   stars,
   player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  plane: {
+    skinId: activePlaneSkinId,
+    silhouette: activePlaneSilhouette,
+    collisionRadius: PLANE_COLLISION_RADIUS,
+  },
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
     itemTypes: layoutPlay.items.map((item) => item.t),
@@ -4718,6 +4818,7 @@ engineInstance = {
   renderGameToText: () => window.render_game_to_text(),
   advanceTime: (ms) => window.advanceTime?.(ms),
   syncSettings: syncRuntimeSettings,
+  createPlanePreview,
 }
 return engineInstance
 } catch (error) {

@@ -552,16 +552,63 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 .skins-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
-.skin-card {
-  background: rgba(255,255,255,.75); border-radius: 16px; padding: 10px;
-  border: 1.5px solid rgba(61,44,41,.08); cursor: pointer; text-align: center;
-  font-family: inherit;
+.plane-preview {
+  grid-column: 1 / -1; min-height: 220px; overflow: hidden;
+  display: grid; grid-template-columns: minmax(150px,.7fr) minmax(0,1.3fr); align-items: stretch;
+  border: 1.5px solid rgba(90,159,212,.28); border-radius: 20px;
+  background: linear-gradient(135deg,rgba(255,255,255,.94),rgba(219,238,249,.86));
+  box-shadow: 0 10px 28px rgba(61,44,41,.09);
 }
+.plane-preview-copy {
+  padding: 20px 10px 20px 20px; display: flex; flex-direction: column; justify-content: center;
+  text-align: left; color: #4d3b3a;
+}
+.plane-preview-kicker {
+  font-size: 10px; font-weight: 1000; letter-spacing: .13em; text-transform: uppercase; color: #4a7da3;
+}
+.plane-preview-copy h3 { margin: 5px 0 2px; font-size: 20px; }
+.plane-preview-copy > span:last-child { font-size: 12px; font-weight: 800; color: #7d6966; }
+.plane-preview-stage {
+  min-width: 0; min-height: 220px; position: relative; overflow: hidden;
+  background: radial-gradient(circle at 52% 44%,rgba(255,255,255,.96),rgba(184,218,238,.48) 58%,rgba(111,163,197,.18));
+}
+.plane-preview-stage canvas { display: block; width: 100%; height: 220px; }
+.plane-preview-message {
+  position: absolute; left: 12px; bottom: 10px; padding: 4px 8px; border-radius: 999px;
+  background: rgba(255,250,242,.82); color: #6f5b57; font-size: 10px; font-weight: 900;
+  pointer-events: none;
+}
+.plane-preview[data-preview-status="loading"] canvas { opacity: .45; }
+.plane-preview[data-preview-status="unavailable"] canvas { display: none; }
+.skin-card {
+  background: rgba(255,255,255,.78); border-radius: 16px; padding: 10px;
+  border: 1.5px solid rgba(61,44,41,.08); cursor: pointer; text-align: left;
+  font-family: inherit; display: flex; flex-direction: column; gap: 7px; color: #3d2c29;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.skin-card:hover { transform: translateY(-1px); border-color: rgba(90,159,212,.4); }
+.skin-card:focus-visible { outline: 3px solid rgba(90,159,212,.55); outline-offset: 2px; }
 .skin-card.equipped { border-color: #5a9fd4; box-shadow: 0 0 0 2px rgba(126,184,232,.5); }
-.skin-card.locked { opacity: .65; }
-.skin-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; margin-bottom: 6px; }
+.skin-card.locked { opacity: .72; filter: saturate(.72); }
+.skin-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+.skin-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
 .skin-card .name { font-weight: 900; font-size: 13px; }
-.skin-card .meta { font-size: 11px; font-weight: 700; color: #8a6f68; }
+.skin-card .meta { margin-top: auto; font-size: 11px; font-weight: 900; color: #6d554f; }
+.plane-state {
+  flex: 0 0 auto; border-radius: 999px; padding: 3px 6px; font-size: 8px; font-weight: 1000;
+  letter-spacing: .04em; text-transform: uppercase; background: #eee6df; color: #75635f;
+}
+.plane-state-equipped { background: #dbeafe; color: #1d4f78; }
+.plane-state-owned { background: #dcfce7; color: #276843; }
+.plane-state-available { background: #fef3c7; color: #8a4b08; }
+.plane-state-locked { background: #eee8e4; color: #75635f; }
+.plane-economy { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.plane-economy span {
+  min-width: 0; padding: 5px 6px; border-radius: 8px; background: rgba(246,239,231,.8);
+  font-size: 9px; font-weight: 850; color: #735f59; text-align: center;
+}
+.skin-card.state-available .plane-price { background: #fff0b8; color: #8a4b08; }
+.skin-card.state-equipped .meta { color: #1d628f; }
 
 .list-card {
   list-style: none; width: 100%; text-align: left;
@@ -803,6 +850,15 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
   .icon-btn { width: 42px; height: 42px; }
   .hangar-body { max-height: min(52vh, 420px); }
   .skins-grid { gap: 8px; }
+  .plane-preview { grid-template-columns: 1fr; min-height: 238px; }
+  .plane-preview-copy { padding: 12px 14px 0; }
+  .plane-preview-copy h3 { margin: 3px 0 0; font-size: 17px; }
+  .plane-preview-stage { min-height: 178px; }
+  .plane-preview-stage canvas { height: 178px; }
+  .skin-card { padding: 8px; gap: 6px; }
+  .skin-card-heading { display: grid; }
+  .plane-state { justify-self: start; }
+  .plane-economy { grid-template-columns: 1fr; gap: 3px; }
   #gameover { justify-content: flex-start; }
   #gameover .menu-card { margin: auto 0; }
   #gameover .polaroid { padding: 8px 8px 20px; }
