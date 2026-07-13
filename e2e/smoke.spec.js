@@ -132,6 +132,36 @@ test('Plane Collection previews the shared equipped silhouette across card state
   expect(errors).toEqual([])
 })
 
+test('Plane Collection releases each preview WebGL context without losing gameplay', async ({ page }) => {
+  test.slow()
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await page.locator('#c').evaluate((canvas) => {
+    window.__webglContextLosses = { gameplay: 0, preview: 0 }
+    canvas.addEventListener('webglcontextlost', () => {
+      window.__webglContextLosses.gameplay += 1
+    })
+  })
+
+  const visits = 6
+  for (let visit = 1; visit <= visits; visit += 1) {
+    await tap(page.getByRole('button', { name: '🎨 Skins' }))
+    const preview = page.locator('[data-plane-preview]')
+    await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
+    await preview.locator('canvas').evaluate((canvas) => {
+      canvas.addEventListener('webglcontextlost', () => {
+        window.__webglContextLosses.preview += 1
+      }, { once: true })
+    })
+
+    await tap(page.getByRole('button', { name: '🔧 Upgrades' }))
+    await expect.poll(() => page.evaluate(() => window.__webglContextLosses)).toEqual({
+      gameplay: 0,
+      preview: visit,
+    })
+  }
+})
+
 test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()

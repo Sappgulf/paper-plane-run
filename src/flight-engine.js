@@ -1133,6 +1133,7 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
       cancelAnimationFrame(animationFrame)
       disposeModel()
       previewRenderer.dispose()
+      previewRenderer.forceContextLoss()
     },
   }
   return previewSession
