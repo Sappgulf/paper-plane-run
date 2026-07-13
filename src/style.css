@@ -220,6 +220,8 @@ html.a11y-reduced-motion .hud-card.fever-hud { animation: none !important; }
   transition: transform .08s ease;
 }
 #fire-btn.firing { transform: scale(0.85); }
+#fire-btn[data-ready="true"] { box-shadow: 0 0 0 3px rgba(250,204,21,.5), 0 8px 20px rgba(43,37,64,.5), inset 0 0 0 2px rgba(255,255,255,.15); }
+#fire-btn.cooling { opacity: .72; filter: saturate(.7); }
 #wind-stick-base { border-color: rgba(124,58,237,.4); }
 #wind-stick-base::before { opacity: .4; }
 #stick-knob, #wind-stick-knob {
@@ -278,6 +280,24 @@ html.a11y-large-stick #wind-stick-knob { width: 66px; height: 66px; }
 #wind-banner { border: 2px solid #7eb8e8; color: #2a5a8a; }
 #power-banner { border: 2px solid #a78bfa; color: #5b21b6; }
 #zone-banner { border: 2px solid #f0956a; color: #9a3412; }
+#boost-safety-cue, #magnet-pull-trail {
+  border-radius: 999px; padding: 6px 10px; font-size: 11px; font-weight: 900;
+  pointer-events: none; white-space: nowrap; align-self: center;
+}
+#boost-safety-cue {
+  color: #7c2d12; border: 1.5px solid #fb923c; background: rgba(255,247,237,.94);
+  box-shadow: 0 5px 14px rgba(194,65,12,.16);
+}
+#magnet-pull-trail {
+  color: #065f46; border: 1.5px solid #34d399; background: rgba(236,253,245,.94);
+}
+#magnet-pull-trail::before {
+  content: ''; display: inline-block; width: 28px; height: 3px; margin: 0 6px 2px 2px;
+  border-radius: 99px; vertical-align: middle;
+  background: linear-gradient(90deg,transparent,#34d399 45%,#fef3c7);
+  animation: magnetPull 0.7s linear infinite;
+}
+@keyframes magnetPull { from { transform: translateX(-4px); opacity: .45; } to { transform: translateX(4px); opacity: 1; } }
 #combo-float {
   position: absolute; left: 50%; top: 38%; transform: translateX(-50%); z-index: 6;
   border: 2px solid #c4b5fd; color: #6d28d9; font-size: 22px; font-weight: 900;
@@ -302,7 +322,8 @@ html.a11y-large-stick #wind-stick-knob { width: 66px; height: 66px; }
 html.a11y-reduced-motion #combo-float,
 html.a11y-reduced-motion #wind-banner,
 html.a11y-reduced-motion #power-banner,
-html.a11y-reduced-motion #zone-banner { animation: none !important; }
+html.a11y-reduced-motion #zone-banner,
+html.a11y-reduced-motion #magnet-pull-trail::before { animation: none !important; }
 
 #tutorial-hint {
   position: absolute; left: 50%; bottom: max(120px, calc(env(safe-area-inset-bottom) + 100px));

@@ -416,6 +416,56 @@ test('first flight starts with launch protection', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('max upgrades expose deterministic in-flight feedback on desktop and mobile', async ({ page }, testInfo) => {
+  test.slow()
+  const errors = collectConsoleErrors(page)
+  await openApp(page, '/?upgrade-proof=max#test-upgrades-shield')
+
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('#power-label')).toContainText('Shield')
+  await expect(page.locator('#guardian-hud')).toBeVisible()
+  await expect(page.locator('#guardian-hud-val')).toHaveText('2')
+  await expect(page.locator('#fire-btn')).toHaveAttribute('data-ready', 'true')
+  await expect(page.locator('#magnet-pull-trail')).toHaveAttribute('data-active', 'true')
+  const shieldUpgrades = await page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades)
+  expect(shieldUpgrades).toMatchObject({
+    handling: { acceleration: 58.8 },
+    lift: { sinkPerSecond: 1.44 },
+    glide: { cruiseSpeed: expect.any(Number) },
+    magnet: { active: true, trailActive: true },
+    shield: { duration: 14.4 },
+    luck: { starChance: expect.any(Number) },
+    wingspan: { visualScale: 1.44, collisionPlaneRadius: 0.7 },
+    trail: { visible: true },
+    turbo: { graceSeconds: 1.35, collisionScale: 0.6 },
+    guardian: { charges: 2, remaining: 2 },
+    weapon: { unlocked: true, ready: true, cooldownSeconds: 0.38 },
+  })
+  expect(shieldUpgrades.luck.starChance).toBeCloseTo(0.8584)
+  if (process.env.CAPTURE_TASK7_PROOF === '1') {
+    await page.screenshot({
+      path: `output/task-7-browser-proof/max-shield-${testInfo.project.name}.png`,
+      animations: 'disabled',
+    })
+  }
+
+  await openApp(page, '/?upgrade-proof=max#test-upgrades-boost')
+  await expect(page.locator('#boost-safety-cue')).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('#boost-safety-cue')).toContainText('0.45s')
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades.turbo)).toMatchObject({
+    active: true,
+    graceSeconds: 1.35,
+    collisionScale: 0.6,
+  })
+  if (process.env.CAPTURE_TASK7_PROOF === '1') {
+    await page.screenshot({
+      path: `output/task-7-browser-proof/max-boost-${testInfo.project.name}.png`,
+      animations: 'disabled',
+    })
+  }
+  expect(errors).toEqual([])
+})
+
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)

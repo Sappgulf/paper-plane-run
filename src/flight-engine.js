@@ -27,6 +27,7 @@ import { ZONES, zoneAt, nextZone, zoneProgress } from './zones.js'
 import {
   getUpgradeEffects,
   addWallet,
+  UPGRADES,
 } from './upgrades.js'
 import {
   submitLocalScore,
@@ -68,6 +69,21 @@ import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane } from './plane-models.js'
+import {
+  getAltitudeRecovery,
+  getBoostSafety,
+  getCollisionRadius,
+  getControlResponse,
+  getCruiseSpeed,
+  getGuardianState,
+  getMagnetPull,
+  getNearMissRadius,
+  getPowerDuration,
+  getSpawnRates,
+  getTrailFeedback,
+  getUpgradeRuntimeSnapshot,
+  getWeaponState,
+} from './game/upgrade-runtime.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // Passing the complete module namespace through the injected plane-model API
@@ -112,6 +128,8 @@ const speedFxEl = $('speed-fx')
 const windBanner = $('wind-banner')
 const powerBanner = $('power-banner')
 const zoneBanner = $('zone-banner')
+const boostSafetyCue = $('boost-safety-cue')
+const magnetPullTrail = $('magnet-pull-trail')
 
 // Keep the wind/power/zone banner stack pinned just below the HUD's actual
 // rendered height — the HUD can wrap to 2-3 rows depending on how many
@@ -409,6 +427,9 @@ let nearMissCooldown = new WeakMap()
 
 // URL params
 const devTestState = import.meta.env.DEV ? location.hash : ''
+const devUpgradeProof = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('upgrade-proof')
+  : null
 {
   const params = new URLSearchParams(location.search)
   const d = Number(params.get('d') || params.get('score'))
@@ -747,8 +768,14 @@ const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
 function fireWeapon() {
   if (state !== 'playing') return
   const fx = getUpgradeEffects()
-  if (fx.weaponLevel <= 0 || fireCooldown > 0) return
-  fireCooldown = fx.weaponCooldown
+  const weapon = getWeaponState({
+    weaponLevel: fx.weaponLevel,
+    cooldownSeconds: fx.weaponCooldown,
+    cooldownLeft: fireCooldown,
+  })
+  if (!weapon.ready) return
+  fireCooldown = weapon.cooldownSeconds
+  updateWeaponFeedback()
   const m = createShot()
   m.position.set(planeX, planeY, 4)
   scene.add(m)
@@ -2038,11 +2065,18 @@ function spawnChunk(z) {
   }
 
   const ufx = getUpgradeEffects()
-  const twistStarMul = activeTwist?.starMul || 1
+  const spawnRates = getSpawnRates({
+    starChance: cfg.starChance,
+    powerChance: cfg.powerChance,
+    ramp,
+    starChanceMul: ufx.starChanceMul,
+    powerChanceMul: ufx.powerChanceMul,
+    twistStarMul: activeTwist?.starMul || 1,
+  })
   // Stars — often 1–2
-  const starRolls = rng() < 0.25 * ufx.starChanceMul * twistStarMul ? 2 : 1
+  const starRolls = rng() < spawnRates.doubleStarChance ? 2 : 1
   for (let s = 0; s < starRolls; s++) {
-    if (rng() < cfg.starChance * ufx.starChanceMul * twistStarMul) {
+    if (rng() < spawnRates.starChance) {
       const st = createStar()
       st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 8)
       scene.add(st)
@@ -2050,7 +2084,7 @@ function spawnChunk(z) {
     }
   }
   // Powers — boosted chance; boost is more common early in pool
-  if (rng() < (cfg.powerChance + 0.08 + ramp * 0.05) * ufx.powerChanceMul) {
+  if (rng() < spawnRates.powerChance) {
     const classic = POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
     let pool
     if (rng() < 0.28) pool = TOY_KINDS
@@ -2313,6 +2347,7 @@ function clearPower() {
   if (shieldBubble) shieldBubble.visible = false
   powerHud.classList.add('hidden')
   powerBanner.classList.add('hidden')
+  boostSafetyCue?.classList.add('hidden')
   renderer.toneMappingExposure = activeZoneAt(distance).exposure
   // restore wings
   const wl = plane.userData.wingL
@@ -2339,9 +2374,11 @@ function activatePower(kind) {
   // clearPower nulls activePower — restore wings/shield already handled
 
   const fx = getUpgradeEffects()
-  let duration = meta.duration
-  if (kind === 'shield') duration *= fx.shieldDurationMul
-  if (kind === 'boost') duration = 5.0
+  const duration = getPowerDuration({
+    kind,
+    baseDuration: meta.duration,
+    shieldDurationMul: fx.shieldDurationMul,
+  }).duration
   activePower = { kind, timeLeft: duration, duration, slingCharged: false }
   audio.powerUp(kind)
   if (settings.haptics) Haptic.power()
@@ -2367,9 +2404,14 @@ function activatePower(kind) {
     fovPunch = 12
     shake = Math.max(shake, 0.3)
     velY += 3
-    // Grace window scales with the Turbo Fold upgrade so invested players
-    // get an even safer boost.
-    invuln = Math.max(invuln, 0.9 + fx.boostSafety * 0.15)
+    const safety = getBoostSafety(fx)
+    invuln = Math.max(invuln, safety.graceSeconds)
+    if (boostSafetyCue) {
+      boostSafetyCue.textContent = fx.boostGraceSeconds > 0
+        ? `🚀 Turbo Fold · +${fx.boostGraceSeconds.toFixed(2)}s safety · ${safety.collisionScale.toFixed(2)}× hitbox`
+        : `🚀 Boost safety · ${safety.collisionScale.toFixed(2)}× hitbox`
+      boostSafetyCue.classList.remove('hidden')
+    }
     spawnConfetti(planeX, planeY, 0)
   }
 
@@ -2464,23 +2506,50 @@ function updateSkyFade(dt) {
   skyMatB.opacity = 1 - skyFade
 }
 
+function updateWeaponFeedback(playing = state === 'playing') {
+  if (!fireBtn) return
+  const fx = getUpgradeEffects()
+  const weapon = getWeaponState({
+    weaponLevel: fx.weaponLevel,
+    cooldownSeconds: fx.weaponCooldown,
+    cooldownLeft: fireCooldown,
+  })
+  fireBtn.classList.toggle('hidden', !playing || !weapon.unlocked)
+  fireBtn.dataset.ready = String(weapon.ready)
+  fireBtn.dataset.cooldown = weapon.cooldownRemaining.toFixed(2)
+  fireBtn.classList.toggle('cooling', weapon.unlocked && !weapon.ready)
+  fireBtn.textContent = weapon.ready ? '🖋 Ready' : `🖋 ${weapon.cooldownRemaining.toFixed(1)}s`
+  fireBtn.setAttribute('aria-label', weapon.ready
+    ? 'Ink Blast ready'
+    : `Ink Blast recharging: ${weapon.cooldownRemaining.toFixed(1)} seconds`)
+}
+
+function updateMagnetPullFeedback(target, magnet) {
+  if (!magnetPullTrail) return
+  const active = Boolean(target && magnet.active)
+  magnetPullTrail.dataset.active = String(active)
+  magnetPullTrail.classList.toggle('hidden', !active)
+  if (active) magnetPullTrail.textContent = `🧲 Pulling a star · ${Math.round(magnet.visualStrength * 100)}%`
+}
+
 function applyUpgradeVisuals() {
   const fx = getUpgradeEffects()
   plane.scale.setScalar(fx.planeScale)
   const trail = upgradeTrail
+  const trailFeedback = getTrailFeedback(fx)
   if (trail) {
-    trail.visible = fx.trailLevel > 0 && state === 'playing'
-    trail.material.opacity = 0.35 + fx.trailLevel * 0.2
-    trail.material.size = 0.16 + fx.trailLevel * 0.08
-    // Wide Wings + Paper Trail both maxed unlocks a distinct "Aurora Trail" color.
-    trail.material.color.setHex(fx.synergyGold ? 0x7cf9ff : 0xfff0c0)
+    trail.visible = trailFeedback.visible && state === 'playing'
+    trail.material.opacity = trailFeedback.opacity
+    trail.material.size = trailFeedback.size
+    trail.material.color.setHex(trailFeedback.color)
   }
-  fireBtn?.classList.toggle('hidden', fx.weaponLevel <= 0)
+  updateWeaponFeedback()
 }
 
 function resetGame() {
   clearEntities()
   clearPower()
+  updateMagnetPullFeedback(null, { active: false })
   distance = 0
   stars = 0
   speed = difficulty.speedBase
@@ -2534,9 +2603,11 @@ function resetGame() {
   distanceMilestones.clear()
   speedBoost = 0
   invuln = 0.4 // brief spawn grace
-  guardianLeft = getUpgradeEffects().guardianCharges
-  guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
-  if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
+  const guardian = getGuardianState({ charges: getUpgradeEffects().guardianCharges })
+  guardianLeft = guardian.remaining
+  guardianHud?.classList.toggle('hidden', !guardian.visible)
+  guardianHud?.setAttribute('data-hud-priority', guardian.visible ? 'primary' : 'secondary')
+  if (guardianHudVal) guardianHudVal.textContent = String(guardian.remaining)
   timeAttackLeft = TIME_ATTACK_SECONDS
   timeAttackLastTickSecond = -1
   timeAttackHud?.classList.toggle('hidden', runKind !== 'timeattack')
@@ -2713,7 +2784,7 @@ function showStick(playing) {
   if (hudCtrl) {
     hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : isTouchPrimary ? 'Touch' : 'Mouse'
   }
-  fireBtn?.classList.toggle('hidden', !playing || getUpgradeEffects().weaponLevel <= 0)
+  updateWeaponFeedback(playing)
 }
 
 function updateControlUI() {
@@ -3318,8 +3389,14 @@ function die(reason) {
   // Guardian Crease: a purchased free save, used when no shield is active
   if (guardianLeft > 0 && !isCleanEnd) {
     guardianLeft--
-    if (guardianHudVal) guardianHudVal.textContent = String(guardianLeft)
-    guardianHud?.classList.toggle('hidden', guardianLeft <= 0)
+    const guardian = getGuardianState({
+      charges: getUpgradeEffects().guardianCharges,
+      remaining: guardianLeft,
+    })
+    guardianLeft = guardian.remaining
+    if (guardianHudVal) guardianHudVal.textContent = String(guardian.remaining)
+    guardianHud?.classList.toggle('hidden', !guardian.visible)
+    guardianHud?.setAttribute('data-hud-priority', guardian.visible ? 'primary' : 'secondary')
     audio.shieldHit()
     if (settings.haptics) Haptic.nearMiss()
     shake = 0.6
@@ -3934,6 +4011,7 @@ function update(dt) {
     }
   }
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
+  updateWeaponFeedback()
   if (keys.has('KeyX')) fireWeapon()
   updateShots(dt)
   if (damageFlash > 0) {
@@ -3953,6 +4031,7 @@ function update(dt) {
     activePower.timeLeft -= dt
     powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
     if (activePower.kind === 'shield' && shieldBubble) {
+      powerLabel.textContent = `🛡 Shield · ${Math.max(0, activePower.timeLeft).toFixed(1)}s`
       shieldBubble.material.opacity = 0.15 + Math.sin(elapsed * 6) * 0.08
       // flash when about to expire
       if (activePower.timeLeft < 1.2) {
@@ -4135,18 +4214,28 @@ function update(dt) {
   }
 
   const ufx = getUpgradeEffects()
+  const activeControlMode = mouseMode
+    ? (isTouchPrimary ? 'touch' : 'pointer')
+    : joyMode ? 'stick' : 'keyboard'
+  const controlResponse = getControlResponse({
+    mode: activeControlMode,
+    dt,
+    accelMul: ufx.accelMul,
+    sensitivity: Number(settings.mouseSensitivity) || 1,
+  })
+  const altitudeRecovery = getAltitudeRecovery({ baseSink: difficulty.sink, sinkMul: ufx.sinkMul })
 
   // Physics toys modifiers
-  let sinkMul = ufx.sinkMul * (activeTwist?.sinkMul ?? 1)
-  let accelMul = ufx.accelMul
+  let sinkModifier = activeTwist?.sinkMul ?? 1
+  let controlAcceleration = controlResponse.acceleration
   if (activePower?.kind === 'tear') {
     velX += tearSide * 14 * dt
-    accelMul *= 0.85
+    controlAcceleration *= 0.85
   }
   if (activePower?.kind === 'clip') {
-    sinkMul *= 1.65
+    sinkModifier *= 1.65
     velX *= Math.pow(0.03, dt) // more stable
-    accelMul *= 0.75
+    controlAcceleration *= 0.75
   }
   // Rubber-band slingshot: hold Space to charge, release to launch
   if (activePower?.kind === 'sling') {
@@ -4172,8 +4261,7 @@ function update(dt) {
   if (mouseMode) {
     // Dead-accurate aim: plane sits on cursor ray hit with near-instant follow
     const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 2.2)
-    // follow rate: locked-on ≈ 1.0 each frame
-    const follow = Math.min(1, dt * (22 * sens))
+    const follow = controlResponse.follow
     const prevX = planeX
     const prevY = planeY
     planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, follow)
@@ -4187,9 +4275,9 @@ function update(dt) {
     velX = THREE.MathUtils.clamp((planeX - prevX) * invDt, -MAX_VEL, MAX_VEL)
     velY = THREE.MathUtils.clamp((planeY - prevY) * invDt, -MAX_VEL, MAX_VEL)
   } else {
-    velX += inputX * 42 * accelMul * dt
-    velY += inputY * 42 * accelMul * dt
-    velY -= difficulty.sink * sinkMul * dt
+    velX += inputX * controlAcceleration * dt
+    velY += inputY * controlAcceleration * dt
+    velY -= altitudeRecovery.sinkPerSecond * sinkModifier * dt
     const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
     const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
     velX *= Math.pow(dragX, dt)
@@ -4233,9 +4321,14 @@ function update(dt) {
     speedMul *= 1 + getPilotEffect('daredevil', journeyTelemetry || {}).momentum
   }
   const cfg = difficulty
-  const cruise =
-    (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
-  speed = cruise + speedBoost
+  const cruise = getCruiseSpeed({
+    baseSpeed: cfg.speedBase,
+    speedRamp: cfg.speedRamp,
+    speedCap: cfg.speedCap,
+    distance,
+    speedMul,
+  })
+  speed = cruise.cruiseSpeed + speedBoost
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
@@ -4414,12 +4507,12 @@ function update(dt) {
   }
 
   const p = plane.position
-  const magnetOn = activePower?.kind === 'magnet' || ufx.magnetBonus > 0
-  const magnetPull = (activePower?.kind === 'magnet' ? 1.2 : 0) + ufx.magnetBonus
-  // Forgiving hitbox while boosting — the world scrolls faster, so shrink
-  // the effective hit radius to compensate for the reduced reaction time.
-  // Turbo Fold levels make this even safer.
-  const hitScale = activePower?.kind === 'boost' ? Math.max(0.6, 0.78 - ufx.boostSafety * 0.06) : 1
+  const magnet = getMagnetPull({
+    activePowerKind: activePower?.kind,
+    magnetBonus: ufx.magnetBonus,
+    planeRadius: PLANE_COLLISION_RADIUS,
+  })
+  const boostSafety = getBoostSafety(ufx)
   // Phase power: pass through airborne hazards (birds/scissors/boss) but
   // buildings and the ground are checked separately and still solid — this
   // is a "dodge the sky" power, not a full no-clip.
@@ -4431,6 +4524,8 @@ function update(dt) {
   // Near-miss window tightens (up to 15%) as the combo climbs, so long chains
   // require flying genuinely closer rather than staying free once started.
   const nmTighten = 1 - Math.min(combo, 10) * 0.015
+  let magnetTarget = null
+  let magnetTargetDistance = Infinity
 
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
@@ -4460,16 +4555,25 @@ function update(dt) {
       const dy0 = m.position.y - p.y
       const dz0 = m.position.z - p.z
       const d2near = dx0 * dx0 + dy0 * dy0 + dz0 * dz0
-      if (d2near < 12 * 12) {
-        const pull = (magnetOn ? 14 + magnetPull * 12 : 5)
+      if (d2near < magnet.influenceRadius ** 2) {
+        const pull = magnet.pullStrength
         m.position.x += (p.x - m.position.x) * Math.min(1, pull * dt * 0.14)
         m.position.y += (p.y - m.position.y) * Math.min(1, pull * dt * 0.14)
         m.position.z += (p.z - m.position.z) * Math.min(1, pull * dt * 0.09)
+        if (magnet.active && d2near < magnetTargetDistance) {
+          magnetTargetDistance = d2near
+          magnetTarget = { x: m.position.x, y: m.position.y, z: m.position.z }
+        }
       }
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = e.radius + PLANE_COLLISION_RADIUS + magnetPull + 0.35
+      const catchR = getMagnetPull({
+        activePowerKind: activePower?.kind,
+        magnetBonus: ufx.magnetBonus,
+        starRadius: e.radius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+      }).catchRadius
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
@@ -4560,8 +4664,19 @@ function update(dt) {
       const dx = Math.abs(m.position.x - p.x)
       const dz = Math.abs(m.position.z - p.z)
       // Buildings sit on ground: solid from y=0 to halfH
-      const hitR = (e.radius + PLANE_COLLISION_RADIUS * 0.5) * hitScale
-      const grazeR = e.radius + PLANE_COLLISION_RADIUS * (1.4 + ufx.nearMissBonus) * nmTighten
+      const hitR = getCollisionRadius({
+        entityRadius: e.radius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        planeWeight: 0.5,
+        boostActive: activePower?.kind === 'boost',
+        boostHitboxScale: boostSafety.collisionScale,
+      }).effectiveRadius
+      const grazeR = getNearMissRadius({
+        entityRadius: e.radius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        nearMissBonus: ufx.nearMissBonus,
+        tighten: nmTighten,
+      })
       const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH + 0.25 && p.y > -0.5
       if (hitsBuilding) {
         die('Hit a paper skyscraper')
@@ -4590,7 +4705,13 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       const dist2 = dx * dx + dy * dy + dz * dz
-      const hit = ((e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.85) * hitScale
+      const hit = getCollisionRadius({
+        entityRadius: e.radius || 0.7,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        planeWeight: 0.85,
+        boostActive: activePower?.kind === 'boost',
+        boostHitboxScale: boostSafety.collisionScale,
+      }).effectiveRadius
       if (dist2 < hit ** 2) {
         const label =
           e.type === 'scissors'
@@ -4609,6 +4730,8 @@ function update(dt) {
       }
     }
   }
+
+  updateMagnetPullFeedback(magnetTarget, magnet)
 
   if (runKind === 'tutorial' && ringsLeft === 0 && entities.every((e) => e.type === 'building' || e.type === 'ring')) {
     // only buildings left (or empty of rings)
@@ -4695,6 +4818,47 @@ try {
   throw err
 }
 
+function upgradeRuntimeTextState() {
+  const controlMode = wantsJoystick()
+    ? 'stick'
+    : isTouchPrimary ? 'touch' : 'pointer'
+  const runtime = getUpgradeRuntimeSnapshot({
+    effects: getUpgradeEffects(),
+    controlMode,
+    dt: 1 / 60,
+    distance,
+    difficulty,
+    activePowerKind: activePower?.kind,
+    fireCooldown,
+    guardianLeft,
+    planeRadius: PLANE_COLLISION_RADIUS,
+    nearMissTighten: 1 - Math.min(combo, 10) * 0.015,
+  })
+  return {
+    handling: runtime.handling,
+    lift: runtime.lift,
+    glide: runtime.glide,
+    magnet: {
+      ...runtime.magnet,
+      trailActive: magnetPullTrail?.dataset.active === 'true',
+    },
+    shield: {
+      ...runtime.shield,
+      active: activePower?.kind === 'shield',
+      timeLeft: activePower?.kind === 'shield' ? Math.max(0, activePower.timeLeft) : 0,
+    },
+    luck: runtime.luck,
+    wingspan: runtime.wingspan,
+    trail: runtime.trail,
+    turbo: {
+      ...runtime.turbo,
+      active: activePower?.kind === 'boost',
+    },
+    guardian: runtime.guardian,
+    weapon: runtime.weapon,
+  }
+}
+
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
@@ -4707,6 +4871,7 @@ window.render_game_to_text = () => JSON.stringify({
     silhouette: activePlaneSilhouette,
     collisionRadius: PLANE_COLLISION_RADIUS,
   },
+  upgrades: upgradeRuntimeTextState(),
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
     itemTypes: layoutPlay.items.map((item) => item.t),
@@ -4787,6 +4952,38 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+}
+
+if (import.meta.env.DEV && devTestState.startsWith('#test-upgrades-')) {
+  const powerKind = devTestState.slice('#test-upgrades-'.length)
+  if (powerKind === 'shield' || powerKind === 'boost') {
+    if (devUpgradeProof === 'max') {
+      localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(
+        Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max])),
+      ))
+    }
+    settings = saveSettings({ haptics: false })
+    hideAllPanels()
+    challengeToast?.classList.add('hidden')
+    runKind = 'classic'
+    resetGame()
+    clearEntities()
+    state = 'playing'
+    invuln = 999
+    nextSpawnZ = 220
+    hudEl?.classList.remove('hidden')
+    showStick(true)
+    applyUpgradeVisuals()
+    activatePower(powerKind)
+    const star = createStar()
+    star.position.set(6, planeY, 5)
+    scene.add(star)
+    entities.push({ mesh: star, type: 'star', radius: 0.9 })
+    // One deterministic step makes the pull feedback visible without letting
+    // this proof fixture drift or consume a shield/boost timer in screenshots.
+    update(1 / 60)
+    simulationPaused = true
+  }
 }
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {
