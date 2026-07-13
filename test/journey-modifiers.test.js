@@ -9,6 +9,17 @@ describe('Journey modifiers', () => {
     expect(base.wind).toBe(1)
   })
 
+  it('exposes functional movement, visibility-pocket, and gate contracts', () => {
+    const moving = applyJourneyModifier({}, { modifier: 'moving-formation' })
+    expect(moving.movingFormation).toEqual(expect.objectContaining({ amplitude: expect.any(Number), speed: expect.any(Number) }))
+
+    const visibility = applyJourneyModifier({}, { modifier: 'low-visibility' })
+    expect(visibility.visibilityPocket).toEqual(expect.objectContaining({ duration: expect.any(Number), density: expect.any(Number) }))
+
+    const gates = applyJourneyModifier({}, { modifier: 'shortcut-gates' })
+    expect(gates.shortcutGateSequence).toEqual({ required: 3, bonus: 1 })
+  })
+
   it('caps Daredevil momentum and exposes Navigator hints', () => {
     expect(getPilotEffect('daredevil', { nearMisses: 50 }).momentum).toBeLessThanOrEqual(0.12)
     expect(getPilotEffect('navigator', {}).shortcutHint).toBe(true)

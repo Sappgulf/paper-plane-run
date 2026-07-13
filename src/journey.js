@@ -1,4 +1,6 @@
-export const JOURNEY_VERSION = 1
+import { buildJourneyObjective } from './journey-encounters.js'
+
+export const JOURNEY_VERSION = 2
 export const DAREDEVIL_STAMP_REQUIREMENT = 4
 
 export const PILOTS = Object.freeze({
@@ -84,6 +86,9 @@ export function createJourney(seed = Date.now(), now = Date.now()) {
     totalStars: 0,
     status: 'active',
     postcard: null,
+    attemptNumber: 1,
+    lastOutcomeReceiptId: null,
+    objectiveResults: [],
   }
 }
 
@@ -107,19 +112,24 @@ export function selectJourneyPilot(journey, pilotId, lifetimeStamps = 0) {
 export function buildRunConfiguration(journey) {
   const route = getRouteChoices(journey).find((choice) => choice.id === journey?.selectedRouteId)
   if (!route) return null
-  return {
+  const encounterSeed = hash(journey.seed, journey.stepIndex, route.risk === 'risky' ? 1 : 0)
+  const base = {
     journeyId: journey.id,
     stepIndex: journey.stepIndex,
     routeId: route.id,
     zone: route.zone,
     modifier: route.modifier,
     modifierLabel: route.modifierLabel,
+    risk: route.risk,
     rewardMultiplier: route.rewardMultiplier,
     pilotId: journey.pilotId,
     rival: route.rival,
     finale: route.finale,
-    seed: hash(journey.seed, journey.stepIndex, route.risk === 'risky' ? 1 : 0),
+    seed: encounterSeed,
+    encounterSeed,
+    attemptId: `${journey.id}:${route.id}:${journey.attemptNumber || 1}`,
   }
+  return { ...base, objective: buildJourneyObjective(base) }
 }
 
 export function resolveJourneyFlight(journey, outcome = {}) {
@@ -133,15 +143,23 @@ export function resolveJourneyFlight(journey, outcome = {}) {
     totalStars: journey.totalStars + stars,
     totalDistance: journey.totalDistance + distance,
   }
-  if (!outcome.completed) return { ...journey, ...totals }
+  if (!outcome.completed) return {
+    ...journey,
+    ...totals,
+    attemptNumber: (journey.attemptNumber || 1) + 1,
+    lastOutcomeReceiptId: outcome.receiptId || null,
+  }
 
   const completedRouteIds = [...journey.completedRouteIds, route.id]
+  const objectiveResults = outcome.objectiveResult
+    ? [...(journey.objectiveResults || []), outcome.objectiveResult]
+    : [...(journey.objectiveResults || [])]
   const earnedStampIds = journey.earnedStampIds.includes(route.stampId)
     ? journey.earnedStampIds
     : [...journey.earnedStampIds, route.stampId]
   const nextStep = journey.stepIndex + 1
   if (nextStep < JOURNEY_STEPS.length) {
-    return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds }
+    return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, objectiveResults, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
   }
   const postcard = {
     id: `${journey.id}-postcard`,
@@ -154,6 +172,10 @@ export function resolveJourneyFlight(journey, outcome = {}) {
     totalStars: totals.totalStars,
     rivalBeaten: !!outcome.rivalBeaten,
     perfect: earnedStampIds.length === JOURNEY_STEPS.length,
+    artworkId: outcome.destinationId || route.zone,
+    objectiveResults,
+    masteryLevel: Math.min(3, Math.max(0, Number(outcome.masteryLevel) || 0)),
+    decorationIds: Array.isArray(outcome.decorationIds) ? [...outcome.decorationIds] : [],
   }
-  return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, status: 'complete', postcard }
+  return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, objectiveResults, status: 'complete', postcard, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
 }

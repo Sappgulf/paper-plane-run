@@ -85,9 +85,13 @@ import {
   selectJourneyRoute,
 } from './journey.js'
 import { applyJourneyRewardOnce, clearJourney, loadJourney, saveJourney } from './journey-storage.js'
-import { loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
-import { renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderRouteChoices } from './journey-ui.js'
+import { buildPostcardShareModel, loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
+import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
+import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
+import { getPilotEffect } from './journey-modifiers.js'
+import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
+import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -139,6 +143,8 @@ const ghostDeltaHud = $('ghost-delta-hud')
 const ghostDeltaValEl = $('ghost-delta-val')
 const guardianHud = $('guardian-hud')
 const guardianHudVal = $('guardian-hud-val')
+const journeyObjectiveHud = $('journey-objective-hud')
+const journeyObjectiveVal = $('journey-objective-val')
 
 // Off-screen edge indicators: arrows pointing at nearby hazards/pickups
 // that have scrolled outside the camera frustum.
@@ -217,6 +223,9 @@ function hideEdgeIndicators() {
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
+const journeyResultProgressEl = $('journey-result-progress')
+const postcardRevealEl = $('postcard-reveal')
+const postcardDetailEl = $('postcard-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
@@ -363,6 +372,12 @@ updateDailyHint()
 let runKind = 'classic'
 let journey = loadJourney(localStorage).journey
 let journeyRunConfig = null
+let mastery = loadMastery(localStorage).mastery
+let journeyTimeline = null
+let journeyTelemetry = null
+let journeyPreviousDistance = 0
+let journeyVisibilityTimer = 0
+let lastJourneyResult = null
 function activeZoneAt(runDistance = distance) {
   if (runKind === 'journey' && journeyRunConfig?.zone) {
     return ZONES.find((zone) => zone.id === journeyRunConfig.zone) || zoneAt(runDistance)
@@ -2098,6 +2113,89 @@ function spawnMiniGauntlet(z = 60) {
   Haptic.tap()
 }
 
+function journeyObjectiveText() {
+  if (!journeyRunConfig?.objective || !journeyTelemetry) return ''
+  const result = resolveJourneyObjective(journeyRunConfig.objective, journeyTelemetry)
+  const labels = {
+    'shortcut-gates': `Gates ${result.value}/${result.target}`,
+    'near-miss': `Close calls ${result.value}/${result.target}`,
+    shieldless: journeyTelemetry.shieldUsed ? 'Shield used · finish still counts' : 'Keep the shield folded',
+    'star-trail': `Trail stars ${result.value}/${result.target}`,
+    rival: journeyTelemetry.rivalBeaten ? 'Red Dart beaten' : 'Beat Red Dart',
+    completion: 'Reach the destination',
+  }
+  return labels[result.kind] || result.label
+}
+
+function updateJourneyObjectiveHud() {
+  const visible = runKind === 'journey' && !!journeyRunConfig && state === 'playing'
+  journeyObjectiveHud?.classList.toggle('hidden', !visible)
+  if (visible && journeyObjectiveVal) journeyObjectiveVal.textContent = journeyObjectiveText()
+}
+
+function dispatchJourneyEncounter(event) {
+  if (!event || !journeyTelemetry || journeyTelemetry.completedEventIds.includes(event.id)) return
+  const eventStart = entities.length
+  const lane = event.lanes?.[event.params?.variant % Math.max(1, event.lanes.length)] ?? 0
+  switch (event.type) {
+  case 'formation':
+  case 'rooftop-gap':
+    spawnMiniGauntlet(64)
+    for (const entity of entities.slice(eventStart)) {
+      entity.journeyMotion = event.type === 'formation'
+        ? { originX: entity.mesh.position.x, amplitude: 3.5, speed: event.params?.speed || 2.4, direction: event.params?.direction || 1 }
+        : null
+    }
+    break
+  case 'gust':
+    windActive = 2.2
+    windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7)
+    windBanner.classList.remove('hidden')
+    audio.windGust()
+    break
+  case 'shortcut-gate': {
+    const count = Math.max(1, Math.min(3, event.params?.count || 1))
+    for (let index = 0; index < count; index += 1) {
+      spawnBoss(64 + index * 22)
+      const gate = entities.at(-1)
+      gate.journeyGate = true
+      gate.journeyGateRequired = event.params?.required !== false
+      gate.journeyGateBonus = !!event.params?.bonus && index === count - 1
+      gate.mesh.position.x = lane * 2.4
+      journeyTelemetry.shortcutGatesTotal += gate.journeyGateRequired ? 1 : 0
+    }
+    break
+  }
+  case 'visibility-pocket':
+    journeyVisibilityTimer = Math.max(journeyVisibilityTimer, Number(event.params?.duration) || 5)
+    scene.fog.far = Math.max(68, 145 * (1 - (Number(event.params?.density) || 0.75) * 0.45))
+    break
+  case 'reveal':
+    journeyVisibilityTimer = 0
+    scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
+    break
+  case 'rival':
+    challengeToast.textContent = '🔺 Red Dart cuts across the aurora — hold your line!'
+    challengeToast.classList.remove('hidden')
+    setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3000)
+    break
+  case 'boss-gate':
+    spawnBoss(72)
+    break
+  default:
+    spawnMiniGauntlet(64)
+    break
+  }
+  journeyTelemetry.completedEventIds.push(event.id)
+  for (const entity of entities.slice(eventStart)) entity.journeyEventId = event.id
+  const direction = lane < 0 ? 'from the left' : lane > 0 ? 'from the right' : 'through the center'
+  const navigatorHint = journeyRunConfig.pilotId === 'navigator' ? ` · ${direction}` : ''
+  zoneBanner.textContent = `${event.stage.toUpperCase()} · ${event.type.replaceAll('-', ' ')}${navigatorHint}`
+  zoneBanner.classList.remove('hidden')
+  zoneBannerTimer = 2.4
+  track('journey_encounter_started', { routeId: journeyRunConfig.routeId, eventId: event.id, type: event.type })
+}
+
 function spawnLayoutItems() {
   if (!layoutPlay) return
   for (const it of layoutPlay.items) {
@@ -2403,6 +2501,19 @@ function resetGame() {
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
   runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0 }
+  journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
+  journeyTelemetry = journeyTimeline ? {
+    nearMisses: 0,
+    shortcutGatesCleared: 0,
+    shortcutGatesTotal: 0,
+    shieldUsed: false,
+    collectedJourneyStars: 0,
+    rivalBeaten: false,
+    completedEventIds: [],
+  } : null
+  journeyPreviousDistance = 0
+  journeyVisibilityTimer = 0
+  lastJourneyResult = null
   nextBossAt = 500
   nextGauntletAt = 250
   bossActive = false
@@ -2510,6 +2621,7 @@ function resetGame() {
   comboFloat.classList.add('hidden')
   photoWrap.classList.add('hidden')
   lastPhotoDataUrl = null
+  updateJourneyObjectiveHud()
 }
 
 // Stick
@@ -2909,7 +3021,7 @@ function renderJourney() {
     journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
     saveJourney(localStorage, journey)
     renderJourney()
-  })
+  }, mastery)
   if (journey.status === 'complete') {
     routes.innerHTML = '<div class="journey-empty"><span>💌</span><strong>Journey complete!</strong><p>Your postcard is waiting in the Hangar.</p></div>'
     $('journey-choice-title').textContent = 'Postcard complete'
@@ -2918,6 +3030,7 @@ function renderJourney() {
     renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
       ...route,
       selected: route.id === journey.selectedRouteId,
+      objective: buildRunConfiguration({ ...journey, selectedRouteId: route.id })?.objective,
     })), (routeId) => {
       journey = selectJourneyRoute(journey, routeId)
       saveJourney(localStorage, journey)
@@ -2950,6 +3063,7 @@ function showMenu() {
   nextZoneHud?.classList.add('hidden')
   ghostDeltaHud?.classList.add('hidden')
   guardianHud?.classList.add('hidden')
+  journeyObjectiveHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   showStick(false)
   try {
@@ -2958,6 +3072,63 @@ function showMenu() {
     /* optional badge */
   }
   updateControlUI()
+}
+
+let postcardFocusReturn = null
+
+function closePostcardOverlay(root) {
+  root?.classList.add('hidden')
+  postcardFocusReturn?.focus?.()
+  postcardFocusReturn = null
+}
+
+async function sharePostcard(card, root) {
+  const model = buildPostcardShareModel(card, location.origin + location.pathname)
+  if (!model) return
+  const status = root?.querySelector?.('[data-postcard-status]')
+  try {
+    if (navigator.share) {
+      await navigator.share(model)
+      if (status) status.textContent = 'Postcard shared.'
+    } else if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(`${model.text}\n${model.url}`)
+      if (status) status.textContent = 'Postcard summary copied.'
+    } else if (status) {
+      status.textContent = `${model.text} · ${model.url}`
+    }
+    track('journey_postcard_shared', { postcardId: card.id })
+  } catch (error) {
+    if (error?.name !== 'AbortError' && status) status.textContent = `Share unavailable. ${model.text}`
+  }
+}
+
+function openPostcardDetail(card) {
+  if (!card || !postcardDetailEl) return
+  postcardFocusReturn ||= document.activeElement
+  postcardRevealEl?.classList.add('hidden')
+  renderPostcardDetail(postcardDetailEl, card, {
+    close: () => closePostcardOverlay(postcardDetailEl),
+    share: () => sharePostcard(card, postcardDetailEl),
+  })
+  postcardDetailEl.classList.remove('hidden')
+  postcardDetailEl.querySelector('button')?.focus()
+  track('journey_postcard_opened', { postcardId: card.id })
+}
+
+function showPostcardReveal(card) {
+  if (!card || !postcardRevealEl) return
+  postcardFocusReturn = document.activeElement
+  renderPostcardReveal(postcardRevealEl, card, {
+    continue: () => {
+      closePostcardOverlay(postcardRevealEl)
+      openJourney()
+    },
+    details: () => openPostcardDetail(card),
+    share: () => sharePostcard(card, postcardRevealEl),
+  })
+  postcardRevealEl.classList.remove('hidden')
+  postcardRevealEl.querySelector('button')?.focus()
+  track('journey_postcard_revealed', { postcardId: card.id })
 }
 
 function openHangar(tab = 'upgrades') {
@@ -2993,7 +3164,7 @@ function showHangarTab(tab) {
   if (tab === 'board') renderBoard('local')
   if (tab === 'settings') renderSettings()
   if (tab === 'stats') renderStats()
-  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage))
+  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
   if (tab === 'editor') setupEditor()
   refreshHangarWallet()
 }
@@ -3733,6 +3904,7 @@ function die(reason) {
     reason !== 'Nosed into the paper ground' &&
     !isCleanEnd
   ) {
+    if (journeyTelemetry) journeyTelemetry.shieldUsed = true
     audio.shieldHit()
     if (settings.haptics) Haptic.nearMiss()
     clearPower()
@@ -3849,7 +4021,7 @@ function finalizeDeathUnsafe() {
   const isWin = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
-  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack'
+  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack' && runKind !== 'journey'
   const d = Math.floor(distance)
   lastRun = {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily', timeAttack: runKind === 'timeattack',
@@ -3884,17 +4056,48 @@ function finalizeDeathUnsafe() {
     journeyBonus = completedJourneyRoute
       ? Math.max(0, Math.round(stars * (journeyRunConfig.rewardMultiplier - 1)))
       : 0
-    const rewardId = `${journey.id}:${journeyRunConfig.routeId}:bonus`
+    const rewardId = `${journeyRunConfig.attemptId}:bonus`
     if (journeyBonus > 0 && applyJourneyRewardOnce(localStorage, { id: rewardId })) {
       addLifetimeStars(journeyBonus)
       addWallet(journeyBonus)
     } else if (journeyBonus > 0) journeyBonus = 0
-    journey = resolveJourneyFlight(journey, {
+    const rivalBeaten = !!journeyRunConfig.rival && completedJourneyRoute
+    const journeyOutcomeBase = Object.freeze({
+      receiptId: journeyRunConfig.attemptId,
+      pilotId: journeyRunConfig.pilotId,
+      routeId: journeyRunConfig.routeId,
+      destinationId: journeyRunConfig.zone,
       completed: completedJourneyRoute,
+      risky: journeyRunConfig.risk === 'risky',
       distance: d,
       stars: stars + journeyBonus,
-      rivalBeaten: !!journeyRunConfig.rival && completedJourneyRoute,
+      nearMisses: journeyTelemetry?.nearMisses || 0,
+      shortcutGatesCleared: journeyTelemetry?.shortcutGatesCleared || 0,
+      shortcutGatesTotal: journeyTelemetry?.shortcutGatesTotal || 0,
+      shieldUsed: !!journeyTelemetry?.shieldUsed,
+      collectedJourneyStars: journeyTelemetry?.collectedJourneyStars || 0,
+      rivalBeaten,
+      completedEventIds: Object.freeze([...(journeyTelemetry?.completedEventIds || [])]),
     })
+    const objectiveResult = resolveJourneyObjective(journeyRunConfig.objective, journeyOutcomeBase)
+    const masteryBefore = getPilotMasteryView(mastery, journeyRunConfig.pilotId)
+    mastery = resolveMasteryOutcome(mastery, journeyOutcomeBase)
+    const masteryAfter = getPilotMasteryView(mastery, journeyRunConfig.pilotId)
+    const journeyOutcome = Object.freeze({
+      ...journeyOutcomeBase,
+      objectiveResult,
+      masteryLevel: masteryAfter?.level || 0,
+      decorationIds: Object.freeze([...(masteryAfter?.cosmetics || [])]),
+    })
+    try { saveMastery(localStorage, mastery) } catch (error) { console.warn('Journey mastery save failed', error) }
+    lastJourneyResult = Object.freeze({
+      outcome: journeyOutcome,
+      objectiveResult,
+      masteryBefore,
+      masteryAfter,
+      unlockedCosmetic: masteryAfter?.cosmetics.find((id) => !masteryBefore?.cosmetics.includes(id)) || null,
+    })
+    journey = resolveJourneyFlight(journey, journeyOutcome)
     saveJourney(localStorage, journey)
     if (journey.postcard && savePostcardOnce(localStorage, journey.postcard)) {
       track('journey_postcard_completed', { journeyId: journey.id, rivalBeaten: journey.postcard.rivalBeaten })
@@ -3986,6 +4189,16 @@ function finalizeDeathUnsafe() {
       : 'Fly Again'
   }
 
+  renderJourneyResultProgress(journeyResultProgressEl, runKind === 'journey' ? lastJourneyResult : null)
+  if (lastJourneyResult?.unlockedCosmetic) {
+    challengeToast.textContent = `Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`
+    challengeToast.classList.remove('hidden')
+    setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3200)
+  }
+  if (completedJourneyRoute && journey?.status === 'complete' && journey.postcard) {
+    requestAnimationFrame(() => showPostcardReveal(journey.postcard))
+  }
+
   if (challenge && challenge.m === difficulty.id) {
     challengeResult.classList.remove('hidden')
     challengeResult.textContent =
@@ -4041,6 +4254,10 @@ function scrollWorld(move) {
 
 function animateHazards(dt) {
   for (const e of entities) {
+    if (e.journeyMotion) {
+      const motion = e.journeyMotion
+      e.mesh.position.x = motion.originX + Math.sin(elapsed * motion.speed) * motion.amplitude * motion.direction
+    }
     if (e.type === 'bird') {
       const u = e.mesh.userData
       u.phase = (u.phase || 0) + dt * 8
@@ -4140,6 +4357,7 @@ function animateHazards(dt) {
 }
 
 function registerNearMiss(kind = null) {
+  if (journeyTelemetry) journeyTelemetry.nearMisses += 1
   combo++
   maxCombo = Math.max(maxCombo, combo)
   runStats.maxCombo = maxCombo
@@ -4315,6 +4533,12 @@ function update(dt) {
     }
   }
   if (invuln > 0) invuln -= dt
+  if (journeyVisibilityTimer > 0) {
+    journeyVisibilityTimer = Math.max(0, journeyVisibilityTimer - dt)
+    if (journeyVisibilityTimer === 0) {
+      scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
+    }
+  }
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
   if (keys.has('KeyX')) fireWeapon()
   updateShots(dt)
@@ -4611,6 +4835,9 @@ function update(dt) {
   if (activePower?.kind === 'slow') speedMul *= 0.55
   if (activePower?.kind === 'boost') speedMul *= 1.22
   if (activeTwist?.speedMul) speedMul *= activeTwist.speedMul
+  if (journeyRunConfig?.pilotId === 'daredevil' && comboTimer > 0) {
+    speedMul *= 1 + getPilotEffect('daredevil', journeyTelemetry || {}).momentum
+  }
   const cfg = difficulty
   const cruise =
     (cfg.speedBase + Math.min(cfg.speedCap - cfg.speedBase, distance * cfg.speedRamp)) * speedMul
@@ -4628,6 +4855,13 @@ function update(dt) {
     (1 + Math.min(0.35, speedBoost * 0.01)) *
     (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
+
+  if (journeyTimeline) {
+    const encounterEvents = getEncounterEventsAtDistance(journeyTimeline, journeyPreviousDistance, distance)
+    encounterEvents.forEach(dispatchJourneyEncounter)
+    journeyPreviousDistance = distance
+    updateJourneyObjectiveHud()
+  }
 
   // Sparkle trail from upgrades
   const trail = scene.getObjectByName('upgradeTrail')
@@ -4844,6 +5078,7 @@ function update(dt) {
       const catchR = e.radius + PLANE_RADIUS + magnetPull + 0.35
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
+        if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
         runStats.stars = stars
         starsEl.textContent = String(stars)
         distance += 18
@@ -4899,6 +5134,14 @@ function update(dt) {
           // Successfully threaded — reward once
           if (!e.cleared) {
             e.cleared = true
+            if (journeyTelemetry && e.journeyGateRequired) {
+              journeyTelemetry.shortcutGatesCleared += 1
+              if (e.journeyGateBonus) {
+                stars += 2
+                runStats.stars = stars
+              }
+              updateJourneyObjectiveHud()
+            }
             bossActive = false
             hitStopTimer = 0.07
             track('boss_clear', { distance: Math.floor(distance) })
@@ -5066,6 +5309,39 @@ try {
   menuEl?.classList.remove('hidden')
 }
 
+window.render_game_to_text = () => JSON.stringify({
+  coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
+  state,
+  mode: runKind,
+  distance: Math.floor(distance),
+  stars,
+  player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  journey: journeyRunConfig ? {
+    routeId: journeyRunConfig.routeId,
+    destination: journeyRunConfig.zone,
+    pilotId: journeyRunConfig.pilotId,
+    objective: journeyRunConfig.objective,
+    objectiveText: journeyObjectiveText(),
+    triggeredEncounterIds: [...(journeyTelemetry?.completedEventIds || [])],
+    visibleEncounterIds: entities.filter((entity) => entity.journeyEventId && entity.mesh.position.z > -25 && entity.mesh.position.z < 110).map((entity) => entity.journeyEventId),
+    telemetry: journeyTelemetry ? { ...journeyTelemetry, completedEventIds: [...journeyTelemetry.completedEventIds] } : null,
+  } : null,
+  result: lastJourneyResult ? {
+    completed: lastJourneyResult.outcome.completed,
+    objectiveCompleted: lastJourneyResult.objectiveResult.completed,
+    masteryLevel: lastJourneyResult.masteryAfter?.level || 0,
+    unlockedCosmetic: lastJourneyResult.unlockedCosmetic,
+  } : null,
+})
+
+if (import.meta.env.DEV) {
+  window.advanceTime = (ms) => {
+    const steps = Math.min(3600, Math.max(0, Math.ceil(Number(ms) / (1000 / 60))))
+    for (let index = 0; index < steps; index += 1) update(1 / 60)
+    return window.render_game_to_text()
+  }
+}
+
 // Deterministic browser-test state. Vite replaces this guard at build time,
 // so the production bundle cannot activate the shortcut through a URL.
 if (import.meta.env.DEV && devTestState === '#test-gameover') {
@@ -5107,6 +5383,43 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+}
+
+if (import.meta.env.DEV && devTestState === '#test-postcard') {
+  showPostcardReveal({
+    id: 'test-postcard',
+    journeyId: 'test-journey',
+    artworkId: 'aurora',
+    pilotId: 'navigator',
+    completedAt: Date.now(),
+    routePath: ['rooftops-safe-star-trail', 'harbor-risky-shortcut-gates', 'storm-safe-low-visibility', 'aurora-risky-red-dart-finale'],
+    stampIds: ['rooftops-steady', 'harbor-bold', 'storm-steady', 'aurora-bold'],
+    objectiveResults: [{ label: 'Beat Red Dart', completed: true, value: 1, target: 1 }],
+    masteryLevel: 3,
+    decorationIds: ['milo-map-trail', 'milo-compass-border'],
+    totalDistance: 1640,
+    totalStars: 38,
+    rivalBeaten: true,
+    perfect: true,
+  })
+}
+
+if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {
+  const zoneId = devTestState.slice('#test-journey-'.length)
+  const stepIndex = ['city', 'harbor', 'storm', 'aurora'].indexOf(zoneId)
+  if (stepIndex >= 0) {
+    settings = saveSettings({ haptics: false })
+    journey = { ...createJourney(4242, 1000), stepIndex }
+    journey = selectJourneyRoute(journey, getRouteChoices(journey)[0].id)
+    journeyRunConfig = buildRunConfiguration(journey)
+    runKind = 'journey'
+    hideAllPanels()
+    resetGame()
+    invuln = 999
+    state = 'playing'
+    hudEl?.classList.remove('hidden')
+    showStick(true)
+  }
 }
 
 window.addEventListener('resize', () => {

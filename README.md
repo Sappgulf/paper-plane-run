@@ -41,9 +41,11 @@ npm install && npm run dev
 
 ## Living Journey
 
-Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier and reward multiplier. Progress, the selected pilot, stamps, and retries persist locally without rerolling the route.
+Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier, objective, and reward multiplier. Every destination now has authored arrival, escalation, and signature encounters with seeded lane and timing variation, so retries remain recognizable without rerolling.
 
-Completing all four routes creates a postcard in **Hangar → Postcards**. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
+Milo and Pip each have three cosmetic-only mastery levels covering routes, shortcut gates, near misses, risky finishes, destinations, and the Red Dart finale. Mastery can unlock portraits, trails, and postcard borders; stars remain the only spendable upgrade currency.
+
+Completing all four routes unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. The four handcrafted paper-diorama images use stable asset paths and ship inside both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 
 ## Co-op controls
 
