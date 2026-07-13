@@ -12,3 +12,6 @@ Task 5: complete (commits d2a1f9d..f35df4a, review clean after WebGL lifecycle f
 Task 6: complete (commits 9b81f06..df0d9f4, review clean after prestige-cap and contract-coverage fixes)
 Task 7: complete (commits 3877561..a4ae988, review clean after live-loop, cache, accessibility, and fixture fixes)
 Task 8: complete (commits e3b4040..6359bb6, review clean after lifetime-gate separation and mission idempotence proof)
+Task 9: complete (commit 2936a8a, generated assets inspected at original/64px, 162 tests, iOS parity 102 files)
+Task 10: complete (commit 5b9eade, deterministic phases/accessibility, 168 tests, focused browser proof)
+Task 11: complete (commit 5f5ed13, bounded wave spacing, post-boss recovery, shared control axes)
