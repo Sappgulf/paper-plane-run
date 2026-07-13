@@ -85,4 +85,43 @@ Result: passed with no whitespace errors.
 
 - Verified that every existing `SKINS` cosmetic ID and both legacy ownership/equipped save keys remain unchanged.
 - Verified migration never deducts wallet or lifetime stars and always retains the legacy equipped ID as owned.
-- The task brief constrained implementation to the collection model and tests. `src/main.js` still uses the compatibility `unlocked` / `canUnlock` fields and does not yet invoke the new purchase/claim APIs directly; wiring the hangar interaction to `purchasePlane` / `claimPlane` is a follow-up UI integration concern outside the listed Task 3 files.
+
+## Review findings follow-up
+
+### Fixed
+
+- Hangar cards now differentiate `owned` from `available`: owned planes equip immediately, wallet-priced available planes call `purchasePlane`, and free seasonal/prestige available planes call `claimPlane`.
+- A plane equips only after its purchase or claim succeeds. The Hangar re-renders both wallet/card state and announces the result; an insufficient-wallet result leaves the plane unequipped and reports the shortfall.
+- Corrupt/non-array ownership data is now always written back as valid ownership, even when no equipped value exists or the equipped value cannot identify a plane. In that fallback case, Classic is equipped.
+- Added repeat seasonal-claim and prestige-claim idempotence assertions.
+- Added a rendered Hangar regression covering wallet purchase, free seasonal claim, automatic equip, wallet refresh, persisted ownership, and zero browser-console errors in both desktop and mobile projects.
+
+### Verification
+
+```sh
+npm test -- --run test/skins.test.js test/upgrades.test.js
+```
+
+Result: passed — 2 files, 18 tests.
+
+```sh
+npm run test:e2e -- --grep 'Hangar purchases wallet-priced planes and claims free seasonal planes before equipping'
+```
+
+Result: passed — desktop and mobile, 2 tests.
+
+```sh
+npm run build
+```
+
+Result: passed. Vite emitted the existing flight-engine chunk-size warning (>500 kB); no build errors.
+
+```sh
+git diff --check
+```
+
+Result: passed with no whitespace errors.
+
+### Fix commit
+
+- `fix: complete plane collection Hangar flow` (this review-fix commit)

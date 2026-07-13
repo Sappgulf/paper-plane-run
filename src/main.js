@@ -7,7 +7,7 @@ import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './
 import { getFunnelSummary, track } from './analytics.js'
 import { claimAchievementTier, getAchievementProgress } from './achievements.js'
 import { claimMission, getDailyMissions, unclaimedRewards } from './missions.js'
-import { addLifetimeStars, equipSkin, getLifetimeStars, listSkins, refreshUnlocks } from './skins.js'
+import { addLifetimeStars, claimPlane, equipSkin, getLifetimeStars, listSkins, purchasePlane, refreshUnlocks } from './skins.js'
 import { addWallet, buyUpgrade, canPrestige, doPrestige, getPrestigeLevel, getWallet, listUpgrades } from './upgrades.js'
 import { buildRunConfiguration, createJourney, getRouteChoices, selectJourneyPilot, selectJourneyRoute } from './journey.js'
 import { clearJourney, loadJourney, saveJourney } from './journey-storage.js'
@@ -365,36 +365,52 @@ function renderAchievements() {
   }
 }
 
-function renderSkins() {
+function renderSkins(statusMessage = '') {
   refreshUnlocks(season.id)
   refreshHangarWallet()
   const grid = $('skins-grid')
   if (!grid) return
+  const status = $('skins-status')
+  if (status) status.textContent = statusMessage
   grid.innerHTML = ''
   for (const s of listSkins(season.id)) {
     const card = document.createElement('button')
     card.type = 'button'
-    card.className = `skin-card${s.equipped ? ' equipped' : ''}${s.unlocked || s.canUnlock ? '' : ' locked'}`
+    card.className = `skin-card${s.equipped ? ' equipped' : ''}${s.state === 'locked' ? ' locked' : ''}`
     const meta = s.equipped
       ? 'Equipped'
-      : s.seasonalFree
-        ? '✦ Seasonal free'
-        : s.unlocked || s.canUnlock
-          ? s.cost && s.cost < 900
-            ? `${s.cost}★ unlock`
-            : 'Unlocked'
+      : s.state === 'owned'
+        ? 'Owned · Equip'
+        : s.state === 'available'
+          ? s.price
+            ? `Purchase ${s.price.value}★`
+            : 'Claim free'
           : s.prestigeReq
             ? `Prestige ${s.prestigeReq} required`
             : s.seasonal
               ? `Season: ${s.seasonal}`
-              : `Need ${s.cost}★`
+              : `Need ${s.requirement.value}★`
     card.innerHTML = `<img src="${resolveAssetUrl(s.map)}" alt=""/><div class="name">${s.name}</div><div class="meta">${meta}</div>`
     card.onclick = () => {
       refreshUnlocks(season.id)
-      if (s.unlocked || s.canUnlock) {
+      if (s.state === 'owned') {
         equipSkin(s.id)
         shellAudio.uiClick()
-        renderSkins()
+        renderSkins(`${s.name} equipped.`)
+        return
+      }
+      if (s.state === 'available') {
+        const result = s.price ? purchasePlane(s.id) : claimPlane(s.id, season.id)
+        if (!result.ok) {
+          const message = result.reason === 'poor'
+            ? `Need ${result.need} more wallet star${result.need === 1 ? '' : 's'}.`
+            : 'Plane is not available right now.'
+          renderSkins(message)
+          return
+        }
+        equipSkin(s.id)
+        shellAudio.uiClick()
+        renderSkins(`${s.name} ${s.price ? 'purchased' : 'claimed'} and equipped.`)
       }
     }
     grid.appendChild(card)

@@ -129,9 +129,9 @@ export const SKINS = [
 function loadLegacyOwnership() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '["classic"]')
-    return new Set(Array.isArray(saved) ? saved : ['classic'])
+    return { owned: new Set(Array.isArray(saved) ? saved : ['classic']), needsRepair: !Array.isArray(saved) }
   } catch {
-    return new Set(['classic'])
+    return { owned: new Set(['classic']), needsRepair: true }
   }
 }
 
@@ -140,16 +140,16 @@ function saveOwnership(set) {
 }
 
 function loadOwnership() {
-  const owned = loadLegacyOwnership()
-  let changed = false
+  const { owned, needsRepair } = loadLegacyOwnership()
+  let changed = needsRepair
 
   if (!owned.has('classic')) {
     owned.add('classic')
     changed = true
   }
 
-  const equipped = localStorage.getItem(EQUIP)
-  if (equipped && !owned.has(equipped)) {
+  const equipped = getEquippedSkinId()
+  if (!owned.has(equipped)) {
     owned.add(equipped)
     changed = true
   }
@@ -172,7 +172,8 @@ export function addLifetimeStars(n) {
 }
 
 export function getEquippedSkinId() {
-  return localStorage.getItem(EQUIP) || 'classic'
+  const equipped = localStorage.getItem(EQUIP)
+  return SKINS.some((skin) => skin.id === equipped) ? equipped : 'classic'
 }
 
 export function equipSkin(id) {

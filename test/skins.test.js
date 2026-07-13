@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
   claimPlane,
+  getEquippedSkinId,
   getLifetimeStars,
   isUnlocked,
   listSkins,
@@ -97,6 +98,8 @@ describe('plane collection purchases', () => {
     expect(claimPlane('halloween', 'halloween')).toEqual({ ok: true })
     expect(getWallet()).toBe(20)
     expect(listSkins('winter').find((plane) => plane.id === 'halloween')).toMatchObject({ state: 'owned' })
+    expect(claimPlane('halloween', 'halloween')).toEqual({ ok: true, already: true })
+    expect(getWallet()).toBe(20)
   })
 
   test('claims prestige planes only after their prestige requirement is met', () => {
@@ -105,6 +108,7 @@ describe('plane collection purchases', () => {
 
     expect(claimPlane('goldenfold')).toEqual({ ok: true })
     expect(listSkins().find((plane) => plane.id === 'goldenfold')).toMatchObject({ state: 'owned' })
+    expect(claimPlane('goldenfold')).toEqual({ ok: true, already: true })
   })
 
   test('recovers from corrupt legacy ownership JSON and retains the equipped plane', () => {
@@ -116,5 +120,17 @@ describe('plane collection purchases', () => {
     expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(
       expect.arrayContaining(['classic', 'night']),
     )
+  })
+
+  test('persists a valid fallback when corrupt ownership has no helpful equipped value', () => {
+    for (const equipped of [null, 'missing-plane']) {
+      localStorage.clear()
+      localStorage.setItem('paper-plane-run-skins', '{bad json')
+      if (equipped) localStorage.setItem('paper-plane-run-skin', equipped)
+
+      expect(listSkins().find((plane) => plane.id === 'classic')).toMatchObject({ state: 'equipped' })
+      expect(getEquippedSkinId()).toBe('classic')
+      expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
+    }
   })
 })

@@ -30,6 +30,41 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('Hangar purchases wallet-priced planes and claims free seasonal planes before equipping', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-wallet', '25')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic']))
+    localStorage.setItem('paper-plane-run-skin', 'classic')
+    localStorage.setItem('paper-plane-run-skins-version', '1')
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ forceSeason: 'halloween' }))
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: '🎨 Skins' }))
+
+  const mint = page.locator('.skin-card', { hasText: 'Mint Fold' })
+  await expect(mint).toContainText('Purchase 25★')
+  await tap(mint)
+  await expect(mint).toContainText('Equipped')
+  await expect(page.locator('#hangar-wallet')).toHaveText('0')
+  await expect(page.locator('#skins-status')).toHaveText('Mint Fold purchased and equipped.')
+
+  const halloween = page.locator('.skin-card', { hasText: 'Jack-o-Plane' })
+  await expect(halloween).toContainText('Claim free')
+  await tap(halloween)
+  await expect(halloween).toContainText('Equipped')
+  await expect(page.locator('#hangar-wallet')).toHaveText('0')
+  await expect(page.locator('#skins-status')).toHaveText('Jack-o-Plane claimed and equipped.')
+  await expect.poll(() => page.evaluate(() => ({
+    equipped: localStorage.getItem('paper-plane-run-skin'),
+    owned: JSON.parse(localStorage.getItem('paper-plane-run-skins')),
+  }))).toMatchObject({ equipped: 'halloween', owned: expect.arrayContaining(['mint', 'halloween']) })
+  expect(errors).toEqual([])
+})
+
 test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
