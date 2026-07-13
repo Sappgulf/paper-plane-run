@@ -10,6 +10,7 @@ export default defineConfig({
   // unaffected since it keeps the default "/".
   base: process.env.BASE_PATH || '/',
   build: {
+    manifest: true,
     // Keep asset names stable-ish for SW cache of static icons
     assetsInlineLimit: 0,
   },
