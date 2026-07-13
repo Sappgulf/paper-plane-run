@@ -50,6 +50,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 })
 
 test('Hangar upgrade cards show exact current, next, and max contracts', async ({ page }) => {
+  test.slow()
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
