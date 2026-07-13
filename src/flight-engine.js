@@ -53,6 +53,7 @@ import {
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
+import { createBossEncounter } from './game/boss-director.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -446,6 +447,9 @@ const devUpgradeProof = import.meta.env.DEV
   : null
 const devCollisionProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('collision')
+  : null
+const devBossProof = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('boss-proof')
   : null
 function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (!import.meta.env.DEV) return
@@ -2159,10 +2163,18 @@ function spawnChunk(z) {
 let bossCount = 0
 function spawnBoss(z = 70) {
   const useWind = bossCount % 2 === 1
+  const encounterIndex = bossCount
   bossCount++
   const gate = useWind ? createWindTunnelGate() : createBossGate()
   gate.position.set(0, 0, z)
   scene.add(gate)
+  const director = createBossEncounter({
+    kind: useWind ? 'wind' : 'scissors',
+    difficulty: difficulty.id,
+    encounterSeed: encounterIndex,
+    reducedMotion: settings.reducedMotion,
+    colorblind: settings.colorblindPowers,
+  })
   entities.push({
     mesh: gate,
     type: 'boss',
@@ -2170,6 +2182,7 @@ function spawnBoss(z = 70) {
     radius: 4,
     halfH: 20,
     isBoss: true,
+    director,
   })
   bossActive = true
   zoneBanner.textContent = useWind
@@ -2656,6 +2669,7 @@ function resetGame() {
   nextBossAt = 500
   nextGauntletAt = 250
   bossActive = false
+  bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
   invuln = 0.4 // brief spawn grace
@@ -3827,37 +3841,47 @@ function animateHazards(dt) {
     }
     if (e.type === 'boss') {
       const u = e.mesh.userData
+      const encounter = e.director?.step(dt)
       u.phase += dt * 2.2
-      // Safe gap oscillates
-      u.gapY = 8 + Math.sin(u.phase) * 5
+      // The director commits to one readable lane. Timing varies by
+      // difficulty, while the existing collision opening stays unchanged.
+      u.gapY = encounter?.safeY ?? 10
+      u.encounter = encounter
       if (u.kind === 'wind') {
-        if (u.fanL) u.fanL.rotation.z += dt * 9
-        if (u.fanR) u.fanR.rotation.z -= dt * 9
+        if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 9
+        if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 9
         u.fanL && (u.fanL.position.y = u.gapY + 3)
         u.fanR && (u.fanR.position.y = u.gapY + 3)
         if (u.debris) {
           for (const d of u.debris) {
-            d.userData.orbit += dt * d.userData.speed
+            if (encounter?.motionAllowed !== false) d.userData.orbit += dt * d.userData.speed
             const r = d.userData.radius
             d.position.set(Math.cos(d.userData.orbit) * r, u.gapY + 3 + Math.sin(d.userData.orbit * 1.3) * r * 0.6, Math.sin(d.userData.orbit) * 0.6)
-            d.rotation.z += dt * 3
+            if (encounter?.motionAllowed !== false) d.rotation.z += dt * 3
           }
         }
       } else {
         if (u.left) {
           u.left.position.y = u.gapY + 3
-          u.left.rotation.z = 0.25 + Math.sin(u.phase * 1.3) * 0.2
+          u.left.rotation.z = encounter?.motionAllowed === false
+            ? 0.25
+            : 0.25 + Math.sin(u.phase * 1.3) * 0.2
         }
         if (u.right) {
           u.right.position.y = u.gapY + 3
-          u.right.rotation.z = -0.25 - Math.sin(u.phase * 1.3) * 0.2
+          u.right.rotation.z = encounter?.motionAllowed === false
+            ? -0.25
+            : -0.25 - Math.sin(u.phase * 1.3) * 0.2
         }
       }
       // Highlight safe rings near gap
       e.mesh.traverse((ch) => {
         if (ch.name === 'safeRing') {
           ch.position.y = u.gapY
-          ch.material.opacity = 0.7 + Math.sin(elapsed * 8) * 0.2
+          ch.material.opacity = encounter?.motionAllowed === false
+            ? 0.85
+            : 0.7 + Math.sin(elapsed * 8) * 0.2
+          ch.scale.setScalar(encounter?.shapeCue?.includes('ring') ? 1.12 : 1)
           ch.material.transparent = true
         }
       })
@@ -4689,8 +4713,9 @@ function update(dt) {
       // Only test when gate is in the plane's path slice
       if (dz < 3.5 && dz > -2.5) {
         const gapY = m.userData.gapY || 10
-        const inGap = Math.abs(p.y - gapY) < 2.5 && Math.abs(p.x) < 2.6
+        const inGap = Math.abs(p.y - gapY) < 2.5 && Math.abs(p.x - m.position.x) < 2.6
         if (!inGap && Math.abs(dz) < 1.8) {
+          e.director?.collide()
           die(m.userData.kind === 'wind' ? 'Blown into the wind turbines!' : 'Snipped by the boss scissors!')
           return
         }
@@ -4698,6 +4723,7 @@ function update(dt) {
           // Successfully threaded — reward once
           if (!e.cleared) {
             e.cleared = true
+            e.director?.pass()
             if (journeyTelemetry && e.journeyGateRequired) {
               journeyTelemetry.shortcutGatesCleared += 1
               if (e.journeyGateBonus) {
@@ -4933,6 +4959,21 @@ function upgradeRuntimeTextState() {
   }
 }
 
+function bossTextState() {
+  const entity = entities.find((candidate) => candidate.type === 'boss' && candidate.director)
+  if (!entity) return null
+  const boss = entity.director.snapshot()
+  return {
+    kind: boss.kind,
+    phase: boss.phase,
+    safeLane: boss.safeLane,
+    warningSeconds: Number(boss.warningSeconds.toFixed(2)),
+    pressure: Number(boss.pressure.toFixed(2)),
+    completed: boss.completed,
+    shapeCue: boss.shapeCue,
+  }
+}
+
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
@@ -4955,6 +4996,7 @@ window.render_game_to_text = () => JSON.stringify({
       .map((entity) => entity.type),
   },
   upgrades: upgradeRuntimeTextState(),
+  boss: bossTextState(),
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
     itemTypes: layoutPlay.items.map((item) => item.t),
@@ -4962,6 +5004,7 @@ window.render_game_to_text = () => JSON.stringify({
   settings: {
     lowPower: settings.lowPower,
     colorblindPowers: settings.colorblindPowers,
+    reducedMotion: settings.reducedMotion,
     arDesk: settings.arDesk,
     arActive: deskAR.active,
     shadowsEnabled: renderer.shadowMap.enabled,
@@ -5120,6 +5163,23 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-cooldown') {
   windTimer = 999
   hudEl?.classList.remove('hidden')
   applyUpgradeVisuals()
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  bossCount = devBossProof === 'wind' ? 1 : 0
+  spawnBoss(60)
+  hudEl?.classList.remove('hidden')
   simulationPaused = true
 }
 

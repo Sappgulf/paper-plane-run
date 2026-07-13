@@ -598,6 +598,35 @@ test('reduced motion keeps shield and phase feedback stable in the live loop', a
   }
 })
 
+test('existing bosses expose deterministic readable phases and accessibility cues', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+
+  await openApp(page, '/?boss-proof=scissors#test-boss-encounter')
+  await waitForGameText(page)
+  const scissors = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
+  expect([-1, 0, 1]).toContain(scissors.boss.safeLane)
+  expect(scissors.plane.collisionRadius).toBe(0.7)
+  await page.evaluate(() => window.advanceTime(1100))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('pressure')
+  await page.evaluate(() => window.advanceTime(1300))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('final-pass')
+
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({
+      reducedMotion: true,
+      colorblindPowers: true,
+      haptics: false,
+    }))
+  })
+  await openApp(page, '/?boss-proof=wind#test-boss-encounter')
+  await waitForGameText(page)
+  const wind = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(wind.boss).toMatchObject({ kind: 'wind', phase: 'warning', shapeCue: 'radial-vane-ring' })
+  expect(wind.settings).toMatchObject({ reducedMotion: true, colorblindPowers: true })
+  expect(wind.plane.collisionRadius).toBe(0.7)
+})
+
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
