@@ -9,6 +9,7 @@ import {
   doPrestige,
   getPrestigeLevel,
   getUpgradeEffects,
+  spendWallet,
 } from '../src/upgrades.js'
 
 describe('upgrade purchases', () => {
@@ -37,6 +38,15 @@ describe('upgrade purchases', () => {
 
     expect(buyUpgrade('guardian')).toEqual({ ok: false, reason: 'max' })
     expect(getWallet()).toBe(200)
+  })
+
+  test('spends only wallet stars and leaves lifetime availability stars untouched', () => {
+    localStorage.setItem('paper-plane-run-lifetime-stars', '200')
+    addWallet(20)
+
+    expect(spendWallet(12)).toBe(true)
+    expect(getWallet()).toBe(8)
+    expect(localStorage.getItem('paper-plane-run-lifetime-stars')).toBe('200')
   })
 })
 

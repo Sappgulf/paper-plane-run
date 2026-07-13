@@ -1,8 +1,10 @@
-import { getPrestigeLevel } from './upgrades.js'
+import { getPrestigeLevel, getWallet, spendWallet } from './upgrades.js'
 
 const KEY = 'paper-plane-run-skins'
 const EQUIP = 'paper-plane-run-skin'
 const STARS_KEY = 'paper-plane-run-lifetime-stars'
+const SCHEMA_VERSION_KEY = 'paper-plane-run-skins-version'
+const SCHEMA_VERSION = '1'
 
 export const SKINS = [
   {
@@ -124,16 +126,39 @@ export const SKINS = [
   },
 ]
 
-function loadUnlocked() {
+function loadLegacyOwnership() {
   try {
-    return new Set(JSON.parse(localStorage.getItem(KEY) || '["classic"]'))
+    const saved = JSON.parse(localStorage.getItem(KEY) || '["classic"]')
+    return new Set(Array.isArray(saved) ? saved : ['classic'])
   } catch {
     return new Set(['classic'])
   }
 }
 
-function saveUnlocked(set) {
+function saveOwnership(set) {
   localStorage.setItem(KEY, JSON.stringify([...set]))
+}
+
+function loadOwnership() {
+  const owned = loadLegacyOwnership()
+  let changed = false
+
+  if (!owned.has('classic')) {
+    owned.add('classic')
+    changed = true
+  }
+
+  const equipped = localStorage.getItem(EQUIP)
+  if (equipped && !owned.has(equipped)) {
+    owned.add(equipped)
+    changed = true
+  }
+
+  if (changed) saveOwnership(owned)
+  if (localStorage.getItem(SCHEMA_VERSION_KEY) !== SCHEMA_VERSION) {
+    localStorage.setItem(SCHEMA_VERSION_KEY, SCHEMA_VERSION)
+  }
+  return owned
 }
 
 export function getLifetimeStars() {
@@ -151,26 +176,67 @@ export function getEquippedSkinId() {
 }
 
 export function equipSkin(id) {
-  const unlocked = loadUnlocked()
-  if (!unlocked.has(id)) return false
+  const owned = loadOwnership()
+  if (!owned.has(id)) return false
   localStorage.setItem(EQUIP, id)
   return true
 }
 
-export function unlockSkin(id) {
+function getRequirement(skin) {
+  if (skin.seasonal) return { type: 'season', value: skin.seasonal }
+  if (skin.prestigeReq != null) return { type: 'prestige', value: skin.prestigeReq }
+  return { type: 'lifetime-stars', value: skin.cost }
+}
+
+function getPrice(skin) {
+  if (skin.seasonal || skin.prestigeReq != null) return null
+  return { currency: 'wallet-stars', value: skin.cost }
+}
+
+function availabilityMet(skin, seasonId) {
+  if (skin.seasonal) return skin.seasonal === seasonId
+  if (skin.prestigeReq != null) return prestigeMet(skin)
+  return getLifetimeStars() >= skin.cost
+}
+
+/** Buy a lifetime-available plane using spendable wallet stars. */
+export function purchasePlane(id) {
   const skin = SKINS.find((s) => s.id === id)
   if (!skin) return { ok: false, reason: 'missing' }
-  const unlocked = loadUnlocked()
-  if (unlocked.has(id)) return { ok: true, already: true }
-  const stars = getLifetimeStars()
-  if (stars < skin.cost) return { ok: false, reason: 'poor', need: skin.cost - stars }
-  unlocked.add(id)
-  saveUnlocked(unlocked)
+
+  const owned = loadOwnership()
+  if (owned.has(id)) return { ok: true, already: true }
+  if (skin.seasonal || skin.prestigeReq != null) return { ok: false, reason: 'claim-required' }
+  if (!availabilityMet(skin)) return { ok: false, reason: 'locked' }
+  if (!spendWallet(skin.cost)) return { ok: false, reason: 'poor', need: skin.cost - getWallet() }
+
+  owned.add(id)
+  saveOwnership(owned)
+  return { ok: true, cost: skin.cost }
+}
+
+/** Claim a free seasonal or prestige plane once its availability requirement is met. */
+export function claimPlane(id, seasonId = 'default') {
+  const skin = SKINS.find((s) => s.id === id)
+  if (!skin) return { ok: false, reason: 'missing' }
+
+  const owned = loadOwnership()
+  if (owned.has(id)) return { ok: true, already: true }
+  if (!skin.seasonal && skin.prestigeReq == null) return { ok: false, reason: 'purchase-required' }
+  if (!availabilityMet(skin, seasonId)) return { ok: false, reason: 'locked' }
+
+  owned.add(id)
+  saveOwnership(owned)
   return { ok: true }
 }
 
+/** @deprecated Use purchasePlane for wallet purchases. */
+export function unlockSkin(id) {
+  return purchasePlane(id)
+}
+
 export function isUnlocked(id) {
-  return loadUnlocked().has(id)
+  return loadOwnership().has(id)
 }
 
 export function getSkin(id) {
@@ -182,37 +248,26 @@ function prestigeMet(s) {
 }
 
 export function listSkins(seasonId = 'default') {
-  const stars = getLifetimeStars()
+  const owned = loadOwnership()
+  const equipped = getEquippedSkinId()
   return SKINS.map((s) => {
     const seasonalFree = s.seasonal && s.seasonal === seasonId
-    const unlocked =
-      isUnlocked(s.id) ||
-      (!s.seasonal && !s.prestigeReq && stars >= s.cost) ||
-      seasonalFree ||
-      prestigeMet(s)
+    const available = availabilityMet(s, seasonId)
+    const state = equipped === s.id ? 'equipped' : owned.has(s.id) ? 'owned' : available ? 'available' : 'locked'
     return {
       ...s,
-      unlocked,
-      equipped: getEquippedSkinId() === s.id,
-      canUnlock: unlocked,
+      state,
+      requirement: getRequirement(s),
+      price: getPrice(s),
+      unlocked: state === 'owned' || state === 'equipped',
+      equipped: state === 'equipped',
+      canUnlock: state === 'available',
       seasonalFree,
     }
   })
 }
 
 export function refreshUnlocks(seasonId = 'default') {
-  const stars = getLifetimeStars()
-  const unlocked = loadUnlocked()
-  let changed = false
-  for (const s of SKINS) {
-    const seasonalFree = s.seasonal && s.seasonal === seasonId
-    if ((stars >= s.cost && !s.seasonal && !s.prestigeReq) || seasonalFree || prestigeMet(s)) {
-      if (!unlocked.has(s.id)) {
-        unlocked.add(s.id)
-        changed = true
-      }
-    }
-  }
-  if (changed) saveUnlocked(unlocked)
+  loadOwnership()
   return listSkins(seasonId)
 }
