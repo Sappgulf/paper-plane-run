@@ -32,5 +32,6 @@ ios/**/xcuserdata/
 *.sw?
 .vercel
 .worktrees/
+.superpowers/
 playwright-report/
 test-results/
