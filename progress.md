@@ -23,4 +23,8 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - Defect caught by text-state testing: dev-only invulnerability was briefly inserted in normal start; moved into hash-only test setup before release verification.
 - Current proof baseline before iOS: 25 Vitest files / 89 tests passed; production Vite build passed; iOS parity previously matched 68 files after artwork integration.
 - Final Playwright matrix: 17 passed across desktop and mobile, with 5 viewport-inapplicable cases intentionally skipped.
-- Remaining: iOS simulator/device build and interaction proof, merge/push, Vercel production deploy, physical iPhone fresh install.
+- iOS bundle regenerated and verified: 68 bundled files match the generated iOS distribution exactly.
+- iPhone 17 Pro simulator: Xcode Debug build succeeded; fresh simulator install launched the full menu; Computer Use opened Living Journey, selected Paper City, and visually confirmed active gameplay with objective HUD, distance, power-up, obstacles, and touch controls.
+- Generic physical-iOS Release build succeeded with automatic signing, the Apple Development identity, and the team provisioning profile.
+- Physical device discovery currently sees Austin's iPhone 16 Pro but reports it unavailable; signed build and install will be retried at the final device lane.
+- Remaining: merge/push, Vercel production deploy, physical iPhone fresh install.
