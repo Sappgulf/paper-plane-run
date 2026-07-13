@@ -51,11 +51,65 @@ describe('flight engine loader', () => {
       return Promise.resolve({ bootFlightEngine: () => engine })
     })
 
-    await expect(loader.preload()).rejects.toThrow('chunk unavailable')
+    await expect(loader.preload()).rejects.toMatchObject({
+      message: 'chunk unavailable',
+      phase: 'import',
+      requiresReload: false,
+    })
     expect(loader.getStatus()).toBe('idle')
 
     await expect(loader.start('classic')).resolves.toBe('retried')
     expect(importCalls).toBe(2)
     expect(loader.getStatus()).toBe('ready')
+  })
+
+  test('a failed boot requires reload and cannot duplicate initialization side effects', async () => {
+    let importCalls = 0
+    let bootCalls = 0
+    let initializationEffects = 0
+    const loader = createEngineLoader(async () => {
+      importCalls += 1
+      return {
+        bootFlightEngine() {
+          bootCalls += 1
+          initializationEffects += 1
+          throw new Error('renderer initialization failed')
+        },
+      }
+    })
+
+    const firstAttempt = loader.preload()
+    await expect(firstAttempt).rejects.toMatchObject({
+      message: 'renderer initialization failed',
+      phase: 'boot',
+      requiresReload: true,
+    })
+    expect(loader.getStatus()).toBe('reload-required')
+
+    const secondAttempt = loader.preload()
+    expect(secondAttempt).toBe(firstAttempt)
+    await expect(secondAttempt).rejects.toMatchObject({ phase: 'boot' })
+    expect(importCalls).toBe(1)
+    expect(bootCalls).toBe(1)
+    expect(initializationEffects).toBe(1)
+  })
+
+  test('forwards shell settings to a preloaded engine', async () => {
+    const settingsUpdates = []
+    const engine = {
+      startMode: () => 'started',
+      syncSettings(settings) {
+        settingsUpdates.push(settings)
+        return { settings: { ...settings, applied: true }, arPermissionDenied: false }
+      },
+    }
+    const loader = createEngineLoader(async () => ({ bootFlightEngine: () => engine }))
+
+    await loader.preload()
+    await expect(loader.syncSettings({ lowPower: true })).resolves.toEqual({
+      settings: { lowPower: true, applied: true },
+      arPermissionDenied: false,
+    })
+    expect(settingsUpdates).toEqual([{ lowPower: true }])
   })
 })

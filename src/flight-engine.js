@@ -66,12 +66,17 @@ import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObj
 import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
+import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 let engineInstance = null
+let engineBootFailure = null
 
 export function bootFlightEngine() {
 if (engineInstance) return engineInstance
+if (engineBootFailure) throw engineBootFailure
+
+try {
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -2662,6 +2667,40 @@ updateControlUI()
 // Ensure sticks never flash on boot
 showStick(false)
 
+let settingsSyncChain = Promise.resolve({ settings, arPermissionDenied: false })
+function syncRuntimeSettings(nextSettings = loadSettings()) {
+  const requestedSettings = { ...nextSettings }
+  settingsSyncChain = settingsSyncChain
+    .catch(() => ({ settings, arPermissionDenied: false }))
+    .then(() => synchronizeRuntimeSettings(requestedSettings, {
+      deskAR,
+      persist: (partial) => saveSettings(partial),
+      applyDocumentA11y: (applied) => {
+        settings = applied
+        applyDocumentA11y(applied)
+      },
+      applyPerformance: (applied) => {
+        settings = applied
+        applyPerformanceSettings()
+      },
+      rebuildPowerPalette: (applied) => {
+        settings = applied
+        rebuildPowerPalette()
+      },
+      applySeason: (applied) => {
+        settings = applied
+        season = seasonInfo(applied.forceSeason)
+        applySeasonVisuals()
+      },
+      updateControls: (applied) => {
+        settings = applied
+        updateControlUI()
+        if (state === 'playing') showStick(true)
+      },
+    }))
+  return settingsSyncChain
+}
+
 /** Map pointer to normalized -1..1 with invert options */
 function pointerAxesFromClient(clientX, clientY) {
   let nx = (clientX / innerWidth) * 2 - 1
@@ -2970,10 +3009,13 @@ bindClick('hotseat-go', () => {
 
 $('ar-btn')?.addEventListener('click', async () => {
   await audio.unlock()
-  const on = await deskAR.toggle()
-  settings = saveSettings({ arDesk: on })
-  applyPerformanceSettings()
-  challengeToast.textContent = on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off'
+  const desired = !deskAR.active
+  const result = await syncRuntimeSettings(saveSettings({ arDesk: desired }))
+  shellBridge?.settingsApplied?.(result)
+  const on = result.settings.arDesk
+  challengeToast.textContent = result.arPermissionDenied
+    ? 'Camera permission needed for Desk AR'
+    : on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off'
   challengeToast.classList.remove('hidden')
   setTimeout(() => challengeToast.classList.add('hidden'), 2500)
 })
@@ -3018,11 +3060,9 @@ async function startGame(kind = 'classic', opts = {}) {
   try {
     if (opts.engineAudio) audio = opts.engineAudio
     if (opts.shellBridge) shellBridge = opts.shellBridge
-    settings = loadSettings()
-    applyDocumentA11y(settings)
-    season = seasonInfo(settings.forceSeason)
+    const settingsResult = await syncRuntimeSettings(opts.settings || loadSettings())
+    shellBridge?.settingsApplied?.(settingsResult)
     setDifficulty(localStorage.getItem(DIFF_KEY) || 'normal', { persist: false })
-    updateControlUI()
     // Finish deferred death rewards if restarting mid-crash
     if (state === 'dead' && crashT > 0) {
       crashT = 0
@@ -3037,24 +3077,13 @@ async function startGame(kind = 'classic', opts = {}) {
       openJourney()
       return
     }
-    if (kind === 'layout' && !layoutPlay) {
-      if (opts.layout) layoutPlay = opts.layout
-    }
+    layoutPlay = selectLayoutForStart(layoutPlay, kind, opts)
     if (kind === 'hotseat' && !opts.continueHotseat) {
       hotseat.turn = 0
       hotseat.scores = [0, 0]
       hotseat.active = true
     }
     if (kind === 'coop') hotseat.active = false
-    // Don't block play on AR permission failures
-    if (settings.arDesk && !deskAR.active) {
-      try {
-        await deskAR.start()
-        applyPerformanceSettings()
-      } catch (e) {
-        console.warn('AR start failed', e)
-      }
-    }
     hideAllPanels()
     resetGame()
     state = 'playing'
@@ -4562,18 +4591,12 @@ try {
     challengeToast.classList.remove('hidden')
     setTimeout(() => challengeToast.classList.add('hidden'), 5000)
   }
-  if (settings.arDesk) {
-    deskAR.start().then((ok) => {
-      if (ok) applyPerformanceSettings()
-    })
-  }
-  if (settings.reducedMotion) {
-    scene.fog.far = 200
-  }
+  void syncRuntimeSettings(settings).catch((error) => console.warn('Initial settings sync failed', error))
 } catch (err) {
   console.error('boot error', err)
   state = 'menu'
   menuEl?.classList.remove('hidden')
+  throw err
 }
 
 window.render_game_to_text = () => JSON.stringify({
@@ -4583,6 +4606,19 @@ window.render_game_to_text = () => JSON.stringify({
   distance: Math.floor(distance),
   stars,
   player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  layout: runKind === 'layout' && layoutPlay ? {
+    name: layoutPlay.name,
+    itemTypes: layoutPlay.items.map((item) => item.t),
+  } : null,
+  settings: {
+    lowPower: settings.lowPower,
+    colorblindPowers: settings.colorblindPowers,
+    arDesk: settings.arDesk,
+    arActive: deskAR.active,
+    shadowsEnabled: renderer.shadowMap.enabled,
+    dustVisible: dust.visible,
+    shieldPowerColor: POWER_META.shield.color,
+  },
   journey: journeyRunConfig ? {
     routeId: journeyRunConfig.routeId,
     destination: journeyRunConfig.zone,
@@ -4681,6 +4717,11 @@ engineInstance = {
   returnToMenu: showMenu,
   renderGameToText: () => window.render_game_to_text(),
   advanceTime: (ms) => window.advanceTime?.(ms),
+  syncSettings: syncRuntimeSettings,
 }
 return engineInstance
+} catch (error) {
+  engineBootFailure = error
+  throw error
+}
 }

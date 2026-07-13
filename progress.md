@@ -39,3 +39,17 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - Targeted lifecycle/Journey Playwright after the fix: 4 passed, 2 project-specific skips. Delayed preload used one engine request; aborted preload recovered on request two.
 - Temporary web-game client proof: three inspected Classic-flight frames reached 14m, 28m, and 40m with leftward movement, matching text state, and no console errors; generated artifacts were removed after inspection.
 - Final verification: 27 Vitest files / 94 tests; full Playwright 19 passed / 7 viewport skips; iOS parity 70 files; bundle budget 70,273 initial / 724,470 total bytes. No known code TODOs remain for Task 2.
+
+### Balanced game polish — Task 2 review fixes
+
+- Added a tested runtime seam for latest-layout selection and live settings/AR synchronization.
+- Engine import failures remain retryable, while boot failures are tagged as reload-required and reuse one rejected promise so partial initialization cannot run twice in-page.
+- Restored `journey_restarted` analytics in the shell and added browser regressions for current custom layouts, post-preload low-power/colorblind updates, AR permission rollback, and restart analytics.
+- Focused Vitest is green at 2 files / 8 tests; production build succeeds. Playwright and final verification are pending.
+- First affected Playwright run: 4 passed and the AR case failed only because `check()` requires the checkbox to remain checked; the app correctly rolled it back before Playwright's post-click assertion. The test now uses a plain click before asserting false state.
+- Corrected affected Playwright lane: 5 passed. Full verification is green at 28 Vitest files / 100 tests and 22 Playwright passes / 10 viewport skips.
+- Web-game client proof inspected three Classic-flight frames at 14m, 27m, and 41m; state tracked the plane moving right, runtime settings matched the visuals, and no console-error artifact was produced.
+- A final focused browser rerun hit the default 45s timeout after WebGL startup/clicks consumed ~44s; the trace snapshot showed both settings correctly checked. Marked the heavier AR/WebGL smoke `test.slow()` and queued the exact lane again.
+- The next serialized run cleared settings/AR but the two-play custom-layout smoke likewise exhausted 45s under current host load; marked that WebGL-heavy regression `test.slow()` as well.
+- A subsequent rerun showed even the inherited delayed/retry HUD assertions exceeding their explicit 15s under sustained host load; extended those two WebGL startup assertions to 45s and marked them slow without changing behavior assertions.
+- Final exact affected desktop lane passed all 5 tests in 52.8s after the timeout hardening.

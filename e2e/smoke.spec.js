@@ -32,6 +32,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 
 test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
   let engineRequests = 0
   let releaseEngine
   const engineGate = new Promise((resolve) => {
@@ -48,12 +49,13 @@ test('a delayed engine chunk shows preparation before flight starts', async ({ p
 
   await expect(page.locator('#engine-status')).toHaveText('Preparing your plane...')
   releaseEngine()
-  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   expect(engineRequests).toBe(1)
 })
 
 test('an aborted engine chunk offers a retry that can start flight', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
   let engineRequests = 0
   await page.route('**/src/flight-engine.js*', async (route) => {
     engineRequests += 1
@@ -68,10 +70,112 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
   await expect(page.locator('#engine-retry')).toBeVisible()
   await expect(page.locator('#start-btn')).toBeEnabled()
   await tap(page.locator('#engine-retry'))
-  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   // A registered service worker may satisfy the reload from cache, bypassing
   // page.route; the visible HUD is the authoritative recovery assertion.
   expect(engineRequests).toBeGreaterThanOrEqual(1)
+})
+
+test('a preloaded engine applies shell graphics settings and rolls denied AR back', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
+  await page.addInitScript(() => {
+    window.__denyCamera = false
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: async () => {},
+    })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          if (!window.__denyCamera) return new MediaStream()
+          throw new DOMException('Camera permission denied', 'NotAllowedError')
+        },
+      },
+    })
+  })
+  page.on('dialog', (dialog) => dialog.dismiss())
+
+  await openApp(page)
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: '⚙️ Settings' }))
+
+  await page.locator('#set-low-power').check({ force: true })
+  await page.locator('#set-colorblind').check({ force: true })
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).settings)).toMatchObject({
+    lowPower: true,
+    colorblindPowers: true,
+    shadowsEnabled: false,
+    dustVisible: false,
+    shieldPowerColor: 0x0077bb,
+  })
+
+  await page.locator('#set-ar').click({ force: true })
+  await expect(page.locator('#set-ar')).toBeChecked()
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).settings)).toMatchObject({
+    arDesk: true,
+    arActive: true,
+  })
+
+  await page.locator('#set-ar').click({ force: true })
+  await expect(page.locator('#set-ar')).not.toBeChecked()
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).settings)).toMatchObject({
+    arDesk: false,
+    arActive: false,
+  })
+
+  await page.evaluate(() => { window.__denyCamera = true })
+  await page.locator('#set-ar').click({ force: true })
+  await expect(page.locator('#set-ar')).not.toBeChecked()
+  await expect.poll(() => page.evaluate(() => ({
+    runtime: JSON.parse(window.render_game_to_text()).settings,
+    saved: JSON.parse(localStorage.getItem('paper-plane-run-settings-v1')),
+  }))).toMatchObject({
+    runtime: { arDesk: false, arActive: false },
+    saved: { arDesk: false },
+  })
+})
+
+test('replaying custom routes uses the latest editor layout', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
+  await openApp(page)
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: '🛠 Editor' }))
+
+  await page.locator('#editor-import').fill('L1|First%20route|T0.0,8.0,40.0')
+  await tap(page.locator('#editor-load'))
+  await tap(page.locator('#editor-play'))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toEqual({
+    name: 'First route',
+    itemTypes: ['star'],
+  })
+
+  await page.locator('#hangar-btn').evaluate((button) => button.click())
+  await tap(page.getByRole('button', { name: '🛠 Editor' }))
+  await page.locator('#editor-import').fill('L1|Current%20route|R1.0,9.0,35.0;P-2.0,7.0,55.0')
+  await tap(page.locator('#editor-load'))
+  await tap(page.locator('#editor-play'))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toEqual({
+    name: 'Current route',
+    itemTypes: ['bird', 'power'],
+  })
+})
+
+test('starting a new Journey records journey_restarted analytics', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: 'Start a new Journey' }))
+
+  const restarted = await page.evaluate(() => {
+    const events = JSON.parse(localStorage.getItem('paper-plane-run-analytics') || '[]')
+    return events.findLast((event) => event.e === 'journey_restarted')
+  })
+  expect(restarted?.p?.journeyId).toBeTruthy()
 })
 
 test('first flight starts with launch protection', async ({ page }) => {

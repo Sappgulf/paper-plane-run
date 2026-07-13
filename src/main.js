@@ -490,6 +490,7 @@ function renderSettings() {
       element.onchange = () => {
         settings = saveSettings({ [key]: element.checked })
         applyDocumentA11y(settings)
+        void syncSettingsWithEngine(settings)
       }
       return
     }
@@ -497,6 +498,7 @@ function renderSettings() {
     element.onchange = () => {
       settings = saveSettings({ [key]: number ? Number(element.value) : element.value })
       applyDocumentA11y(settings)
+      void syncSettingsWithEngine(settings)
     }
   }
   bind('set-control-mode', 'controlMode')
@@ -678,7 +680,39 @@ function openHangar(tab = 'upgrades') {
 
 let pendingStart = null
 let engineFailed = false
-const shellBridge = Object.freeze({ showMenu, openJourney, showPostcardReveal, refreshProgression })
+
+function applyEngineSettingsResult(result) {
+  if (!result?.settings) return
+  settings = result.settings
+  season = seasonInfo(settings.forceSeason)
+  applyDocumentA11y(settings)
+  const arSetting = $('set-ar')
+  if (arSetting) arSetting.checked = Boolean(settings.arDesk)
+  syncShellControlUi()
+  if ($('season-now')) $('season-now').textContent = `${season.name} (${season.id})`
+  if (result.arPermissionDenied) alert('Camera permission needed for Desk AR')
+}
+
+async function syncSettingsWithEngine(nextSettings) {
+  try {
+    const result = await engineLoader.syncSettings(nextSettings)
+    applyEngineSettingsResult(result)
+    return result
+  } catch (error) {
+    engineFailed = true
+    console.warn('Flight engine settings sync failed', error)
+    showEngineStatus('Couldn’t apply flight settings. Check your connection and retry.', { retry: true })
+    return undefined
+  }
+}
+
+const shellBridge = Object.freeze({
+  showMenu,
+  openJourney,
+  showPostcardReveal,
+  refreshProgression,
+  settingsApplied: applyEngineSettingsResult,
+})
 
 function showEngineStatus(message, { retry = false } = {}) {
   if (engineStatusMessage) engineStatusMessage.textContent = message
@@ -697,10 +731,16 @@ function restoreActionableMenu() {
 
 async function startMode(kind, options = {}) {
   pendingStart = { kind, options }
+  settings = loadSettings()
   void shellAudio.unlock()
   showEngineStatus('Preparing your plane...')
   try {
-    const result = await engineLoader.start(kind, { ...options, engineAudio: shellAudio, shellBridge })
+    const result = await engineLoader.start(kind, {
+      ...options,
+      settings,
+      engineAudio: shellAudio,
+      shellBridge,
+    })
     engineFailed = false
     hideEngineStatus()
     return result
@@ -833,6 +873,7 @@ document.querySelectorAll('.ctrl-btn').forEach((button) => {
   button.addEventListener('click', () => {
     settings = saveSettings({ controlMode: button.dataset.ctrl })
     syncShellControlUi()
+    void syncSettingsWithEngine(settings)
     void shellAudio.unlock().then(() => shellAudio.uiClick())
   })
 })
@@ -842,6 +883,7 @@ if (menuInvert) {
   menuInvert.addEventListener('change', () => {
     settings = saveSettings({ invertY: menuInvert.checked })
     syncShellControlUi()
+    void syncSettingsWithEngine(settings)
   })
 }
 syncShellControlUi()
@@ -865,6 +907,7 @@ $('journey-restart')?.addEventListener('click', () => {
   clearJourney(localStorage)
   journey = createJourney(Date.now(), Date.now())
   saveJourney(localStorage, journey)
+  track('journey_restarted', { journeyId: journey.id })
   renderJourney()
 })
 
