@@ -18,14 +18,14 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   await page.getByRole('button', { name: '🏠 Hangar' }).click()
   await expect(page.getByRole('heading', { name: 'Hangar' })).toBeVisible()
   await page.getByRole('button', { name: '← Main menu' }).click()
-  await expect(page.getByRole('button', { name: '✈ Take Flight' })).toBeVisible()
+  await expect(page.locator('#start-btn')).toBeVisible()
   expect(errors).toEqual([])
 })
 
 test('first flight starts with launch protection', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await page.goto('/')
-  await page.getByRole('button', { name: '✈ Take Flight' }).click()
+  await page.locator('#start-btn').click()
 
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#power-banner')).toContainText('launch protection active')
@@ -33,10 +33,37 @@ test('first flight starts with launch protection', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '🗺️ Begin Journey' }).click()
+  await expect(page.getByRole('heading', { name: 'Across the Paper Skies' })).toBeVisible()
+  await expect(page.locator('.journey-stop')).toHaveCount(4)
+  await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
+  await page.locator('.journey-route-card').first().click()
+
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#hud-mode')).not.toHaveText('Normal')
+  await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
+  expect(errors).toEqual([])
+})
+
+test('Living Journey selection survives a reload', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '🗺️ Begin Journey' }).click()
+  const routeId = await page.locator('.journey-route-card').first().getAttribute('data-route-id')
+  await page.locator('.journey-route-card').first().click()
+  await page.reload()
+  await page.getByRole('button', { name: '🗺️ Begin Journey' }).click()
+
+  await expect(page.locator(`[data-route-id="${routeId}"]`)).toHaveClass(/selected/)
+})
+
 test('visibility pause freezes and resumes flight distance', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   await page.goto('/')
-  await page.getByRole('button', { name: '✈ Take Flight' }).click()
+  await page.locator('#start-btn').click()
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
 
   await page.evaluate(() => {
@@ -59,7 +86,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await page.goto('/')
   await page.getByRole('button', { name: '🕹️ Stick' }).click()
-  await page.getByRole('button', { name: '✈ Take Flight' }).click()
+  await page.locator('#start-btn').click()
 
   await expect(page.locator('#distance')).toBeVisible()
   await expect(page.locator('#stars')).toBeVisible()
