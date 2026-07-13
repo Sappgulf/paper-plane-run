@@ -54,6 +54,7 @@ import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
 import { createBossEncounter } from './game/boss-director.js'
+import { getWaveSpacing, normalizeControlAxes } from './game/pacing.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -314,6 +315,7 @@ const distanceMilestones = new Set()
 let nextBossAt = 500
 let nextGauntletAt = 250
 let bossActive = false
+let bossRecoveryUntil = 0
 let planeWingL = null
 let planeWingR = null
 let tearSide = 0
@@ -2053,11 +2055,12 @@ function spawnChunk(z) {
   const ramp = Math.min(1, distance / 700)
   const cfg = difficulty
   const zone = activeZoneAt(distance)
+  const recovering = distance < bossRecoveryUntil
   const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
 
-  maybeSpawnGroundDecor(z)
+  if (!recovering) maybeSpawnGroundDecor(z)
 
-  for (const side of [-1, 1]) {
+  for (const side of recovering ? [] : [-1, 1]) {
     if (rng() < 0.82) {
       const w = 2.5 + rng() * 3.5
       const h = (5 + rng() * (10 + ramp * 14)) * cfg.buildingH
@@ -2071,7 +2074,7 @@ function spawnChunk(z) {
     }
   }
 
-  const ht = pickHazardType(zone)
+  const ht = recovering ? null : pickHazardType(zone)
   if (ht === 'building') {
     const w = 2 + rng() * 3
     const h = (7 + rng() * (10 + ramp * 16)) * cfg.buildingH
@@ -2669,6 +2672,7 @@ function resetGame() {
   nextBossAt = 500
   nextGauntletAt = 250
   bossActive = false
+  bossRecoveryUntil = 0
   bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
@@ -2760,7 +2764,7 @@ function resetGame() {
   } else {
     for (let i = 0; i < 14; i++) {
       spawnChunk(nextSpawnZ)
-      nextSpawnZ += (16 + rng() * 10) * difficulty.gap
+      nextSpawnZ += getWaveSpacing({ difficultyId: difficulty.id, distance }) * difficulty.gap
     }
   }
 
@@ -2940,11 +2944,13 @@ function syncRuntimeSettings(nextSettings = loadSettings()) {
 
 /** Map pointer to normalized -1..1 with invert options */
 function pointerAxesFromClient(clientX, clientY) {
-  let nx = (clientX / innerWidth) * 2 - 1
-  let ny = -((clientY / innerHeight) * 2 - 1) // screen up → +1
-  if (settings.invertX) nx = -nx
-  if (settings.invertY) ny = -ny
-  return { nx, ny }
+  const axes = normalizeControlAxes({
+    x: (clientX / innerWidth) * 2 - 1,
+    y: -((clientY / innerHeight) * 2 - 1), // screen up → +1
+    invertX: settings.invertX,
+    invertY: settings.invertY,
+  })
+  return { nx: axes.x, ny: axes.y }
 }
 
 /** Raycast cursor onto the flight plane (z=0) so left/right match the screen */
@@ -3009,10 +3015,7 @@ function mouseWorldTarget(clientX, clientY, isTouch = false) {
 
 function applyAxisInvert(x, y) {
   // invertX/Y only flip when user opts in — default is natural
-  return {
-    x: settings.invertX ? -x : x,
-    y: settings.invertY ? -y : y,
-  }
+  return normalizeControlAxes({ x, y, invertX: settings.invertX, invertY: settings.invertY })
 }
 
 /** Float a joystick base so it re-centers under wherever the finger first
@@ -4592,7 +4595,11 @@ function update(dt) {
   if (runKind !== 'tutorial' && runKind !== 'layout') {
     while (nextSpawnZ < 220) {
       spawnChunk(nextSpawnZ)
-      nextSpawnZ += (15 + rng() * 12) * difficulty.gap
+      nextSpawnZ += getWaveSpacing({
+        difficultyId: difficulty.id,
+        distance,
+        recovery: distance < bossRecoveryUntil,
+      }) * difficulty.gap
     }
   }
 
@@ -4733,6 +4740,7 @@ function update(dt) {
               updateJourneyObjectiveHud()
             }
             bossActive = false
+            bossRecoveryUntil = distance + 70
             hitStopTimer = 0.07
             track('boss_clear', { distance: Math.floor(distance) })
             stars += 5
