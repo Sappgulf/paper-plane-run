@@ -35,6 +35,30 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('Hangar upgrade cards show exact current, next, and max contracts', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-wallet', '12')
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ guardian: 2 }))
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+
+  const handling = page.locator('.upgrade-card', { hasText: 'Fold Handling' })
+  await expect(handling.locator('.u-effect-current')).toHaveText('Current: Control response +0%')
+  await expect(handling.locator('.u-effect-next')).toHaveText('Next: Control response +8%')
+  await tap(handling.getByRole('button', { name: 'Upgrade 12★' }))
+  await expect(handling.locator('.u-effect-current')).toHaveText('Current: Control response +8%')
+  await expect(handling.locator('.u-effect-next')).toHaveText('Next: Control response +16%')
+
+  const guardian = page.locator('.upgrade-card', { hasText: 'Guardian Crease' })
+  await expect(guardian.locator('.u-effect-current')).toHaveText('Current: Crash saves 2 per run')
+  await expect(guardian.locator('.u-effect-next')).toHaveText('Next: MAX — all ranks purchased')
+  await expect(guardian.locator('.u-max')).toHaveText('MAX')
+  expect(errors).toEqual([])
+})
+
 test('Hangar purchases wallet-priced planes and claims free seasonal planes before equipping', async ({ page }) => {
   test.slow()
   const errors = collectConsoleErrors(page)

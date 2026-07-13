@@ -97,9 +97,123 @@ export const UPGRADES = [
   },
 ]
 
+function findUpgrade(id) {
+  return UPGRADES.find((upgrade) => upgrade.id === id) || null
+}
+
+function normalizeUpgradeLevel(id, level) {
+  const upgrade = findUpgrade(id)
+  if (!upgrade) return 0
+  const value = Number(level)
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(upgrade.max, Math.floor(value)))
+}
+
+function effect(label, values, runtime) {
+  return { label, values, runtime }
+}
+
+function formatScale(value) {
+  return `${value.toFixed(2)}×`
+}
+
+function roundedEffectValue(value) {
+  return Number(value.toFixed(2))
+}
+
+const UPGRADE_FORMULAS = {
+  handling(level) {
+    const responsePercent = level * 8
+    return effect(`Control response +${responsePercent}%`, { responsePercent }, {
+      accelMul: 1 + responsePercent / 100,
+      handlingLevel: level,
+    })
+  },
+  lift(level) {
+    const sinkReductionPercent = level * 8
+    return effect(`Sink rate -${sinkReductionPercent}%`, { sinkReductionPercent }, {
+      sinkMul: Math.max(0.55, 1 - sinkReductionPercent / 100),
+    })
+  },
+  glide(level) {
+    const speedPercent = level * 4
+    const scorePercent = level * 3
+    return effect(`Cruise speed +${speedPercent}% · score +${scorePercent}%`, { speedPercent, scorePercent }, {
+      speedMul: 1 + speedPercent / 100,
+    })
+  },
+  magnet(level) {
+    const pullPercent = level * 55
+    return effect(`Star pull +${pullPercent}%`, { pullPercent }, {
+      magnetBonus: pullPercent / 100,
+    })
+  },
+  shield(level) {
+    const durationPercent = level * 20
+    return effect(`Shield duration +${durationPercent}%`, { durationPercent }, {
+      shieldDurationMul: 1 + durationPercent / 100,
+    })
+  },
+  luck(level) {
+    const starSpawnPercent = level * 12
+    const powerSpawnPercent = level * 10
+    return effect(`Star spawns +${starSpawnPercent}% · power-ups +${powerSpawnPercent}%`, { starSpawnPercent, powerSpawnPercent }, {
+      starChanceMul: 1 + starSpawnPercent / 100,
+      powerChanceMul: 1 + powerSpawnPercent / 100,
+    })
+  },
+  wingspan(level) {
+    const planeScale = roundedEffectValue(1.2 + level * 0.08)
+    const nearMissWindow = roundedEffectValue(1.4 + level * 0.15)
+    return effect(`Plane scale ${formatScale(planeScale)} · near-miss window ${formatScale(nearMissWindow)}`, { planeScale, nearMissWindow }, {
+      planeScale,
+      nearMissBonus: nearMissWindow - 1.4,
+    })
+  },
+  trail(level) {
+    const scoreAuraPercent = level * 2
+    return effect(`Score aura +${scoreAuraPercent}%`, { scoreAuraPercent }, {
+      trailLevel: level,
+    })
+  },
+  turbo(level) {
+    const boostGraceSeconds = roundedEffectValue(level * 0.15)
+    const boostHitboxScale = roundedEffectValue(Math.max(0.6, 0.78 - level * 0.06))
+    return effect(`Boost grace +${boostGraceSeconds.toFixed(2)}s · hitbox ${formatScale(boostHitboxScale)}`, { boostGraceSeconds, boostHitboxScale }, {
+      boostSafety: level,
+    })
+  },
+  guardian(level) {
+    const charges = level
+    return effect(`Crash saves ${charges} per run`, { charges }, {
+      guardianCharges: charges,
+    })
+  },
+  weapon(level) {
+    const cooldownSeconds = roundedEffectValue(Math.max(0.35, 1.1 - level * 0.18))
+    const label = level === 0 ? 'Ink Blast locked' : `Ink cooldown ${cooldownSeconds.toFixed(2)}s`
+    return effect(label, { cooldownSeconds }, {
+      weaponLevel: level,
+      weaponCooldown: cooldownSeconds,
+    })
+  },
+}
+
+function getUpgradeFormula(id, level) {
+  const upgrade = findUpgrade(id)
+  if (!upgrade) return null
+  return UPGRADE_FORMULAS[id](normalizeUpgradeLevel(id, level))
+}
+
+function getPrestigeFormula(level) {
+  const bonusPercent = level * 3
+  return { bonusPercent, multiplier: 1 + bonusPercent / 100 }
+}
+
 function loadLevels() {
   try {
-    return JSON.parse(localStorage.getItem(LEVELS_KEY) || '{}')
+    const levels = JSON.parse(localStorage.getItem(LEVELS_KEY) || '{}')
+    return levels && typeof levels === 'object' && !Array.isArray(levels) ? levels : {}
   } catch {
     return {}
   }
@@ -110,8 +224,7 @@ function saveLevels(obj) {
 }
 
 export function getUpgradeLevel(id) {
-  const lv = loadLevels()[id]
-  return Math.max(0, Math.min(99, Number(lv) || 0))
+  return normalizeUpgradeLevel(id, loadLevels()[id])
 }
 
 export function getAllUpgradeLevels() {
@@ -155,7 +268,12 @@ function migrateWalletOnce() {
 
 /** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
 export function getPrestigeLevel() {
-  return Math.max(0, Math.min(50, Number(localStorage.getItem(PRESTIGE_KEY) || 0)))
+  const level = Number(localStorage.getItem(PRESTIGE_KEY) || 0)
+  return Number.isFinite(level) ? Math.max(0, Math.min(50, Math.floor(level))) : 0
+}
+
+export function getPrestigeBonusPercent(level = getPrestigeLevel()) {
+  return getPrestigeFormula(Math.max(0, Math.floor(Number(level) || 0))).bonusPercent
 }
 
 export function canPrestige() {
@@ -192,41 +310,62 @@ export function buyUpgrade(id) {
 }
 
 /**
+ * Exact, player-facing current and next effect contract for one upgrade level.
+ */
+export function describeUpgradeEffect(id, level) {
+  const upgrade = findUpgrade(id)
+  if (!upgrade) return null
+  const currentLevel = normalizeUpgradeLevel(id, level)
+  const current = getUpgradeFormula(id, currentLevel)
+  const next = currentLevel >= upgrade.max ? null : getUpgradeFormula(id, currentLevel + 1)
+  return {
+    id,
+    level: currentLevel,
+    max: upgrade.max,
+    maxed: currentLevel >= upgrade.max,
+    current: { label: current.label, values: current.values },
+    next: next && { label: next.label, values: next.values },
+  }
+}
+
+/**
  * Runtime multipliers applied in the flight loop.
  */
 export function getUpgradeEffects() {
-  const h = getUpgradeLevel('handling')
-  const lift = getUpgradeLevel('lift')
-  const glide = getUpgradeLevel('glide')
-  const mag = getUpgradeLevel('magnet')
-  const sh = getUpgradeLevel('shield')
-  const luck = getUpgradeLevel('luck')
-  const wing = getUpgradeLevel('wingspan')
-  const trail = getUpgradeLevel('trail')
-  const turbo = getUpgradeLevel('turbo')
-  const guardian = getUpgradeLevel('guardian')
-  const weapon = getUpgradeLevel('weapon')
-  const prestige = getPrestigeLevel()
-  const prestigeMul = 1 + prestige * 0.03
-  const synergyGold = wing >= 3 && trail >= 3
+  const formulas = Object.fromEntries(UPGRADES.map((upgrade) => [
+    upgrade.id,
+    getUpgradeFormula(upgrade.id, getUpgradeLevel(upgrade.id)),
+  ]))
+  const prestigeLevel = getPrestigeLevel()
+  const prestige = getPrestigeFormula(prestigeLevel)
+  const handling = formulas.handling
+  const lift = formulas.lift
+  const glide = formulas.glide
+  const magnet = formulas.magnet
+  const shield = formulas.shield
+  const luck = formulas.luck
+  const wingspan = formulas.wingspan
+  const trail = formulas.trail
+  const turbo = formulas.turbo
+  const guardian = formulas.guardian
+  const weapon = formulas.weapon
+  const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
-    accelMul: 1 + h * 0.08,
-    sinkMul: Math.max(0.55, 1 - lift * 0.08),
-    speedMul: 1 + glide * 0.04,
-    scoreMul: (1 + glide * 0.03 + trail * 0.02) * prestigeMul,
-    magnetBonus: mag * 0.55,
-    shieldDurationMul: 1 + sh * 0.2,
-    starChanceMul: (1 + luck * 0.12) * prestigeMul,
-    powerChanceMul: 1 + luck * 0.1,
-    planeScale: 1.2 + wing * 0.08,
-    nearMissBonus: wing * 0.15,
-    trailLevel: trail,
-    handlingLevel: h,
-    boostSafety: turbo,
-    guardianCharges: guardian,
-    weaponLevel: weapon,
-    weaponCooldown: Math.max(0.35, 1.1 - weapon * 0.18),
-    prestigeLevel: prestige,
+    ...handling.runtime,
+    ...lift.runtime,
+    ...glide.runtime,
+    scoreMul: (1 + glide.values.scorePercent / 100 + trail.values.scoreAuraPercent / 100) * prestige.multiplier,
+    ...magnet.runtime,
+    ...shield.runtime,
+    ...luck.runtime,
+    starChanceMul: luck.runtime.starChanceMul * prestige.multiplier,
+    ...wingspan.runtime,
+    ...trail.runtime,
+    ...turbo.runtime,
+    ...guardian.runtime,
+    ...weapon.runtime,
+    prestigeLevel,
+    prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,
   }
 }

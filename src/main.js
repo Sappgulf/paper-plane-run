@@ -17,7 +17,7 @@ import {
   purchasePlane,
   refreshUnlocks,
 } from './skins.js'
-import { addWallet, buyUpgrade, canPrestige, doPrestige, getPrestigeLevel, getWallet, listUpgrades } from './upgrades.js'
+import { addWallet, buyUpgrade, canPrestige, describeUpgradeEffect, doPrestige, getPrestigeBonusPercent, getPrestigeLevel, getWallet, listUpgrades } from './upgrades.js'
 import { buildRunConfiguration, createJourney, getRouteChoices, selectJourneyPilot, selectJourneyRoute } from './journey.js'
 import { clearJourney, loadJourney, saveJourney } from './journey-storage.js'
 import { buildPostcardShareModel, loadPostcardAlbum } from './journey-postcards.js'
@@ -550,6 +550,8 @@ function renderPrestige() {
   if (!panel) return
   const level = getPrestigeLevel()
   const ready = canPrestige()
+  const bonusPercent = getPrestigeBonusPercent(level)
+  const nextBonusPercent = getPrestigeBonusPercent(level + 1)
   if (level === 0 && !ready) {
     panel.classList.add('hidden')
     return
@@ -559,7 +561,7 @@ function renderPrestige() {
   const info = document.createElement('div')
   info.className = 'prestige-info'
   info.innerHTML = level > 0
-    ? `<strong>✦ Golden Fold ${level}</strong><span>+${level * 3}% score & star luck, permanently</span>`
+    ? `<strong>✦ Golden Fold ${level}</strong><span>+${bonusPercent}% score & star luck, permanently</span>`
     : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus</span>`
   panel.appendChild(info)
   if (ready) {
@@ -568,7 +570,7 @@ function renderPrestige() {
     btn.className = 'prestige-btn'
     btn.textContent = level > 0 ? 'Prestige again' : 'Prestige'
     btn.onclick = () => {
-      if (!confirm('Reset all upgrade levels for a permanent +3% score & star luck bonus?')) return
+      if (!confirm(`Reset all upgrade levels for a permanent +${nextBonusPercent - bonusPercent}% score & star luck bonus?`)) return
       const res = doPrestige()
       if (res.ok) {
         shellAudio.uiClick()
@@ -587,6 +589,7 @@ function renderUpgrades() {
   if (!grid) return
   grid.innerHTML = ''
   for (const u of listUpgrades()) {
+    const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
     card.className = 'upgrade-card'
     const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
@@ -615,6 +618,16 @@ function renderUpgrades() {
       </div>
     `
     card.appendChild(action)
+    const effects = document.createElement('div')
+    effects.className = 'u-effects'
+    const current = document.createElement('div')
+    current.className = 'u-effect-current'
+    current.textContent = `Current: ${effect.current.label}`
+    const next = document.createElement('div')
+    next.className = 'u-effect-next'
+    next.textContent = effect.next ? `Next: ${effect.next.label}` : 'Next: MAX — all ranks purchased'
+    effects.append(current, next)
+    card.appendChild(effects)
     const barEl = document.createElement('div')
     barEl.className = 'u-bars'
     barEl.textContent = `${bars}  ${u.level}/${u.max}`
