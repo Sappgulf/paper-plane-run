@@ -83,6 +83,7 @@ import {
   getTrailFeedback,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
+  SHIELD_BASE_DURATION,
 } from './game/upgrade-runtime.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
@@ -289,6 +290,11 @@ if (muteBtn) muteBtn.textContent = audio.muted ? '🔇' : '🔊'
 
 // Settings / season / AR / analytics
 let settings = loadSettings()
+let activeUpgradeEffects = getUpgradeEffects()
+function refreshUpgradeEffects() {
+  activeUpgradeEffects = getUpgradeEffects()
+  return activeUpgradeEffects
+}
 applyDocumentA11y(settings)
 const deskAR = new DeskAR()
 let season = seasonInfo(settings.forceSeason)
@@ -430,6 +436,18 @@ const devTestState = import.meta.env.DEV ? location.hash : ''
 const devUpgradeProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('upgrade-proof')
   : null
+function configureDevUpgradeProof(proof = devUpgradeProof) {
+  if (!import.meta.env.DEV) return
+  let levels = {}
+  if (proof === 'max') {
+    levels = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
+  } else if (proof?.endsWith('-max')) {
+    const upgradeId = proof.slice(0, -'-max'.length)
+    const upgrade = UPGRADES.find(({ id }) => id === upgradeId)
+    if (upgrade) levels = { [upgrade.id]: upgrade.max }
+  }
+  localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(levels))
+}
 {
   const params = new URLSearchParams(location.search)
   const d = Number(params.get('d') || params.get('score'))
@@ -767,7 +785,7 @@ const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
 /** Ink Blast: fires a forward projectile that pops small airborne hazards. */
 function fireWeapon() {
   if (state !== 'playing') return
-  const fx = getUpgradeEffects()
+  const fx = activeUpgradeEffects
   const weapon = getWeaponState({
     weaponLevel: fx.weaponLevel,
     cooldownSeconds: fx.weaponCooldown,
@@ -979,7 +997,12 @@ const rivalMat = new THREE.MeshStandardMaterial({
 function buildPowerMeta() {
   const c = powerColors(settings.colorblindPowers)
   return {
-    shield: { label: '🛡 Shield', color: c.shield, banner: '🛡 Paper Shield!', duration: 8 },
+    shield: {
+      label: '🛡 Shield',
+      color: c.shield,
+      banner: '🛡 Paper Shield!',
+      duration: SHIELD_BASE_DURATION,
+    },
     slow: { label: '⏱ Slow-mo', color: c.slow, banner: '⏱ Slow Motion!', duration: 6 },
     magnet: { label: '🧲 Magnet', color: c.magnet, banner: '🧲 Star Magnet!', duration: 9 },
     boost: { label: '🚀 Boost', color: c.boost, banner: '🚀 Speed Boost!', duration: 5 },
@@ -2064,7 +2087,7 @@ function spawnChunk(z) {
     })
   }
 
-  const ufx = getUpgradeEffects()
+  const ufx = activeUpgradeEffects
   const spawnRates = getSpawnRates({
     starChance: cfg.starChance,
     powerChance: cfg.powerChance,
@@ -2373,7 +2396,7 @@ function activatePower(kind) {
   clearPower()
   // clearPower nulls activePower — restore wings/shield already handled
 
-  const fx = getUpgradeEffects()
+  const fx = activeUpgradeEffects
   const duration = getPowerDuration({
     kind,
     baseDuration: meta.duration,
@@ -2506,9 +2529,8 @@ function updateSkyFade(dt) {
   skyMatB.opacity = 1 - skyFade
 }
 
-function updateWeaponFeedback(playing = state === 'playing') {
+function updateWeaponFeedback(playing = state === 'playing', fx = activeUpgradeEffects) {
   if (!fireBtn) return
-  const fx = getUpgradeEffects()
   const weapon = getWeaponState({
     weaponLevel: fx.weaponLevel,
     cooldownSeconds: fx.weaponCooldown,
@@ -2532,8 +2554,7 @@ function updateMagnetPullFeedback(target, magnet) {
   if (active) magnetPullTrail.textContent = `🧲 Pulling a star · ${Math.round(magnet.visualStrength * 100)}%`
 }
 
-function applyUpgradeVisuals() {
-  const fx = getUpgradeEffects()
+function applyUpgradeVisuals(fx = activeUpgradeEffects) {
   plane.scale.setScalar(fx.planeScale)
   const trail = upgradeTrail
   const trailFeedback = getTrailFeedback(fx)
@@ -2547,6 +2568,7 @@ function applyUpgradeVisuals() {
 }
 
 function resetGame() {
+  const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
   clearPower()
   updateMagnetPullFeedback(null, { active: false })
@@ -2603,7 +2625,7 @@ function resetGame() {
   distanceMilestones.clear()
   speedBoost = 0
   invuln = 0.4 // brief spawn grace
-  const guardian = getGuardianState({ charges: getUpgradeEffects().guardianCharges })
+  const guardian = getGuardianState({ charges: upgradeEffects.guardianCharges })
   guardianLeft = guardian.remaining
   guardianHud?.classList.toggle('hidden', !guardian.visible)
   guardianHud?.setAttribute('data-hud-priority', guardian.visible ? 'primary' : 'secondary')
@@ -2629,9 +2651,9 @@ function resetGame() {
   comboHud.classList.add('hidden')
   applySeasonVisuals()
   applySkin(getEquippedSkinId())
-  applyUpgradeVisuals()
+  applyUpgradeVisuals(upgradeEffects)
   spawnUnfold = 0
-  plane.scale.setScalar(getUpgradeEffects().planeScale * 0.15)
+  plane.scale.setScalar(upgradeEffects.planeScale * 0.15)
 
   // RNG
   if (runKind === 'daily') {
@@ -3390,7 +3412,7 @@ function die(reason) {
   if (guardianLeft > 0 && !isCleanEnd) {
     guardianLeft--
     const guardian = getGuardianState({
-      charges: getUpgradeEffects().guardianCharges,
+      charges: activeUpgradeEffects.guardianCharges,
       remaining: guardianLeft,
     })
     guardianLeft = guardian.remaining
@@ -3978,7 +4000,7 @@ function update(dt) {
   if (spawnUnfold < 1) {
     spawnUnfold = Math.min(1, spawnUnfold + dt / 0.4)
     const eased = 1 - Math.pow(1 - spawnUnfold, 3)
-    plane.scale.setScalar(getUpgradeEffects().planeScale * (0.15 + eased * 0.85))
+    plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85))
   }
   if (runKind === 'timeattack' && timeAttackLeft > 0) {
     timeAttackLeft = Math.max(0, timeAttackLeft - dt)
@@ -4032,17 +4054,27 @@ function update(dt) {
     powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
     if (activePower.kind === 'shield' && shieldBubble) {
       powerLabel.textContent = `🛡 Shield · ${Math.max(0, activePower.timeLeft).toFixed(1)}s`
-      shieldBubble.material.opacity = 0.15 + Math.sin(elapsed * 6) * 0.08
-      // flash when about to expire
-      if (activePower.timeLeft < 1.2) {
-        shieldBubble.visible = Math.sin(elapsed * 20) > 0
+      if (settings.reducedMotion) {
+        shieldBubble.material.opacity = 0.19
+        shieldBubble.visible = true
+      } else {
+        shieldBubble.material.opacity = 0.15 + Math.sin(elapsed * 6) * 0.08
+        // flash when about to expire
+        if (activePower.timeLeft < 1.2) {
+          shieldBubble.visible = Math.sin(elapsed * 20) > 0
+        }
       }
     }
     if (activePower.kind === 'phase' && shieldBubble) {
-      // Faster, spookier flicker than the shield's slow pulse
-      shieldBubble.material.opacity = 0.12 + Math.abs(Math.sin(elapsed * 11)) * 0.14
-      if (activePower.timeLeft < 1) {
-        shieldBubble.visible = Math.sin(elapsed * 24) > 0
+      if (settings.reducedMotion) {
+        shieldBubble.material.opacity = 0.2
+        shieldBubble.visible = true
+      } else {
+        // Faster, spookier flicker than the shield's slow pulse
+        shieldBubble.material.opacity = 0.12 + Math.abs(Math.sin(elapsed * 11)) * 0.14
+        if (activePower.timeLeft < 1) {
+          shieldBubble.visible = Math.sin(elapsed * 24) > 0
+        }
       }
     }
     if (activePower.kind === 'boost') {
@@ -4213,7 +4245,7 @@ function update(dt) {
     }
   }
 
-  const ufx = getUpgradeEffects()
+  const ufx = activeUpgradeEffects
   const activeControlMode = mouseMode
     ? (isTouchPrimary ? 'touch' : 'pointer')
     : joyMode ? 'stick' : 'keyboard'
@@ -4823,7 +4855,7 @@ function upgradeRuntimeTextState() {
     ? 'stick'
     : isTouchPrimary ? 'touch' : 'pointer'
   const runtime = getUpgradeRuntimeSnapshot({
-    effects: getUpgradeEffects(),
+    effects: activeUpgradeEffects,
     controlMode,
     dt: 1 / 60,
     distance,
@@ -4833,6 +4865,8 @@ function upgradeRuntimeTextState() {
     guardianLeft,
     planeRadius: PLANE_COLLISION_RADIUS,
     nearMissTighten: 1 - Math.min(combo, 10) * 0.015,
+    sensitivity: Number(settings.mouseSensitivity) || 1,
+    twistStarMul: activeTwist?.starMul ?? 1,
   })
   return {
     handling: runtime.handling,
@@ -4846,8 +4880,14 @@ function upgradeRuntimeTextState() {
       ...runtime.shield,
       active: activePower?.kind === 'shield',
       timeLeft: activePower?.kind === 'shield' ? Math.max(0, activePower.timeLeft) : 0,
+      powerKind: activePower?.kind || null,
+      visualVisible: Boolean(shieldBubble?.visible),
+      visualOpacity: Number(shieldBubble?.material.opacity ?? 0),
     },
-    luck: runtime.luck,
+    luck: {
+      ...runtime.luck,
+      twistStarMultiplier: activeTwist?.starMul ?? 1,
+    },
     wingspan: runtime.wingspan,
     trail: runtime.trail,
     turbo: {
@@ -4870,6 +4910,15 @@ window.render_game_to_text = () => JSON.stringify({
     skinId: activePlaneSkinId,
     silhouette: activePlaneSilhouette,
     collisionRadius: PLANE_COLLISION_RADIUS,
+  },
+  entities: {
+    counts: entities.reduce((counts, entity) => {
+      counts[entity.type] = (counts[entity.type] || 0) + 1
+      return counts
+    }, {}),
+    visibleTypes: entities
+      .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
+      .map((entity) => entity.type),
   },
   upgrades: upgradeRuntimeTextState(),
   layout: runKind === 'layout' && layoutPlay ? {
@@ -4956,12 +5005,8 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-upgrades-')) {
   const powerKind = devTestState.slice('#test-upgrades-'.length)
-  if (powerKind === 'shield' || powerKind === 'boost') {
-    if (devUpgradeProof === 'max') {
-      localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(
-        Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max])),
-      ))
-    }
+  if (powerKind === 'shield' || powerKind === 'boost' || powerKind === 'phase') {
+    configureDevUpgradeProof()
     settings = saveSettings({ haptics: false })
     hideAllPanels()
     challengeToast?.classList.add('hidden')
@@ -4984,6 +5029,65 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-upgrades-')) {
     update(1 / 60)
     simulationPaused = true
   }
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-spawn') {
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  journey = createJourney(4242, 1000)
+  const starTrailRoute = getRouteChoices(journey).find((route) => route.modifier === 'star-trail')
+  journey = selectJourneyRoute(journey, starTrailRoute.id)
+  journeyRunConfig = buildRunConfiguration(journey)
+  runKind = 'journey'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  for (let index = 0; index < 32; index += 1) spawnChunk(40 + index * 4)
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-collision') {
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 0
+  elapsed = 2
+  launchGraceSeconds = 0
+  nextSpawnZ = 1000
+  windTimer = 999
+  const scissors = createScissors()
+  const collisionCase = new URLSearchParams(location.search).get('collision')
+  scissors.position.set(collisionCase === 'hit' ? 0 : 2.3, planeY, difficulty.speedBase / 60)
+  scene.add(scissors)
+  entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-cooldown') {
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  applyUpgradeVisuals()
+  simulationPaused = true
 }
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {

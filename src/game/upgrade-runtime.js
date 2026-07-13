@@ -1,5 +1,7 @@
 const ABSOLUTE_CONTROL_MODES = new Set(['mouse', 'pointer', 'touch'])
 
+export const SHIELD_BASE_DURATION = 8
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
@@ -171,8 +173,10 @@ export function getUpgradeRuntimeSnapshot({
   guardianLeft = effects.guardianCharges,
   planeRadius = 0.7,
   nearMissTighten = 1,
+  sensitivity = 1,
+  twistStarMul = 1,
 } = {}) {
-  const handling = getControlResponse({ mode: controlMode, dt, accelMul: effects.accelMul, sensitivity: 1 })
+  const handling = getControlResponse({ mode: controlMode, dt, accelMul: effects.accelMul, sensitivity })
   const lift = getAltitudeRecovery({ baseSink: difficulty.sink, sinkMul: effects.sinkMul })
   const glide = getCruiseSpeed({
     baseSpeed: difficulty.speedBase,
@@ -187,9 +191,14 @@ export function getUpgradeRuntimeSnapshot({
     ramp: Math.min(1, positiveNumber(distance) / 700),
     starChanceMul: effects.starChanceMul,
     powerChanceMul: effects.powerChanceMul,
+    twistStarMul,
   })
   const magnet = getMagnetPull({ activePowerKind, magnetBonus: effects.magnetBonus, planeRadius })
-  const shield = getPowerDuration({ kind: 'shield', baseDuration: 8, shieldDurationMul: effects.shieldDurationMul })
+  const shield = getPowerDuration({
+    kind: 'shield',
+    baseDuration: SHIELD_BASE_DURATION,
+    shieldDurationMul: effects.shieldDurationMul,
+  })
   const collision = getCollisionRadius({ entityRadius: 1.6, planeRadius })
   const nearMissRadius = getNearMissRadius({
     entityRadius: 1.6,

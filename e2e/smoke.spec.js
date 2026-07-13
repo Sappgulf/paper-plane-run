@@ -36,6 +36,13 @@ function collectConsoleErrors(page) {
   return errors
 }
 
+async function waitForGameText(page) {
+  await expect.poll(
+    () => page.evaluate(() => typeof window.render_game_to_text),
+    { timeout: 45_000 },
+  ).toBe('function')
+}
+
 test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
@@ -428,6 +435,7 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
   await expect(page.locator('#guardian-hud-val')).toHaveText('2')
   await expect(page.locator('#fire-btn')).toHaveAttribute('data-ready', 'true')
   await expect(page.locator('#magnet-pull-trail')).toHaveAttribute('data-active', 'true')
+  await expect(page.locator('#magnet-pull-trail')).not.toHaveAttribute('aria-live', /.+/)
   const shieldUpgrades = await page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades)
   expect(shieldUpgrades).toMatchObject({
     handling: { acceleration: 58.8 },
@@ -465,6 +473,93 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
     })
   }
   expect(errors).toEqual([])
+})
+
+test('live flight loop wires seeded upgrade spawning, collision fairness, and ink cooldown', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({
+      controlMode: 'mouse',
+      mouseSensitivity: 0.75,
+      haptics: false,
+    }))
+  })
+
+  await openApp(page, '/?twist-star-mul=1.6#test-upgrade-live-spawn')
+  await waitForGameText(page)
+  const baselineSpawn = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(baselineSpawn.upgrades.handling.follow).toBeCloseTo(0.275)
+  expect(baselineSpawn.upgrades.luck.twistStarMultiplier).toBe(1.6)
+  expect(baselineSpawn.upgrades.luck.starChance).toBeCloseTo(0.928)
+
+  await openApp(page, '/?upgrade-proof=max&twist-star-mul=1.6#test-upgrade-live-spawn')
+  await waitForGameText(page)
+  const maxSpawn = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(maxSpawn.entities.counts.star).toBeGreaterThan(baselineSpawn.entities.counts.star)
+  expect(maxSpawn.entities.counts.power).toBeGreaterThan(baselineSpawn.entities.counts.power)
+
+  await openApp(page, '/?upgrade-proof=wingspan-max&collision=near#test-upgrade-live-collision')
+  await waitForGameText(page)
+  await page.evaluate(() => window.advanceTime(1000 / 60))
+  const nearCollision = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(nearCollision.upgrades.wingspan.visualScale).toBe(1.44)
+  expect(nearCollision.plane.collisionRadius).toBe(0.7)
+  expect(nearCollision.state).toBe('playing')
+
+  await openApp(page, '/?upgrade-proof=wingspan-max&collision=hit#test-upgrade-live-collision')
+  await waitForGameText(page)
+  await page.evaluate(() => window.advanceTime(1000 / 60))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).state)).toBe('dead')
+
+  await openApp(page, '/?upgrade-proof=weapon-max#test-upgrade-live-cooldown')
+  await waitForGameText(page)
+  await page.keyboard.down('x')
+  await page.evaluate(() => window.advanceTime(1000 / 60))
+  await page.keyboard.up('x')
+  const fired = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(fired.entities.counts.shot).toBe(1)
+  expect(fired.upgrades.weapon).toMatchObject({ ready: false, cooldownSeconds: 0.38 })
+  await page.evaluate(() => window.advanceTime(400))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades.weapon.ready)).toBe(true)
+
+  expect(errors).toEqual([])
+})
+
+test('flight ticks reuse cached upgrade effects instead of reading storage every frame', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await page.addInitScript(() => {
+    const originalGetItem = Storage.prototype.getItem
+    window.__upgradeStorageReads = 0
+    Storage.prototype.getItem = function getItem(key) {
+      if (key === 'paper-plane-run-upgrades') window.__upgradeStorageReads += 1
+      return originalGetItem.call(this, key)
+    }
+  })
+  await openApp(page, '/?upgrade-proof=weapon-max#test-upgrade-live-cooldown')
+  await waitForGameText(page)
+  const before = await page.evaluate(() => window.__upgradeStorageReads)
+  await page.evaluate(() => window.advanceTime(1000))
+  const after = await page.evaluate(() => window.__upgradeStorageReads)
+  expect(after).toBe(before)
+})
+
+test('reduced motion keeps shield and phase feedback stable in the live loop', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ reducedMotion: true, haptics: false }))
+  })
+
+  for (const power of ['shield', 'phase']) {
+    await openApp(page, `/#test-upgrades-${power}`)
+    await waitForGameText(page)
+    const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades.shield)
+    await page.evaluate(() => window.advanceTime(700))
+    const after = await page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades.shield)
+    expect(before.visualVisible).toBe(true)
+    expect(after.visualVisible).toBe(true)
+    expect(after.visualOpacity).toBe(before.visualOpacity)
+  }
 })
 
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {

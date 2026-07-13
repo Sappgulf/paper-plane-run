@@ -91,6 +91,19 @@ describe('upgrade runtime contracts', () => {
     }
   })
 
+  test('uses the active sensitivity and route star multiplier in runtime text-state calculations', () => {
+    const runtime = runtimeAt({}, {
+      ...NORMAL_FLIGHT,
+      controlMode: 'pointer',
+      sensitivity: 0.75,
+      twistStarMul: 1.6,
+    })
+
+    expect(runtime.handling.follow).toBeCloseTo(0.275)
+    expect(runtime.luck.starChance).toBeCloseTo(0.928)
+    expect(runtime.luck.doubleStarChance).toBeCloseTo(0.4)
+  })
+
   test('keeps Wide Wings collision fairness while expanding only the visual and near-miss envelope', () => {
     const baseline = runtimeAt()
     const maxed = runtimeAt({ wingspan: 3 })
