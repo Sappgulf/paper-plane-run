@@ -1,0 +1,64 @@
+import { existsSync } from 'node:fs'
+import { describe, expect, test } from 'vitest'
+import * as THREE from 'three'
+
+import { BOSS_ART, createBossArtOverlay } from '../src/game/boss-art.js'
+
+const BOSS_IDS = ['scissors', 'wind']
+
+describe('boss artwork registry', () => {
+  test('registers the two existing bosses with stable bundled PNG and WebP paths', () => {
+    expect(Object.keys(BOSS_ART)).toEqual(BOSS_IDS)
+
+    for (const id of BOSS_IDS) {
+      const art = BOSS_ART[id]
+      expect(art.id).toBe(id)
+      expect(art.texture).toBe(`/assets/bosses/${id}.png`)
+      expect(art.preview).toBe(`/assets/bosses/${id}.webp`)
+      expect(existsSync(new URL(`../public${art.texture}`, import.meta.url))).toBe(true)
+      expect(existsSync(new URL(`../public${art.preview}`, import.meta.url))).toBe(true)
+    }
+  })
+
+  test('describes color and shape cues independently for accessible boss recognition', () => {
+    for (const id of BOSS_IDS) {
+      const { alt, palette, shape } = BOSS_ART[id]
+      expect(alt).toBeTruthy()
+      expect(palette.primary).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(palette.accent).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(palette.paper).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(shape.cue).toBeTruthy()
+      expect(shape.silhouette).toBeTruthy()
+    }
+
+    expect(BOSS_ART.scissors.shape.cue).toMatch(/blade/i)
+    expect(BOSS_ART.wind.shape.cue).toMatch(/vane|turbine/i)
+  })
+
+  test('keeps procedural boss geometry visible until its cosmetic texture loads or fails', () => {
+    let loaded
+    let failed
+    const overlay = createBossArtOverlay({
+      THREE,
+      kind: 'scissors',
+      size: 16,
+      loadTexture: (url, onLoad, onError) => {
+        expect(url).toBe(BOSS_ART.scissors.texture)
+        loaded = onLoad
+        failed = onError
+      },
+    })
+
+    expect(overlay.name).toBe('bossArt-scissors')
+    expect(overlay.visible).toBe(false)
+    expect(overlay.material.map).toBeNull()
+
+    failed()
+    expect(overlay.visible).toBe(false)
+
+    const texture = new THREE.Texture()
+    loaded(texture)
+    expect(overlay.visible).toBe(true)
+    expect(overlay.material.map).toBe(texture)
+  })
+})

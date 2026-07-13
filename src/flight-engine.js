@@ -52,6 +52,7 @@ import {
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
+import { createBossArtOverlay } from './game/boss-art.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -104,6 +105,13 @@ const PLANE_THREE = Object.freeze({
   Shape: THREE.Shape,
   ShapeGeometry: THREE.ShapeGeometry,
   SphereGeometry: THREE.SphereGeometry,
+})
+const BOSS_ART_THREE = Object.freeze({
+  DoubleSide: THREE.DoubleSide,
+  Mesh: THREE.Mesh,
+  MeshBasicMaterial: THREE.MeshBasicMaterial,
+  PlaneGeometry: THREE.PlaneGeometry,
+  SRGBColorSpace: THREE.SRGBColorSpace,
 })
 
 let engineInstance = null
@@ -569,6 +577,27 @@ function loadTex(rawUrl) {
     texCache[url] = t
   }
   return texCache[url]
+}
+
+// Boss art is strictly a late-loading presentation layer. A failed request
+// leaves the existing procedural gate visible, which is also its offline
+// fallback; no geometry, phase, or collision state is owned by this texture.
+function addBossArtOverlay(group, kind) {
+  const overlay = createBossArtOverlay({
+    THREE: BOSS_ART_THREE,
+    kind,
+    size: 16,
+    loadTexture: (rawUrl, onLoad, onError) => loader.load(
+      resolveAssetUrl(rawUrl),
+      onLoad,
+      undefined,
+      onError,
+    ),
+  })
+  if (!overlay) return
+  overlay.position.set(0, 10, -0.35)
+  group.add(overlay)
+  group.userData.artOverlay = overlay
 }
 const cutoutTexCache = {}
 /**
@@ -1266,6 +1295,7 @@ function createBossGate() {
     g.add(ring)
   }
   g.add(left, right)
+  addBossArtOverlay(g, 'scissors')
   g.userData.left = left
   g.userData.right = right
   g.userData.phase = 0
@@ -1323,6 +1353,7 @@ function createWindTunnelGate() {
     ring.position.set(0, 6 + i * 4, 0)
     g.add(ring)
   }
+  addBossArtOverlay(g, 'wind')
   g.userData.fanL = fanL
   g.userData.fanR = fanR
   g.userData.debris = debris
