@@ -113,7 +113,11 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.bounces = false
-        webView.scrollView.isScrollEnabled = false
+        // Keep touch delivery enabled so tall DOM panels (Journey, Hangar,
+        // results) can scroll on compact phones. The document itself remains
+        // fixed by CSS; only explicit overflow panels consume vertical pans.
+        webView.scrollView.isScrollEnabled = true
+        webView.scrollView.isDirectionalLockEnabled = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsLinkPreview = false
         webView.allowsBackForwardNavigationGestures = false

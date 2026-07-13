@@ -37,6 +37,13 @@ npm install && npm run dev
 | — | **Time Attack** — 60s, most stars wins |
 | — | **Ink Blast weapon** — pop birds/scissors for bonus stars |
 | — | **Prestige** — max the upgrade tree, reset for a permanent bonus + cosmetic |
+| — | **Living Journey** — four connected flights with route choices, pilots, stamps, Red Dart finale, and collectible postcards |
+
+## Living Journey
+
+Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier and reward multiplier. Progress, the selected pilot, stamps, and retries persist locally without rerolling the route.
+
+Completing all four routes creates a postcard in **Hangar → Postcards**. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 
 ## Co-op controls
 

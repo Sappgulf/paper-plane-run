@@ -31,7 +31,7 @@ import {
   ghostPoseAt,
   ghostDistanceAtTime,
 } from './ghost.js'
-import { zoneAt, nextZone, zoneProgress } from './zones.js'
+import { ZONES, zoneAt, nextZone, zoneProgress } from './zones.js'
 import {
   getUpgradeEffects,
   listUpgrades,
@@ -76,6 +76,18 @@ import {
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
+import {
+  buildRunConfiguration,
+  createJourney,
+  getRouteChoices,
+  resolveJourneyFlight,
+  selectJourneyPilot,
+  selectJourneyRoute,
+} from './journey.js'
+import { applyJourneyRewardOnce, clearJourney, loadJourney, saveJourney } from './journey-storage.js'
+import { loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
+import { renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderRouteChoices } from './journey-ui.js'
+import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
 
 // ---------------------------------------------------------------------------
@@ -85,6 +97,7 @@ const $ = (id) => document.getElementById(id)
 const canvas = $('c')
 const menuEl = $('menu')
 const gameoverEl = $('gameover')
+const retryBtn = $('retry-btn')
 const hudEl = $('hud')
 const bannerStackEl = $('banner-stack')
 const speedFxEl = $('speed-fx')
@@ -346,8 +359,16 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 // Run modes & challenge
 // ---------------------------------------------------------------------------
-/** @type {'classic'|'daily'|'tutorial'|'hotseat'|'layout'} */
+/** @type {'classic'|'daily'|'tutorial'|'hotseat'|'layout'|'journey'} */
 let runKind = 'classic'
+let journey = loadJourney(localStorage).journey
+let journeyRunConfig = null
+function activeZoneAt(runDistance = distance) {
+  if (runKind === 'journey' && journeyRunConfig?.zone) {
+    return ZONES.find((zone) => zone.id === journeyRunConfig.zone) || zoneAt(runDistance)
+  }
+  return zoneAt(runDistance)
+}
 const TIME_ATTACK_SECONDS = 60
 let timeAttackLeft = 0
 let timeAttackLastTickSecond = -1
@@ -358,6 +379,7 @@ let rng = Math.random
 let ghostRecorder = null
 let ghostData = null
 let ghostMesh = null
+let journeyRivalState = null
 let currentZoneId = 'city'
 let combo = 0
 let maxCombo = 0
@@ -974,6 +996,10 @@ const ringMat = new THREE.MeshStandardMaterial({
 })
 const ghostMat = new THREE.MeshStandardMaterial({
   color: 0xa5b4fc, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false,
+})
+const rivalMat = new THREE.MeshStandardMaterial({
+  color: 0xef4444, emissive: 0x7f1d1d, emissiveIntensity: 0.35, transparent: true, opacity: 0.82,
+  side: THREE.DoubleSide, depthWrite: false,
 })
 
 function buildPowerMeta() {
@@ -1909,7 +1935,7 @@ function spawnChunk(z) {
 
   const ramp = Math.min(1, distance / 700)
   const cfg = difficulty
-  const zone = zoneAt(distance)
+  const zone = activeZoneAt(distance)
   const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
 
   maybeSpawnGroundDecor(z)
@@ -2175,7 +2201,7 @@ function clearPower() {
   if (shieldBubble) shieldBubble.visible = false
   powerHud.classList.add('hidden')
   powerBanner.classList.add('hidden')
-  renderer.toneMappingExposure = zoneAt(distance).exposure
+  renderer.toneMappingExposure = activeZoneAt(distance).exposure
   // restore wings
   const wl = plane.userData.wingL
   const wr = plane.userData.wingR
@@ -2415,6 +2441,17 @@ function resetGame() {
   if (runKind === 'daily') {
     rng = mulberry32(dailySeed(difficulty.id))
     activeTwist = todaysTwist()
+  } else if (runKind === 'journey' && journeyRunConfig) {
+    rng = mulberry32(journeyRunConfig.seed)
+    activeTwist = {
+      name: journeyRunConfig.modifierLabel,
+      windMul: journeyRunConfig.modifier === 'crosswind' ? 0.45 : 1,
+      fogMul: journeyRunConfig.modifier === 'low-visibility' ? 0.55 : 1,
+      starMul: journeyRunConfig.modifier === 'star-trail' ? 1.6 : 1,
+    }
+    if (journeyRunConfig.finale) nextBossAt = 180
+    if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
+    if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
   } else if (runKind === 'layout') {
     rng = Math.random
     activeTwist = null
@@ -2431,12 +2468,16 @@ function resetGame() {
   ground.position.z = 120
   currentSkyUrl = ''
   currentGroundUrl = ''
-  applyZone(zoneAt(0), false)
+  applyZone(activeZoneAt(0), false)
 
   ghostRecorder = createGhostRecorder()
-  ghostData = runKind === 'tutorial' ? null : loadGhost(difficulty.id + (runKind === 'daily' ? '-daily' : ''))
-  if (ghostData?.path?.length) {
-    ghostMesh = createPaperPlane(ghostMat, ghostMat, false)
+  journeyRivalState = runKind === 'journey' && journeyRunConfig?.rival
+    ? createRivalState({ seed: journeyRunConfig.seed, targetDistance: 500 })
+    : null
+  ghostData = runKind === 'tutorial' || journeyRivalState ? null : loadGhost(difficulty.id + (runKind === 'daily' ? '-daily' : ''))
+  if (journeyRivalState || ghostData?.path?.length) {
+    const material = journeyRivalState ? rivalMat : ghostMat
+    ghostMesh = createPaperPlane(material, material, false)
     ghostMesh.scale.setScalar(1.05)
     scene.add(ghostMesh)
   }
@@ -2461,6 +2502,7 @@ function resetGame() {
   }
 
   distanceEl.textContent = '0m'
+  if (hudModeEl) hudModeEl.textContent = runKind === 'journey' ? journeyRunConfig.modifierLabel : difficulty.label
   starsEl.textContent = '0'
   windBanner.classList.add('hidden')
   powerBanner.classList.add('hidden')
@@ -2841,9 +2883,61 @@ muteBtn.addEventListener('click', async (e) => {
 // UI panels
 // ---------------------------------------------------------------------------
 function hideAllPanels() {
-  for (const id of ['menu', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
+  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
     $(id)?.classList.add('hidden')
   }
+}
+
+function getJourneyStampCount() {
+  const stamps = new Set(journey?.earnedStampIds || [])
+  for (const postcard of loadPostcardAlbum(localStorage)) {
+    for (const stamp of postcard.stampIds || []) stamps.add(stamp)
+  }
+  return stamps.size
+}
+
+function renderJourney() {
+  if (!journey) {
+    journey = createJourney(Date.now(), Date.now())
+    saveJourney(localStorage, journey)
+  }
+  const map = $('journey-map')
+  const routes = $('journey-route-choices')
+  const pilots = $('journey-pilots')
+  renderJourneyMap(map, journey)
+  renderPilotChoices(pilots, journey, getJourneyStampCount(), (pilotId) => {
+    journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
+    saveJourney(localStorage, journey)
+    renderJourney()
+  })
+  if (journey.status === 'complete') {
+    routes.innerHTML = '<div class="journey-empty"><span>💌</span><strong>Journey complete!</strong><p>Your postcard is waiting in the Hangar.</p></div>'
+    $('journey-choice-title').textContent = 'Postcard complete'
+  } else {
+    $('journey-choice-title').textContent = journey.selectedRouteId ? 'Selected route' : 'Choose the next route'
+    renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
+      ...route,
+      selected: route.id === journey.selectedRouteId,
+    })), (routeId) => {
+      journey = selectJourneyRoute(journey, routeId)
+      saveJourney(localStorage, journey)
+      journeyRunConfig = buildRunConfiguration(journey)
+      track('journey_route_selected', { routeId, step: journey.stepIndex })
+      startGame('journey', { journeyConfig: journeyRunConfig })
+    })
+    track('journey_route_offered', {
+      journeyId: journey.id,
+      step: journey.stepIndex,
+      routeIds: getRouteChoices(journey).map((route) => route.id),
+    })
+  }
+}
+
+function openJourney() {
+  hideAllPanels()
+  renderJourney()
+  $('journey-panel')?.classList.remove('hidden')
+  track('journey_started', { journeyId: journey.id, step: journey.stepIndex })
 }
 
 function showMenu() {
@@ -2899,6 +2993,7 @@ function showHangarTab(tab) {
   if (tab === 'board') renderBoard('local')
   if (tab === 'settings') renderSettings()
   if (tab === 'stats') renderStats()
+  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage))
   if (tab === 'editor') setupEditor()
   refreshHangarWallet()
 }
@@ -3364,6 +3459,7 @@ const bindClick = (id, fn) => {
   if (el) el.onclick = fn
 }
 bindClick('start-btn', () => startGame('classic'))
+bindClick('journey-btn', openJourney)
 bindClick('daily-btn', () => startGame('daily'))
 bindClick('timeattack-btn', () => startGame('timeattack'))
 
@@ -3387,6 +3483,14 @@ bindClick('hotseat-btn', () => {
 })
 $('hangar-btn')?.addEventListener('click', () => openHangar('upgrades'))
 $('coop-btn')?.addEventListener('click', () => startGame('coop'))
+$('journey-restart')?.addEventListener('click', () => {
+  if (journey?.status === 'active' && journey.stepIndex > 0 && !confirm('Start a new Journey? Current map progress will be replaced.')) return
+  clearJourney(localStorage)
+  journey = createJourney(Date.now(), Date.now())
+  saveJourney(localStorage, journey)
+  track('journey_restarted', { journeyId: journey.id })
+  renderJourney()
+})
 $('ar-btn')?.addEventListener('click', async () => {
   await audio.unlock()
   const on = await deskAR.toggle()
@@ -3401,7 +3505,10 @@ document.querySelectorAll('[data-board]').forEach((t) =>
   t.addEventListener('click', () => renderBoard(t.dataset.board)),
 )
 
-bindClick('retry-btn', () => startGame(runKind))
+bindClick('retry-btn', () => {
+  if (runKind === 'journey' && !journey?.selectedRouteId) openJourney()
+  else startGame(runKind, runKind === 'journey' ? { journeyConfig: buildRunConfiguration(journey) } : {})
+})
 bindClick('menu-btn', () => {
   if (state === 'dead' && crashT > 0) {
     crashT = 0
@@ -3485,6 +3592,11 @@ async function startGame(kind = 'classic', opts = {}) {
     await audio.unlock()
     audio.uiClick()
     runKind = kind
+    journeyRunConfig = kind === 'journey' ? (opts.journeyConfig || buildRunConfiguration(journey)) : null
+    if (kind === 'journey' && !journeyRunConfig) {
+      openJourney()
+      return
+    }
     if (kind === 'layout' && !layoutPlay) {
       if (editorLayout.items.length) layoutPlay = editorLayout
     }
@@ -3520,8 +3632,13 @@ async function startGame(kind = 'classic', opts = {}) {
       powerBanner.classList.remove('hidden')
       bannerTimer = launchGraceSeconds
     }
+    if (journeyRivalState) {
+      challengeToast.textContent = getRivalCallout(journeyRivalState, 'start')
+      challengeToast.classList.remove('hidden')
+      setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 2200 : 3600)
+    }
     if (settings.haptics) Haptic.tap()
-    track('game_start', { kind, mode: difficulty.id, season: season.id })
+    track('game_start', { kind, mode: difficulty.id, season: season.id, routeId: journeyRunConfig?.routeId })
   } catch (err) {
     console.error('startGame failed', err)
     // Recover: ensure we're at least in a playable state
@@ -3580,7 +3697,7 @@ function buildRecapCard() {
   const starsW = ctx.measureText(starsStr).width
   ctx.fillStyle = 'rgba(255,248,239,.85)'
   ctx.fillText(
-    ` · ${difficulty.label} · ${zoneAt(distance).name}`,
+    ` · ${difficulty.label} · ${activeZoneAt(distance).name}`,
     pad + starsW,
     card.height - barH * 0.13,
   )
@@ -3605,7 +3722,7 @@ function die(reason) {
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
   // clock running out. Neither should be absorbed by shield/guardian, and
   // neither plays the tumble-crash animation.
-  const isCleanEnd = reason === 'Tutorial complete!' || reason === "Time's up!"
+  const isCleanEnd = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
 
   // Invulnerability (after shield break / boost start)
   if (invuln > 0 && !isCleanEnd) return
@@ -3677,8 +3794,10 @@ function die(reason) {
   } else {
     audio.missionComplete()
     if (settings.haptics) Haptic.collect()
-    localStorage.setItem('paper-plane-run-tutorial', '1')
-    tutorialDone = true
+    if (reason === 'Tutorial complete!') {
+      localStorage.setItem('paper-plane-run-tutorial', '1')
+      tutorialDone = true
+    }
   }
 
   track('death', {
@@ -3727,7 +3846,7 @@ function finalizeDeathUnsafe() {
   guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
-  const isWin = reason === 'Tutorial complete!' || reason === "Time's up!"
+  const isWin = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack'
@@ -3757,6 +3876,38 @@ function finalizeDeathUnsafe() {
   if (stars > 0) {
     addLifetimeStars(stars)
     addWallet(stars)
+  }
+  let journeyBonus = 0
+  let completedJourneyRoute = false
+  if (runKind === 'journey' && journeyRunConfig) {
+    completedJourneyRoute = reason === 'Journey route complete!'
+    journeyBonus = completedJourneyRoute
+      ? Math.max(0, Math.round(stars * (journeyRunConfig.rewardMultiplier - 1)))
+      : 0
+    const rewardId = `${journey.id}:${journeyRunConfig.routeId}:bonus`
+    if (journeyBonus > 0 && applyJourneyRewardOnce(localStorage, { id: rewardId })) {
+      addLifetimeStars(journeyBonus)
+      addWallet(journeyBonus)
+    } else if (journeyBonus > 0) journeyBonus = 0
+    journey = resolveJourneyFlight(journey, {
+      completed: completedJourneyRoute,
+      distance: d,
+      stars: stars + journeyBonus,
+      rivalBeaten: !!journeyRunConfig.rival && completedJourneyRoute,
+    })
+    saveJourney(localStorage, journey)
+    if (journey.postcard && savePostcardOnce(localStorage, journey.postcard)) {
+      track('journey_postcard_completed', { journeyId: journey.id, rivalBeaten: journey.postcard.rivalBeaten })
+    }
+    track(completedJourneyRoute ? 'journey_flight_completed' : 'journey_flight_crashed', {
+      journeyId: journey.id,
+      routeId: journeyRunConfig.routeId,
+      step: journeyRunConfig.stepIndex,
+      distance: d,
+    })
+    if (journeyRunConfig.rival && completedJourneyRoute) {
+      track('journey_rival_beaten', { journeyId: journey.id, routeId: journeyRunConfig.routeId })
+    }
   }
   let weeklyBonus = 0
   if (runKind !== 'tutorial' && runKind !== 'layout') {
@@ -3815,14 +3966,24 @@ function finalizeDeathUnsafe() {
     newBestBadge?.classList.add('hidden')
     hotseat.active = false
   } else {
-    $('gameover-title').textContent = isWin ? reason : 'Crashed!'
+    $('gameover-title').textContent = runKind === 'journey' && completedJourneyRoute
+      ? (journey.status === 'complete' ? 'Journey complete!' : 'Route complete!')
+      : isWin ? reason : 'Crashed!'
     if (runKind === 'timeattack') {
       animateCountUp(finalScoreEl, stars, `★ in ${TIME_ATTACK_SECONDS}s · ${Math.floor(distance)}m flown`)
       finalDetailEl.textContent = 'Nice reflexes!'
     } else {
       animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
-      finalDetailEl.textContent = reason
+      finalDetailEl.textContent = runKind === 'journey' && completedJourneyRoute
+        ? `Stamp earned${journeyBonus ? ` · +${journeyBonus}★ route bonus` : ''}`
+        : reason
     }
+  }
+
+  if (retryBtn) {
+    retryBtn.textContent = runKind === 'journey'
+      ? (completedJourneyRoute ? (journey.status === 'complete' ? 'View Journey' : 'Continue Journey') : 'Retry Route')
+      : 'Fly Again'
   }
 
   if (challenge && challenge.m === difficulty.id) {
@@ -4078,7 +4239,7 @@ function update(dt) {
 
   if (state === 'dead') {
     // Dramatic crash: tumble, drop, paper spin
-    const isWin = crashReason === 'Tutorial complete!'
+    const isWin = crashReason === 'Tutorial complete!' || crashReason === "Time's up!" || crashReason === 'Journey route complete!'
     if (!isWin) {
       plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
       plane.rotation.x += dt * 2.2
@@ -4143,6 +4304,13 @@ function update(dt) {
     }
     if (timeAttackLeft <= 0) {
       die("Time's up!")
+      return
+    }
+  }
+  if (runKind === 'journey' && journeyRunConfig) {
+    const target = journeyRunConfig.finale ? 500 : 350
+    if (distance >= target) {
+      die('Journey route complete!')
       return
     }
   }
@@ -4540,7 +4708,24 @@ function update(dt) {
 
   // Ghost
   if (ghostRecorder) ghostRecorder.push(distance, planeX, planeY, elapsed)
-  if (ghostMesh && ghostData) {
+  if (ghostMesh && journeyRivalState) {
+    const pose = sampleRivalPosition(journeyRivalState, distance + 18)
+    ghostMesh.position.set(pose.x, pose.y, 2.5)
+    ghostMesh.rotation.z = Math.sin(distance * 0.027) * 0.3
+    ghostMesh.visible = true
+    const delta = getRivalDelta(journeyRivalState, distance)
+    ghostDeltaHud?.classList.remove('hidden')
+    ghostDeltaHud?.classList.toggle('ahead', delta <= 0)
+    ghostDeltaHud?.classList.toggle('behind', delta > 0)
+    if (ghostDeltaValEl) ghostDeltaValEl.textContent = `Red Dart · ${Math.max(0, delta)}m`
+    const milestone = distance >= 440 ? 'final' : distance >= 250 ? 'halfway' : null
+    const callout = milestone && getRivalCallout(journeyRivalState, milestone)
+    if (callout) {
+      challengeToast.textContent = callout
+      challengeToast.classList.remove('hidden')
+      setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3000)
+    }
+  } else if (ghostMesh && ghostData) {
     const pose = ghostPoseAt(ghostData.path, distance)
     if (pose && !pose.done) {
       ghostMesh.position.set(pose.x, pose.y, 1.5)
@@ -4561,9 +4746,9 @@ function update(dt) {
   } else if (ghostDeltaHud) ghostDeltaHud.classList.add('hidden')
 
   // Zone + soft progressive blend hint (banner only on change)
-  const z = zoneAt(distance)
+  const z = activeZoneAt(distance)
   if (z.id !== currentZoneId) applyZone(z, true)
-  const zp = zoneProgress(distance)
+  const zp = runKind === 'journey' ? { zone: z, t: 1, next: null } : zoneProgress(distance)
   if (zp.next && zp.t > 0.92 && zp.t < 0.97) {
     // gentle pre-transition fog lean
     scene.fog.color.lerp(_zoneFogColor.set(zp.next.fog), dt * 0.4)

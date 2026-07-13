@@ -110,9 +110,10 @@
             <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
           </div>
 
-          <button id="start-btn" type="button" class="cta-main">✈ Take Flight</button>
+          <button id="journey-btn" type="button" class="cta-main journey-main-cta">🗺️ Begin Journey</button>
 
           <div class="menu-actions">
+            <button id="start-btn" type="button" class="action-pill" title="The original endless flight">✈️&nbsp;Classic</button>
             <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores">📅&nbsp;Daily</button>
             <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓&nbsp;Tutorial</button>
             <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar</button>
@@ -124,6 +125,28 @@
           <p id="daily-hint" class="mini-hint"></p>
           <button id="landscape-hint" type="button" class="landscape-hint hidden">📱↔️ Tip: rotate to landscape for a wider view — tap to dismiss</button>
           <label class="name-row">Pilot <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
+        </div>
+      </div>
+
+      <!-- LIVING JOURNEY -->
+      <div id="journey-panel" class="panel journey-panel hidden">
+        <div class="menu-card journey-card">
+          <div class="journey-heading">
+            <span class="chip-label">Living Journey</span>
+            <h2>Across the Paper Skies</h2>
+            <p class="tagline">Choose a path. Earn its stamp. Catch the Red Dart.</p>
+          </div>
+          <div id="journey-map"></div>
+          <div class="journey-section">
+            <h3>Choose your pilot</h3>
+            <div id="journey-pilots" class="journey-pilots"></div>
+          </div>
+          <div class="journey-section">
+            <h3 id="journey-choice-title">Choose the next route</h3>
+            <div id="journey-route-choices" class="journey-route-choices"></div>
+          </div>
+          <button id="journey-restart" type="button" class="linkish">Start a new Journey</button>
+          <button type="button" class="back-btn" data-back>← Main menu</button>
         </div>
       </div>
 
@@ -143,6 +166,7 @@
               <button type="button" class="hangar-tab" data-tab="board">🏆&nbsp;Board</button>
               <button type="button" class="hangar-tab" data-tab="settings">⚙️&nbsp;Settings</button>
               <button type="button" class="hangar-tab" data-tab="stats">📊&nbsp;Stats</button>
+              <button type="button" class="hangar-tab" data-tab="postcards">💌&nbsp;Postcards</button>
               <button type="button" class="hangar-tab" data-tab="editor">🛠&nbsp;Editor</button>
             </div>
           </div>
@@ -214,6 +238,10 @@
             </section>
             <section id="tab-stats" class="hangar-page hidden">
               <div id="stats-body"></div>
+            </section>
+            <section id="tab-postcards" class="hangar-page hidden">
+              <p class="page-intro">Four flights become one keepsake.</p>
+              <div id="postcard-album" class="postcard-album"></div>
             </section>
             <section id="tab-editor" class="hangar-page hidden">
               <p class="page-intro">Place hazards, then play or share a code.</p>
