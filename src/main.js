@@ -319,6 +319,7 @@ function renderMissions() {
         const reward = claimMission(m.id)
         if (reward) {
           addLifetimeStars(reward)
+          addWallet(reward)
           shellAudio.missionComplete()
           Haptic.collect()
           refreshUnlocks()

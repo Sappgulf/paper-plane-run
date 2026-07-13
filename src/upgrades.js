@@ -1,6 +1,8 @@
 /**
  * Spendable plane upgrades — paid with wallet stars earned in runs.
  */
+import { FUTURE_PRICE_TABLE } from './game/economy.js'
+
 const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
 const MIGRATED = 'paper-plane-run-wallet-migrated'
@@ -14,7 +16,7 @@ export const UPGRADES = [
     icon: '🕹️',
     blurb: 'Sharper bank & climb response',
     max: 5,
-    costs: [12, 25, 45, 70, 100],
+    costs: FUTURE_PRICE_TABLE.upgrades.handling,
   },
   {
     id: 'lift',
@@ -22,7 +24,7 @@ export const UPGRADES = [
     icon: '⬆️',
     blurb: 'Less natural sink — easier altitude',
     max: 5,
-    costs: [12, 25, 45, 70, 100],
+    costs: FUTURE_PRICE_TABLE.upgrades.lift,
   },
   {
     id: 'glide',
@@ -30,7 +32,7 @@ export const UPGRADES = [
     icon: '🌬️',
     blurb: 'Higher cruise speed & score flow',
     max: 5,
-    costs: [15, 30, 55, 85, 120],
+    costs: FUTURE_PRICE_TABLE.upgrades.glide,
   },
   {
     id: 'magnet',
@@ -38,7 +40,7 @@ export const UPGRADES = [
     icon: '🧲',
     blurb: 'Pull stars from farther away',
     max: 4,
-    costs: [20, 40, 70, 110],
+    costs: FUTURE_PRICE_TABLE.upgrades.magnet,
   },
   {
     id: 'shield',
@@ -46,7 +48,7 @@ export const UPGRADES = [
     icon: '🛡',
     blurb: 'Longer shield power-ups',
     max: 4,
-    costs: [18, 35, 60, 95],
+    costs: FUTURE_PRICE_TABLE.upgrades.shield,
   },
   {
     id: 'luck',
@@ -54,7 +56,7 @@ export const UPGRADES = [
     icon: '🍀',
     blurb: 'More stars & power-ups spawn',
     max: 4,
-    costs: [20, 40, 75, 115],
+    costs: FUTURE_PRICE_TABLE.upgrades.luck,
   },
   {
     id: 'wingspan',
@@ -62,7 +64,7 @@ export const UPGRADES = [
     icon: '🕊️',
     blurb: 'Bigger plane, slightly easier near-misses',
     max: 3,
-    costs: [25, 50, 90],
+    costs: FUTURE_PRICE_TABLE.upgrades.wingspan,
   },
   {
     id: 'trail',
@@ -70,7 +72,7 @@ export const UPGRADES = [
     icon: '✨',
     blurb: 'Sparkle trail + tiny score aura',
     max: 3,
-    costs: [15, 35, 65],
+    costs: FUTURE_PRICE_TABLE.upgrades.trail,
   },
   {
     id: 'turbo',
@@ -78,7 +80,7 @@ export const UPGRADES = [
     icon: '🚀',
     blurb: 'Smoother, safer speed boosts',
     max: 3,
-    costs: [18, 38, 65],
+    costs: FUTURE_PRICE_TABLE.upgrades.turbo,
   },
   {
     id: 'guardian',
@@ -86,7 +88,7 @@ export const UPGRADES = [
     icon: '🛟',
     blurb: 'Auto-save from a crash once per run',
     max: 2,
-    costs: [45, 90],
+    costs: FUTURE_PRICE_TABLE.upgrades.guardian,
   },
   {
     id: 'weapon',
@@ -94,7 +96,7 @@ export const UPGRADES = [
     icon: '🖋️',
     blurb: 'Fire ink blots to pop birds & scissors for bonus stars',
     max: 4,
-    costs: [30, 55, 90, 130],
+    costs: FUTURE_PRICE_TABLE.upgrades.weapon,
   },
 ]
 

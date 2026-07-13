@@ -131,8 +131,8 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
-    localStorage.setItem('paper-plane-run-wallet', '25')
-    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
+    localStorage.setItem('paper-plane-run-wallet', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
     localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic']))
     localStorage.setItem('paper-plane-run-skin', 'classic')
     localStorage.setItem('paper-plane-run-skins-version', '1')
@@ -143,7 +143,7 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   await tap(page.getByRole('button', { name: '🎨 Skins' }))
 
   const mint = page.locator('.skin-card', { hasText: 'Mint Fold' })
-  await expect(mint).toContainText('Purchase 25★')
+  await expect(mint).toContainText('Purchase 20★')
   await tap(mint)
   await expect(mint).toContainText('Equipped')
   await expect(page.locator('#hangar-wallet')).toHaveText('0')
@@ -159,6 +159,36 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
     equipped: localStorage.getItem('paper-plane-run-skin'),
     owned: JSON.parse(localStorage.getItem('paper-plane-run-skins')),
   }))).toMatchObject({ equipped: 'halloween', owned: expect.arrayContaining(['mint', 'halloween']) })
+  expect(errors).toEqual([])
+})
+
+test('Mission claims credit the wallet stars promised by the Hangar copy', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-wallet', '0')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '0')
+    localStorage.setItem('paper-plane-run-missions', JSON.stringify({
+      day: new Date().toISOString().slice(0, 10),
+      missions: [{
+        id: 'stars-0',
+        type: 'stars',
+        target: 20,
+        label: 'Collect 20 stars in one run',
+        progress: 20,
+        done: true,
+        claimed: false,
+      }],
+      claimStars: 0,
+    }))
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: '🎯 Missions' }))
+
+  await tap(page.getByRole('button', { name: 'Claim' }))
+  await expect(page.locator('#hangar-wallet')).toHaveText('10')
+  await expect(page.locator('#hangar-lifetime')).toHaveText('10')
   expect(errors).toEqual([])
 })
 
@@ -191,8 +221,8 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await expect(mint).toHaveClass(/state-owned/)
   await expect(coral).toHaveClass(/state-available/)
   await expect(night).toHaveClass(/state-locked/)
-  await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 50★')
-  await expect(coral.locator('.plane-price')).toHaveText('Wallet 50★')
+  await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 35★')
+  await expect(coral.locator('.plane-price')).toHaveText('Wallet 35★')
   await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
 
   await mint.focus()
@@ -202,7 +232,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
 
   await tap(coral)
   await expect(page.locator('.skin-card[data-plane-id="coral"]')).toHaveClass(/state-equipped/)
-  await expect(page.locator('#hangar-wallet')).toHaveText('50')
+  await expect(page.locator('#hangar-wallet')).toHaveText('65')
   await expect(page.locator('#skins-status')).toHaveText('Coral Wash purchased and equipped.')
   await expect(preview).toHaveAttribute('data-plane-id', 'coral')
   await expect(preview).toHaveAttribute('data-silhouette', 'dart')

@@ -21,10 +21,10 @@ describe('plane collection art manifest', () => {
       'coral',
       'night',
       'gold',
+      'sunset',
+      'stormfoil',
       'neon',
       'rainbow',
-      'stormfoil',
-      'sunset',
       'halloween',
       'winter',
       'valentine',
@@ -84,42 +84,42 @@ describe('plane collection purchases', () => {
   })
 
   test('uses lifetime stars only as an availability requirement, separate from the wallet price', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '24')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '19')
 
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({
       state: 'locked',
-      requirement: { type: 'lifetime-stars', value: 25 },
-      price: { currency: 'wallet-stars', value: 25 },
+      requirement: { type: 'lifetime-stars', value: 20 },
+      price: { currency: 'wallet-stars', value: 20 },
     })
 
-    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({ state: 'available' })
   })
 
   test('deducts wallet stars, never lifetime stars, when purchasing an available plane', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
-    addWallet(25)
+    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    addWallet(20)
 
-    expect(purchasePlane('mint')).toEqual({ ok: true, cost: 25 })
+    expect(purchasePlane('mint')).toEqual({ ok: true, cost: 20 })
     expect(getWallet()).toBe(0)
-    expect(getLifetimeStars()).toBe(25)
+    expect(getLifetimeStars()).toBe(20)
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({ state: 'owned' })
   })
 
   test('does not purchase an available plane when the wallet is short', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
-    addWallet(24)
+    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    addWallet(19)
 
     expect(purchasePlane('mint')).toEqual({ ok: false, reason: 'poor', need: 1 })
-    expect(getWallet()).toBe(24)
+    expect(getWallet()).toBe(19)
     expect(isUnlocked('mint')).toBe(false)
   })
 
   test('makes repeated plane purchases idempotent', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
-    addWallet(25)
+    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    addWallet(20)
 
-    expect(purchasePlane('mint')).toEqual({ ok: true, cost: 25 })
+    expect(purchasePlane('mint')).toEqual({ ok: true, cost: 20 })
     expect(purchasePlane('mint')).toEqual({ ok: true, already: true })
     expect(getWallet()).toBe(0)
   })
