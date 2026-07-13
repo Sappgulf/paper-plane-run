@@ -20,6 +20,9 @@ describe('Living Journey domain', () => {
     const journey = selectJourneyRoute(createJourney(7, 1000), getRouteChoices(createJourney(7, 1000))[1].id)
     expect(getRouteChoices(journey)).toEqual(getRouteChoices(journey))
     expect(buildRunConfiguration(journey).routeId).toBe(journey.selectedRouteId)
+    expect(buildRunConfiguration(journey).attemptId).toBe(`${journey.id}:${journey.selectedRouteId}:1`)
+    expect(buildRunConfiguration(journey).objective).toBeTruthy()
+    expect(buildRunConfiguration(journey).encounterSeed).toBeTypeOf('number')
   })
 
   it('maps every Journey step to its matching gameplay zone', () => {
@@ -40,6 +43,7 @@ describe('Living Journey domain', () => {
     expect(crashed.stepIndex).toBe(0)
     expect(crashed.runStars).toBe(4)
     expect(crashed.earnedStampIds).toEqual([])
+    expect(crashed.attemptNumber).toBe(2)
 
     const finished = resolveJourneyFlight(selected, { completed: true, distance: 500, stars: 8 })
     expect(finished.stepIndex).toBe(1)
