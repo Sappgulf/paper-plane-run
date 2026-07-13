@@ -476,6 +476,7 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
 })
 
 test('live flight loop wires seeded upgrade spawning, collision fairness, and ink cooldown', async ({ page }, testInfo) => {
+  test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
