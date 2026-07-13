@@ -160,6 +160,18 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
       preview: visit,
     })
   }
+
+  await tap(page.getByRole('button', { name: '← Main menu' }))
+  await tap(page.locator('#start-btn'))
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3_000 })
+  await expect.poll(() => page.evaluate(() => ({
+    state: JSON.parse(window.render_game_to_text()).state,
+    contextLosses: window.__webglContextLosses,
+  }))).toEqual({
+    state: 'playing',
+    contextLosses: { gameplay: 0, preview: visits },
+  })
 })
 
 test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {

@@ -12,7 +12,7 @@ Fixed and verified.
 
 - During preview-session teardown only, call `previewRenderer.forceContextLoss()` immediately after `previewRenderer.dispose()`.
 - Leave the main gameplay renderer untouched.
-- Add a Playwright regression that opens and tears down six Plane Collection previews, asserts one lost preview context per teardown, and asserts that the gameplay canvas never loses its context.
+- Add a Playwright regression that opens and tears down six Plane Collection previews, asserts one lost preview context per teardown, then starts a normal flight and verifies active, advancing gameplay while the gameplay canvas remains at zero context losses.
 
 ## TDD evidence
 
@@ -36,10 +36,28 @@ npx playwright test e2e/smoke.spec.js --grep 'releases each preview WebGL contex
 
 The desktop and mobile regression runs passed. Playwright recorded `test-results/.last-run.json` with `status: passed` and no failed tests.
 
+### Follow-up review RED
+
+The gameplay HUD expectation was first added immediately after the six teardown cycles, before any navigation or flight start:
+
+```sh
+npx playwright test e2e/smoke.spec.js --project=desktop --grep 'releases each preview WebGL context'
+```
+
+The test failed as intended because it remained on Hangar → Upgrades. This demonstrated that the original regression never exercised the gameplay renderer after repeated preview teardown.
+
+### Follow-up review GREEN
+
+The regression now returns to the main menu, starts flight, waits for the HUD, requires distance to advance beyond `0m`, checks runtime state `playing`, and reasserts `{ gameplay: 0, preview: 6 }` context losses.
+
 ## Verification
 
 - `npx playwright test e2e/smoke.spec.js --grep 'releases each preview WebGL context'`
-  - Desktop and mobile passed; six preview contexts were lost in sequence and the gameplay count remained zero.
+  - Desktop and mobile passed; six preview contexts were lost in sequence, then gameplay started, distance advanced, runtime state was `playing`, and the gameplay count remained zero.
+- `npx playwright test e2e/smoke.spec.js --grep 'first flight starts with launch protection'`
+  - Independent desktop and mobile first-flight smoke passed: 2 tests in 9.2s.
+- `npm test`
+  - Passed: 29 files, 119 tests.
 - `npx playwright test e2e/smoke.spec.js --grep 'previews the shared equipped silhouette'`
   - Existing desktop and mobile Plane Collection/flight behavior passed (`test-results/.last-run.json`: passed, no failed tests).
 - `npm run build`
