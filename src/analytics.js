@@ -4,6 +4,9 @@
 const KEY = 'paper-plane-run-analytics'
 const SESSION = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 const MAX = 200
+// See leaderboard.js — same file://-has-no-server reasoning for the iOS
+// app's offline-bundled build.
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 function load() {
   try {
@@ -36,9 +39,9 @@ export function track(event, props = {}) {
   // Fire-and-forget remote
   try {
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/analytics', JSON.stringify(row))
+      navigator.sendBeacon(`${API_BASE}/api/analytics`, JSON.stringify(row))
     } else {
-      fetch('/api/analytics', {
+      fetch(`${API_BASE}/api/analytics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(row),

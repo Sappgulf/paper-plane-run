@@ -341,7 +341,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   text-align: center; overflow-y: auto;
   background:
     linear-gradient(165deg, rgba(200,223,245,.55) 0%, rgba(255,236,220,.72) 100%),
-    url('/assets/menu-bg.jpg') center / cover no-repeat;
+    url('menu-bg.jpg') center / cover no-repeat;
 }
 .menu-panel { justify-content: safe center; }
 
@@ -683,7 +683,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 #gameover {
   background:
     linear-gradient(165deg, rgba(40,30,28,.4), rgba(255,220,200,.78)),
-    url('/assets/menu-bg.jpg') center / cover no-repeat;
+    url('menu-bg.jpg') center / cover no-repeat;
 }
 
 /* Mobile */

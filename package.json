@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:ios": "BASE_PATH=./ VITE_API_BASE=https://paper-plane-run.vercel.app vite build --outDir ios-dist --emptyOutDir && node scripts/postprocess-ios.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

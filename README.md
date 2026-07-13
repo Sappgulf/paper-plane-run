@@ -53,3 +53,9 @@ Menu → **⚙️ Settings** for AR, season override, graphics, accessibility.
 
 - `GET/POST /api/leaderboard`
 - `GET/POST /api/analytics`
+
+## iOS
+
+A native Swift/Xcode app shell (`ios/`) embeds this exact web build offline
+in a `WKWebView` — same code, same assets, same physics, not a separate
+reimplementation. See [ios/README.md](ios/README.md) for build steps.

@@ -1,6 +1,11 @@
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
 const TIME_ATTACK_KEY = 'paper-plane-run-lb-timeattack'
+// The iOS app bundles this build offline and loads it via file://, where a
+// relative /api/... fetch has no server to resolve against. Vite bakes this
+// in at build time — see package.json's build:ios script — so the web build
+// (relative, same-origin) is completely unaffected.
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 function load(key) {
   try {
@@ -68,7 +73,7 @@ export function getDailyTop(dailyKey, mode, limit = 10) {
 export async function fetchRemoteTop(mode = 'normal', daily = false) {
   try {
     const q = new URLSearchParams({ mode, daily: daily ? '1' : '0' })
-    const res = await fetch(`/api/leaderboard?${q}`)
+    const res = await fetch(`${API_BASE}/api/leaderboard?${q}`)
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -78,7 +83,7 @@ export async function fetchRemoteTop(mode = 'normal', daily = false) {
 
 export async function submitRemoteScore(entry) {
   try {
-    const res = await fetch('/api/leaderboard', {
+    const res = await fetch(`${API_BASE}/api/leaderboard`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),

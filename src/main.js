@@ -526,9 +526,20 @@ if (!settings.lowPower) {
   pmrem.dispose()
 }
 
+// Every asset path in this file is authored as a root-absolute string
+// ('/assets/...') for the hosted web build. Vite's base-path rewriting only
+// touches its own module graph / recognized HTML attributes, never runtime
+// string literals — so under the iOS app's file:// bundle (base: './'),
+// these would otherwise try to resolve at the filesystem root and fail.
+// Every texture/image loader funnels through this.
+function resolveAssetUrl(url) {
+  return url && url.startsWith('/') ? import.meta.env.BASE_URL + url.slice(1) : url
+}
+
 const loader = new THREE.TextureLoader()
 const texCache = {}
-function loadTex(url) {
+function loadTex(rawUrl) {
+  const url = resolveAssetUrl(rawUrl)
   if (!texCache[url]) {
     const t = loader.load(url)
     t.colorSpace = THREE.SRGBColorSpace
@@ -561,7 +572,8 @@ const cutoutTexCache = {}
  * far from the backdrop tone, while climbing into real subject color
  * blows that cap even if no single step looked suspicious.
  */
-function loadCutoutTex(url, growThreshold = 20, maxDistance = 70) {
+function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
+  const url = resolveAssetUrl(rawUrl)
   if (cutoutTexCache[url]) return cutoutTexCache[url]
   const canvas = document.createElement('canvas')
   const tex = new THREE.CanvasTexture(canvas)
@@ -3027,7 +3039,7 @@ function renderSkins() {
             : s.seasonal
               ? `Season: ${s.seasonal}`
               : `Need ${s.cost}★`
-    card.innerHTML = `<img src="${s.map}" alt=""/><div class="name">${s.name}</div><div class="meta">${meta}</div>`
+    card.innerHTML = `<img src="${resolveAssetUrl(s.map)}" alt=""/><div class="name">${s.name}</div><div class="meta">${meta}</div>`
     card.onclick = () => {
       refreshUnlocks(season.id)
       if (s.unlocked || s.canUnlock) {
