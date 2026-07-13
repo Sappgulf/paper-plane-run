@@ -6,9 +6,18 @@ const STARS_KEY = 'paper-plane-run-lifetime-stars'
 const SCHEMA_VERSION_KEY = 'paper-plane-run-skins-version'
 const SCHEMA_VERSION = '1'
 
+function planeArt(id, silhouette) {
+  return {
+    portrait: `/assets/planes/${id}.webp`,
+    texture: `/assets/planes/${id}.png`,
+    silhouette,
+  }
+}
+
 export const SKINS = [
   {
     id: 'classic',
+    ...planeArt('classic', 'classic'),
     name: 'Classic Cream',
     cost: 0,
     body: 0xfff6ec,
@@ -17,6 +26,7 @@ export const SKINS = [
   },
   {
     id: 'mint',
+    ...planeArt('mint', 'glider'),
     name: 'Mint Fold',
     cost: 25,
     body: 0xd8f5e8,
@@ -25,6 +35,7 @@ export const SKINS = [
   },
   {
     id: 'coral',
+    ...planeArt('coral', 'dart'),
     name: 'Coral Wash',
     cost: 50,
     body: 0xffe0d4,
@@ -33,6 +44,7 @@ export const SKINS = [
   },
   {
     id: 'night',
+    ...planeArt('night', 'stunt'),
     name: 'Night Washi',
     cost: 80,
     body: 0x2a3350,
@@ -41,6 +53,7 @@ export const SKINS = [
   },
   {
     id: 'gold',
+    ...planeArt('gold', 'classic'),
     name: 'Gold Foil',
     cost: 120,
     body: 0xfff3c4,
@@ -49,6 +62,7 @@ export const SKINS = [
   },
   {
     id: 'neon',
+    ...planeArt('neon', 'dart'),
     name: 'Neon Crease',
     cost: 160,
     body: 0x1e3a5f,
@@ -57,6 +71,7 @@ export const SKINS = [
   },
   {
     id: 'rainbow',
+    ...planeArt('rainbow', 'glider'),
     name: 'Rainbow Scrap',
     cost: 200,
     body: 0xfff7ed,
@@ -65,6 +80,7 @@ export const SKINS = [
   },
   {
     id: 'stormfoil',
+    ...planeArt('stormfoil', 'stunt'),
     name: 'Storm Foil',
     cost: 150,
     body: 0x4b5563,
@@ -73,6 +89,7 @@ export const SKINS = [
   },
   {
     id: 'sunset',
+    ...planeArt('sunset', 'classic'),
     name: 'Sunset Letter',
     cost: 140,
     body: 0xffedd5,
@@ -81,6 +98,7 @@ export const SKINS = [
   },
   {
     id: 'halloween',
+    ...planeArt('halloween', 'stunt'),
     name: 'Jack-o-Plane',
     cost: 999,
     seasonal: 'halloween',
@@ -90,6 +108,7 @@ export const SKINS = [
   },
   {
     id: 'winter',
+    ...planeArt('winter', 'glider'),
     name: 'Frost Fold',
     cost: 999,
     seasonal: 'winter',
@@ -99,6 +118,7 @@ export const SKINS = [
   },
   {
     id: 'valentine',
+    ...planeArt('valentine', 'dart'),
     name: 'Love Letter',
     cost: 999,
     seasonal: 'valentine',
@@ -108,6 +128,7 @@ export const SKINS = [
   },
   {
     id: 'spring',
+    ...planeArt('spring', 'glider'),
     name: 'Blossom Sheet',
     cost: 999,
     seasonal: 'spring',
@@ -117,6 +138,7 @@ export const SKINS = [
   },
   {
     id: 'goldenfold',
+    ...planeArt('goldenfold', 'classic'),
     name: 'Golden Fold',
     cost: 0,
     prestigeReq: 1,

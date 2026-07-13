@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs'
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
+  SKINS,
   claimPlane,
   getEquippedSkinId,
   getLifetimeStars,
@@ -8,6 +10,37 @@ import {
   purchasePlane,
 } from '../src/skins.js'
 import { UPGRADES, addWallet, doPrestige, getWallet } from '../src/upgrades.js'
+
+describe('plane collection art manifest', () => {
+  test('maps every existing plane to valid generated art assets', () => {
+    const silhouetteFamilies = new Set(['classic', 'dart', 'glider', 'stunt'])
+
+    expect(SKINS.map((plane) => plane.id)).toEqual([
+      'classic',
+      'mint',
+      'coral',
+      'night',
+      'gold',
+      'neon',
+      'rainbow',
+      'stormfoil',
+      'sunset',
+      'halloween',
+      'winter',
+      'valentine',
+      'spring',
+      'goldenfold',
+    ])
+
+    for (const plane of SKINS) {
+      expect(plane.portrait).toBe(`/assets/planes/${plane.id}.webp`)
+      expect(plane.texture).toBe(`/assets/planes/${plane.id}.png`)
+      expect(silhouetteFamilies.has(plane.silhouette)).toBe(true)
+      expect(existsSync(new URL(`../public${plane.portrait}`, import.meta.url))).toBe(true)
+      expect(existsSync(new URL(`../public${plane.texture}`, import.meta.url))).toBe(true)
+    }
+  })
+})
 
 describe('prestige-gated skin', () => {
   beforeEach(() => {
