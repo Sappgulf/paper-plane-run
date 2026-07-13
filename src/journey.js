@@ -88,6 +88,7 @@ export function createJourney(seed = Date.now(), now = Date.now()) {
     postcard: null,
     attemptNumber: 1,
     lastOutcomeReceiptId: null,
+    objectiveResults: [],
   }
 }
 
@@ -150,12 +151,15 @@ export function resolveJourneyFlight(journey, outcome = {}) {
   }
 
   const completedRouteIds = [...journey.completedRouteIds, route.id]
+  const objectiveResults = outcome.objectiveResult
+    ? [...(journey.objectiveResults || []), outcome.objectiveResult]
+    : [...(journey.objectiveResults || [])]
   const earnedStampIds = journey.earnedStampIds.includes(route.stampId)
     ? journey.earnedStampIds
     : [...journey.earnedStampIds, route.stampId]
   const nextStep = journey.stepIndex + 1
   if (nextStep < JOURNEY_STEPS.length) {
-    return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
+    return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, objectiveResults, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
   }
   const postcard = {
     id: `${journey.id}-postcard`,
@@ -168,6 +172,10 @@ export function resolveJourneyFlight(journey, outcome = {}) {
     totalStars: totals.totalStars,
     rivalBeaten: !!outcome.rivalBeaten,
     perfect: earnedStampIds.length === JOURNEY_STEPS.length,
+    artworkId: outcome.destinationId || route.zone,
+    objectiveResults,
+    masteryLevel: Math.min(3, Math.max(0, Number(outcome.masteryLevel) || 0)),
+    decorationIds: Array.isArray(outcome.decorationIds) ? [...outcome.decorationIds] : [],
   }
-  return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, status: 'complete', postcard, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
+  return { ...journey, ...totals, stepIndex: nextStep, selectedRouteId: null, completedRouteIds, earnedStampIds, objectiveResults, status: 'complete', postcard, attemptNumber: 1, lastOutcomeReceiptId: outcome.receiptId || null }
 }

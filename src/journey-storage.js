@@ -19,6 +19,7 @@ function migrateJourney(value) {
     version: JOURNEY_VERSION,
     attemptNumber: 1,
     lastOutcomeReceiptId: null,
+    objectiveResults: Array.isArray(value.objectiveResults) ? value.objectiveResults : [],
   }
 }
 

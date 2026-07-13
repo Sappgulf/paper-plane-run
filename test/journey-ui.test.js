@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createJourney, getRouteChoices } from '../src/journey.js'
 import { createMasteryState, resolveMasteryOutcome } from '../src/journey-mastery.js'
-import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderRouteChoices } from '../src/journey-ui.js'
+import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from '../src/journey-ui.js'
 
 function root() {
   return { innerHTML: '', onclick: null }
@@ -52,5 +52,30 @@ describe('Journey UI', () => {
     expect(el.innerHTML).toContain('Objective complete')
     expect(el.innerHTML).toContain('Level 1')
     expect(el.innerHTML).toContain('milo-portrait-route-reader')
+  })
+
+  it('renders an interactive artwork album and opens a selected card', () => {
+    const el = root()
+    const open = vi.fn()
+    const card = { id: 'card-1', journeyId: 'journey', artworkId: 'aurora', pilotId: 'navigator', completedAt: 1000, stampIds: ['a'], perfect: true, rivalBeaten: true, totalDistance: 1400, totalStars: 20 }
+    renderPostcardAlbum(el, [card], open)
+    expect(el.innerHTML).toContain('aurora-postcard.webp')
+    expect(el.innerHTML).toContain('Perfect route')
+    el.onclick({ target: { closest: () => ({ dataset: { postcardId: 'card-1' } }) } })
+    expect(open).toHaveBeenCalledWith(card)
+  })
+
+  it('renders reveal and detail actions with accessible artwork', () => {
+    const card = { id: 'card-1', journeyId: 'journey', artworkId: 'storm', pilotId: 'daredevil', stampIds: [], objectiveResults: [], masteryLevel: 2, decorationIds: ['pip-ember-trail'], totalDistance: 1200, totalStars: 12 }
+    const reveal = root()
+    renderPostcardReveal(reveal, card, {})
+    expect(reveal.innerHTML).toContain('storm-postcard.webp')
+    expect(reveal.innerHTML).toContain('View details')
+
+    const detail = root()
+    renderPostcardDetail(detail, card, {})
+    expect(detail.innerHTML).toContain('Pip')
+    expect(detail.innerHTML).toContain('Mastery Level 2')
+    expect(detail.innerHTML).toContain('Share postcard')
   })
 })

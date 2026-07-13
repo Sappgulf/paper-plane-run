@@ -1,5 +1,6 @@
 import { JOURNEY_STEPS, PILOTS } from './journey.js'
 import { getPilotMasteryView } from './journey-mastery.js'
+import { getJourneyArtwork } from './journey-art.js'
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
@@ -90,16 +91,73 @@ export function renderJourneyResultProgress(root, result) {
   root.classList?.remove('hidden')
 }
 
-export function renderPostcardAlbum(root, postcards) {
+function bindPostcardActions(root, handlers) {
+  root.onclick = (event) => {
+    const action = event.target.closest?.('[data-postcard-action]')?.dataset.postcardAction
+    if (action) handlers?.[action]?.()
+  }
+}
+
+function postcardImage(card) {
+  const art = getJourneyArtwork(card.artworkId)
+  return `<img src="${escapeHtml(art.src.replace(/^\//, ''))}" alt="${escapeHtml(art.alt)}" loading="lazy" />`
+}
+
+export function renderPostcardAlbum(root, postcards, onOpen) {
   if (!root) return
   if (!postcards.length) {
     root.innerHTML = '<div class="journey-empty"><span>💌</span><strong>No postcards yet</strong><p>Complete a four-flight Journey to make your first one.</p></div>'
     return
   }
-  root.innerHTML = postcards.map((card) => `<article class="journey-postcard">
-    <div class="postcard-art">✈️ ${card.perfect ? '✨' : ''}</div>
-    <h3>Paper Skies Journey</h3>
-    <p>${card.totalDistance}m · ${card.totalStars}★ · ${card.stampIds.length}/4 stamps</p>
-    <p>${card.rivalBeaten ? '🏆 Beat the Red Dart' : '🔺 Faced the Red Dart'}</p>
-  </article>`).join('')
+  root.innerHTML = postcards.map((card) => {
+    const art = getJourneyArtwork(card.artworkId)
+    const pilot = PILOTS[card.pilotId] || PILOTS.navigator
+    const date = card.completedAt ? new Date(card.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Legacy Journey'
+    return `<button type="button" class="journey-postcard" data-postcard-id="${escapeHtml(card.id)}">
+      <span class="postcard-art">${postcardImage(card)}</span>
+      <strong>${escapeHtml(art.name)}</strong>
+      <span>${pilot.icon} ${escapeHtml(pilot.name)} · ${escapeHtml(date)}</span>
+      <small>${card.stampIds.length}/4 stamps ${card.perfect ? '· ✨ Perfect route' : ''} ${card.rivalBeaten ? '· 🏆 Red Dart' : ''}</small>
+    </button>`
+  }).join('')
+  root.onclick = (event) => {
+    const button = event.target.closest?.('[data-postcard-id]')
+    const card = button && postcards.find((item) => item.id === button.dataset.postcardId)
+    if (card) onOpen?.(card)
+  }
+}
+
+export function renderPostcardReveal(root, card, handlers = {}) {
+  if (!root || !card) return
+  const art = getJourneyArtwork(card.artworkId)
+  root.innerHTML = `<div class="postcard-surface reveal-card" role="document">
+    <button type="button" class="overlay-close" data-postcard-action="continue" aria-label="Close postcard">×</button>
+    <span class="postcard-kicker">Journey complete</span>
+    ${postcardImage(card)}
+    <h2>${escapeHtml(art.name)}</h2>
+    <p>${card.totalDistance}m · ${card.totalStars}★ · ${card.stampIds?.length || 0}/4 stamps</p>
+    <div class="btn-row wrap"><button type="button" class="cta-main cta-inline" data-postcard-action="details">View details</button><button type="button" class="btn-secondary" data-postcard-action="share">Share</button></div>
+    <p class="share-status" data-postcard-status></p>
+    <button type="button" class="linkish" data-postcard-action="continue">Continue</button>
+  </div>`
+  bindPostcardActions(root, handlers)
+}
+
+export function renderPostcardDetail(root, card, handlers = {}) {
+  if (!root || !card) return
+  const art = getJourneyArtwork(card.artworkId)
+  const pilot = PILOTS[card.pilotId] || PILOTS.navigator
+  root.innerHTML = `<div class="postcard-surface detail-card" role="document">
+    <button type="button" class="overlay-close" data-postcard-action="close" aria-label="Close postcard details">×</button>
+    ${postcardImage(card)}
+    <h2>${escapeHtml(art.name)}</h2>
+    <p>${pilot.icon} ${escapeHtml(pilot.name)} · Mastery Level ${card.masteryLevel || 0}</p>
+    <p>${card.totalDistance}m · ${card.totalStars}★ · ${card.stampIds?.length || 0}/4 stamps</p>
+    <p>${card.rivalBeaten ? '🏆 Red Dart beaten' : '🔺 Red Dart faced'}${card.perfect ? ' · ✨ Perfect route' : ''}</p>
+    <ol class="postcard-route">${(card.routePath || []).map((route) => `<li>${escapeHtml(route)}</li>`).join('')}</ol>
+    <div class="postcard-decorations">${(card.decorationIds || []).map((id) => `<span>${escapeHtml(id)}</span>`).join('')}</div>
+    <button type="button" class="cta-main cta-inline" data-postcard-action="share">Share postcard</button>
+    <p class="share-status" data-postcard-status></p>
+  </div>`
+  bindPostcardActions(root, handlers)
 }

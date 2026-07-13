@@ -85,8 +85,8 @@ import {
   selectJourneyRoute,
 } from './journey.js'
 import { applyJourneyRewardOnce, clearJourney, loadJourney, saveJourney } from './journey-storage.js'
-import { loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
-import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderRouteChoices } from './journey-ui.js'
+import { buildPostcardShareModel, loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
+import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
 import { getPilotEffect } from './journey-modifiers.js'
@@ -224,6 +224,8 @@ function hideEdgeIndicators() {
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
 const journeyResultProgressEl = $('journey-result-progress')
+const postcardRevealEl = $('postcard-reveal')
+const postcardDetailEl = $('postcard-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
@@ -3071,6 +3073,63 @@ function showMenu() {
   updateControlUI()
 }
 
+let postcardFocusReturn = null
+
+function closePostcardOverlay(root) {
+  root?.classList.add('hidden')
+  postcardFocusReturn?.focus?.()
+  postcardFocusReturn = null
+}
+
+async function sharePostcard(card, root) {
+  const model = buildPostcardShareModel(card, location.origin + location.pathname)
+  if (!model) return
+  const status = root?.querySelector?.('[data-postcard-status]')
+  try {
+    if (navigator.share) {
+      await navigator.share(model)
+      if (status) status.textContent = 'Postcard shared.'
+    } else if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(`${model.text}\n${model.url}`)
+      if (status) status.textContent = 'Postcard summary copied.'
+    } else if (status) {
+      status.textContent = `${model.text} · ${model.url}`
+    }
+    track('journey_postcard_shared', { postcardId: card.id })
+  } catch (error) {
+    if (error?.name !== 'AbortError' && status) status.textContent = `Share unavailable. ${model.text}`
+  }
+}
+
+function openPostcardDetail(card) {
+  if (!card || !postcardDetailEl) return
+  postcardFocusReturn ||= document.activeElement
+  postcardRevealEl?.classList.add('hidden')
+  renderPostcardDetail(postcardDetailEl, card, {
+    close: () => closePostcardOverlay(postcardDetailEl),
+    share: () => sharePostcard(card, postcardDetailEl),
+  })
+  postcardDetailEl.classList.remove('hidden')
+  postcardDetailEl.querySelector('button')?.focus()
+  track('journey_postcard_opened', { postcardId: card.id })
+}
+
+function showPostcardReveal(card) {
+  if (!card || !postcardRevealEl) return
+  postcardFocusReturn = document.activeElement
+  renderPostcardReveal(postcardRevealEl, card, {
+    continue: () => {
+      closePostcardOverlay(postcardRevealEl)
+      openJourney()
+    },
+    details: () => openPostcardDetail(card),
+    share: () => sharePostcard(card, postcardRevealEl),
+  })
+  postcardRevealEl.classList.remove('hidden')
+  postcardRevealEl.querySelector('button')?.focus()
+  track('journey_postcard_revealed', { postcardId: card.id })
+}
+
 function openHangar(tab = 'upgrades') {
   hideAllPanels()
   const hangar = $('hangar-panel')
@@ -3104,7 +3163,7 @@ function showHangarTab(tab) {
   if (tab === 'board') renderBoard('local')
   if (tab === 'settings') renderSettings()
   if (tab === 'stats') renderStats()
-  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage))
+  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
   if (tab === 'editor') setupEditor()
   refreshHangarWallet()
 }
@@ -4002,7 +4061,7 @@ function finalizeDeathUnsafe() {
       addWallet(journeyBonus)
     } else if (journeyBonus > 0) journeyBonus = 0
     const rivalBeaten = !!journeyRunConfig.rival && completedJourneyRoute
-    const journeyOutcome = Object.freeze({
+    const journeyOutcomeBase = Object.freeze({
       receiptId: journeyRunConfig.attemptId,
       pilotId: journeyRunConfig.pilotId,
       routeId: journeyRunConfig.routeId,
@@ -4019,10 +4078,16 @@ function finalizeDeathUnsafe() {
       rivalBeaten,
       completedEventIds: Object.freeze([...(journeyTelemetry?.completedEventIds || [])]),
     })
-    const objectiveResult = resolveJourneyObjective(journeyRunConfig.objective, journeyOutcome)
+    const objectiveResult = resolveJourneyObjective(journeyRunConfig.objective, journeyOutcomeBase)
     const masteryBefore = getPilotMasteryView(mastery, journeyRunConfig.pilotId)
-    mastery = resolveMasteryOutcome(mastery, journeyOutcome)
+    mastery = resolveMasteryOutcome(mastery, journeyOutcomeBase)
     const masteryAfter = getPilotMasteryView(mastery, journeyRunConfig.pilotId)
+    const journeyOutcome = Object.freeze({
+      ...journeyOutcomeBase,
+      objectiveResult,
+      masteryLevel: masteryAfter?.level || 0,
+      decorationIds: Object.freeze([...(masteryAfter?.cosmetics || [])]),
+    })
     try { saveMastery(localStorage, mastery) } catch (error) { console.warn('Journey mastery save failed', error) }
     lastJourneyResult = Object.freeze({
       outcome: journeyOutcome,
@@ -4128,6 +4193,9 @@ function finalizeDeathUnsafe() {
     challengeToast.textContent = `Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`
     challengeToast.classList.remove('hidden')
     setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3200)
+  }
+  if (completedJourneyRoute && journey?.status === 'complete' && journey.postcard) {
+    requestAnimationFrame(() => showPostcardReveal(journey.postcard))
   }
 
   if (challenge && challenge.m === difficulty.id) {
