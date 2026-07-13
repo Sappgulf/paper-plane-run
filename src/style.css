@@ -441,6 +441,25 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
   margin-bottom: 8px;
 }
+
+.engine-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 30px;
+  color: #5c4540;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.engine-retry {
+  display: block;
+  margin: 0 auto;
+  min-height: 32px;
+  padding: 5px 12px;
+}
 .action-pill {
   font-family: inherit; font-weight: 800; font-size: 13px; color: #3d2c29;
   background: rgba(255,255,255,.75); border: 1.5px solid rgba(61,44,41,.08);

@@ -30,12 +30,56 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  let engineRequests = 0
+  let releaseEngine
+  const engineGate = new Promise((resolve) => {
+    releaseEngine = resolve
+  })
+  await page.route('**/src/flight-engine.js*', async (route) => {
+    engineRequests += 1
+    await engineGate
+    await route.continue()
+  })
+
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+
+  await expect(page.locator('#engine-status')).toHaveText('Preparing your plane...')
+  releaseEngine()
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
+  expect(engineRequests).toBe(1)
+})
+
+test('an aborted engine chunk offers a retry that can start flight', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  let engineRequests = 0
+  await page.route('**/src/flight-engine.js*', async (route) => {
+    engineRequests += 1
+    if (engineRequests === 1) await route.abort('failed')
+    else await route.continue()
+  })
+
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+
+  await expect(page.locator('#engine-status')).toContainText('Couldn’t prepare your plane')
+  await expect(page.locator('#engine-retry')).toBeVisible()
+  await expect(page.locator('#start-btn')).toBeEnabled()
+  await tap(page.locator('#engine-retry'))
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
+  // A registered service worker may satisfy the reload from cache, bypassing
+  // page.route; the visible HUD is the authoritative recovery assertion.
+  expect(engineRequests).toBeGreaterThanOrEqual(1)
+})
+
 test('first flight starts with launch protection', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))
 
-  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('#power-banner')).toContainText('launch protection active')
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
   expect(errors).toEqual([])
@@ -54,11 +98,14 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
   await tap(page.locator('.journey-route-card').first())
 
-  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('#journey-objective-hud')).toBeVisible()
   await expect(page.locator('#hud-mode')).not.toHaveText('Normal')
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
-  await openApp(page, '/#test-journey-city')
+  // Changing only the hash can keep the live flight document. A query change
+  // guarantees a fresh boot into the deterministic Journey test state.
+  await openApp(page, '/?e2e=journey#test-journey-city')
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function', null, { timeout: 15_000 })
   const textState = await page.evaluate(() => {
     let snapshot = JSON.parse(window.render_game_to_text())
     for (let batch = 0; batch < 6 && snapshot.journey.triggeredEncounterIds.length === 0; batch += 1) {
@@ -113,7 +160,7 @@ test('visibility pause freezes and resumes flight distance', async ({ page }, te
   test.skip(testInfo.project.name !== 'desktop')
   await openApp(page)
   await tap(page.locator('#start-btn'))
-  await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
+  await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 15_000 })
 
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
@@ -137,7 +184,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
   await tap(page.getByRole('button', { name: '🕹️ Stick' }))
   await tap(page.locator('#start-btn'))
 
-  await expect(page.locator('#distance')).toBeVisible()
+  await expect(page.locator('#distance')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('#stars')).toBeVisible()
   await expect(page.locator('#best').locator('..')).toBeHidden()
   await expect(page.locator('#ctrl-hud')).toBeHidden()
@@ -149,7 +196,7 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
 
   const retry = page.getByRole('button', { name: 'Fly Again' })
   const share = page.getByRole('button', { name: 'Share Score' })
-  await expect(page.getByRole('heading', { name: 'Crashed!' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Crashed!' })).toBeVisible({ timeout: 15_000 })
   await expect(retry).toBeVisible()
   await expect(retry).toBeInViewport()
   expect(await retry.evaluate((button, other) => {

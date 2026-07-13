@@ -28,3 +28,14 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - Generic physical-iOS Release build succeeded with automatic signing, the Apple Development identity, and the team provisioning profile.
 - Physical device discovery currently sees Austin's iPhone 16 Pro but reports it unavailable; signed build and install will be retried at the final device lane.
 - Remaining: merge/push, Vercel production deploy, physical iPhone fresh install.
+
+### Balanced game polish — Task 2 takeover
+
+- Preserved the inherited uncommitted lifecycle extraction on `codex/balanced-game-polish`; Task 1 remains at `4adbfc0` with its report at `a592fac`.
+- Focused loader/first-flight/pause baseline: 3 files and 11 tests pass.
+- Current split builds as a 66,899-byte initial entry and a 656,794-byte deferred flight-engine chunk; bundle budget passes at 723,693 total bytes.
+- Full Playwright takeover baseline: 18 passed, 7 skipped, 1 mobile Journey deterministic-state failure. The test navigates to a hash-only URL after starting a run, so the browser can retain the live document instead of booting the intended test state; desktop happened to reach an encounter before crashing.
+- Completed shell/engine listener ownership, failed-preload retry semantics, deterministic browser navigation, and the required verification matrix.
+- Targeted lifecycle/Journey Playwright after the fix: 4 passed, 2 project-specific skips. Delayed preload used one engine request; aborted preload recovered on request two.
+- Temporary web-game client proof: three inspected Classic-flight frames reached 14m, 28m, and 40m with leftward movement, matching text state, and no console errors; generated artifacts were removed after inspection.
+- Final verification: 27 Vitest files / 94 tests; full Playwright 19 passed / 7 viewport skips; iOS parity 70 files; bundle budget 70,273 initial / 724,470 total bytes. No known code TODOs remain for Task 2.
