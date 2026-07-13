@@ -2187,6 +2187,7 @@ function dispatchJourneyEncounter(event) {
     break
   }
   journeyTelemetry.completedEventIds.push(event.id)
+  for (const entity of entities.slice(eventStart)) entity.journeyEventId = event.id
   const direction = lane < 0 ? 'from the left' : lane > 0 ? 'from the right' : 'through the center'
   const navigatorHint = journeyRunConfig.pilotId === 'navigator' ? ` · ${direction}` : ''
   zoneBanner.textContent = `${event.stage.toUpperCase()} · ${event.type.replaceAll('-', ' ')}${navigatorHint}`
@@ -4020,7 +4021,7 @@ function finalizeDeathUnsafe() {
   const isWin = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
-  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack'
+  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack' && runKind !== 'journey'
   const d = Math.floor(distance)
   lastRun = {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily', timeAttack: runKind === 'timeattack',
@@ -5308,6 +5309,39 @@ try {
   menuEl?.classList.remove('hidden')
 }
 
+window.render_game_to_text = () => JSON.stringify({
+  coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
+  state,
+  mode: runKind,
+  distance: Math.floor(distance),
+  stars,
+  player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  journey: journeyRunConfig ? {
+    routeId: journeyRunConfig.routeId,
+    destination: journeyRunConfig.zone,
+    pilotId: journeyRunConfig.pilotId,
+    objective: journeyRunConfig.objective,
+    objectiveText: journeyObjectiveText(),
+    triggeredEncounterIds: [...(journeyTelemetry?.completedEventIds || [])],
+    visibleEncounterIds: entities.filter((entity) => entity.journeyEventId && entity.mesh.position.z > -25 && entity.mesh.position.z < 110).map((entity) => entity.journeyEventId),
+    telemetry: journeyTelemetry ? { ...journeyTelemetry, completedEventIds: [...journeyTelemetry.completedEventIds] } : null,
+  } : null,
+  result: lastJourneyResult ? {
+    completed: lastJourneyResult.outcome.completed,
+    objectiveCompleted: lastJourneyResult.objectiveResult.completed,
+    masteryLevel: lastJourneyResult.masteryAfter?.level || 0,
+    unlockedCosmetic: lastJourneyResult.unlockedCosmetic,
+  } : null,
+})
+
+if (import.meta.env.DEV) {
+  window.advanceTime = (ms) => {
+    const steps = Math.min(3600, Math.max(0, Math.ceil(Number(ms) / (1000 / 60))))
+    for (let index = 0; index < steps; index += 1) update(1 / 60)
+    return window.render_game_to_text()
+  }
+}
+
 // Deterministic browser-test state. Vite replaces this guard at build time,
 // so the production bundle cannot activate the shortcut through a URL.
 if (import.meta.env.DEV && devTestState === '#test-gameover') {
@@ -5349,6 +5383,43 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+}
+
+if (import.meta.env.DEV && devTestState === '#test-postcard') {
+  showPostcardReveal({
+    id: 'test-postcard',
+    journeyId: 'test-journey',
+    artworkId: 'aurora',
+    pilotId: 'navigator',
+    completedAt: Date.now(),
+    routePath: ['rooftops-safe-star-trail', 'harbor-risky-shortcut-gates', 'storm-safe-low-visibility', 'aurora-risky-red-dart-finale'],
+    stampIds: ['rooftops-steady', 'harbor-bold', 'storm-steady', 'aurora-bold'],
+    objectiveResults: [{ label: 'Beat Red Dart', completed: true, value: 1, target: 1 }],
+    masteryLevel: 3,
+    decorationIds: ['milo-map-trail', 'milo-compass-border'],
+    totalDistance: 1640,
+    totalStars: 38,
+    rivalBeaten: true,
+    perfect: true,
+  })
+}
+
+if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {
+  const zoneId = devTestState.slice('#test-journey-'.length)
+  const stepIndex = ['city', 'harbor', 'storm', 'aurora'].indexOf(zoneId)
+  if (stepIndex >= 0) {
+    settings = saveSettings({ haptics: false })
+    journey = { ...createJourney(4242, 1000), stepIndex }
+    journey = selectJourneyRoute(journey, getRouteChoices(journey)[0].id)
+    journeyRunConfig = buildRunConfiguration(journey)
+    runKind = 'journey'
+    hideAllPanels()
+    resetGame()
+    invuln = 999
+    state = 'playing'
+    hudEl?.classList.remove('hidden')
+    showStick(true)
+  }
 }
 
 window.addEventListener('resize', () => {

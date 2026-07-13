@@ -6,6 +6,26 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
 }
 
+const COSMETIC_LABELS = Object.freeze({
+  'milo-portrait-route-reader': 'Route Reader portrait',
+  'milo-map-trail': 'Cartographer map trail',
+  'milo-compass-border': 'Compass postcard border',
+  'pip-portrait-close-call': 'Close Call portrait',
+  'pip-ember-trail': 'Ember flight trail',
+  'pip-foil-border': 'Redline foil border',
+})
+
+function cosmeticLabel(id) {
+  return COSMETIC_LABELS[id] || String(id || '').replaceAll('-', ' ')
+}
+
+function routeLabel(routeId) {
+  const destination = routeId?.split('-')[0]
+  const names = { rooftops: 'Paper City', city: 'Paper City', harbor: 'Harbor', storm: 'Storm Front', aurora: 'Aurora' }
+  const risk = routeId?.includes('-risky-') ? 'Risky route' : 'Scenic route'
+  return `${names[destination] || 'Journey route'} · ${risk}`
+}
+
 export function renderJourneyMap(root, journey) {
   if (!root || !journey) return
   const pilot = PILOTS[journey.pilotId] || PILOTS.navigator
@@ -53,7 +73,7 @@ export function renderPilotChoices(root, journey, lifetimeStamps, onSelect, mast
       <span class="pilot-icon">${pilot.icon}</span><strong>${escapeHtml(pilot.name)} · Level ${mastery?.level || 0}</strong><small>${escapeHtml(pilot.ability)}</small>
       <em>${unlocked ? escapeHtml(pilot.description) : `Collect ${pilot.unlockedAt} stamps to unlock`}</em>
       <span class="mastery-meter" role="progressbar" aria-label="${escapeHtml(pilot.name)} mastery" aria-valuemin="0" aria-valuemax="3" aria-valuenow="${mastery?.level || 0}"><i style="width:${((mastery?.level || 0) / 3) * 100}%"></i></span>
-      <small class="mastery-goal">${escapeHtml(mastery?.nextGoal || 'Begin a Journey')} · ${escapeHtml(mastery?.nextCosmetic || 'all cosmetics unlocked')}</small>
+      <small class="mastery-goal">${escapeHtml(mastery?.nextGoal || 'Begin a Journey')} · ${escapeHtml(mastery?.nextCosmetic ? cosmeticLabel(mastery.nextCosmetic) : 'all cosmetics unlocked')}</small>
     </button>`
   }).join('')
   root.onclick = (event) => {
@@ -68,7 +88,7 @@ export function renderPilotMastery(root, masteryState, pilotId) {
   root.innerHTML = mastery ? `<div class="pilot-mastery-summary">
     <strong>Level ${mastery.level} · ${escapeHtml(mastery.title)}</strong>
     <span>${escapeHtml(mastery.nextGoal)}</span>
-    ${mastery.nextCosmetic ? `<small>Next: ${escapeHtml(mastery.nextCosmetic)}</small>` : '<small>All cosmetics unlocked</small>'}
+    ${mastery.nextCosmetic ? `<small>Next: ${escapeHtml(cosmeticLabel(mastery.nextCosmetic))}</small>` : '<small>All cosmetics unlocked</small>'}
   </div>` : ''
 }
 
@@ -86,7 +106,7 @@ export function renderJourneyResultProgress(root, result) {
     ${result.outcome.completed ? '<strong>✓ Stamp earned</strong>' : '<strong>Flight progress saved</strong>'}
     <span>${objective?.completed ? '✓ Objective complete' : '○ Objective missed'} · ${escapeHtml(objective?.label || 'Reach the destination')} ${objective ? `${objective.value}/${objective.target}` : ''}</span>
     <span>${leveledUp ? `★ Mastery Level ${result.masteryAfter.level}` : `Mastery Level ${result.masteryAfter?.level || 0}`} · ${telemetryProgress ? `+${telemetryProgress} flight marks` : 'route logged'}</span>
-    ${result.unlockedCosmetic ? `<small>Unlocked · ${escapeHtml(result.unlockedCosmetic)}</small>` : ''}
+    ${result.unlockedCosmetic ? `<small>Unlocked · ${escapeHtml(cosmeticLabel(result.unlockedCosmetic))}</small>` : ''}
   </div>`
   root.classList?.remove('hidden')
 }
@@ -154,8 +174,8 @@ export function renderPostcardDetail(root, card, handlers = {}) {
     <p>${pilot.icon} ${escapeHtml(pilot.name)} · Mastery Level ${card.masteryLevel || 0}</p>
     <p>${card.totalDistance}m · ${card.totalStars}★ · ${card.stampIds?.length || 0}/4 stamps</p>
     <p>${card.rivalBeaten ? '🏆 Red Dart beaten' : '🔺 Red Dart faced'}${card.perfect ? ' · ✨ Perfect route' : ''}</p>
-    <ol class="postcard-route">${(card.routePath || []).map((route) => `<li>${escapeHtml(route)}</li>`).join('')}</ol>
-    <div class="postcard-decorations">${(card.decorationIds || []).map((id) => `<span>${escapeHtml(id)}</span>`).join('')}</div>
+    <ol class="postcard-route">${(card.routePath || []).map((route) => `<li>${escapeHtml(routeLabel(route))}</li>`).join('')}</ol>
+    <div class="postcard-decorations">${(card.decorationIds || []).map((id) => `<span>${escapeHtml(cosmeticLabel(id))}</span>`).join('')}</div>
     <button type="button" class="cta-main cta-inline" data-postcard-action="share">Share postcard</button>
     <p class="share-status" data-postcard-status></p>
   </div>`

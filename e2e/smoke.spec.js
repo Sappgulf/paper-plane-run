@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 function collectConsoleErrors(page) {
   const errors = []
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text())
+    if (message.type() === 'error') errors.push(`${message.text()} @ ${message.location().url || 'inline'}`)
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
@@ -40,13 +40,50 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await page.getByRole('button', { name: '🗺️ Begin Journey' }).click()
   await expect(page.getByRole('heading', { name: 'Across the Paper Skies' })).toBeVisible()
   await expect(page.locator('.journey-stop')).toHaveCount(4)
+  await expect(page.locator('.journey-pilot')).toHaveCount(2)
+  await expect(page.locator('.journey-pilot').first()).toContainText('Level 0')
+  await expect(page.locator('.route-objective').first()).toContainText('Goal')
   await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
   await page.locator('.journey-route-card').first().click()
 
   await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#journey-objective-hud')).toBeVisible()
   await expect(page.locator('#hud-mode')).not.toHaveText('Normal')
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
+  await page.goto('/#test-journey-city')
+  const textState = await page.evaluate(() => {
+    window.advanceTime(5000)
+    return JSON.parse(window.render_game_to_text())
+  })
+  expect(textState.mode).toBe('journey')
+  expect(textState.journey.objective).toBeTruthy()
+  expect(textState.journey.triggeredEncounterIds.length).toBeGreaterThan(0)
   expect(errors).toEqual([])
+})
+
+test('postcard reveal opens details and keeps share fallback visible', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', { configurable: true, value: undefined })
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copiedPostcard = text } } })
+  })
+  await page.goto('/#test-postcard')
+
+  await expect(page.locator('#postcard-reveal')).toBeVisible()
+  await expect(page.locator('#postcard-reveal img')).toHaveAttribute('src', /aurora-postcard\.webp/)
+  await page.getByRole('button', { name: 'View details' }).click()
+  await expect(page.locator('#postcard-detail')).toBeVisible()
+  await expect(page.locator('#postcard-detail')).toContainText('Mastery Level 3')
+  await page.getByRole('button', { name: 'Share postcard' }).click()
+  await expect(page.locator('#postcard-detail [data-postcard-status]')).toContainText('copied')
+  await expect(page.locator('#postcard-detail')).toBeVisible()
+})
+
+test('postcard reveal respects reduced motion and compact scrolling', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ reducedMotion: true })))
+  await page.goto('/#test-postcard')
+  await expect(page.locator('html')).toHaveClass(/a11y-reduced-motion/)
+  await expect(page.locator('.postcard-surface')).toHaveCSS('overflow-y', 'auto')
+  await expect(page.getByRole('button', { name: 'Close postcard' })).toBeInViewport()
 })
 
 test('Living Journey selection survives a reload', async ({ page }) => {

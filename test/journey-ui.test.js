@@ -34,7 +34,7 @@ describe('Journey UI', () => {
     renderPilotChoices(el, createJourney(4, 1000), 0, vi.fn(), mastery)
     expect(el.innerHTML).toContain('Level 0')
     expect(el.innerHTML).toContain('Complete 2 Journey routes')
-    expect(el.innerHTML).toContain('milo-portrait-route-reader')
+    expect(el.innerHTML).toContain('Route Reader portrait')
     expect(el.innerHTML).toContain('role="progressbar"')
     expect(el.innerHTML).toContain('Collect 4 stamps to unlock')
   })
@@ -51,7 +51,7 @@ describe('Journey UI', () => {
     expect(el.innerHTML).toContain('Stamp earned')
     expect(el.innerHTML).toContain('Objective complete')
     expect(el.innerHTML).toContain('Level 1')
-    expect(el.innerHTML).toContain('milo-portrait-route-reader')
+    expect(el.innerHTML).toContain('Route Reader portrait')
   })
 
   it('renders an interactive artwork album and opens a selected card', () => {
