@@ -133,4 +133,36 @@ describe('plane collection purchases', () => {
       expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
     }
   })
+
+  test('repairs null ownership entries to classic', () => {
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify([null]))
+
+    listSkins()
+
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
+  })
+
+  test('repairs non-string ownership entries to known IDs', () => {
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic', 7]))
+
+    listSkins()
+
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
+  })
+
+  test('removes unknown ownership IDs while retaining known IDs', () => {
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic', 'missing-plane', 'mint']))
+
+    listSkins()
+
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic', 'mint'])
+  })
+
+  test('persists classic when the equipped ID is invalid', () => {
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic', 'mint']))
+    localStorage.setItem('paper-plane-run-skin', 'missing-plane')
+
+    expect(getEquippedSkinId()).toBe('classic')
+    expect(localStorage.getItem('paper-plane-run-skin')).toBe('classic')
+  })
 })

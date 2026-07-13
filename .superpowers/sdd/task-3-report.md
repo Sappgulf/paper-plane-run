@@ -125,3 +125,27 @@ Result: passed with no whitespace errors.
 ### Fix commit
 
 - `fix: complete plane collection Hangar flow` (this review-fix commit)
+
+## Data-repair follow-up
+
+### Fix evidence
+
+- `src/skins.js` now filters parsed ownership entries to string IDs present in `SKINS`, removes duplicates, ensures `classic`, and persists the repaired known-ID array.
+- An invalid non-empty `paper-plane-run-skin` value now persists back to `classic` while `getEquippedSkinId()` returns the repaired fallback.
+- Focused coverage verifies repair of `[null]` to `['classic']`, `['classic', 7]` to `['classic']`, removal of unknown IDs while retaining known `mint`, and invalid equipped-ID repair to `classic`.
+
+### Test evidence
+
+Command:
+
+```sh
+npm test -- --run test/skins.test.js test/upgrades.test.js
+```
+
+Result: passed — 2 files, 22 tests.
+
+```sh
+git diff --check
+```
+
+Result: passed with no whitespace errors.

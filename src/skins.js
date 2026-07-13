@@ -126,10 +126,16 @@ export const SKINS = [
   },
 ]
 
+const KNOWN_SKIN_IDS = new Set(SKINS.map((skin) => skin.id))
+
 function loadLegacyOwnership() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '["classic"]')
-    return { owned: new Set(Array.isArray(saved) ? saved : ['classic']), needsRepair: !Array.isArray(saved) }
+    const raw = Array.isArray(saved) ? saved : ['classic']
+    const normalized = [...new Set(raw.filter((id) => typeof id === 'string' && KNOWN_SKIN_IDS.has(id)))]
+    const needsRepair =
+      !Array.isArray(saved) || normalized.length !== raw.length || normalized.some((id, index) => id !== raw[index])
+    return { owned: new Set(normalized), needsRepair }
   } catch {
     return { owned: new Set(['classic']), needsRepair: true }
   }
@@ -173,7 +179,9 @@ export function addLifetimeStars(n) {
 
 export function getEquippedSkinId() {
   const equipped = localStorage.getItem(EQUIP)
-  return SKINS.some((skin) => skin.id === equipped) ? equipped : 'classic'
+  if (KNOWN_SKIN_IDS.has(equipped)) return equipped
+  if (equipped !== null) localStorage.setItem(EQUIP, 'classic')
+  return 'classic'
 }
 
 export function equipSkin(id) {
