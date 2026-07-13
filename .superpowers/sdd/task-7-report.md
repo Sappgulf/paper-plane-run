@@ -1,6 +1,6 @@
 # Task 7 — Runtime proof and feedback for upgrades
 
-Status: DONE_WITH_CONCERNS
+Status: DONE
 
 ## Delivered
 
@@ -26,11 +26,13 @@ Status: DONE_WITH_CONCERNS
 - Review-fix focused browser integration: `npx playwright test e2e/smoke.spec.js --project=desktop --grep "max upgrades expose|live flight loop wires|reuse cached upgrade effects|reduced motion keeps"` covers max feedback/accessibility, actual Journey multiplier plus seeded spawning, safe-versus-hit collision outcomes, Ink Blast fire/recharge, zero per-frame upgrade-storage reads, and stable reduced-motion shield/phase feedback.
 - Full unit: `npm test` passed 30 files and 152 tests.
 - Bundle budget: `npm run verify:bundle-budget` passed at 79,415 initial bytes and 747,218 total bytes against the 819,200-byte limits.
+- Collision-fixture RED: `npx playwright test e2e/smoke.spec.js --grep "live flight loop|reduced motion keeps"` failed on desktop because the `collision=hit` fixture remained `playing` after one frame. Root cause: startup URL normalization cleared `location.search` before the fixture parsed `collision`, so both `near` and `hit` selected the near placement.
+- Collision-fixture GREEN: captured `collision` under the existing DEV guard alongside `devUpgradeProof`, then reused that captured value in the fixture. The same focused command passed with 2 desktop tests passed and 2 mobile tests skipped by their desktop-only guards in 1.1 minutes.
 
-## Concerns
+## Verification scope
 
-- Per the user’s final instruction, the required web-game client was not rerun after these review fixes. Its baseline/max text-state and inspected desktop/mobile visual proof remain from the prior Task 7 pass, so this report does not claim exact-final canvas proof for the review-fix commit.
-- Exact-final iOS build/parity and a broader all-project Playwright run were not requested or rerun. The review-fix browser lane is focused and desktop-only; prior max-upgrade proof remains desktop/mobile.
+- The focused collision/reduced-motion lane is exact-final. Web-game-client baseline/max text-state and inspected desktop/mobile visual proof remain from the prior Task 7 pass.
+- iOS build/parity and a broader all-project Playwright run were outside this focused fixture correction; prior Task 7 evidence remains recorded above.
 
 ## Cleanup
 

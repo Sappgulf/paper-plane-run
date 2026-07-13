@@ -436,6 +436,9 @@ const devTestState = import.meta.env.DEV ? location.hash : ''
 const devUpgradeProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('upgrade-proof')
   : null
+const devCollisionProof = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('collision')
+  : null
 function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (!import.meta.env.DEV) return
   let levels = {}
@@ -5066,8 +5069,7 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-collision') {
   nextSpawnZ = 1000
   windTimer = 999
   const scissors = createScissors()
-  const collisionCase = new URLSearchParams(location.search).get('collision')
-  scissors.position.set(collisionCase === 'hit' ? 0 : 2.3, planeY, difficulty.speedBase / 60)
+  scissors.position.set(devCollisionProof === 'hit' ? 0 : 2.3, planeY, difficulty.speedBase / 60)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
   simulationPaused = true
