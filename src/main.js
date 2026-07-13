@@ -2890,6 +2890,8 @@ function showHangarTab(tab) {
   document.querySelectorAll('.hangar-page').forEach((p) => {
     p.classList.toggle('hidden', p.id !== `tab-${tab}`)
   })
+  const hangarBody = document.querySelector('.hangar-body')
+  if (hangarBody) hangarBody.scrollTop = 0
   if (tab === 'upgrades') renderUpgrades()
   if (tab === 'skins') renderSkins()
   if (tab === 'missions') renderMissions()
@@ -3194,8 +3196,9 @@ function renderSettings() {
   const ms = $('set-mouse-sens')
   if (ms) {
     const v = Number(s.mouseSensitivity) || 1
-    if (v < 0.85) ms.value = '0.7'
-    else if (v > 1.15) ms.value = '1.35'
+    if (v < 0.85) ms.value = '0.75'
+    else if (v >= 1.7) ms.value = '1.85'
+    else if (v > 1.15) ms.value = '1.4'
     else ms.value = '1'
   }
 }

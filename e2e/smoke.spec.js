@@ -82,3 +82,31 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
   }, '#share-btn')).toBe(true)
   await expect(share).toBeVisible()
 })
+
+test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile')
+  await page.goto('/')
+  await page.getByRole('button', { name: '🏠 Hangar' }).click()
+
+  const hangarBody = page.locator('.hangar-body')
+  await hangarBody.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.getByRole('button', { name: '🛠 Editor' }).click()
+
+  await expect(page.getByRole('button', { name: '🏢 Building' })).toBeVisible()
+  await expect.poll(() => hangarBody.evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test('Aim feel selection survives a Hangar tab round trip', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile')
+  await page.goto('/')
+  await page.getByRole('button', { name: '🏠 Hangar' }).click()
+  await page.getByRole('button', { name: '⚙️ Settings' }).click()
+
+  await page.locator('#set-mouse-sens').selectOption('0.75')
+  await page.getByRole('button', { name: '🛠 Editor' }).click()
+  await page.getByRole('button', { name: '⚙️ Settings' }).click()
+
+  await expect(page.locator('#set-mouse-sens')).toHaveValue('0.75')
+})
