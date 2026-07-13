@@ -7,6 +7,7 @@ const MAX = 200
 // See leaderboard.js — same file://-has-no-server reasoning for the iOS
 // app's offline-bundled build.
 const API_BASE = import.meta.env.VITE_API_BASE || ''
+const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
 
 function load() {
   try {
@@ -34,7 +35,7 @@ export function track(event, props = {}) {
 
   // The plain Vite development server does not mount Vercel functions.
   // Keep local funnel data without generating a noisy 404 for every event.
-  if (import.meta.env.DEV) return row
+  if (import.meta.env.DEV || isLocalHost) return row
 
   // Fire-and-forget remote
   try {
