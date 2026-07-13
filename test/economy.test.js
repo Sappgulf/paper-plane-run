@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 import { FUTURE_PRICE_TABLE, NORMAL_RUN_EARNINGS, estimateProgression } from '../src/game/economy.js'
 import { UPGRADES, addWallet, buyUpgrade, getWallet } from '../src/upgrades.js'
-import { SKINS, getLifetimeStars, purchasePlane } from '../src/skins.js'
+import { SKINS, getLifetimeStars, listSkins, purchasePlane } from '../src/skins.js'
 
 function runsToAfford(price, starsPerRun = NORMAL_RUN_EARNINGS[1].stars) {
   return Math.ceil(price / starsPerRun)
@@ -68,12 +68,13 @@ describe('economy progression model', () => {
   test('spends only wallet stars for an upgrade and a plane, never lifetime stars', () => {
     const upgradeCost = FUTURE_PRICE_TABLE.upgrades.handling[0]
     const planeCost = FUTURE_PRICE_TABLE.planes.mint
-    localStorage.setItem('paper-plane-run-lifetime-stars', String(planeCost))
+    const lifetimeRequirement = listSkins().find((skin) => skin.id === 'mint').requirement.value
+    localStorage.setItem('paper-plane-run-lifetime-stars', String(lifetimeRequirement))
     addWallet(upgradeCost + planeCost)
 
     expect(buyUpgrade('handling')).toEqual({ ok: true, level: 1, cost: upgradeCost })
     expect(purchasePlane('mint')).toEqual({ ok: true, cost: planeCost })
     expect(getWallet()).toBe(0)
-    expect(getLifetimeStars()).toBe(planeCost)
+    expect(getLifetimeStars()).toBe(lifetimeRequirement)
   })
 })

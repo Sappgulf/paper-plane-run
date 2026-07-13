@@ -7,6 +7,18 @@ const STARS_KEY = 'paper-plane-run-lifetime-stars'
 const SCHEMA_VERSION_KEY = 'paper-plane-run-skins-version'
 const SCHEMA_VERSION = '1'
 
+const LEGACY_LIFETIME_REQUIREMENTS = Object.freeze({
+  classic: 0,
+  mint: 25,
+  coral: 50,
+  night: 80,
+  gold: 120,
+  sunset: 140,
+  stormfoil: 150,
+  neon: 160,
+  rainbow: 200,
+})
+
 function planeArt(id, silhouette) {
   return {
     portrait: `/assets/planes/${id}.webp`,
@@ -217,7 +229,7 @@ export function equipSkin(id) {
 function getRequirement(skin) {
   if (skin.seasonal) return { type: 'season', value: skin.seasonal }
   if (skin.prestigeReq != null) return { type: 'prestige', value: skin.prestigeReq }
-  return { type: 'lifetime-stars', value: skin.cost }
+  return { type: 'lifetime-stars', value: LEGACY_LIFETIME_REQUIREMENTS[skin.id] }
 }
 
 function getPrice(skin) {
@@ -228,7 +240,7 @@ function getPrice(skin) {
 function availabilityMet(skin, seasonId) {
   if (skin.seasonal) return skin.seasonal === seasonId
   if (skin.prestigeReq != null) return prestigeMet(skin)
-  return getLifetimeStars() >= skin.cost
+  return getLifetimeStars() >= LEGACY_LIFETIME_REQUIREMENTS[skin.id]
 }
 
 /** Buy a lifetime-available plane using spendable wallet stars. */

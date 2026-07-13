@@ -132,7 +132,7 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
     localStorage.setItem('paper-plane-run-wallet', '20')
-    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
     localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic']))
     localStorage.setItem('paper-plane-run-skin', 'classic')
     localStorage.setItem('paper-plane-run-skins-version', '1')
@@ -186,9 +186,14 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
   await tap(page.getByRole('button', { name: '🎯 Missions' }))
 
-  await tap(page.getByRole('button', { name: 'Claim' }))
+  await page.getByRole('button', { name: 'Claim' }).evaluate((button) => {
+    button.click()
+    button.click()
+  })
   await expect(page.locator('#hangar-wallet')).toHaveText('10')
   await expect(page.locator('#hangar-lifetime')).toHaveText('10')
+  await expect(page.getByRole('button', { name: 'Claim' })).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).claimStars)).toBe(10)
   expect(errors).toEqual([])
 })
 

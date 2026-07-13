@@ -83,31 +83,50 @@ describe('plane collection purchases', () => {
     expect(localStorage.getItem('paper-plane-run-skins-version')).toBe('1')
   })
 
+  test('preserves every legacy lifetime gate separately from the new wallet prices', () => {
+    expect(listSkins().map(({ id, requirement, price }) => ({ id, requirement, price }))).toEqual([
+      { id: 'classic', requirement: { type: 'lifetime-stars', value: 0 }, price: { currency: 'wallet-stars', value: 0 } },
+      { id: 'mint', requirement: { type: 'lifetime-stars', value: 25 }, price: { currency: 'wallet-stars', value: 20 } },
+      { id: 'coral', requirement: { type: 'lifetime-stars', value: 50 }, price: { currency: 'wallet-stars', value: 35 } },
+      { id: 'night', requirement: { type: 'lifetime-stars', value: 80 }, price: { currency: 'wallet-stars', value: 55 } },
+      { id: 'gold', requirement: { type: 'lifetime-stars', value: 120 }, price: { currency: 'wallet-stars', value: 80 } },
+      { id: 'sunset', requirement: { type: 'lifetime-stars', value: 140 }, price: { currency: 'wallet-stars', value: 90 } },
+      { id: 'stormfoil', requirement: { type: 'lifetime-stars', value: 150 }, price: { currency: 'wallet-stars', value: 100 } },
+      { id: 'neon', requirement: { type: 'lifetime-stars', value: 160 }, price: { currency: 'wallet-stars', value: 110 } },
+      { id: 'rainbow', requirement: { type: 'lifetime-stars', value: 200 }, price: { currency: 'wallet-stars', value: 140 } },
+      { id: 'halloween', requirement: { type: 'season', value: 'halloween' }, price: null },
+      { id: 'winter', requirement: { type: 'season', value: 'winter' }, price: null },
+      { id: 'valentine', requirement: { type: 'season', value: 'valentine' }, price: null },
+      { id: 'spring', requirement: { type: 'season', value: 'spring' }, price: null },
+      { id: 'goldenfold', requirement: { type: 'prestige', value: 1 }, price: null },
+    ])
+  })
+
   test('uses lifetime stars only as an availability requirement, separate from the wallet price', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '19')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '24')
 
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({
       state: 'locked',
-      requirement: { type: 'lifetime-stars', value: 20 },
+      requirement: { type: 'lifetime-stars', value: 25 },
       price: { currency: 'wallet-stars', value: 20 },
     })
 
-    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({ state: 'available' })
   })
 
   test('deducts wallet stars, never lifetime stars, when purchasing an available plane', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
     addWallet(20)
 
     expect(purchasePlane('mint')).toEqual({ ok: true, cost: 20 })
     expect(getWallet()).toBe(0)
-    expect(getLifetimeStars()).toBe(20)
+    expect(getLifetimeStars()).toBe(25)
     expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({ state: 'owned' })
   })
 
   test('does not purchase an available plane when the wallet is short', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
     addWallet(19)
 
     expect(purchasePlane('mint')).toEqual({ ok: false, reason: 'poor', need: 1 })
@@ -116,7 +135,7 @@ describe('plane collection purchases', () => {
   })
 
   test('makes repeated plane purchases idempotent', () => {
-    localStorage.setItem('paper-plane-run-lifetime-stars', '20')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '25')
     addWallet(20)
 
     expect(purchasePlane('mint')).toEqual({ ok: true, cost: 20 })

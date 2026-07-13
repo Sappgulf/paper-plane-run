@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 import { dailyKey } from '../src/rng.js'
-import { updateMissionsFromRun } from '../src/missions.js'
+import { claimMission, updateMissionsFromRun } from '../src/missions.js'
 
 describe('clean-run mission type', () => {
   beforeEach(() => {
@@ -49,5 +49,27 @@ describe('sharpshooter mission type', () => {
     missions = updateMissionsFromRun({ stars: 0, distance: 60, maxCombo: 0, powers: 0, winds: 0, popped: 5, mode: 'normal' })
     expect(missions[0].progress).toBe(5)
     expect(missions[0].done).toBe(true)
+  })
+})
+
+describe('mission rewards', () => {
+  test('claims a completed mission only once', () => {
+    localStorage.setItem(
+      'paper-plane-run-missions',
+      JSON.stringify({
+        day: dailyKey(),
+        missions: [
+          { id: 'stars-0', type: 'stars', target: 20, progress: 20, done: true, claimed: false },
+        ],
+        claimStars: 0,
+      }),
+    )
+
+    expect(claimMission('stars-0')).toBe(10)
+    expect(claimMission('stars-0')).toBe(0)
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-missions'))).toMatchObject({
+      missions: [{ id: 'stars-0', claimed: true }],
+      claimStars: 10,
+    })
   })
 })
