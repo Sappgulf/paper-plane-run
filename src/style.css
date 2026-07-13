@@ -107,6 +107,13 @@ html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; op
 html.a11y-reduced-motion .hud-card.fever-hud { animation: none !important; }
 .hud-card.mode-chip > span:nth-child(2),
 .hud-card.zone-chip > span:nth-child(2) { font-size: 13px !important; }
+.hud-card.journey-objective-chip {
+  border-color: rgba(127,106,200,.46); background: rgba(250,247,255,.94);
+  max-width: min(250px, 42vw);
+}
+.hud-card.journey-objective-chip > span:nth-child(2) {
+  color: #5d4698; font-size: 12px; white-space: nowrap;
+}
 .next-zone-chip {
   border-color: rgba(240,149,106,.4); background: rgba(255,244,232,.92);
   animation: nextZoneFade 0.3s ease-out;

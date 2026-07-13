@@ -17,8 +17,8 @@ const ZONE_EVENTS = Object.freeze({
   ]),
   harbor: Object.freeze([
     Object.freeze({ type: 'gust', lanes: [-1, 0, 1], params: { direction: 1, strength: 0.7 } }),
-    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true } }),
-    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: false, bonus: true } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, count: 2 } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, bonus: true, count: 1 } }),
   ]),
   storm: Object.freeze([
     Object.freeze({ type: 'visibility-pocket', lanes: [-1, 0, 1], params: { duration: 4.5, density: 0.72 } }),
