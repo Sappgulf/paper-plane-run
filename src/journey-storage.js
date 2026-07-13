@@ -8,15 +8,27 @@ function validJourney(value) {
     Number.isInteger(value.seed) && Number.isInteger(value.stepIndex) && value.stepIndex >= 0 &&
     value.stepIndex <= JOURNEY_STEPS.length && !!PILOTS[value.pilotId] &&
     Array.isArray(value.completedRouteIds) && Array.isArray(value.earnedStampIds) &&
-    ['active', 'complete'].includes(value.status)
+    ['active', 'complete'].includes(value.status) && Number.isInteger(value.attemptNumber) && value.attemptNumber >= 1 &&
+    (value.lastOutcomeReceiptId === null || typeof value.lastOutcomeReceiptId === 'string')
+}
+
+function migrateJourney(value) {
+  if (!value || value.version !== 1) return value
+  return {
+    ...value,
+    version: JOURNEY_VERSION,
+    attemptNumber: 1,
+    lastOutcomeReceiptId: null,
+  }
 }
 
 export function loadJourney(storage = localStorage) {
   const raw = storage.getItem(JOURNEY_STORAGE_KEY)
   if (!raw) return { journey: null, recovered: false }
   try {
-    const journey = JSON.parse(raw)
+    const journey = migrateJourney(JSON.parse(raw))
     if (!validJourney(journey)) throw new Error('Invalid Journey save')
+    storage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
     return { journey, recovered: false }
   } catch {
     storage.removeItem(JOURNEY_STORAGE_KEY)
