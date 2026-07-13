@@ -5,6 +5,7 @@ const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
 const MIGRATED = 'paper-plane-run-wallet-migrated'
 const PRESTIGE_KEY = 'paper-plane-run-prestige'
+const PRESTIGE_MAX = 50
 
 export const UPGRADES = [
   {
@@ -181,6 +182,8 @@ const UPGRADE_FORMULAS = {
     const boostHitboxScale = roundedEffectValue(Math.max(0.6, 0.78 - level * 0.06))
     return effect(`Boost grace +${boostGraceSeconds.toFixed(2)}s · hitbox ${formatScale(boostHitboxScale)}`, { boostGraceSeconds, boostHitboxScale }, {
       boostSafety: level,
+      boostGraceSeconds,
+      boostHitboxScale,
     })
   },
   guardian(level) {
@@ -208,6 +211,12 @@ function getUpgradeFormula(id, level) {
 function getPrestigeFormula(level) {
   const bonusPercent = level * 3
   return { bonusPercent, multiplier: 1 + bonusPercent / 100 }
+}
+
+function normalizePrestigeLevel(level) {
+  const value = Number(level)
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(PRESTIGE_MAX, Math.floor(value)))
 }
 
 function loadLevels() {
@@ -268,21 +277,33 @@ function migrateWalletOnce() {
 
 /** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
 export function getPrestigeLevel() {
-  const level = Number(localStorage.getItem(PRESTIGE_KEY) || 0)
-  return Number.isFinite(level) ? Math.max(0, Math.min(50, Math.floor(level))) : 0
+  return normalizePrestigeLevel(localStorage.getItem(PRESTIGE_KEY) || 0)
 }
 
 export function getPrestigeBonusPercent(level = getPrestigeLevel()) {
-  return getPrestigeFormula(Math.max(0, Math.floor(Number(level) || 0))).bonusPercent
+  return getPrestigeFormula(normalizePrestigeLevel(level)).bonusPercent
+}
+
+function getPrestigeState() {
+  const level = getPrestigeLevel()
+  const capped = level >= PRESTIGE_MAX
+  const upgradesMaxed = UPGRADES.every((upgrade) => getUpgradeLevel(upgrade.id) >= upgrade.max)
+  return {
+    level,
+    capped,
+    ready: !capped && upgradesMaxed,
+  }
 }
 
 export function canPrestige() {
-  return UPGRADES.every((u) => getUpgradeLevel(u.id) >= u.max)
+  return getPrestigeState().ready
 }
 
 export function doPrestige() {
-  if (!canPrestige()) return { ok: false, reason: 'not-maxed' }
-  const level = getPrestigeLevel() + 1
+  const state = getPrestigeState()
+  if (state.capped) return { ok: false, reason: 'max-prestige', level: state.level }
+  if (!state.ready) return { ok: false, reason: 'not-maxed' }
+  const level = state.level + 1
   localStorage.setItem(PRESTIGE_KEY, String(level))
   saveLevels({})
   return { ok: true, level }

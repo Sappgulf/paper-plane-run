@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test'
 
+const UPGRADE_CARD_CONTRACTS = [
+  { name: 'Fold Handling', current: 'Control response +32%', next: 'Control response +40%' },
+  { name: 'Lift Crease', current: 'Sink rate -32%', next: 'Sink rate -40%' },
+  { name: 'Long Glide', current: 'Cruise speed +16% · score +12%', next: 'Cruise speed +20% · score +15%' },
+  { name: 'Star Magnet', current: 'Star pull +165%', next: 'Star pull +220%' },
+  { name: 'Tough Fiber', current: 'Shield duration +60%', next: 'Shield duration +80%' },
+  { name: 'Lucky Scrap', current: 'Star spawns +36% · power-ups +30%', next: 'Star spawns +48% · power-ups +40%' },
+  { name: 'Wide Wings', current: 'Plane scale 1.36× · near-miss window 1.70×', next: 'Plane scale 1.44× · near-miss window 1.85×' },
+  { name: 'Paper Trail', current: 'Score aura +4%', next: 'Score aura +6%' },
+  { name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
+  { name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
+  { name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
+]
+
 function openApp(page, path = '/') {
   return page.goto(path, { waitUntil: 'domcontentloaded' })
 }
@@ -39,23 +53,68 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
-    localStorage.setItem('paper-plane-run-wallet', '12')
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ guardian: 2 }))
+    localStorage.setItem('paper-plane-run-wallet', '2000')
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({
+      handling: 4,
+      lift: 4,
+      glide: 4,
+      magnet: 3,
+      shield: 3,
+      luck: 3,
+      wingspan: 2,
+      trail: 2,
+      turbo: 2,
+      guardian: 1,
+      weapon: 3,
+    }))
   })
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
 
-  const handling = page.locator('.upgrade-card', { hasText: 'Fold Handling' })
-  await expect(handling.locator('.u-effect-current')).toHaveText('Current: Control response +0%')
-  await expect(handling.locator('.u-effect-next')).toHaveText('Next: Control response +8%')
-  await tap(handling.getByRole('button', { name: 'Upgrade 12★' }))
-  await expect(handling.locator('.u-effect-current')).toHaveText('Current: Control response +8%')
-  await expect(handling.locator('.u-effect-next')).toHaveText('Next: Control response +16%')
+  await expect(page.locator('.upgrade-card')).toHaveCount(UPGRADE_CARD_CONTRACTS.length)
+  for (const contract of UPGRADE_CARD_CONTRACTS) {
+    const card = page.locator('.upgrade-card', { hasText: contract.name })
+    await expect(card.locator('.u-effect-current')).toHaveText(`Current: ${contract.current}`)
+    await expect(card.locator('.u-effect-next')).toHaveText(`Next: ${contract.next}`)
+  }
 
-  const guardian = page.locator('.upgrade-card', { hasText: 'Guardian Crease' })
-  await expect(guardian.locator('.u-effect-current')).toHaveText('Current: Crash saves 2 per run')
-  await expect(guardian.locator('.u-effect-next')).toHaveText('Next: MAX — all ranks purchased')
-  await expect(guardian.locator('.u-max')).toHaveText('MAX')
+  for (const contract of UPGRADE_CARD_CONTRACTS) {
+    const card = page.locator('.upgrade-card', { hasText: contract.name })
+    await tap(card.locator('.u-buy'))
+    await expect(card.locator('.u-effect-current')).toHaveText(`Current: ${contract.next}`)
+    await expect(card.locator('.u-effect-next')).toHaveText('Next: MAX — all ranks purchased')
+    await expect(card.locator('.u-max')).toHaveText('MAX')
+  }
+  expect(errors).toEqual([])
+})
+
+test('Hangar exposes prestige cap without offering a rewardless reset', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-prestige', '50')
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({
+      handling: 5,
+      lift: 5,
+      glide: 5,
+      magnet: 4,
+      shield: 4,
+      luck: 4,
+      wingspan: 3,
+      trail: 3,
+      turbo: 3,
+      guardian: 2,
+      weapon: 4,
+    }))
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+
+  const panel = page.locator('#prestige-panel')
+  await expect(panel.locator('strong')).toHaveText('✦ Golden Fold 50 · MAX')
+  await expect(panel.locator('span')).toHaveText('Maximum prestige reached · +150% score & star luck')
+  await expect(panel.getByRole('button', { name: /Prestige/ })).toHaveCount(0)
+  await expect(panel).not.toContainText('+3%')
   expect(errors).toEqual([])
 })
 

@@ -552,6 +552,7 @@ function renderPrestige() {
   const ready = canPrestige()
   const bonusPercent = getPrestigeBonusPercent(level)
   const nextBonusPercent = getPrestigeBonusPercent(level + 1)
+  const capped = nextBonusPercent === bonusPercent
   if (level === 0 && !ready) {
     panel.classList.add('hidden')
     return
@@ -560,7 +561,9 @@ function renderPrestige() {
   panel.innerHTML = ''
   const info = document.createElement('div')
   info.className = 'prestige-info'
-  info.innerHTML = level > 0
+  info.innerHTML = capped
+    ? `<strong>✦ Golden Fold ${level} · MAX</strong><span>Maximum prestige reached · +${bonusPercent}% score & star luck</span>`
+    : level > 0
     ? `<strong>✦ Golden Fold ${level}</strong><span>+${bonusPercent}% score & star luck, permanently</span>`
     : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus</span>`
   panel.appendChild(info)
