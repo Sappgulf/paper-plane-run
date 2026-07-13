@@ -86,7 +86,7 @@ import {
 } from './journey.js'
 import { applyJourneyRewardOnce, clearJourney, loadJourney, saveJourney } from './journey-storage.js'
 import { loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
-import { renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderRouteChoices } from './journey-ui.js'
+import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderRouteChoices } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
 import { getPilotEffect } from './journey-modifiers.js'
@@ -223,6 +223,7 @@ function hideEdgeIndicators() {
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
+const journeyResultProgressEl = $('journey-result-progress')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
@@ -3017,7 +3018,7 @@ function renderJourney() {
     journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
     saveJourney(localStorage, journey)
     renderJourney()
-  })
+  }, mastery)
   if (journey.status === 'complete') {
     routes.innerHTML = '<div class="journey-empty"><span>💌</span><strong>Journey complete!</strong><p>Your postcard is waiting in the Hangar.</p></div>'
     $('journey-choice-title').textContent = 'Postcard complete'
@@ -3026,6 +3027,7 @@ function renderJourney() {
     renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
       ...route,
       selected: route.id === journey.selectedRouteId,
+      objective: buildRunConfiguration({ ...journey, selectedRouteId: route.id })?.objective,
     })), (routeId) => {
       journey = selectJourneyRoute(journey, routeId)
       saveJourney(localStorage, journey)
@@ -4119,6 +4121,13 @@ function finalizeDeathUnsafe() {
     retryBtn.textContent = runKind === 'journey'
       ? (completedJourneyRoute ? (journey.status === 'complete' ? 'View Journey' : 'Continue Journey') : 'Retry Route')
       : 'Fly Again'
+  }
+
+  renderJourneyResultProgress(journeyResultProgressEl, runKind === 'journey' ? lastJourneyResult : null)
+  if (lastJourneyResult?.unlockedCosmetic) {
+    challengeToast.textContent = `Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`
+    challengeToast.classList.remove('hidden')
+    setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3200)
   }
 
   if (challenge && challenge.m === difficulty.id) {

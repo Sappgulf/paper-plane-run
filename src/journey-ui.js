@@ -1,4 +1,5 @@
 import { JOURNEY_STEPS, PILOTS } from './journey.js'
+import { getPilotMasteryView } from './journey-mastery.js'
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
@@ -33,6 +34,7 @@ export function renderRouteChoices(root, cards, onSelect) {
       <strong>${escapeHtml(card.label)}</strong>
       <span>${escapeHtml(card.modifierLabel)}</span>
       <small>${escapeHtml(card.description)}</small>
+      ${card.objective ? `<small class="route-objective">Goal · ${escapeHtml(card.objective.label)}</small>` : ''}
       <span class="route-reward">${card.rewardMultiplier.toFixed(2)}× rewards · ${escapeHtml(card.stampId)}</span>
     </button>`).join('')
   root.onclick = (event) => {
@@ -41,19 +43,51 @@ export function renderRouteChoices(root, cards, onSelect) {
   }
 }
 
-export function renderPilotChoices(root, journey, lifetimeStamps, onSelect) {
+export function renderPilotChoices(root, journey, lifetimeStamps, onSelect, masteryState = null) {
   if (!root) return
   root.innerHTML = Object.values(PILOTS).map((pilot) => {
     const unlocked = lifetimeStamps >= pilot.unlockedAt
+    const mastery = getPilotMasteryView(masteryState, pilot.id)
     return `<button type="button" class="journey-pilot${journey.pilotId === pilot.id ? ' selected' : ''}" data-pilot-id="${pilot.id}" ${unlocked ? '' : 'disabled'}>
-      <span>${pilot.icon}</span><strong>${escapeHtml(pilot.name)}</strong><small>${escapeHtml(pilot.ability)}</small>
+      <span class="pilot-icon">${pilot.icon}</span><strong>${escapeHtml(pilot.name)} · Level ${mastery?.level || 0}</strong><small>${escapeHtml(pilot.ability)}</small>
       <em>${unlocked ? escapeHtml(pilot.description) : `Collect ${pilot.unlockedAt} stamps to unlock`}</em>
+      <span class="mastery-meter" role="progressbar" aria-label="${escapeHtml(pilot.name)} mastery" aria-valuemin="0" aria-valuemax="3" aria-valuenow="${mastery?.level || 0}"><i style="width:${((mastery?.level || 0) / 3) * 100}%"></i></span>
+      <small class="mastery-goal">${escapeHtml(mastery?.nextGoal || 'Begin a Journey')} · ${escapeHtml(mastery?.nextCosmetic || 'all cosmetics unlocked')}</small>
     </button>`
   }).join('')
   root.onclick = (event) => {
     const button = event.target.closest?.('[data-pilot-id]')
     if (button && !button.disabled) onSelect?.(button.dataset.pilotId)
   }
+}
+
+export function renderPilotMastery(root, masteryState, pilotId) {
+  if (!root) return
+  const mastery = getPilotMasteryView(masteryState, pilotId)
+  root.innerHTML = mastery ? `<div class="pilot-mastery-summary">
+    <strong>Level ${mastery.level} · ${escapeHtml(mastery.title)}</strong>
+    <span>${escapeHtml(mastery.nextGoal)}</span>
+    ${mastery.nextCosmetic ? `<small>Next: ${escapeHtml(mastery.nextCosmetic)}</small>` : '<small>All cosmetics unlocked</small>'}
+  </div>` : ''
+}
+
+export function renderJourneyResultProgress(root, result) {
+  if (!root) return
+  const telemetryProgress = (result?.outcome?.nearMisses || 0) + (result?.outcome?.shortcutGatesCleared || 0)
+  if (!result || (!result.outcome?.completed && telemetryProgress <= 0)) {
+    root.innerHTML = ''
+    root.classList?.add('hidden')
+    return
+  }
+  const objective = result.objectiveResult
+  const leveledUp = (result.masteryAfter?.level || 0) > (result.masteryBefore?.level || 0)
+  root.innerHTML = `<div class="journey-result-progress${result.unlockedCosmetic ? ' unlocked' : ''}">
+    ${result.outcome.completed ? '<strong>✓ Stamp earned</strong>' : '<strong>Flight progress saved</strong>'}
+    <span>${objective?.completed ? '✓ Objective complete' : '○ Objective missed'} · ${escapeHtml(objective?.label || 'Reach the destination')} ${objective ? `${objective.value}/${objective.target}` : ''}</span>
+    <span>${leveledUp ? `★ Mastery Level ${result.masteryAfter.level}` : `Mastery Level ${result.masteryAfter?.level || 0}`} · ${telemetryProgress ? `+${telemetryProgress} flight marks` : 'route logged'}</span>
+    ${result.unlockedCosmetic ? `<small>Unlocked · ${escapeHtml(result.unlockedCosmetic)}</small>` : ''}
+  </div>`
+  root.classList?.remove('hidden')
 }
 
 export function renderPostcardAlbum(root, postcards) {
