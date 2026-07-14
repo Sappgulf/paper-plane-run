@@ -17,6 +17,7 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     weapon: Object.freeze([24, 45, 72, 105]),
     fever: Object.freeze([18, 34, 58]),
     streak: Object.freeze([14, 26, 44]),
+    wealth: Object.freeze([16, 30, 50]),
   }),
   planes: Object.freeze({
     mint: 20,

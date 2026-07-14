@@ -84,3 +84,9 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - Gameplay polish: the combo HUD now shows a `🔥N` countdown once the player is within 3 near-misses of triggering Fever, so the payoff is legible in the moment instead of a surprise.
 - Test coverage extended in place: `test/upgrades.test.js` (contract labels/values/effects), `test/upgradeRuntime.test.js` (runtime snapshot assertions + a dedicated Fever Focus floor test), and `e2e/smoke.spec.js` (both Hangar contract-card and prestige-cap-requires-everything-maxed lanes now include the two new upgrades).
 - Verification: `npm test` 34 files / 180 tests passed; `npm run build` and `npm run build:ios` succeeded; `npm run verify:ios-parity` matched all 102 files; Playwright Hangar lanes re-verified against the exact new upgrade contracts.
+
+## 2026-07-14 — Gold Rush upgrade (star cluster odds)
+
+- Added `Gold Rush` (id `wealth`, max 3, 16/30/50★, icon 💰) to the upgrade tree: raises the base star-cluster spawn chance (`doubleStarChance` in `getSpawnRates`, `src/game/upgrade-runtime.js`) independently of and stacking with Lucky Scrap's multiplier, so it's a genuinely new economic lever rather than a reskin of Luck.
+- Wired through `src/upgrades.js` formulas/effects, `src/game/economy.js` cost table, both `getSpawnRates` call sites in `src/game/upgrade-runtime.js`/`src/flight-engine.js`, and the usual contract tests (`test/upgrades.test.js`, `test/upgradeRuntime.test.js` including a dedicated stacking test, `e2e/smoke.spec.js` Hangar contract-card and prestige-cap lanes).
+- Verification: `npm test` 34 files / 183 tests passed; `npm run build` and `npm run build:ios` succeeded; `npm run verify:ios-parity` matched all 102 files; Playwright Hangar upgrade-card lane re-verified against the new contract.

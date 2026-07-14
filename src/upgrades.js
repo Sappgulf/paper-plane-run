@@ -114,6 +114,14 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.streak,
   },
+  {
+    id: 'wealth',
+    name: 'Gold Rush',
+    icon: '💰',
+    blurb: 'More star clusters spawn along the route',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.wealth,
+  },
 ]
 
 function findUpgrade(id) {
@@ -234,6 +242,12 @@ const UPGRADE_FORMULAS = {
     const windowBonusSeconds = roundedEffectValue(level * 0.4)
     return effect(`Star streak window +${windowBonusSeconds.toFixed(2)}s`, { windowBonusSeconds }, {
       streakWindowBonus: windowBonusSeconds,
+    })
+  },
+  wealth(level) {
+    const doubleStarPercent = level * 8
+    return effect(`Star cluster odds +${doubleStarPercent}%`, { doubleStarPercent }, {
+      doubleStarBonus: doubleStarPercent / 100,
     })
   },
 }
@@ -408,6 +422,7 @@ export function getUpgradeEffects() {
   const weapon = formulas.weapon
   const fever = formulas.fever
   const streak = formulas.streak
+  const wealth = formulas.wealth
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
     ...handling.runtime,
@@ -425,6 +440,7 @@ export function getUpgradeEffects() {
     ...weapon.runtime,
     ...fever.runtime,
     ...streak.runtime,
+    ...wealth.runtime,
     prestigeLevel,
     prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,

@@ -2136,6 +2136,7 @@ function spawnChunk(z) {
     starChanceMul: ufx.starChanceMul,
     powerChanceMul: ufx.powerChanceMul,
     twistStarMul: activeTwist?.starMul || 1,
+    doubleStarBonus: ufx.doubleStarBonus,
   })
   // Stars — often 1–2
   const starRolls = rng() < spawnRates.doubleStarChance ? 2 : 1

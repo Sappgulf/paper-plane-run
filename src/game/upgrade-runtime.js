@@ -61,10 +61,11 @@ export function getSpawnRates({
   starChanceMul = 1,
   powerChanceMul = 1,
   twistStarMul = 1,
+  doubleStarBonus = 0,
 } = {}) {
   const stars = positiveNumber(starChanceMul, 1) * positiveNumber(twistStarMul, 1)
   return {
-    doubleStarChance: clamp(0.25 * stars, 0, 1),
+    doubleStarChance: clamp((0.25 + positiveNumber(doubleStarBonus)) * stars, 0, 1),
     starChance: clamp(positiveNumber(starChance) * stars, 0, 1),
     powerChance: clamp(
       (positiveNumber(powerChance) + 0.08 + positiveNumber(ramp) * 0.05) * positiveNumber(powerChanceMul, 1),
@@ -211,6 +212,7 @@ export function getUpgradeRuntimeSnapshot({
     starChanceMul: effects.starChanceMul,
     powerChanceMul: effects.powerChanceMul,
     twistStarMul,
+    doubleStarBonus: effects.doubleStarBonus,
   })
   const magnet = getMagnetPull({ activePowerKind, magnetBonus: effects.magnetBonus, planeRadius })
   const shield = getPowerDuration({

@@ -14,6 +14,7 @@ const UPGRADE_CARD_CONTRACTS = [
   { name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
   { name: 'Fever Focus', current: 'Fever trigger -2 combo · duration +1.50s', next: 'Fever trigger -3 combo · duration +2.25s' },
   { name: 'Steady Hands', current: 'Star streak window +0.80s', next: 'Star streak window +1.20s' },
+  { name: 'Gold Rush', current: 'Star cluster odds +16%', next: 'Star cluster odds +24%' },
 ]
 
 function openApp(page, path = '/') {
@@ -79,6 +80,7 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       weapon: 3,
       fever: 2,
       streak: 2,
+      wealth: 2,
     }))
   })
   await openApp(page)
@@ -120,6 +122,7 @@ test('Hangar exposes prestige cap without offering a rewardless reset', async ({
       weapon: 4,
       fever: 3,
       streak: 3,
+      wealth: 3,
     }))
   })
   await openApp(page)

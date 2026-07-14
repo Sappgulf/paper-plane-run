@@ -124,6 +124,12 @@ const UPGRADE_CONTRACTS = [
     values: [0, 0.4, 0.8, 1.2].map((windowBonusSeconds) => ({ windowBonusSeconds })),
     directions: { windowBonusSeconds: 'up' },
   },
+  {
+    id: 'wealth',
+    labels: ['Star cluster odds +0%', 'Star cluster odds +8%', 'Star cluster odds +16%', 'Star cluster odds +24%'],
+    values: [0, 8, 16, 24].map((doubleStarPercent) => ({ doubleStarPercent })),
+    directions: { doubleStarPercent: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -351,6 +357,7 @@ describe('exact upgrade contracts', () => {
           expect(effects.feverDurationBonus).toBeCloseTo(values.durationBonusSeconds)
         }
         if (contract.id === 'streak') expect(effects.streakWindowBonus).toBeCloseTo(values.windowBonusSeconds)
+        if (contract.id === 'wealth') expect(effects.doubleStarBonus).toBeCloseTo(values.doubleStarPercent / 100)
       }
     }
   })

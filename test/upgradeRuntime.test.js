@@ -52,6 +52,7 @@ const RUNTIME_ASSERTIONS = [
   { id: 'weapon', value: (runtime) => Number(runtime.weapon.ready), direction: 'up' },
   { id: 'fever', value: (runtime) => runtime.fever.duration, direction: 'up' },
   { id: 'streak', value: (runtime) => runtime.streak.windowSeconds, direction: 'up' },
+  { id: 'wealth', value: (runtime) => runtime.luck.doubleStarChance, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {
@@ -133,6 +134,18 @@ describe('upgrade runtime contracts', () => {
     expect(getFeverTuning({ feverThresholdBonus: 1 }).threshold).toBe(7)
     expect(getFeverTuning({ feverThresholdBonus: 3 }).threshold).toBe(5)
     expect(getFeverTuning({ feverThresholdBonus: 10 }).threshold).toBe(4)
+  })
+
+  test('stacks Gold Rush star cluster odds on top of Lucky Scrap instead of replacing them', () => {
+    const baseline = runtimeAt()
+    const luckOnly = runtimeAt({ luck: 4 })
+    const wealthOnly = runtimeAt({ wealth: 3 })
+    const both = runtimeAt({ luck: 4, wealth: 3 })
+
+    expect(luckOnly.luck.doubleStarChance).toBeGreaterThan(baseline.luck.doubleStarChance)
+    expect(wealthOnly.luck.doubleStarChance).toBeGreaterThan(baseline.luck.doubleStarChance)
+    expect(both.luck.doubleStarChance).toBeGreaterThan(luckOnly.luck.doubleStarChance)
+    expect(both.luck.doubleStarChance).toBeGreaterThan(wealthOnly.luck.doubleStarChance)
   })
 
   test('reports ink readiness and deterministic cooldown recovery without exposing a weapon before purchase', () => {
