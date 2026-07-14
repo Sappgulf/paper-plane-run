@@ -10,4 +10,13 @@ describe('iOS web runtime', () => {
     expect(gameViewSource).toContain('paper-plane://game/index.html')
     expect(gameViewSource).not.toContain('loadFileURL')
   })
+
+  it('covers web startup with a branded native loading view and retryable failure state', () => {
+    expect(gameViewSource).toContain('private let loadingView')
+    expect(gameViewSource).toContain('Paper Plane Run')
+    expect(gameViewSource).toContain('func webView(_ webView: WKWebView, didFinish')
+    expect(gameViewSource).toContain('hideLoadingView()')
+    expect(gameViewSource).toContain('Retry')
+    expect(gameViewSource).toContain('#selector(retryLoad)')
+  })
 })

@@ -51,7 +51,7 @@
       </div>
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute" aria-label="Mute">🔊</button>
-      <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install">⬇️</button>
+      <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install" aria-label="Install Paper Plane Run">⬇️</button>
 
       <div id="install-hint" class="hidden" role="dialog" aria-label="Install Paper Plane Run">
         <div class="install-hint-card">
@@ -61,7 +61,7 @@
           <button id="install-hint-close" type="button" class="cta-main install-hint-btn">Got it</button>
         </div>
       </div>
-      <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR">📷</button>
+      <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR" aria-label="Desk AR camera">📷</button>
 
       <div id="banner-stack">
         <div id="wind-banner" class="hidden">💨 Wind gust!</div>
@@ -166,38 +166,38 @@
             <p class="tagline hangar-wallet">
               Wallet <strong id="hangar-wallet">0</strong>★ · Lifetime <strong id="hangar-lifetime">0</strong>★
             </p>
-            <div class="hangar-tabs" role="tablist">
-              <button type="button" class="hangar-tab active" data-tab="upgrades">🔧&nbsp;Upgrades</button>
-              <button type="button" class="hangar-tab" data-tab="skins">🎨&nbsp;Skins</button>
-              <button type="button" class="hangar-tab" data-tab="missions">🎯&nbsp;Missions</button>
-              <button type="button" class="hangar-tab" data-tab="achievements">🎖️&nbsp;Achievements</button>
-              <button type="button" class="hangar-tab" data-tab="board">🏆&nbsp;Board</button>
-              <button type="button" class="hangar-tab" data-tab="settings">⚙️&nbsp;Settings</button>
-              <button type="button" class="hangar-tab" data-tab="stats">📊&nbsp;Stats</button>
-              <button type="button" class="hangar-tab" data-tab="postcards">💌&nbsp;Postcards</button>
-              <button type="button" class="hangar-tab" data-tab="editor">🛠&nbsp;Editor</button>
+            <div class="hangar-tabs" role="tablist" aria-label="Hangar sections">
+              <button id="hangar-tab-upgrades" type="button" class="hangar-tab active" data-tab="upgrades" role="tab" aria-controls="tab-upgrades" aria-selected="true" tabindex="0">🔧&nbsp;Upgrades</button>
+              <button id="hangar-tab-skins" type="button" class="hangar-tab" data-tab="skins" role="tab" aria-controls="tab-skins" aria-selected="false" tabindex="-1">🎨&nbsp;Planes</button>
+              <button id="hangar-tab-missions" type="button" class="hangar-tab" data-tab="missions" role="tab" aria-controls="tab-missions" aria-selected="false" tabindex="-1">🎯&nbsp;Missions</button>
+              <button id="hangar-tab-achievements" type="button" class="hangar-tab" data-tab="achievements" role="tab" aria-controls="tab-achievements" aria-selected="false" tabindex="-1">🎖️&nbsp;Awards</button>
+              <button id="hangar-tab-board" type="button" class="hangar-tab" data-tab="board" role="tab" aria-controls="tab-board" aria-selected="false" tabindex="-1">🏆&nbsp;Board</button>
+              <button id="hangar-tab-settings" type="button" class="hangar-tab" data-tab="settings" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1">⚙️&nbsp;Settings</button>
+              <button id="hangar-tab-stats" type="button" class="hangar-tab" data-tab="stats" role="tab" aria-controls="tab-stats" aria-selected="false" tabindex="-1">📊&nbsp;Stats</button>
+              <button id="hangar-tab-postcards" type="button" class="hangar-tab" data-tab="postcards" role="tab" aria-controls="tab-postcards" aria-selected="false" tabindex="-1">💌&nbsp;Postcards</button>
+              <button id="hangar-tab-editor" type="button" class="hangar-tab" data-tab="editor" role="tab" aria-controls="tab-editor" aria-selected="false" tabindex="-1">🛠&nbsp;Editor</button>
             </div>
           </div>
           <div class="hangar-body">
-            <section id="tab-upgrades" class="hangar-page">
+            <section id="tab-upgrades" class="hangar-page" role="tabpanel" aria-labelledby="hangar-tab-upgrades">
               <p class="page-intro">Spend flight stars. Each rank sharpens the plane.</p>
               <div id="prestige-panel" class="prestige-panel hidden"></div>
               <div id="upgrades-grid" class="upgrade-grid"></div>
             </section>
-            <section id="tab-skins" class="hangar-page hidden">
+            <section id="tab-skins" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-skins">
               <p class="page-intro">Meet lifetime milestones, then purchase with wallet stars. Seasonal and prestige planes are free claims.</p>
               <p id="skins-status" class="share-status" role="status" aria-live="polite"></p>
               <div id="skins-grid" class="skins-grid"></div>
             </section>
-            <section id="tab-missions" class="hangar-page hidden">
+            <section id="tab-missions" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-missions">
               <p class="page-intro">Resets UTC midnight. Claim for wallet stars.</p>
               <ul id="missions-list" class="list-card"></ul>
             </section>
-            <section id="tab-achievements" class="hangar-page hidden">
+            <section id="tab-achievements" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-achievements">
               <p class="page-intro">Lifetime milestones — claim each tier once you clear it.</p>
               <div id="achievements-list"></div>
             </section>
-            <section id="tab-board" class="hangar-page hidden">
+            <section id="tab-board" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-board">
               <div class="tab-row">
                 <button type="button" class="tab active" data-board="local">Device</button>
                 <button type="button" class="tab" data-board="daily">Daily</button>
@@ -206,7 +206,7 @@
               </div>
               <ol id="board-list" class="list-card board-list"></ol>
             </section>
-            <section id="tab-settings" class="hangar-page hidden">
+            <section id="tab-settings" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-settings">
               <p class="tagline">Season: <strong id="season-now">—</strong></p>
               <div class="settings-list">
                 <label class="set-row">Controls
@@ -245,14 +245,14 @@
                 </label>
               </div>
             </section>
-            <section id="tab-stats" class="hangar-page hidden">
+            <section id="tab-stats" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-stats">
               <div id="stats-body"></div>
             </section>
-            <section id="tab-postcards" class="hangar-page hidden">
+            <section id="tab-postcards" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-postcards">
               <p class="page-intro">Four flights become one keepsake.</p>
               <div id="postcard-album" class="postcard-album"></div>
             </section>
-            <section id="tab-editor" class="hangar-page hidden">
+            <section id="tab-editor" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-editor">
               <p class="page-intro">Place hazards, then play or share a code.</p>
               <div class="editor-toolbar" id="editor-palette"></div>
               <canvas id="editor-canvas" width="360" height="200"></canvas>
@@ -278,6 +278,7 @@
           <p id="streak-badge" class="new-best-badge streak-badge hidden"></p>
           <p id="final-score" class="final"></p>
           <p id="final-detail" class="detail"></p>
+          <div id="run-summary" class="run-summary hidden" aria-label="Run summary"></div>
           <div id="journey-result-progress" class="hidden" aria-live="polite"></div>
           <p id="challenge-result" class="challenge-result hidden"></p>
           <div id="photo-wrap" class="photo-wrap hidden">

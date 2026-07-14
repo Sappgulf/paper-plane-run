@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { FUTURE_PRICE_TABLE, NORMAL_RUN_EARNINGS, estimateProgression } from '../src/game/economy.js'
+import { FUTURE_PRICE_TABLE, NORMAL_RUN_EARNINGS, estimateProgression, estimateRunsToAfford } from '../src/game/economy.js'
 import { UPGRADES, addWallet, buyUpgrade, getWallet } from '../src/upgrades.js'
 import { SKINS, getLifetimeStars, listSkins, purchasePlane } from '../src/skins.js'
 
@@ -32,6 +32,19 @@ describe('economy progression model', () => {
     expect(FUTURE_PRICE_TABLE.planes.mint).toBe(20)
     expect(normalRunWallet).toBeGreaterThanOrEqual(FUTURE_PRICE_TABLE.upgrades.handling[0])
     expect(normalRunWallet).toBeGreaterThanOrEqual(FUTURE_PRICE_TABLE.planes.mint)
+  })
+
+  test('turns an upgrade shortfall into clear next-run guidance', () => {
+    expect(estimateRunsToAfford({ wallet: 1, cost: 10 })).toEqual({
+      missingStars: 9,
+      runs: 2,
+      affordable: false,
+    })
+    expect(estimateRunsToAfford({ wallet: 12, cost: 10 })).toEqual({
+      missingStars: 0,
+      runs: 0,
+      affordable: true,
+    })
   })
 
   test('makes mid-tier choices require saving while preserving meaningful late progression', () => {

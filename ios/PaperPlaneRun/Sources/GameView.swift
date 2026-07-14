@@ -70,10 +70,13 @@ struct GameView: UIViewControllerRepresentable {
 final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     private var webView: WKWebView!
     private let gameBundleSchemeHandler = GameBundleSchemeHandler()
+    private let loadingView = UIView()
+    private var loadingConstraintsInstalled = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0xC8 / 255, green: 0xDF / 255, blue: 0xF5 / 255, alpha: 1)
+        configureLoadingView()
 
         let contentController = WKUserContentController()
         // Bridges for browser APIs WKWebView doesn't support (navigator.vibrate
@@ -130,11 +133,81 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
+        view.bringSubviewToFront(loadingView)
 
         loadGame()
     }
 
+    private func configureLoadingView() {
+        loadingView.subviews.forEach { $0.removeFromSuperview() }
+        loadingView.backgroundColor = UIColor(red: 0xC8 / 255, green: 0xDF / 255, blue: 0xF5 / 255, alpha: 1)
+        loadingView.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialLight))
+        card.layer.cornerRadius = 28
+        card.clipsToBounds = true
+        card.translatesAutoresizingMaskIntoConstraints = false
+
+        let plane = UILabel()
+        plane.text = "✈︎"
+        plane.font = .systemFont(ofSize: 56, weight: .semibold)
+        plane.textColor = UIColor(red: 0x67 / 255, green: 0x50 / 255, blue: 0xB5 / 255, alpha: 1)
+
+        let title = UILabel()
+        title.text = "Paper Plane Run"
+        title.font = .systemFont(ofSize: 25, weight: .heavy)
+        title.textColor = UIColor(red: 0x3D / 255, green: 0x2C / 255, blue: 0x29 / 255, alpha: 1)
+
+        let subtitle = UILabel()
+        subtitle.text = "Folding the sky…"
+        subtitle.font = .systemFont(ofSize: 14, weight: .bold)
+        subtitle.textColor = UIColor(red: 0x7A / 255, green: 0x64 / 255, blue: 0x60 / 255, alpha: 1)
+
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.color = UIColor(red: 0x67 / 255, green: 0x50 / 255, blue: 0xB5 / 255, alpha: 1)
+        spinner.startAnimating()
+
+        let stack = UIStackView(arrangedSubviews: [plane, title, subtitle, spinner])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.contentView.addSubview(stack)
+        loadingView.addSubview(card)
+
+        if !loadingConstraintsInstalled {
+            view.addSubview(loadingView)
+            NSLayoutConstraint.activate([
+                loadingView.topAnchor.constraint(equalTo: view.topAnchor),
+                loadingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                loadingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                loadingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            loadingConstraintsInstalled = true
+        }
+
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor),
+            card.widthAnchor.constraint(equalToConstant: 286),
+            stack.topAnchor.constraint(equalTo: card.contentView.topAnchor, constant: 28),
+            stack.bottomAnchor.constraint(equalTo: card.contentView.bottomAnchor, constant: -24),
+            stack.leadingAnchor.constraint(equalTo: card.contentView.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: card.contentView.trailingAnchor, constant: -20),
+        ])
+    }
+
+    private func hideLoadingView() {
+        UIView.animate(withDuration: 0.22, animations: {
+            self.loadingView.alpha = 0
+        }, completion: { _ in
+            self.loadingView.isHidden = true
+        })
+    }
+
     private func loadGame() {
+        loadingView.isHidden = false
+        loadingView.alpha = 1
         guard let indexURL = URL(string: "paper-plane://game/index.html") else {
             presentLoadFailure()
             return
@@ -143,19 +216,32 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     private func presentLoadFailure() {
-        let label = UILabel()
-        label.text = "Couldn't load the game bundle.\nTry reinstalling the app."
-        label.numberOfLines = 0
-        label.textAlignment = .center
-        label.textColor = .darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
+        loadingView.subviews.forEach { $0.removeFromSuperview() }
+        let message = UILabel()
+        message.text = "The plane couldn't unfold.\nYour progress is safe."
+        message.numberOfLines = 0
+        message.textAlignment = .center
+        message.font = .systemFont(ofSize: 18, weight: .bold)
+        message.textColor = UIColor(red: 0x3D / 255, green: 0x2C / 255, blue: 0x29 / 255, alpha: 1)
+        let retry = UIButton(type: .system)
+        retry.setTitle("Retry", for: .normal)
+        retry.titleLabel?.font = .systemFont(ofSize: 17, weight: .heavy)
+        retry.addTarget(self, action: #selector(retryLoad), for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [message, retry])
+        stack.axis = .vertical
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        loadingView.addSubview(stack)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            label.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
+            stack.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor),
         ])
+        view.bringSubviewToFront(loadingView)
+    }
+
+    @objc private func retryLoad() {
+        configureLoadingView()
+        loadGame()
     }
 
     // MARK: - WKScriptMessageHandler
@@ -188,14 +274,17 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         print("[Nav] provisional navigation failed: \(error)")
+        presentLoadFailure()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         print("[Nav] navigation failed: \(error)")
+        presentLoadFailure()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("[Nav] finished loading")
+        hideLoadingView()
     }
 
     // MARK: - WKUIDelegate

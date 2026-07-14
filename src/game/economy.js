@@ -57,3 +57,14 @@ export function estimateProgression({ starsPerRun, runs } = {}) {
     walletStars: estimatedStarsPerRun * estimatedRuns,
   }
 }
+
+/** Convert a wallet shortfall into a player-facing normal-run estimate. */
+export function estimateRunsToAfford({ wallet, cost, starsPerRun = NORMAL_RUN_EARNINGS[1].stars } = {}) {
+  const missingStars = Math.max(0, nonNegativeNumber(cost) - nonNegativeNumber(wallet))
+  const earningRate = nonNegativeNumber(starsPerRun)
+  return {
+    missingStars,
+    runs: missingStars > 0 && earningRate > 0 ? Math.ceil(missingStars / earningRate) : 0,
+    affordable: missingStars === 0,
+  }
+}

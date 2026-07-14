@@ -563,6 +563,10 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 .upgrade-card .u-effect-current { color: #3d2c29; }
 .upgrade-card .u-effect-next { color: #7c3aed; }
+.upgrade-card .u-progress {
+  grid-column: 1 / -1; width: fit-content; padding: 4px 8px; border-radius: 999px;
+  background: rgba(126,184,232,.16); color: #35698f; font-size: 10px; font-weight: 900;
+}
 .upgrade-card .u-bars { grid-column: 1 / -1; letter-spacing: 3px; color: #d97706; font-size: 13px; font-weight: 900; }
 .upgrade-card .u-buy {
   font-family: inherit; font-weight: 900; font-size: 13px; padding: 9px 12px;
@@ -768,6 +772,15 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   100% { transform: scale(1); }
 }
 .detail { font-weight: 700; color: #5c4540; margin-bottom: 12px; font-size: 14px; }
+.run-summary {
+  display: grid; gap: 6px; padding: 10px 12px; margin: 0 0 12px;
+  border: 1.5px solid rgba(90,159,212,.25); border-radius: 14px;
+  background: rgba(255,255,255,.68); text-align: left;
+}
+.run-summary > div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.run-summary span { color: #7b6661; font-size: 10px; font-weight: 1000; letter-spacing: .08em; text-transform: uppercase; }
+.run-summary strong { color: #3d2c29; font-size: 12px; text-align: right; }
+.run-summary > div:last-child strong { color: #5b3fa6; }
 .challenge-result {
   font-weight: 800; font-size: 13px; color: #5b21b6; background: rgba(255,255,255,.8);
   border-radius: 12px; padding: 10px 12px; margin-bottom: 10px;
@@ -874,8 +887,16 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
   .hud-card { min-width: 54px; padding: 5px 9px; }
   .hud-card > span:nth-child(2) { font-size: 15px; }
   #hud:not(.hidden) .hud-card[data-hud-priority="secondary"] { display: none !important; }
+  #combo-hud:not(.hidden) ~ #streak-hud:not(.hidden) { display: none !important; }
+  #journey-objective-hud { flex: 1 1 100%; max-width: 240px; }
   .icon-btn { width: 42px; height: 42px; }
   .hangar-body { max-height: min(52vh, 420px); }
+  .hangar-tabs {
+    flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none; scroll-snap-type: x proximity; padding: 2px 1px 8px;
+  }
+  .hangar-tabs::-webkit-scrollbar { display: none; }
+  .hangar-tab { flex: 0 0 auto; scroll-snap-align: start; }
   .skins-grid { gap: 8px; }
   .plane-preview { grid-template-columns: 1fr; min-height: 238px; }
   .plane-preview-copy { padding: 12px 14px 0; }

@@ -4,12 +4,28 @@ import {
   PLANE_COLLISION_RADIUS,
   PLANE_SILHOUETTES,
   createPaperPlane,
+  getPaperFlightPose,
   getPlaneGeometrySpec,
 } from '../src/plane-models.js'
 
 const EXPECTED_FAMILIES = ['classic', 'dart', 'glider', 'stunt']
 
 describe('fair plane silhouette registry', () => {
+  test('derives bank, pitch, and subtle fold flex from live flight motion', () => {
+    const pose = getPaperFlightPose({
+      horizontalVelocity: 18,
+      verticalVelocity: -8,
+      speed: 58,
+      elapsed: 1.25,
+    })
+    expect(pose.roll).toBeGreaterThan(0)
+    expect(pose.pitch).toBeGreaterThan(0)
+    expect(pose.yaw).toBeGreaterThan(0)
+    expect(pose.wingFlex).toBeGreaterThan(0)
+    expect(pose.trailIntensity).toBeGreaterThan(0.5)
+
+    expect(getPaperFlightPose({ speed: 58, elapsed: 1.25, reducedMotion: true }).wingFlex).toBe(0)
+  })
   test('defines exactly four cosmetic families with positive normalized dimensions', () => {
     expect(PLANE_SILHOUETTES).toEqual(EXPECTED_FAMILIES)
 

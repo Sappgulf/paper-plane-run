@@ -27,6 +27,7 @@ import { applyDocumentA11y, loadSettings, saveSettings } from './settings.js'
 import { seasonInfo } from './seasonal.js'
 import { dailyKey } from './rng.js'
 import { todaysTwist } from './twists.js'
+import { estimateRunsToAfford } from './game/economy.js'
 import { fetchRemoteTop, getDailyTop, getLocalTop, getTimeAttackTop } from './leaderboard.js'
 import { safeSetItem } from './game/safe-storage.js'
 
@@ -259,10 +260,15 @@ function refreshHangarWallet() {
 function showHangarTab(tab) {
   if (tab !== 'skins') stopPlanePreview()
   document.querySelectorAll('.hangar-tab').forEach((b) => {
-    b.classList.toggle('active', b.dataset.tab === tab)
+    const selected = b.dataset.tab === tab
+    b.classList.toggle('active', selected)
+    b.setAttribute('aria-selected', String(selected))
+    b.setAttribute('tabindex', selected ? '0' : '-1')
   })
   document.querySelectorAll('.hangar-page').forEach((p) => {
-    p.classList.toggle('hidden', p.id !== `tab-${tab}`)
+    const selected = p.id === `tab-${tab}`
+    p.classList.toggle('hidden', !selected)
+    p.hidden = !selected
   })
   const hangarBody = document.querySelector('.hangar-body')
   if (hangarBody) hangarBody.scrollTop = 0
@@ -593,6 +599,7 @@ function renderUpgrades() {
   const grid = $('upgrades-grid')
   if (!grid) return
   grid.innerHTML = ''
+  const wallet = getWallet()
   for (const u of listUpgrades()) {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
@@ -633,6 +640,13 @@ function renderUpgrades() {
     next.textContent = effect.next ? `Next: ${effect.next.label}` : 'Next: MAX — all ranks purchased'
     effects.append(current, next)
     card.appendChild(effects)
+    if (!u.maxed && !u.canAfford) {
+      const estimate = estimateRunsToAfford({ wallet, cost: u.cost })
+      const progress = document.createElement('div')
+      progress.className = 'u-progress'
+      progress.textContent = `${estimate.missingStars}★ to go · about ${estimate.runs} normal ${estimate.runs === 1 ? 'run' : 'runs'}`
+      card.appendChild(progress)
+    }
     const barEl = document.createElement('div')
     barEl.className = 'u-bars'
     barEl.textContent = `${bars}  ${u.level}/${u.max}`
@@ -958,6 +972,21 @@ document.addEventListener('click', (event) => {
   }
 }, true)
 
+document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  const tabs = [...document.querySelectorAll('.hangar-tab')]
+  const current = tabs.indexOf(document.activeElement)
+  if (current < 0) return
+  event.preventDefault()
+  const next = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? tabs.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+  tabs[next].focus()
+  showHangarTab(tabs[next].dataset.tab)
+})
+
 engineRetry?.addEventListener('click', () => {
   if (engineFailed) {
     if (pendingStart) {
@@ -1015,8 +1044,8 @@ function syncShellControlUi() {
   if (blurb) {
     if (mode === 'joystick') {
       blurb.textContent = isTouchPrimary
-        ? 'On-screen stick + arrows · stick hidden in Touch Aim mode'
-        : 'On-screen stick + arrows / WASD · stick hidden in Mouse mode'
+        ? 'Drag the stick to fly · Touch Aim hides it'
+        : 'Stick, arrows, or WASD · Mouse mode hides it'
     } else if (isTouchPrimary) {
       blurb.textContent = settings.invertY
         ? 'Drag anywhere — plane tracks your finger · Y inverted'

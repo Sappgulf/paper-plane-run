@@ -60,6 +60,29 @@ export function getPlaneGeometrySpec(silhouette) {
   return PLANE_GEOMETRY[silhouette] || PLANE_GEOMETRY.classic
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+export function getPaperFlightPose({
+  horizontalVelocity = 0,
+  verticalVelocity = 0,
+  speed = 0,
+  elapsed = 0,
+  reducedMotion = false,
+} = {}) {
+  const horizontal = clamp(Number(horizontalVelocity) || 0, -24, 24)
+  const vertical = clamp(Number(verticalVelocity) || 0, -24, 24)
+  const trailIntensity = clamp(((Number(speed) || 0) - 28) / 40, 0, 1)
+  return Object.freeze({
+    pitch: clamp(-vertical * 0.022, -0.5, 0.45),
+    roll: clamp(horizontal * 0.028, -0.8, 0.8),
+    yaw: clamp(horizontal * 0.012, -0.28, 0.28),
+    wingFlex: reducedMotion ? 0 : 0.018 + trailIntensity * 0.035 + Math.sin((Number(elapsed) || 0) * 7) * 0.008,
+    trailIntensity,
+  })
+}
+
 function makeShape(THREE, points) {
   const shape = new THREE.Shape()
   points.forEach(([x, y], index) => {

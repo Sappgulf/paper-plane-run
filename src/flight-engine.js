@@ -53,8 +53,14 @@ import {
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
-import { createBossEncounter } from './game/boss-director.js'
-import { getCenterBuildingSafeRange, getWaveSpacing, normalizeControlAxes } from './game/pacing.js'
+import { createBossEncounter, describeBossPhase } from './game/boss-director.js'
+import { createNotificationQueue } from './game/notification-queue.js'
+import { createFrameHealthMonitor } from './game/frame-health.js'
+import {
+  getCenterBuildingSafeRange,
+  getWaveSpacing,
+  normalizeControlAxes,
+} from './game/pacing.js'
 import { safeSetItem } from './game/safe-storage.js'
 import {
   buildRunConfiguration,
@@ -72,7 +78,8 @@ import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
-import { PLANE_COLLISION_RADIUS, createPaperPlane } from './plane-models.js'
+import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
+import { buildRunSummary } from './game/run-summary.js'
 import {
   getAltitudeRecovery,
   getBoostSafety,
@@ -259,6 +266,7 @@ function hideEdgeIndicators() {
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
+const runSummaryEl = $('run-summary')
 const journeyResultProgressEl = $('journey-result-progress')
 const postcardRevealEl = $('postcard-reveal')
 const postcardDetailEl = $('postcard-detail')
@@ -279,6 +287,16 @@ function animateCountUp(el, target, suffix, ms = 700) {
   requestAnimationFrame(step)
 }
 const challengeToast = $('challenge-toast')
+const notifications = createNotificationQueue({
+  show(message) {
+    if (!challengeToast) return
+    challengeToast.textContent = message
+    challengeToast.classList.remove('hidden')
+  },
+  hide() {
+    challengeToast?.classList.add('hidden')
+  },
+})
 const challengeResult = $('challenge-result')
 const shareStatus = $('share-status')
 const muteBtn = $('mute-btn')
@@ -303,6 +321,11 @@ if (muteBtn) muteBtn.textContent = audio.muted ? '🔇' : '🔊'
 
 // Settings / season / AR / analytics
 let settings = loadSettings()
+const frameHealth = createFrameHealthMonitor({
+  onChange(snapshot) {
+    document.documentElement.dataset.frameHealth = snapshot.status
+  },
+})
 let activeUpgradeEffects = getUpgradeEffects()
 function refreshUpgradeEffects() {
   activeUpgradeEffects = getUpgradeEffects()
@@ -474,18 +497,14 @@ function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (Number.isFinite(d) && d > 0 && DIFFS[m]) {
     challenge = { d: Math.floor(d), s: Math.max(0, s | 0), m }
     setDifficulty(m, { persist: false })
-    challengeToast.textContent = `Challenge: beat ${challenge.d}m · ${challenge.s}★ on ${DIFFS[m].label}`
-    challengeToast.classList.remove('hidden')
-    setTimeout(() => challengeToast.classList.add('hidden'), 6500)
+    notifications.show(`Challenge: beat ${challenge.d}m · ${challenge.s}★ on ${DIFFS[m].label}`, { duration: 6500 })
   }
   const layoutCode = params.get('layout') || params.get('L')
   if (layoutCode) {
     const L = parseCompact(layoutCode)
     if (L) {
       layoutPlay = L
-      challengeToast.textContent = `Custom route: ${L.name}`
-      challengeToast.classList.remove('hidden')
-      setTimeout(() => challengeToast.classList.add('hidden'), 5000)
+      notifications.show(`Custom route: ${L.name}`, { duration: 5000 })
     }
   }
   if (params.get('daily') === '1') runKind = 'daily'
@@ -517,10 +536,7 @@ canvas.addEventListener('webglcontextlost', (e) => {
   e.preventDefault()
   simulationPaused = true
   keys.clear()
-  if (challengeToast) {
-    challengeToast.textContent = '⚠️ Graphics connection lost — reconnecting…'
-    challengeToast.classList.remove('hidden')
-  }
+  notifications.show('⚠️ Graphics connection lost — reconnecting…', { persistent: true })
 }, false)
 canvas.addEventListener('webglcontextrestored', () => {
   location.reload()
@@ -2198,6 +2214,7 @@ function spawnBoss(z = 70) {
     reducedMotion: settings.reducedMotion,
     colorblind: settings.colorblindPowers,
   })
+  const opening = describeBossPhase(director.snapshot())
   entities.push({
     mesh: gate,
     type: 'boss',
@@ -2206,11 +2223,10 @@ function spawnBoss(z = 70) {
     halfH: 20,
     isBoss: true,
     director,
+    lastBossPhase: 'warning',
   })
   bossActive = true
-  zoneBanner.textContent = useWind
-    ? '🌬️ BOSS · Wind Tunnel Gauntlet!'
-    : '✂️ BOSS · Giant Scissors Gate!'
+  zoneBanner.textContent = `${useWind ? '🌬️' : '✂️'} BOSS · ${opening.headline}`
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 3
   track('boss_start', { distance: Math.floor(distance), kind: useWind ? 'wind' : 'scissors' })
@@ -2316,9 +2332,9 @@ function dispatchJourneyEncounter(event) {
     scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
     break
   case 'rival':
-    challengeToast.textContent = '🔺 Red Dart cuts across the aurora — hold your line!'
-    challengeToast.classList.remove('hidden')
-    setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3000)
+    notifications.show('🔺 Red Dart cuts across the aurora — hold your line!', {
+      duration: settings.reducedMotion ? 1800 : 3000,
+    })
     break
   case 'boss-gate':
     spawnBoss(72)
@@ -2900,8 +2916,8 @@ function updateControlUI() {
   if (blurb) {
     if (m === 'joystick') {
       blurb.textContent = isTouchPrimary
-        ? 'On-screen stick + arrows · stick hidden in Touch Aim mode'
-        : 'On-screen stick + arrows / WASD · stick hidden in Mouse mode'
+        ? 'Drag the stick to fly · Touch Aim hides it'
+        : 'Stick, arrows, or WASD · Mouse mode hides it'
     } else if (isTouchPrimary) {
       blurb.textContent = settings.invertY
         ? 'Drag anywhere — plane tracks your finger · Y inverted'
@@ -3276,11 +3292,9 @@ $('ar-btn')?.addEventListener('click', async () => {
   const result = await syncRuntimeSettings(saveSettings({ arDesk: desired }))
   shellBridge?.settingsApplied?.(result)
   const on = result.settings.arDesk
-  challengeToast.textContent = result.arPermissionDenied
+  notifications.show(result.arPermissionDenied
     ? 'Camera permission needed for Desk AR'
-    : on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off'
-  challengeToast.classList.remove('hidden')
-  setTimeout(() => challengeToast.classList.add('hidden'), 2500)
+    : on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off', { duration: 2500 })
 })
 function shareText() {
   const { d, s, m, daily, timeAttack } = lastRun
@@ -3365,9 +3379,9 @@ async function startGame(kind = 'classic', opts = {}) {
       bannerTimer = launchGraceSeconds
     }
     if (journeyRivalState) {
-      challengeToast.textContent = getRivalCallout(journeyRivalState, 'start')
-      challengeToast.classList.remove('hidden')
-      setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 2200 : 3600)
+      notifications.show(getRivalCallout(journeyRivalState, 'start'), {
+        duration: settings.reducedMotion ? 2200 : 3600,
+      })
     }
     if (settings.haptics) Haptic.tap()
     track('game_start', { kind, mode: difficulty.id, season: season.id, routeId: journeyRunConfig?.routeId })
@@ -3577,6 +3591,26 @@ function finalizeDeath() {
   crashT = -1
 }
 
+function renderRunSummary(summary) {
+  if (!runSummaryEl || !summary) return
+  runSummaryEl.innerHTML = ''
+  const items = [
+    ['Banked', `+${summary.bankedStars}★`],
+    [summary.improvementMeters > 0 ? 'Personal best' : 'Best combo', summary.improvementMeters > 0 ? `+${summary.improvementMeters}m` : `${summary.maxCombo}x`],
+    ['Next', summary.nextAction],
+  ]
+  for (const [label, value] of items) {
+    const row = document.createElement('div')
+    const key = document.createElement('span')
+    const result = document.createElement('strong')
+    key.textContent = label
+    result.textContent = value
+    row.append(key, result)
+    runSummaryEl.appendChild(row)
+  }
+  runSummaryEl.classList.remove('hidden')
+}
+
 function finalizeDeathUnsafe() {
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
@@ -3594,6 +3628,7 @@ function finalizeDeathUnsafe() {
     d, s: stars, m: difficulty.id, daily: runKind === 'daily', timeAttack: runKind === 'timeattack',
   }
 
+  const previousBestDistance = bestDistance
   const wasNewBest = !isWin && d > bestDistance && d > 0 && isDistanceRun
   if (wasNewBest) {
     bestDistance = d
@@ -3691,6 +3726,15 @@ function finalizeDeathUnsafe() {
       addWallet(weeklyBonus)
     }
   }
+  const runSummary = buildRunSummary({
+    stars,
+    journeyBonus,
+    weeklyBonus,
+    distance: d,
+    previousBest: previousBestDistance,
+    maxCombo,
+    reason,
+  })
   refreshUnlocks(season.id)
   updateMissionsFromRun({
     stars,
@@ -3755,12 +3799,13 @@ function finalizeDeathUnsafe() {
       ? (completedJourneyRoute ? (journey.status === 'complete' ? 'View Journey' : 'Continue Journey') : 'Retry Route')
       : 'Fly Again'
   }
+  renderRunSummary(runSummary)
 
   renderJourneyResultProgress(journeyResultProgressEl, runKind === 'journey' ? lastJourneyResult : null)
   if (lastJourneyResult?.unlockedCosmetic) {
-    challengeToast.textContent = `Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`
-    challengeToast.classList.remove('hidden')
-    setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3200)
+    notifications.show(`Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`, {
+      duration: settings.reducedMotion ? 1800 : 3200,
+    })
   }
   if (completedJourneyRoute && journey?.status === 'complete' && journey.postcard) {
     requestAnimationFrame(() => showPostcardReveal(journey.postcard))
@@ -3873,6 +3918,19 @@ function animateHazards(dt) {
       // difficulty, while the existing collision opening stays unchanged.
       u.gapY = encounter?.safeY ?? 10
       u.encounter = encounter
+      if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
+        e.lastBossPhase = encounter.phase
+        const presentation = describeBossPhase(encounter)
+        u.bossIntensity = presentation.intensity
+        document.documentElement.dataset.bossPhase = encounter.phase
+        zoneBanner.textContent = `${u.kind === 'wind' ? '🌬️' : '✂️'} ${presentation.headline}`
+        zoneBanner.classList.remove('hidden')
+        zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.8
+        hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
+        notifications.show(presentation.headline, { duration: settings.reducedMotion ? 1200 : 1900 })
+        audio.incoming()
+        if (settings.haptics) Haptic.tap()
+      }
       if (u.kind === 'wind') {
         if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 9
         if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 9
@@ -4539,18 +4597,29 @@ function update(dt) {
 
   plane.position.set(planeX, planeY, 0)
   // Visual bank from motion (clamped so mouse snaps don't spin the plane)
-  const bx = THREE.MathUtils.clamp(velX, -24, 24)
-  const by = THREE.MathUtils.clamp(velY, -24, 24)
+  const flightPose = getPaperFlightPose({
+    horizontalVelocity: velX,
+    verticalVelocity: velY,
+    speed,
+    elapsed,
+    reducedMotion: settings.reducedMotion,
+  })
   const aimOffX = mouseMode ? THREE.MathUtils.clamp(mouseTarget.x - planeX, -2, 2) * 0.12 : 0
-  pitch = THREE.MathUtils.lerp(pitch, -by * 0.022, 1 - Math.pow(0.0006, dt))
-  roll = THREE.MathUtils.lerp(roll, bx * 0.028 + aimOffX, 1 - Math.pow(0.0006, dt))
+  pitch = THREE.MathUtils.lerp(pitch, flightPose.pitch, 1 - Math.pow(0.0006, dt))
+  roll = THREE.MathUtils.lerp(roll, flightPose.roll + aimOffX, 1 - Math.pow(0.0006, dt))
   if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.1, 0.12)
   // Fever adds a light shimmy on top of normal banking — a readable "turbo" feel
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
   plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
   plane.rotation.z = THREE.MathUtils.clamp(roll + feverWobble, -0.8, 0.8)
-  plane.rotation.y = THREE.MathUtils.clamp(bx * 0.012, -0.28, 0.28)
+  plane.rotation.y = flightPose.yaw
+  if (activePower?.kind !== 'tear') {
+    const wingL = plane.userData.wingL
+    const wingR = plane.userData.wingR
+    if (wingL) wingL.rotation.z = flightPose.wingFlex
+    if (wingR) wingR.rotation.z = -flightPose.wingFlex
+  }
 
   // Invuln blink
   if (invuln > 0) {
@@ -4574,9 +4643,7 @@ function update(dt) {
     const milestone = distance >= 440 ? 'final' : distance >= 250 ? 'halfway' : null
     const callout = milestone && getRivalCallout(journeyRivalState, milestone)
     if (callout) {
-      challengeToast.textContent = callout
-      challengeToast.classList.remove('hidden')
-      setTimeout(() => challengeToast.classList.add('hidden'), settings.reducedMotion ? 1800 : 3000)
+      notifications.show(callout, { duration: settings.reducedMotion ? 1800 : 3000 })
     }
   } else if (ghostMesh && ghostData) {
     const pose = ghostPoseAt(ghostData.path, distance)
@@ -4911,6 +4978,7 @@ function frame() {
     try {
       timer.update()
       const rawDt = Math.min(timer.getDelta(), 0.05)
+      frameHealth.sample(rawDt * 1000)
       if (hitStopTimer > 0) {
         // Freeze-frame punch: barely advance the sim for a couple of ticks
         // while still rendering, so crashes/boss clears read as an impact.
@@ -4945,9 +5013,7 @@ try {
   // Don't clobber a shared-challenge/custom-route toast that's already claimed
   // this same banner slot — whichever the visitor arrived for should win.
   if (season.id !== 'default' && challengeToast && challengeToast.classList.contains('hidden')) {
-    challengeToast.textContent = `✦ ${season.name} event — free seasonal skins!`
-    challengeToast.classList.remove('hidden')
-    setTimeout(() => challengeToast.classList.add('hidden'), 5000)
+    notifications.show(`✦ ${season.name} event — free seasonal skins!`, { duration: 5000 })
   }
   void syncRuntimeSettings(settings).catch((error) => console.warn('Initial settings sync failed', error))
 } catch (err) {
@@ -5058,6 +5124,7 @@ window.render_game_to_text = () => JSON.stringify({
     dustVisible: dust.visible,
     shieldPowerColor: POWER_META.shield.color,
   },
+  performance: frameHealth.snapshot(),
   journey: journeyRunConfig ? {
     routeId: journeyRunConfig.routeId,
     destination: journeyRunConfig.zone,
@@ -5096,6 +5163,13 @@ if (import.meta.env.DEV && devTestState === '#test-gameover') {
   newBestBadge?.classList.add('hidden')
   finalScoreEl.textContent = '188m · 3★ · Normal'
   finalDetailEl.textContent = 'Hit a paper skyscraper'
+  renderRunSummary(buildRunSummary({
+    stars: 3,
+    distance: 188,
+    previousBest: 160,
+    maxCombo: 2,
+    reason: 'Hit a paper skyscraper',
+  }))
 }
 
 if (import.meta.env.DEV && devTestState === '#test-obstacles') {
@@ -5133,7 +5207,7 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-upgrades-')) {
     configureDevUpgradeProof()
     settings = saveSettings({ haptics: false })
     hideAllPanels()
-    challengeToast?.classList.add('hidden')
+    notifications.clear()
     runKind = 'classic'
     resetGame()
     clearEntities()

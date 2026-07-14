@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-service-worker.mjs dist",
     "verify:bundle-budget": "node scripts/bundle-budget.mjs",
     "build:ios": "BASE_PATH=./ VITE_API_BASE=https://paper-plane-run.vercel.app vite build --outDir ios-dist --emptyOutDir && node scripts/postprocess-ios.mjs && node scripts/sync-ios-web.mjs",
     "verify:ios-parity": "node scripts/verify-ios-parity.mjs",

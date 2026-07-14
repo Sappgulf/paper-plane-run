@@ -150,7 +150,7 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   })
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '🎨 Skins' }))
+  await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const mint = page.locator('.skin-card', { hasText: 'Mint Fold' })
   await expect(mint).toContainText('Purchase 20★')
@@ -194,7 +194,7 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
   })
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '🎯 Missions' }))
+  await tap(page.getByRole('tab', { name: '🎯 Missions' }))
 
   await page.getByRole('button', { name: 'Claim' }).evaluate((button) => {
     button.click()
@@ -220,7 +220,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
   })
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '🎨 Skins' }))
+  await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const preview = page.locator('[data-plane-preview]')
   await expect(preview).toHaveAttribute('data-plane-id', 'classic')
@@ -281,7 +281,7 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
 
   const visits = 6
   for (let visit = 1; visit <= visits; visit += 1) {
-    await tap(page.getByRole('button', { name: '🎨 Skins' }))
+    await tap(page.getByRole('tab', { name: '🎨 Planes' }))
     const preview = page.locator('[data-plane-preview]')
     await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
     await preview.locator('canvas').evaluate((canvas) => {
@@ -290,7 +290,7 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
       }, { once: true })
     })
 
-    await tap(page.getByRole('button', { name: '🔧 Upgrades' }))
+    await tap(page.getByRole('tab', { name: '🔧 Upgrades' }))
     await expect.poll(() => page.evaluate(() => window.__webglContextLosses)).toEqual({
       gameplay: 0,
       preview: visit,
@@ -380,7 +380,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '⚙️ Settings' }))
+  await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-low-power').check({ force: true })
   await page.locator('#set-colorblind').check({ force: true })
@@ -424,7 +424,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '🛠 Editor' }))
+  await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await page.locator('#editor-import').fill('L1|First%20route|T0.0,8.0,40.0')
   await tap(page.locator('#editor-load'))
@@ -435,7 +435,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   })
 
   await page.locator('#hangar-btn').evaluate((button) => button.click())
-  await tap(page.getByRole('button', { name: '🛠 Editor' }))
+  await tap(page.getByRole('tab', { name: '🛠 Editor' }))
   await page.locator('#editor-import').fill('L1|Current%20route|R1.0,9.0,35.0;P-2.0,7.0,55.0')
   await tap(page.locator('#editor-load'))
   await tap(page.locator('#editor-play'))
@@ -759,6 +759,16 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
   await expect(share).toBeVisible()
 })
 
+test('game-over summarizes banked rewards and the next action', async ({ page }) => {
+  await openApp(page, '/#test-gameover')
+
+  const summary = page.locator('#run-summary')
+  await expect(summary).toBeVisible({ timeout: 15_000 })
+  await expect(summary).toContainText('Banked')
+  await expect(summary).toContainText('+3★')
+  await expect(summary).toContainText('Spend 3★ in Upgrades or fly again')
+})
+
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
@@ -768,7 +778,7 @@ test('mobile Hangar tabs reset the shared scroll position', async ({ page }, tes
   await hangarBody.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  await tap(page.getByRole('button', { name: '🛠 Editor' }))
+  await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await expect(page.getByRole('button', { name: '🏢 Building' })).toBeVisible()
   await expect.poll(() => hangarBody.evaluate((element) => element.scrollTop)).toBe(0)
@@ -778,11 +788,11 @@ test('Aim feel selection survives a Hangar tab round trip', async ({ page }, tes
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: '⚙️ Settings' }))
+  await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-mouse-sens').selectOption('0.75')
-  await tap(page.getByRole('button', { name: '🛠 Editor' }))
-  await tap(page.getByRole('button', { name: '⚙️ Settings' }))
+  await tap(page.getByRole('tab', { name: '🛠 Editor' }))
+  await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await expect(page.locator('#set-mouse-sens')).toHaveValue('0.75')
 })

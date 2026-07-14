@@ -5,6 +5,33 @@ const TIMING = Object.freeze({
 })
 
 const LANE_Y = Object.freeze({ '-1': 6, 0: 10, 1: 14 })
+const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
+
+export function describeBossPhase({ kind, phase, safeLane } = {}) {
+  const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
+  if (phase === 'final-pass') {
+    return Object.freeze({
+      laneLabel,
+      headline: kind === 'wind' ? `Final gust · commit ${laneLabel}` : `Final cut · commit ${laneLabel}`,
+      intensity: 1,
+      hitStopSeconds: 0.035,
+    })
+  }
+  if (phase === 'pressure') {
+    return Object.freeze({
+      laneLabel,
+      headline: kind === 'wind' ? `Wind rising · hold ${laneLabel}` : `Blades closing · hold ${laneLabel}`,
+      intensity: 0.72,
+      hitStopSeconds: 0.02,
+    })
+  }
+  return Object.freeze({
+    laneLabel,
+    headline: kind === 'wind' ? `Wind opening · ${laneLabel} lane` : `Scissors opening · ${laneLabel} lane`,
+    intensity: 0.35,
+    hitStopSeconds: 0,
+  })
+}
 
 function seededLane(kind, seed) {
   const salt = kind === 'wind' ? 17 : 5

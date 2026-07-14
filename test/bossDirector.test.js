@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createBossEncounter } from '../src/game/boss-director.js'
+import { createBossEncounter, describeBossPhase } from '../src/game/boss-director.js'
 
 describe('boss encounter director', () => {
   test.each(['scissors', 'wind'])('runs warning, pressure, and final pass for %s', (kind) => {
@@ -52,5 +52,20 @@ describe('boss encounter director', () => {
       shapeCue: 'radial-vane-ring',
     })
     expect(accessible.step(2)).toMatchObject({ phase: normal.step(2).phase, safeLane: normal.snapshot().safeLane })
+  })
+
+  test('turns boss phases into readable lane and impact choreography', () => {
+    expect(describeBossPhase({ kind: 'scissors', phase: 'warning', safeLane: -1 })).toMatchObject({
+      laneLabel: 'LOW',
+      headline: 'Scissors opening · LOW lane',
+      intensity: 0.35,
+      hitStopSeconds: 0,
+    })
+    expect(describeBossPhase({ kind: 'wind', phase: 'final-pass', safeLane: 1 })).toMatchObject({
+      laneLabel: 'HIGH',
+      headline: 'Final gust · commit HIGH',
+      intensity: 1,
+      hitStopSeconds: 0.035,
+    })
   })
 })

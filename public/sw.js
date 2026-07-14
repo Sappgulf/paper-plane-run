@@ -1,7 +1,7 @@
-/* Paper Plane Run — lightweight offline shell */
-const CACHE = 'paper-plane-run-v30'
+/* Paper Plane Run — build-injected offline shell */
+const CACHE = self.__PPR_CACHE_VERSION__ || 'paper-plane-run-development'
 
-const PRECACHE = [
+const PRECACHE = self.__PPR_PRECACHE__ || [
   '/',
   '/index.html',
   '/manifest.webmanifest',
@@ -48,7 +48,15 @@ const PRECACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()),
+    caches.open(CACHE)
+      .then((cache) => Promise.all(PRECACHE.map(async (url) => {
+        try {
+          await cache.add(url)
+        } catch {
+          // One unavailable optional asset must not prevent the new shell from installing.
+        }
+      })))
+      .then(() => self.skipWaiting()),
   )
 })
 
@@ -77,8 +85,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone()
-          caches.open(CACHE).then((c) => c.put(request, copy))
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(CACHE).then((c) => c.put(request, copy))
+          }
           return res
         })
         .catch(() => caches.match(request).then((r) => r || caches.match('/'))),
