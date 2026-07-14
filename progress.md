@@ -76,3 +76,11 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - The web-game client produced three inspected Classic-flight frames at 14m, 27m, and 38m; text state reports `classic`, collision radius `0.7`, and matching rightward movement with no console-error artifact.
 - Final affected collection lane passed 4 desktop/mobile tests in 33.9s after marking the new WebGL-backed Hangar flows slow and excluding only optional `fonts.gstatic.com` resource errors from runtime-console assertions.
 - Full Vitest is green at 29 files / 119 tests. The final full Playwright rerun was interrupted before its summary; fresh exact-diff iOS/build/budget verification remains a documented Task 5 concern.
+
+## 2026-07-14 — Two new upgrades and Combo Fever polish
+
+- Added `Fever Focus` (id `fever`, max 3, 18/34/58★) and `Steady Hands` (id `streak`, max 3, 14/26/44★) to the upgrade tree, wired end-to-end: `src/upgrades.js` formulas, `src/game/economy.js` cost table, `src/game/upgrade-runtime.js` shared `getFeverTuning`/`getStreakTuning` helpers (also expose the previously inline `FEVER_COMBO_THRESHOLD`/`FEVER_DURATION`/star-streak-window constants), and `src/flight-engine.js` runtime consumption in `registerNearMiss`/`triggerFever`/`registerStarStreak`.
+- Fever Focus lowers the near-miss combo count needed to trigger Combo Fever (floored at 4) and extends Fever's score-multiplier duration. Steady Hands extends the star-streak pickup window before the chain resets.
+- Gameplay polish: the combo HUD now shows a `🔥N` countdown once the player is within 3 near-misses of triggering Fever, so the payoff is legible in the moment instead of a surprise.
+- Test coverage extended in place: `test/upgrades.test.js` (contract labels/values/effects), `test/upgradeRuntime.test.js` (runtime snapshot assertions + a dedicated Fever Focus floor test), and `e2e/smoke.spec.js` (both Hangar contract-card and prestige-cap-requires-everything-maxed lanes now include the two new upgrades).
+- Verification: `npm test` 34 files / 180 tests passed; `npm run build` and `npm run build:ios` succeeded; `npm run verify:ios-parity` matched all 102 files; Playwright Hangar lanes re-verified against the exact new upgrade contracts.

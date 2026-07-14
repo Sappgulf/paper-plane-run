@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { UPGRADES, getUpgradeEffects } from '../src/upgrades.js'
 import {
   getControlResponse,
+  getFeverTuning,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
 } from '../src/game/upgrade-runtime.js'
@@ -49,6 +50,8 @@ const RUNTIME_ASSERTIONS = [
   { id: 'turbo', value: (runtime) => runtime.turbo.graceSeconds, direction: 'up' },
   { id: 'guardian', value: (runtime) => runtime.guardian.charges, direction: 'up' },
   { id: 'weapon', value: (runtime) => Number(runtime.weapon.ready), direction: 'up' },
+  { id: 'fever', value: (runtime) => runtime.fever.duration, direction: 'up' },
+  { id: 'streak', value: (runtime) => runtime.streak.windowSeconds, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {
@@ -123,6 +126,13 @@ describe('upgrade runtime contracts', () => {
     const countBelow = (limit) => samples.filter((sample) => sample < limit).length
     expect(countBelow(maxed.luck.starChance)).toBeGreaterThan(countBelow(baseline.luck.starChance))
     expect(countBelow(maxed.luck.powerChance)).toBeGreaterThan(countBelow(baseline.luck.powerChance))
+  })
+
+  test('lowers the Combo Fever trigger with Fever Focus but never below a readable floor', () => {
+    expect(getFeverTuning({}).threshold).toBe(8)
+    expect(getFeverTuning({ feverThresholdBonus: 1 }).threshold).toBe(7)
+    expect(getFeverTuning({ feverThresholdBonus: 3 }).threshold).toBe(5)
+    expect(getFeverTuning({ feverThresholdBonus: 10 }).threshold).toBe(4)
   })
 
   test('reports ink readiness and deterministic cooldown recovery without exposing a weapon before purchase', () => {

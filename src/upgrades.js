@@ -98,6 +98,22 @@ export const UPGRADES = [
     max: 4,
     costs: FUTURE_PRICE_TABLE.upgrades.weapon,
   },
+  {
+    id: 'fever',
+    name: 'Fever Focus',
+    icon: '🔥',
+    blurb: 'Trigger Combo Fever sooner and hold it longer',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.fever,
+  },
+  {
+    id: 'streak',
+    name: 'Steady Hands',
+    icon: '⏳',
+    blurb: 'Longer window to keep a star streak alive',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.streak,
+  },
 ]
 
 function findUpgrade(id) {
@@ -200,6 +216,24 @@ const UPGRADE_FORMULAS = {
     return effect(label, { cooldownSeconds }, {
       weaponLevel: level,
       weaponCooldown: cooldownSeconds,
+    })
+  },
+  fever(level) {
+    const thresholdReduction = level
+    const durationBonusSeconds = roundedEffectValue(level * 0.75)
+    return effect(
+      `Fever trigger -${thresholdReduction} combo · duration +${durationBonusSeconds.toFixed(2)}s`,
+      { thresholdReduction, durationBonusSeconds },
+      {
+        feverThresholdBonus: thresholdReduction,
+        feverDurationBonus: durationBonusSeconds,
+      },
+    )
+  },
+  streak(level) {
+    const windowBonusSeconds = roundedEffectValue(level * 0.4)
+    return effect(`Star streak window +${windowBonusSeconds.toFixed(2)}s`, { windowBonusSeconds }, {
+      streakWindowBonus: windowBonusSeconds,
     })
   },
 }
@@ -372,6 +406,8 @@ export function getUpgradeEffects() {
   const turbo = formulas.turbo
   const guardian = formulas.guardian
   const weapon = formulas.weapon
+  const fever = formulas.fever
+  const streak = formulas.streak
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
     ...handling.runtime,
@@ -387,6 +423,8 @@ export function getUpgradeEffects() {
     ...turbo.runtime,
     ...guardian.runtime,
     ...weapon.runtime,
+    ...fever.runtime,
+    ...streak.runtime,
     prestigeLevel,
     prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,

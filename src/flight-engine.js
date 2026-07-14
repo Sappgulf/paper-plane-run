@@ -78,11 +78,13 @@ import {
   getCollisionRadius,
   getControlResponse,
   getCruiseSpeed,
+  getFeverTuning,
   getGuardianState,
   getMagnetPull,
   getNearMissRadius,
   getPowerDuration,
   getSpawnRates,
+  getStreakTuning,
   getTrailFeedback,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
@@ -427,8 +429,6 @@ let combo = 0
 let maxCombo = 0
 let comboTimer = 0
 /** Combo Fever: a short score-multiplier burst triggered by a big near-miss streak */
-const FEVER_COMBO_THRESHOLD = 8
-const FEVER_DURATION = 4
 const FEVER_SCORE_MUL = 1.5
 let feverActive = false
 let feverTimer = 0
@@ -3916,7 +3916,9 @@ function registerNearMiss(kind = null) {
   maxCombo = Math.max(maxCombo, combo)
   runStats.maxCombo = maxCombo
   comboTimer = 1.6
-  comboVal.textContent = `${combo}x`
+  const feverTuning = getFeverTuning(activeUpgradeEffects)
+  const toFever = feverActive ? 0 : Math.max(0, feverTuning.threshold - combo)
+  comboVal.textContent = toFever > 0 && toFever <= 3 ? `${combo}x · 🔥${toFever}` : `${combo}x`
   comboHud.classList.remove('hidden')
   comboHud.classList.remove('combo-pulse')
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
@@ -3931,13 +3933,13 @@ function registerNearMiss(kind = null) {
   distance += 5 * combo * 0.25
   // Small camera punch that grows with the streak — bigger chains feel bigger.
   shake = Math.max(shake, 0.1 + Math.min(combo, 10) * 0.02)
-  if (combo >= FEVER_COMBO_THRESHOLD) triggerFever()
+  if (combo >= feverTuning.threshold) triggerFever(feverTuning)
 }
 
 /** A short score-multiplier burst for stringing together a big near-miss streak. */
-function triggerFever() {
+function triggerFever(feverTuning = getFeverTuning(activeUpgradeEffects)) {
   feverActive = true
-  feverTimer = FEVER_DURATION
+  feverTimer = feverTuning.duration
   shake = Math.max(shake, 0.45)
   feverFx?.classList.add('fever-active')
   feverHud?.classList.remove('hidden')
@@ -3957,7 +3959,7 @@ function triggerFever() {
 /** Consecutive star pickups within a short window — every 5th grants bonus stars. */
 function registerStarStreak() {
   starStreak++
-  starStreakTimer = 2.2
+  starStreakTimer = getStreakTuning(activeUpgradeEffects).windowSeconds
   if (streakVal) streakVal.textContent = String(starStreak)
   if (starStreak >= 2 && streakHud) {
     streakHud.classList.remove('hidden')

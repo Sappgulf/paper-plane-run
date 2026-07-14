@@ -12,6 +12,8 @@ const UPGRADE_CARD_CONTRACTS = [
   { name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
   { name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
   { name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
+  { name: 'Fever Focus', current: 'Fever trigger -2 combo · duration +1.50s', next: 'Fever trigger -3 combo · duration +2.25s' },
+  { name: 'Steady Hands', current: 'Star streak window +0.80s', next: 'Star streak window +1.20s' },
 ]
 
 function openApp(page, path = '/') {
@@ -75,6 +77,8 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       turbo: 2,
       guardian: 1,
       weapon: 3,
+      fever: 2,
+      streak: 2,
     }))
   })
   await openApp(page)
@@ -114,6 +118,8 @@ test('Hangar exposes prestige cap without offering a rewardless reset', async ({
       turbo: 3,
       guardian: 2,
       weapon: 4,
+      fever: 3,
+      streak: 3,
     }))
   })
   await openApp(page)

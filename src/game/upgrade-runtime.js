@@ -148,6 +148,25 @@ export function getWeaponState({ weaponLevel = 0, cooldownSeconds = 0, cooldownL
   }
 }
 
+export const FEVER_BASE_THRESHOLD = 8
+export const FEVER_BASE_DURATION = 4
+export const STREAK_BASE_WINDOW = 2.2
+
+/** Fever Focus: an earlier, longer Combo Fever window. Threshold never drops below 4. */
+export function getFeverTuning({ feverThresholdBonus = 0, feverDurationBonus = 0 } = {}) {
+  return {
+    threshold: Math.max(4, FEVER_BASE_THRESHOLD - positiveNumber(feverThresholdBonus)),
+    duration: FEVER_BASE_DURATION + positiveNumber(feverDurationBonus),
+  }
+}
+
+/** Steady Hands: a longer star-streak pickup window before the chain resets. */
+export function getStreakTuning({ streakWindowBonus = 0 } = {}) {
+  return {
+    windowSeconds: STREAK_BASE_WINDOW + positiveNumber(streakWindowBonus),
+  }
+}
+
 export function getTrailFeedback({ trailLevel = 0, synergyGold = false } = {}) {
   const level = Math.floor(positiveNumber(trailLevel))
   return {
@@ -214,6 +233,8 @@ export function getUpgradeRuntimeSnapshot({
     cooldownLeft: fireCooldown,
   })
   const trail = getTrailFeedback(effects)
+  const fever = getFeverTuning(effects)
+  const streak = getStreakTuning(effects)
 
   return {
     effects,
@@ -232,5 +253,7 @@ export function getUpgradeRuntimeSnapshot({
     turbo,
     guardian,
     weapon,
+    fever,
+    streak,
   }
 }

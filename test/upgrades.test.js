@@ -104,6 +104,26 @@ const UPGRADE_CONTRACTS = [
     values: [1.1, 0.92, 0.74, 0.56, 0.38].map((cooldownSeconds) => ({ cooldownSeconds })),
     directions: { cooldownSeconds: 'down' },
   },
+  {
+    id: 'fever',
+    labels: [
+      'Fever trigger -0 combo · duration +0.00s',
+      'Fever trigger -1 combo · duration +0.75s',
+      'Fever trigger -2 combo · duration +1.50s',
+      'Fever trigger -3 combo · duration +2.25s',
+    ],
+    values: [0, 1, 2, 3].map((thresholdReduction) => ({
+      thresholdReduction,
+      durationBonusSeconds: thresholdReduction * 0.75,
+    })),
+    directions: { thresholdReduction: 'up', durationBonusSeconds: 'up' },
+  },
+  {
+    id: 'streak',
+    labels: ['Star streak window +0.00s', 'Star streak window +0.40s', 'Star streak window +0.80s', 'Star streak window +1.20s'],
+    values: [0, 0.4, 0.8, 1.2].map((windowBonusSeconds) => ({ windowBonusSeconds })),
+    directions: { windowBonusSeconds: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -326,6 +346,11 @@ describe('exact upgrade contracts', () => {
         }
         if (contract.id === 'guardian') expect(effects.guardianCharges).toBe(values.charges)
         if (contract.id === 'weapon') expect(effects.weaponCooldown).toBeCloseTo(values.cooldownSeconds)
+        if (contract.id === 'fever') {
+          expect(effects.feverThresholdBonus).toBe(values.thresholdReduction)
+          expect(effects.feverDurationBonus).toBeCloseTo(values.durationBonusSeconds)
+        }
+        if (contract.id === 'streak') expect(effects.streakWindowBonus).toBeCloseTo(values.windowBonusSeconds)
       }
     }
   })
