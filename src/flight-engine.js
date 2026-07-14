@@ -1941,6 +1941,10 @@ let roll = 0
 let windTimer = 7
 let windActive = 0
 let windForce = 0
+let windWarningTimer = 0
+let pendingWindActive = 0
+let pendingWindForce = 0
+const WIND_WARNING_SECONDS = 0.45
 let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
@@ -2650,6 +2654,9 @@ function resetGame() {
   windTimer = 7
   windActive = 0
   windForce = 0
+  windWarningTimer = 0
+  pendingWindActive = 0
+  pendingWindForce = 0
   nextSpawnZ = 35
   shake = 0
   hitStopTimer = 0
@@ -4299,16 +4306,28 @@ function update(dt) {
   }
 
   windTimer -= dt
-  if (windActive > 0) {
+  if (windWarningTimer > 0) {
+    // A brief telegraph before the push actually starts — matches the boss
+    // encounters' warning-before-commit pattern instead of shoving the
+    // plane sideways the instant a gust triggers.
+    windWarningTimer -= dt
+    if (windWarningTimer <= 0) {
+      windActive = pendingWindActive
+      windForce = pendingWindForce
+      windBanner.textContent = '💨 Wind gust!'
+    }
+  } else if (windActive > 0) {
     windActive -= dt
     velX += windForce * dt * (activePower?.kind === 'slow' ? 0.5 : 1)
     if (windActive <= 0) windBanner.classList.add('hidden')
   } else if (windTimer <= 0 && runKind !== 'tutorial' && runKind !== 'coop' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
     // Calm Skies twist sets windMul to 0, which is handled by the guard above
-    windActive = 1.6 + rng() * 1.4
-    windForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
+    pendingWindActive = 1.6 + rng() * 1.4
+    pendingWindForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
     windTimer = ((6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)) * (activeTwist?.windMul ?? 1)
+    windWarningTimer = WIND_WARNING_SECONDS
+    windBanner.textContent = '💨 Wind incoming…'
     windBanner.classList.remove('hidden')
     audio.windGust()
     if (settings.haptics) Haptic.wind()
@@ -4317,8 +4336,10 @@ function update(dt) {
     windTimer = 12
     // rare ambient gust even in coop
     if (rng() < 0.25) {
-      windActive = 1
-      windForce = (rng() < 0.5 ? -1 : 1) * 8
+      pendingWindActive = 1
+      pendingWindForce = (rng() < 0.5 ? -1 : 1) * 8
+      windWarningTimer = WIND_WARNING_SECONDS
+      windBanner.textContent = '💨 Wind incoming…'
       windBanner.classList.remove('hidden')
     }
   }
