@@ -2084,7 +2084,9 @@ function spawnChunk(z) {
     scene.add(b)
     entities.push({ mesh: b, type: 'building', radius: Math.max(w, d) * 0.5, halfH: h })
   } else if (ht === 'bird') {
-    const count = Math.max(1, Math.round((1 + rng() * (2 + ramp * 3)) * cfg.birdCount))
+    // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
+    // 8-bird pileup in one chunk — cap the swarm so density stays readable.
+    const count = Math.min(5, Math.max(1, Math.round((1 + rng() * (2 + ramp * 3)) * cfg.birdCount)))
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
