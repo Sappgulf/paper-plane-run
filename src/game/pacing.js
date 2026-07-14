@@ -17,7 +17,6 @@ export function createPacingWave({ index = 0, difficultyId = 'normal', afterBoss
     hazardLanes: afterBoss ? [] : lanes.filter((lane) => lane !== starLane),
   })
 }
-
 export function normalizeControlAxes({ x = 0, y = 0, invertX = false, invertY = false } = {}) {
   const clamp = (value) => Math.max(-1, Math.min(1, Number(value) || 0))
   return Object.freeze({
@@ -25,4 +24,3 @@ export function normalizeControlAxes({ x = 0, y = 0, invertX = false, invertY = 
     y: clamp(y) * (invertY ? -1 : 1),
   })
 }
-

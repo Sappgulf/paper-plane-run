@@ -54,6 +54,18 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - A subsequent rerun showed even the inherited delayed/retry HUD assertions exceeding their explicit 15s under sustained host load; extended those two WebGL startup assertions to 45s and marked them slow without changing behavior assertions.
 - Final exact affected desktop lane passed all 5 tests in 52.8s after the timeout hardening.
 
+### Balanced game polish — final proof and ship gate
+
+- Final Vitest: 34 files and 175 tests passed.
+- Final Playwright: 40 passed, 14 intentionally skipped by viewport, 0 failed in 6.5 minutes. Covered menu/Hangar navigation, exact upgrades, purchases and claims, desktop/mobile Plane Collection, deferred-engine retry, settings/AR rollback, custom routes, live upgrades, both readable boss phases, reduced motion, Journey, postcards, pause/resume, retry, mobile HUD, scrolling, and control persistence.
+- Production build passed. Bundle budget passed at 80,356 bytes initial and 751,975 bytes total against the 819,200-byte limits.
+- iOS bundle regenerated; all 102 bundled files matched the iOS distribution byte-for-byte.
+- Representative proof in `output/web-game-proof/balanced-polish/` was inspected at original resolution: desktop/mobile Plane Collection, max shield/boost feedback, iOS menu, Journey map, and Journey routes.
+- XcodeBuildMCP built, installed, and launched the exact final app on iPhone 17 Pro simulator with no build warnings or errors. The in-app simulator browser was used to tap from the menu into Living Journey and scroll its route surface.
+- The signed final iOS 27 build succeeded with automatic signing, installed on Austin's paired iPhone 16 Pro, and launched as `com.sappgulf.paperplanerun`.
+- Self-review found no TODO/debug leakage. Full branch `git diff --check` passes after removing two terminal whitespace defects.
+- Remaining ship actions: commit proof, fast-forward `main`, push, production deploy, and production smoke.
+
 ### Balanced game polish — Task 5 silhouettes and preview
 
 - Geometry RED failed on the required missing `src/plane-models.js` module; the extracted registry is now green at 4 tests across Classic Fold, Dart, Glider, and Stunt Fold.

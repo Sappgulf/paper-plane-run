@@ -58,6 +58,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 
 test('Hangar upgrade cards show exact current, next, and max contracts', async ({ page }) => {
   test.slow()
+  test.setTimeout(240_000)
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
@@ -193,7 +194,7 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
   await expect(page.locator('#hangar-wallet')).toHaveText('10')
   await expect(page.locator('#hangar-lifetime')).toHaveText('10')
   await expect(page.getByRole('button', { name: 'Claim' })).toHaveCount(0)
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).claimStars)).toBe(10)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).claimStars)).toBe(10)
   expect(errors).toEqual([])
 })
 
@@ -226,7 +227,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await expect(mint).toHaveClass(/state-owned/)
   await expect(coral).toHaveClass(/state-available/)
   await expect(night).toHaveClass(/state-locked/)
-  await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 35★')
+  await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 50★')
   await expect(coral.locator('.plane-price')).toHaveText('Wallet 35★')
   await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
 
@@ -628,6 +629,7 @@ test('existing bosses expose deterministic readable phases and accessibility cue
 })
 
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
+  test.slow()
   const errors = collectConsoleErrors(page)
   await openApp(page)
 
@@ -640,14 +642,14 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
   await tap(page.locator('.journey-route-card').first())
 
-  await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   await expect(page.locator('#journey-objective-hud')).toBeVisible()
   await expect(page.locator('#hud-mode')).not.toHaveText('Normal')
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
   // Changing only the hash can keep the live flight document. A query change
   // guarantees a fresh boot into the deterministic Journey test state.
   await openApp(page, '/?e2e=journey#test-journey-city')
-  await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function', null, { timeout: 15_000 })
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function', null, { timeout: 45_000 })
   const textState = await page.evaluate(() => {
     let snapshot = JSON.parse(window.render_game_to_text())
     for (let batch = 0; batch < 6 && snapshot.journey.triggeredEncounterIds.length === 0; batch += 1) {

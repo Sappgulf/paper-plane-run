@@ -15,3 +15,4 @@ Task 8: complete (commits e3b4040..6359bb6, review clean after lifetime-gate sep
 Task 9: complete (commit 2936a8a, generated assets inspected at original/64px, 162 tests, iOS parity 102 files)
 Task 10: complete (commit 5b9eade, deterministic phases/accessibility, 168 tests, focused browser proof)
 Task 11: complete (commit 5f5ed13, bounded wave spacing, post-boss recovery, shared control axes)
+Task 12: complete (175 unit tests, 40 E2E passes / 14 viewport skips, bundle and iOS parity green, simulator plus physical-device installs launched)
