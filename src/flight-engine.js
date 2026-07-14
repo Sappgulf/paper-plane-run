@@ -57,7 +57,13 @@ import { createBossEncounter, describeBossPhase } from './game/boss-director.js'
 import { createNotificationQueue } from './game/notification-queue.js'
 import { createFrameHealthMonitor } from './game/frame-health.js'
 import {
+  PASSAGE_LANE_X,
+  PASSAGE_LANES,
+  choosePassageLane,
+  createPacingWave,
   getCenterBuildingSafeRange,
+  getObstacleDamageRadius,
+  getSafeSpawnX,
   getWaveSpacing,
   normalizeControlAxes,
 } from './game/pacing.js'
@@ -342,6 +348,7 @@ let nextBossAt = 500
 let nextGauntletAt = 250
 let bossActive = false
 let bossRecoveryUntil = 0
+let activePassageLane = null
 let planeWingL = null
 let planeWingR = null
 let tearSide = 0
@@ -2077,9 +2084,32 @@ function spawnChunk(z) {
   const cfg = difficulty
   const zone = activeZoneAt(distance)
   const recovering = distance < bossRecoveryUntil
+  const waveSpacing = getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) * cfg.gap
+  const wave = createPacingWave({
+    index: Math.max(0, Math.round((z - 35) / Math.max(1, waveSpacing))),
+    difficultyId: difficulty.id,
+    afterBoss: recovering,
+  })
+  const safeLane = recovering ? null : wave.starLane
+  if (safeLane !== null) activePassageLane = safeLane
   const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
   let leftInnerEdge = null
   let rightInnerEdge = null
+
+  const safeAirX = (maxAbs, entityRadius) => getSafeSpawnX({
+    random: rng,
+    safeLane: safeLane ?? 0,
+    maxAbs,
+    damageRadius: getObstacleDamageRadius({
+      entityRadius,
+      planeRadius: PLANE_COLLISION_RADIUS,
+    }),
+  })
+  const safePickupX = () => {
+    if (safeLane === null) return (rng() - 0.5) * 11
+    const center = PASSAGE_LANE_X[safeLane + 1]
+    return center + (rng() - 0.5) * 1.6
+  }
 
   if (!recovering) maybeSpawnGroundDecor(z)
 
@@ -2094,7 +2124,7 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
       if (side === -1) leftInnerEdge = -laneSpread + radius
       else rightInnerEdge = laneSpread - radius
     }
@@ -2114,7 +2144,7 @@ function spawnChunk(z) {
       const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
       b.position.set(safeRange.minX + rng() * (safeRange.maxX - safeRange.minX), 0, z)
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
     }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
@@ -2123,7 +2153,7 @@ function spawnChunk(z) {
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      flyer.position.set((rng() - 0.5) * 12 * cfg.gap, 3.5 + rng() * 18, z + i * 2.5)
+      flyer.position.set(safeAirX(6 * cfg.gap, def.radius), 3.5 + rng() * 18, z + i * 2.5)
       scene.add(flyer)
       entities.push({
         mesh: flyer,
@@ -2131,20 +2161,21 @@ function spawnChunk(z) {
         flyerId: def.id,
         label: def.label,
         radius: def.radius,
+        passageLane: safeLane,
       })
     }
   } else if (ht === 'scissors') {
     const sc = createScissors()
-    sc.position.set((rng() - 0.5) * 9 * cfg.gap, 4 + rng() * 16, z)
+    sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4 + rng() * 16, z)
     scene.add(sc)
-    entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
+    entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
     // Scissor squadron — a rarer second blade further down the lane, more
     // likely to appear the deeper into a run you get.
     if (rng() < 0.12 + ramp * 0.22) {
       const sc2 = createScissors()
-      sc2.position.set((rng() - 0.5) * 9 * cfg.gap, 4 + rng() * 16, z + 6 + rng() * 4)
+      sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4 + rng() * 16, z + 6 + rng() * 4)
       scene.add(sc2)
-      entities.push({ mesh: sc2, type: 'scissors', radius: 1.6 })
+      entities.push({ mesh: sc2, type: 'scissors', radius: 1.6, passageLane: safeLane })
     }
   }
 
@@ -2152,7 +2183,7 @@ function spawnChunk(z) {
   if (rng() < 0.18 + ramp * 0.1) {
     const def = pickFlyerKind()
     const flyer = createFlyer(def.id)
-    flyer.position.set((rng() - 0.5) * 11 * cfg.gap, 4 + rng() * 16, z + 4 + rng() * 6)
+    flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4 + rng() * 16, z + 4 + rng() * 6)
     scene.add(flyer)
     entities.push({
       mesh: flyer,
@@ -2160,6 +2191,7 @@ function spawnChunk(z) {
       flyerId: def.id,
       label: def.label,
       radius: def.radius,
+      passageLane: safeLane,
     })
   }
 
@@ -2178,7 +2210,7 @@ function spawnChunk(z) {
   for (let s = 0; s < starRolls; s++) {
     if (rng() < spawnRates.starChance) {
       const st = createStar()
-      st.position.set((rng() - 0.5) * 11, 3 + rng() * 17, z + rng() * 8)
+      st.position.set(safePickupX(), 3 + rng() * 17, z + rng() * 8)
       scene.add(st)
       entities.push({ mesh: st, type: 'star', radius: 0.9 })
     }
@@ -2193,7 +2225,7 @@ function spawnChunk(z) {
     const kind = pool[(rng() * pool.length) | 0]
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
-    pu.position.set((rng() - 0.5) * 8, 5 + rng() * 12, z + 1 + rng() * 5)
+    pu.position.set(safePickupX(), 5 + rng() * 12, z + 1 + rng() * 5)
     scene.add(pu)
     entities.push({ mesh: pu, type: 'power', radius: 1.35, kind })
   }
@@ -2239,31 +2271,44 @@ function spawnBoss(z = 70) {
  *  of hazards instead of the usual sparse random spawns, so the mid-run
  *  pacing has more texture than "quiet until the next boss". */
 function spawnMiniGauntlet(z = 60) {
+  const safeLane = PASSAGE_LANES[(Math.floor(rng() * PASSAGE_LANES.length))]
+  const blockedLanes = PASSAGE_LANES.filter((lane) => lane !== safeLane)
+  const placements = []
+  activePassageLane = safeLane
   if (rng() < 0.5) {
-    // Scissors zigzag: weave between alternating sides
-    const sides = [-1, 1, -1]
-    sides.forEach((side, i) => {
+    // Scissors zigzag: weave between the two blocked lanes while leaving a
+    // full lateral lane open for the player to commit to.
+    const lanes = [blockedLanes[0], blockedLanes[1], blockedLanes[0]]
+    lanes.forEach((lane, i) => {
       const sc = createScissors()
-      sc.position.set(side * 5, 8 + rng() * 6, z + i * 9)
+      const x = PASSAGE_LANE_X[lane + 1] + (rng() - 0.5) * 1.2
+      sc.position.set(x, 8 + rng() * 6, z + i * 9)
       scene.add(sc)
-      entities.push({ mesh: sc, type: 'scissors', radius: 1.6 })
+      entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
+      placements.push({ x, radius: 1.6, passageLane: safeLane })
     })
   } else {
-    // Flyer wall: a row of flyers spanning most of the lane at one z,
-    // forcing an altitude or lane pick rather than a lucky dodge.
+    // Flyer formation: four hazards share the two blocked lanes at staggered
+    // depths, preserving one readable lateral route instead of a full wall.
     const count = 4
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      const t = i / (count - 1)
-      flyer.position.set((t - 0.5) * 20, 6 + rng() * 12, z + (rng() - 0.5) * 4)
+      const lane = blockedLanes[i % blockedLanes.length]
+      const x = PASSAGE_LANE_X[lane + 1] + (rng() - 0.5) * 1.2
+      flyer.position.set(x, 6 + rng() * 12, z + i * 3.5 + (rng() - 0.5) * 1.5)
       scene.add(flyer)
       entities.push({
-        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius,
+        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageLane: safeLane,
       })
+      placements.push({ x, radius: def.radius, passageLane: safeLane })
     }
   }
-  zoneBanner.textContent = '⚡ Hazard Gauntlet!'
+  const passage = choosePassageLane({ hazards: placements, preferredLane: safeLane })
+  const laneLabel = safeLane < 0 ? 'LEFT' : safeLane > 0 ? 'RIGHT' : 'CENTER'
+  zoneBanner.textContent = passage.guaranteed
+    ? `⚡ Hazard Gauntlet · ${laneLabel} lane open`
+    : '⚡ Hazard Gauntlet · find the widest gap'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 2
   audio.windGust()
@@ -2712,6 +2757,7 @@ function resetGame() {
   nextGauntletAt = 250
   bossActive = false
   bossRecoveryUntil = 0
+  activePassageLane = null
   bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
@@ -4911,13 +4957,12 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       const dist2 = dx * dx + dy * dy + dz * dz
-      const hit = getCollisionRadius({
+      const boostHitboxScale = activePower?.kind === 'boost' ? boostSafety.collisionScale : 1
+      const hit = getObstacleDamageRadius({
         entityRadius: e.radius || 0.7,
         planeRadius: PLANE_COLLISION_RADIUS,
-        planeWeight: 0.85,
-        boostActive: activePower?.kind === 'boost',
-        boostHitboxScale: boostSafety.collisionScale,
-      }).effectiveRadius
+        boostHitboxScale,
+      })
       if (dist2 < hit ** 2) {
         const label =
           e.type === 'scissors'
@@ -4926,8 +4971,13 @@ function update(dt) {
         die(label)
         return
       }
-      const grazeMul = 1 + 0.9 * nmTighten
-      if (dist2 < (hit * grazeMul) ** 2 && m.position.z > -1 && m.position.z < 7) {
+      const graze = getNearMissRadius({
+        entityRadius: e.radius || 0.7,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        nearMissBonus: ufx.nearMissBonus,
+        tighten: nmTighten,
+      })
+      if (dist2 < graze ** 2 && m.position.z > -1 && m.position.z < 7) {
         const last = nearMissCooldown.get(m) || 0
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
@@ -5107,6 +5157,21 @@ window.render_game_to_text = () => JSON.stringify({
     visibleTypes: entities
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
+  },
+  fairness: {
+    passageLane: activePassageLane,
+    passageLaneX: activePassageLane === null ? null : PASSAGE_LANE_X[activePassageLane + 1],
+    airDamageRadius: Number(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: PLANE_COLLISION_RADIUS }).toFixed(3)),
+    visibleHazards: entities
+      .filter((entity) => (entity.type === 'bird' || entity.type === 'scissors') && entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
+      .map((entity) => ({
+        type: entity.type,
+        x: Number(entity.mesh.position.x.toFixed(2)),
+        y: Number(entity.mesh.position.y.toFixed(2)),
+        z: Number(entity.mesh.position.z.toFixed(2)),
+        radius: entity.radius,
+        passageLane: entity.passageLane ?? null,
+      })),
   },
   upgrades: upgradeRuntimeTextState(),
   boss: bossTextState(),

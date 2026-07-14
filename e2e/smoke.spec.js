@@ -538,6 +538,9 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   expect(baselineSpawn.upgrades.handling.follow).toBeCloseTo(0.275)
   expect(baselineSpawn.upgrades.luck.twistStarMultiplier).toBe(1.6)
   expect(baselineSpawn.upgrades.luck.starChance).toBeCloseTo(0.928)
+  expect(baselineSpawn.fairness.airDamageRadius).toBe(2.104)
+  expect(baselineSpawn.fairness.visibleHazards.length).toBeGreaterThan(0)
+  expect(baselineSpawn.fairness.visibleHazards.every(({ passageLane }) => [-1, 0, 1].includes(passageLane))).toBe(true)
 
   await openApp(page, '/?upgrade-proof=max&twist-star-mul=1.6#test-upgrade-live-spawn')
   await waitForGameText(page)

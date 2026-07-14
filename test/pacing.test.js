@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest'
-import { createPacingWave, getCenterBuildingSafeRange, getWaveSpacing, normalizeControlAxes } from '../src/game/pacing.js'
+import {
+  choosePassageLane,
+  createPacingWave,
+  getCenterBuildingSafeRange,
+  getObstacleDamageRadius,
+  getSafeSpawnX,
+  getWaveSpacing,
+  normalizeControlAxes,
+} from '../src/game/pacing.js'
 
 function mulberry32(seed) {
   let state = seed >>> 0
@@ -37,6 +45,50 @@ describe('existing flight pacing', () => {
     for (const difficultyId of ['easy', 'normal', 'hard']) {
       expect(getWaveSpacing({ difficultyId, distance: 5000 })).toBeGreaterThanOrEqual(14)
     }
+  })
+
+  test('uses a smaller explicit air-damage envelope than the visual near-miss envelope', () => {
+    expect(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: 0.7 })).toBeCloseTo(2.104)
+    expect(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: 0.7, boostHitboxScale: 0.6 }))
+      .toBeCloseTo(1.2624)
+  })
+
+  test('chooses a genuinely clear passage lane for an obstacle group', () => {
+    const passage = choosePassageLane({
+      hazards: [
+        { x: -5.2, radius: 1.6 },
+        { x: 4.7, radius: 1.6 },
+      ],
+      preferredLane: 0,
+    })
+
+    expect(passage).toMatchObject({ lane: 0, guaranteed: true })
+    expect(passage.clearance).toBeGreaterThan(0.35)
+  })
+
+  test('rejects a full-width wall instead of pretending a lane is safe', () => {
+    const passage = choosePassageLane({
+      hazards: [
+        { x: -6, radius: 1.6 },
+        { x: 0, radius: 1.6 },
+        { x: 6, radius: 1.6 },
+      ],
+    })
+
+    expect(passage.guaranteed).toBe(false)
+    expect(passage.lane).toBeNull()
+  })
+
+  test('places a hazard on the opposite side when a side passage is reserved', () => {
+    const x = getSafeSpawnX({
+      random: () => 0.5,
+      safeLane: 1,
+      maxAbs: 5,
+      damageRadius: 2.1,
+    })
+
+    expect(x).toBeLessThan(0)
+    expect(Math.abs(x - 6)).toBeGreaterThan(2.45)
   })
 
   test.each(['keyboard', 'stick', 'pointer', 'touch'])('%s uses the same bounded axis contract', () => {
