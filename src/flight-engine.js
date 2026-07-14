@@ -54,7 +54,7 @@ import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
 import { createBossEncounter } from './game/boss-director.js'
-import { getWaveSpacing, normalizeControlAxes } from './game/pacing.js'
+import { getCenterBuildingSafeRange, getWaveSpacing, normalizeControlAxes } from './game/pacing.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -2057,6 +2057,8 @@ function spawnChunk(z) {
   const zone = activeZoneAt(distance)
   const recovering = distance < bossRecoveryUntil
   const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
+  let leftInnerEdge = null
+  let rightInnerEdge = null
 
   if (!recovering) maybeSpawnGroundDecor(z)
 
@@ -2067,10 +2069,13 @@ function spawnChunk(z) {
       const d = 2.5 + rng() * 3
       const mat = buildingMats[(rng() * buildingMats.length) | 0]
       const b = createBuilding(w, h, d, mat)
+      const radius = Math.max(w, d) * 0.5
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius: Math.max(w, d) * 0.5, halfH: h })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h })
+      if (side === -1) leftInnerEdge = -laneSpread + radius
+      else rightInnerEdge = laneSpread - radius
     }
   }
 
@@ -2079,10 +2084,17 @@ function spawnChunk(z) {
     const w = 2 + rng() * 3
     const h = (7 + rng() * (10 + ramp * 16)) * cfg.buildingH
     const d = 2 + rng() * 2.5
-    const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
-    b.position.set((rng() - 0.5) * 9 * cfg.gap, 0, z)
-    scene.add(b)
-    entities.push({ mesh: b, type: 'building', radius: Math.max(w, d) * 0.5, halfH: h })
+    const radius = Math.max(w, d) * 0.5
+    // Side buildings can occasionally spawn close enough in that a center
+    // building would otherwise be free to close off the entire flyable
+    // corridor — skip it this chunk rather than risk sealing the width shut.
+    const safeRange = getCenterBuildingSafeRange({ leftInnerEdge, rightInnerEdge, radius, gap: cfg.gap })
+    if (safeRange) {
+      const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
+      b.position.set(safeRange.minX + rng() * (safeRange.maxX - safeRange.minX), 0, z)
+      scene.add(b)
+      entities.push({ mesh: b, type: 'building', radius, halfH: h })
+    }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
     // 8-bird pileup in one chunk — cap the swarm so density stays readable.

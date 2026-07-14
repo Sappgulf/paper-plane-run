@@ -17,6 +17,25 @@ export function createPacingWave({ index = 0, difficultyId = 'normal', afterBoss
     hazardLanes: afterBoss ? [] : lanes.filter((lane) => lane !== starLane),
   })
 }
+/**
+ * A center building must fit inside the corridor left by any side buildings,
+ * with SAFE_CORRIDOR clearance on top of its own radius, or it's skipped
+ * entirely rather than risk sealing the flyable width shut. Returns the
+ * placement range, or null when no safe placement exists this chunk.
+ */
+export function getCenterBuildingSafeRange({
+  leftInnerEdge = null,
+  rightInnerEdge = null,
+  radius = 0,
+  gap = 1,
+  safeCorridor = 1.1,
+} = {}) {
+  const defaultHalfSpan = 4.5 * Number(gap || 1)
+  const minX = leftInnerEdge != null ? leftInnerEdge + radius + safeCorridor : -defaultHalfSpan
+  const maxX = rightInnerEdge != null ? rightInnerEdge - radius - safeCorridor : defaultHalfSpan
+  return minX <= maxX ? { minX, maxX } : null
+}
+
 export function normalizeControlAxes({ x = 0, y = 0, invertX = false, invertY = false } = {}) {
   const clamp = (value) => Math.max(-1, Math.min(1, Number(value) || 0))
   return Object.freeze({
