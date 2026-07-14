@@ -1,3 +1,5 @@
+import { safeSetItem } from './game/safe-storage.js'
+
 const KEY = 'paper-plane-run-settings-v1'
 
 const DEFAULTS = {
@@ -37,7 +39,7 @@ export function loadSettings() {
 
 export function saveSettings(partial) {
   const next = { ...loadSettings(), ...partial }
-  localStorage.setItem(KEY, JSON.stringify(next))
+  safeSetItem(KEY, JSON.stringify(next))
   return next
 }
 

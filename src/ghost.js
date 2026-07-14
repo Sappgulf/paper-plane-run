@@ -1,3 +1,5 @@
+import { safeSetItem } from './game/safe-storage.js'
+
 const PREFIX = 'paper-plane-run-ghost-'
 
 /** Sample every ~2m of distance */
@@ -32,7 +34,7 @@ export function loadGhost(mode) {
 export function saveGhostIfBest(mode, distance, path, stars) {
   const prev = loadGhost(mode)
   if (prev && prev.distance >= distance) return false
-  localStorage.setItem(
+  safeSetItem(
     PREFIX + mode,
     JSON.stringify({
       distance: Math.floor(distance),

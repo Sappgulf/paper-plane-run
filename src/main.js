@@ -28,6 +28,7 @@ import { seasonInfo } from './seasonal.js'
 import { dailyKey } from './rng.js'
 import { todaysTwist } from './twists.js'
 import { fetchRemoteTop, getDailyTop, getLocalTop, getTimeAttackTop } from './leaderboard.js'
+import { safeSetItem } from './game/safe-storage.js'
 
 const engineLoader = createEngineLoader()
 const engineStatus = document.getElementById('engine-status')
@@ -67,7 +68,7 @@ applyDocumentA11y(settings)
 if (pilotNameInput) {
   pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
   pilotNameInput.addEventListener('change', () => {
-    localStorage.setItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
+    safeSetItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
   })
 }
 
@@ -982,7 +983,7 @@ function setShellDifficulty(id, { persist = true } = {}) {
   const copy = DIFFICULTY_COPY[id]
   if (!copy) return
   difficulty = { id }
-  if (persist) localStorage.setItem('paper-plane-run-diff', id)
+  if (persist) safeSetItem('paper-plane-run-diff', id)
   document.querySelectorAll('.diff-btn[data-diff]').forEach((item) => {
     item.classList.toggle('active', item.dataset.diff === id)
   })
@@ -1059,7 +1060,7 @@ syncShellControlUi()
   if (innerHeight > innerWidth) hint.classList.remove('hidden')
   hint.addEventListener('click', () => {
     hint.classList.add('hidden')
-    localStorage.setItem(seenKey, '1')
+    safeSetItem(seenKey, '1')
   })
 })()
 

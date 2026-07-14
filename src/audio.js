@@ -1,6 +1,7 @@
 /**
  * Web Audio SFX + soft generative music bed.
  */
+import { safeSetItem } from './game/safe-storage.js'
 // Per-zone motifs for the generative bed — same gentle pentatonic engine,
 // different mood so a zone transition is reinforced musically too.
 const ZONE_SCALES = {
@@ -87,7 +88,7 @@ export class GameAudio {
 
   setMuted(m) {
     this.muted = m
-    localStorage.setItem('paper-plane-run-muted', m ? '1' : '0')
+    safeSetItem('paper-plane-run-muted', m ? '1' : '0')
     if (this.master) this.master.gain.value = m ? 0 : 0.4
   }
 
@@ -98,7 +99,7 @@ export class GameAudio {
 
   setMusic(on) {
     this.musicOn = on
-    localStorage.setItem('paper-plane-run-music', on ? '1' : '0')
+    safeSetItem('paper-plane-run-music', on ? '1' : '0')
     if (this.music) {
       const t = this._now()
       this.music.gain.cancelScheduledValues(t)

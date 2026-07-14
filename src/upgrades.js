@@ -2,6 +2,7 @@
  * Spendable plane upgrades — paid with wallet stars earned in runs.
  */
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
+import { safeSetItem } from './game/safe-storage.js'
 
 const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
@@ -279,7 +280,7 @@ function loadLevels() {
 }
 
 function saveLevels(obj) {
-  localStorage.setItem(LEVELS_KEY, JSON.stringify(obj))
+  safeSetItem(LEVELS_KEY, JSON.stringify(obj))
 }
 
 export function getUpgradeLevel(id) {
@@ -300,7 +301,7 @@ export function getWallet() {
 export function addWallet(n) {
   migrateWalletOnce()
   const v = getWallet() + Math.max(0, Math.floor(n))
-  localStorage.setItem(WALLET_KEY, String(v))
+  safeSetItem(WALLET_KEY, String(v))
   return v
 }
 
@@ -308,7 +309,7 @@ export function spendWallet(n) {
   const cost = Math.max(0, Math.floor(n))
   const w = getWallet()
   if (w < cost) return false
-  localStorage.setItem(WALLET_KEY, String(w - cost))
+  safeSetItem(WALLET_KEY, String(w - cost))
   return true
 }
 
@@ -318,11 +319,11 @@ function migrateWalletOnce() {
   const lifetime = Number(localStorage.getItem('paper-plane-run-lifetime-stars') || 0)
   const existing = localStorage.getItem(WALLET_KEY)
   if (existing == null && lifetime > 0) {
-    localStorage.setItem(WALLET_KEY, String(Math.floor(lifetime * 0.5)))
+    safeSetItem(WALLET_KEY, String(Math.floor(lifetime * 0.5)))
   } else if (existing == null) {
-    localStorage.setItem(WALLET_KEY, '0')
+    safeSetItem(WALLET_KEY, '0')
   }
-  localStorage.setItem(MIGRATED, '1')
+  safeSetItem(MIGRATED, '1')
 }
 
 /** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
@@ -354,7 +355,7 @@ export function doPrestige() {
   if (state.capped) return { ok: false, reason: 'max-prestige', level: state.level }
   if (!state.ready) return { ok: false, reason: 'not-maxed' }
   const level = state.level + 1
-  localStorage.setItem(PRESTIGE_KEY, String(level))
+  safeSetItem(PRESTIGE_KEY, String(level))
   saveLevels({})
   return { ok: true, level }
 }

@@ -55,6 +55,7 @@ import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
 import { createBossEncounter } from './game/boss-director.js'
 import { getCenterBuildingSafeRange, getWaveSpacing, normalizeControlAxes } from './game/pacing.js'
+import { safeSetItem } from './game/safe-storage.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -353,13 +354,13 @@ function loadBest(id) {
   if (id === 'normal') {
     const legacy = localStorage.getItem('paper-plane-run-best')
     if (legacy && !localStorage.getItem(BEST_PREFIX + id)) {
-      localStorage.setItem(BEST_PREFIX + id, legacy)
+      safeSetItem(BEST_PREFIX + id, legacy)
     }
   }
   return Number(localStorage.getItem(BEST_PREFIX + id) || 0)
 }
 function saveBest(id, v) {
-  localStorage.setItem(BEST_PREFIX + id, String(v))
+  safeSetItem(BEST_PREFIX + id, String(v))
 }
 
 let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
@@ -375,7 +376,7 @@ document.querySelectorAll('.diff-btn').forEach((b) => {
 function setDifficulty(id, { persist = true } = {}) {
   if (!DIFFS[id]) return
   difficulty = DIFFS[id]
-  if (persist) localStorage.setItem(DIFF_KEY, id)
+  if (persist) safeSetItem(DIFF_KEY, id)
   bestDistance = loadBest(id)
   if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
   if (hudModeEl) hudModeEl.textContent = difficulty.label
@@ -463,7 +464,7 @@ function configureDevUpgradeProof(proof = devUpgradeProof) {
     const upgrade = UPGRADES.find(({ id }) => id === upgradeId)
     if (upgrade) levels = { [upgrade.id]: upgrade.max }
   }
-  localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(levels))
+  safeSetItem('paper-plane-run-upgrades', JSON.stringify(levels))
 }
 {
   const params = new URLSearchParams(location.search)
@@ -3533,7 +3534,7 @@ function die(reason) {
     audio.missionComplete()
     if (settings.haptics) Haptic.collect()
     if (reason === 'Tutorial complete!') {
-      localStorage.setItem('paper-plane-run-tutorial', '1')
+      safeSetItem('paper-plane-run-tutorial', '1')
       tutorialDone = true
     }
   }

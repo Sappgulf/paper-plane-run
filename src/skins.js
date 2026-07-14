@@ -1,4 +1,5 @@
 import { getPrestigeLevel, getWallet, spendWallet } from './upgrades.js'
+import { safeSetItem } from './game/safe-storage.js'
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
 
 const KEY = 'paper-plane-run-skins'
@@ -177,7 +178,7 @@ function loadLegacyOwnership() {
 }
 
 function saveOwnership(set) {
-  localStorage.setItem(KEY, JSON.stringify([...set]))
+  safeSetItem(KEY, JSON.stringify([...set]))
 }
 
 function loadOwnership() {
@@ -197,7 +198,7 @@ function loadOwnership() {
 
   if (changed) saveOwnership(owned)
   if (localStorage.getItem(SCHEMA_VERSION_KEY) !== SCHEMA_VERSION) {
-    localStorage.setItem(SCHEMA_VERSION_KEY, SCHEMA_VERSION)
+    safeSetItem(SCHEMA_VERSION_KEY, SCHEMA_VERSION)
   }
   return owned
 }
@@ -208,21 +209,21 @@ export function getLifetimeStars() {
 
 export function addLifetimeStars(n) {
   const v = getLifetimeStars() + n
-  localStorage.setItem(STARS_KEY, String(v))
+  safeSetItem(STARS_KEY, String(v))
   return v
 }
 
 export function getEquippedSkinId() {
   const equipped = localStorage.getItem(EQUIP)
   if (KNOWN_SKIN_IDS.has(equipped)) return equipped
-  if (equipped !== null) localStorage.setItem(EQUIP, 'classic')
+  if (equipped !== null) safeSetItem(EQUIP, 'classic')
   return 'classic'
 }
 
 export function equipSkin(id) {
   const owned = loadOwnership()
   if (!owned.has(id)) return false
-  localStorage.setItem(EQUIP, id)
+  safeSetItem(EQUIP, id)
   return true
 }
 

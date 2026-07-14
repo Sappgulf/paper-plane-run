@@ -1,4 +1,5 @@
 import { dailyKey, dailySeed, mulberry32 } from './rng.js'
+import { safeSetItem } from './game/safe-storage.js'
 
 const KEY = 'paper-plane-run-missions'
 
@@ -24,7 +25,7 @@ function loadState() {
 }
 
 function saveState(s) {
-  localStorage.setItem(KEY, JSON.stringify(s))
+  safeSetItem(KEY, JSON.stringify(s))
 }
 
 export function getDailyMissions() {

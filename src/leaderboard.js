@@ -1,3 +1,5 @@
+import { safeSetItem } from './game/safe-storage.js'
+
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
 const TIME_ATTACK_KEY = 'paper-plane-run-lb-timeattack'
@@ -16,7 +18,7 @@ function load(key) {
 }
 
 function save(key, rows) {
-  localStorage.setItem(key, JSON.stringify(rows.slice(0, 20)))
+  safeSetItem(key, JSON.stringify(rows.slice(0, 20)))
 }
 
 export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey }) {

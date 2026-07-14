@@ -1,6 +1,8 @@
 /**
  * Lightweight anonymous analytics — local ring buffer + optional POST.
  */
+import { safeSetItem } from './game/safe-storage.js'
+
 const KEY = 'paper-plane-run-analytics'
 const SESSION = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 const MAX = 200
@@ -18,7 +20,7 @@ function load() {
 }
 
 function save(arr) {
-  localStorage.setItem(KEY, JSON.stringify(arr.slice(-MAX)))
+  safeSetItem(KEY, JSON.stringify(arr.slice(-MAX)))
 }
 
 export function track(event, props = {}) {
