@@ -7,13 +7,13 @@ import { BOSS_ART, createBossArtOverlay } from '../src/game/boss-art.js'
 const BOSS_IDS = ['scissors', 'wind']
 
 describe('boss artwork registry', () => {
-  test('registers the two existing bosses with stable bundled PNG and WebP paths', () => {
+  test('ships compressed WebP boss art for both runtime and preview use', () => {
     expect(Object.keys(BOSS_ART)).toEqual(BOSS_IDS)
 
     for (const id of BOSS_IDS) {
       const art = BOSS_ART[id]
       expect(art.id).toBe(id)
-      expect(art.texture).toBe(`/assets/bosses/${id}.png`)
+      expect(art.texture).toBe(`/assets/bosses/${id}.webp`)
       expect(art.preview).toBe(`/assets/bosses/${id}.webp`)
       expect(existsSync(new URL(`../public${art.texture}`, import.meta.url))).toBe(true)
       expect(existsSync(new URL(`../public${art.preview}`, import.meta.url))).toBe(true)

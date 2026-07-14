@@ -72,6 +72,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     private let gameBundleSchemeHandler = GameBundleSchemeHandler()
     private let loadingView = UIView()
     private var loadingConstraintsInstalled = false
+    private var runtimeObservers: [NSObjectProtocol] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -135,7 +136,58 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         ])
         view.bringSubviewToFront(loadingView)
 
+        observeNativeRuntimeConditions()
+
         loadGame()
+    }
+
+    deinit {
+        runtimeObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func observeNativeRuntimeConditions() {
+        let center = NotificationCenter.default
+        let notifications: [Notification.Name] = [
+            ProcessInfo.thermalStateDidChangeNotification,
+            Notification.Name.NSProcessInfoPowerStateDidChange,
+            UIApplication.didBecomeActiveNotification,
+        ]
+        runtimeObservers.append(contentsOf: notifications.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.sendNativeRuntimeSignal()
+            }
+        })
+        runtimeObservers.append(center.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.sendNativeRuntimeSignal(memoryPressure: true)
+        })
+    }
+
+    private func sendNativeRuntimeSignal(memoryPressure: Bool = false) {
+        let thermalState: String
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: thermalState = "nominal"
+        case .fair: thermalState = "fair"
+        case .serious: thermalState = "serious"
+        case .critical: thermalState = "critical"
+        @unknown default: thermalState = "nominal"
+        }
+        let payload: [String: Any] = [
+            "thermalState": thermalState,
+            "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
+            "memoryPressure": memoryPressure,
+        ]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let json = String(data: data, encoding: .utf8)
+        else { return }
+        let script = "window.dispatchEvent(new CustomEvent('paperplane:native-runtime',{detail:\(json)}));"
+        webView?.evaluateJavaScript(script) { _, error in
+            if let error { print("[NativeRuntime] bridge failed: \(error)") }
+        }
     }
 
     private func configureLoadingView() {
@@ -284,6 +336,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("[Nav] finished loading")
+        sendNativeRuntimeSignal()
         hideLoadingView()
     }
 

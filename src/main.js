@@ -475,7 +475,11 @@ function renderSkins(statusMessage = '') {
   `
   grid.appendChild(preview)
   const previewCanvas = preview.querySelector('canvas')
-  void showPlanePreview(preview, previewCanvas, previewPlane)
+  const previewGeneration = planePreviewRequest
+  requestAnimationFrame(() => {
+    if (previewGeneration !== planePreviewRequest || !previewCanvas.isConnected) return
+    void showPlanePreview(preview, previewCanvas, previewPlane)
+  })
 
   for (const s of planes) {
     const card = document.createElement('button')

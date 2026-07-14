@@ -19,4 +19,13 @@ describe('iOS web runtime', () => {
     expect(gameViewSource).toContain('Retry')
     expect(gameViewSource).toContain('#selector(retryLoad)')
   })
+
+  it('forwards lifecycle, thermal, low-power, and memory-pressure signals to the renderer', () => {
+    expect(gameViewSource).toContain('ProcessInfo.processInfo.thermalState')
+    expect(gameViewSource).toContain('ProcessInfo.processInfo.isLowPowerModeEnabled')
+    expect(gameViewSource).toContain('Notification.Name.NSProcessInfoPowerStateDidChange')
+    expect(gameViewSource).toContain('UIApplication.didReceiveMemoryWarningNotification')
+    expect(gameViewSource).toContain('paperplane:native-runtime')
+    expect(gameViewSource).toContain('evaluateJavaScript')
+  })
 })

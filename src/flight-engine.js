@@ -53,7 +53,18 @@ import {
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
-import { createBossEncounter, describeBossPhase } from './game/boss-director.js'
+import {
+  createBossEncounter,
+  describeBossPhase,
+  getBossApproachSpeedScale,
+  isInsideBossPassage,
+  shouldClearForBossApproach,
+} from './game/boss-director.js'
+import {
+  getAdaptiveQuality,
+  installNativePerformanceListener,
+  normalizeNativePerformanceSignal,
+} from './game/adaptive-quality.js'
 import { createNotificationQueue } from './game/notification-queue.js'
 import { createFrameHealthMonitor } from './game/frame-health.js'
 import {
@@ -327,9 +338,17 @@ if (muteBtn) muteBtn.textContent = audio.muted ? '🔇' : '🔊'
 
 // Settings / season / AR / analytics
 let settings = loadSettings()
+let nativePerformanceSignal = normalizeNativePerformanceSignal()
+let renderQuality = getAdaptiveQuality({
+  status: 'warming',
+  devicePixelRatio,
+  lowPower: settings.lowPower,
+  nativeSignal: nativePerformanceSignal,
+})
 const frameHealth = createFrameHealthMonitor({
   onChange(snapshot) {
     document.documentElement.dataset.frameHealth = snapshot.status
+    applyPerformanceSettings(snapshot.status)
   },
 })
 let activeUpgradeEffects = getUpgradeEffects()
@@ -484,6 +503,9 @@ const devCollisionProof = import.meta.env.DEV
 const devBossProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-proof')
   : null
+const devBossPass = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('boss-pass') === '1'
+  : false
 function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (!import.meta.env.DEV) return
   let levels = {}
@@ -549,19 +571,26 @@ canvas.addEventListener('webglcontextrestored', () => {
   location.reload()
 }, false)
 
-function applyPerformanceSettings() {
-  const cap = settings.lowPower ? 1.25 : 2
-  renderer.setPixelRatio(Math.min(devicePixelRatio, cap))
-  renderer.shadowMap.enabled = !settings.lowPower
-  if (typeof sun !== 'undefined' && sun) sun.castShadow = !settings.lowPower
-  if (typeof dust !== 'undefined' && dust) dust.visible = !settings.lowPower
+function applyPerformanceSettings(status = frameHealth.snapshot().status) {
+  renderQuality = getAdaptiveQuality({
+    status,
+    devicePixelRatio,
+    lowPower: settings.lowPower,
+    nativeSignal: nativePerformanceSignal,
+  })
+  renderer.setPixelRatio(renderQuality.pixelRatio)
+  renderer.setSize(innerWidth, innerHeight, false)
+  renderer.shadowMap.enabled = renderQuality.shadows
+  if (typeof sun !== 'undefined' && sun) sun.castShadow = renderQuality.shadows
+  if (typeof dust !== 'undefined' && dust) dust.visible = renderQuality.secondaryEffects
+  document.documentElement.dataset.renderQuality = renderQuality.level
   if (deskAR.active || settings.arDesk) {
     renderer.setClearColor(0x000000, 0)
   } else {
     renderer.setClearColor(0xc8dff5, 1)
   }
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, settings.lowPower ? 1.25 : 2))
+renderer.setPixelRatio(renderQuality.pixelRatio)
 renderer.setSize(innerWidth, innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.shadowMap.enabled = !settings.lowPower
@@ -569,6 +598,17 @@ renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1.05
 renderer.setClearColor(0xc8dff5, 1)
+
+installNativePerformanceListener({
+  target: window,
+  onSignal(signal) {
+    nativePerformanceSignal = signal
+    applyPerformanceSettings()
+    if (signal.memoryPressure) {
+      notifications.show('Performance mode enabled to keep your flight smooth', { duration: 3200 })
+    }
+  },
+})
 
 const scene = new THREE.Scene()
 scene.fog = new THREE.Fog(0xc8dff5, 50, 240)
@@ -616,7 +656,7 @@ function addBossArtOverlay(group, kind) {
   const overlay = createBossArtOverlay({
     THREE: BOSS_ART_THREE,
     kind,
-    size: 16,
+    size: 12,
     loadTexture: (rawUrl, onLoad, onError) => loader.load(
       resolveAssetUrl(rawUrl),
       onLoad,
@@ -625,7 +665,9 @@ function addBossArtOverlay(group, kind) {
     ),
   })
   if (!overlay) return
-  overlay.position.set(0, 10, -0.35)
+  overlay.position.set(0, 10, 0.45)
+  overlay.renderOrder = 0
+  overlay.material.opacity = 0.68
   group.add(overlay)
   group.userData.artOverlay = overlay
 }
@@ -1264,24 +1306,27 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
 // Geometry shared across both boss variants (scissors=red, wind=blue) — only
 // the material color differs, so no need to rebuild the torus mesh data
 // each of the 3 rings per boss gate.
-const dangerRingGeo = new THREE.TorusGeometry(1.8, 0.13, 12, 32)
-const dangerRingGlowGeo = new THREE.TorusGeometry(1.8, 0.19, 8, 32)
+const dangerRingGeo = new THREE.TorusGeometry(2.45, 0.15, 12, 36)
+const dangerRingGlowGeo = new THREE.TorusGeometry(2.45, 0.28, 8, 36)
 
 function createDangerRing(color, emissive) {
   const ring = new THREE.Mesh(
     dangerRingGeo,
     new THREE.MeshStandardMaterial({
       color, emissive, emissiveIntensity: 0.55, roughness: 0.3, side: THREE.DoubleSide,
+      depthTest: false,
     }),
   )
   const glow = new THREE.Mesh(
     dangerRingGlowGeo,
     new THREE.MeshBasicMaterial({
       color: emissive, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide,
+      depthTest: false,
     }),
   )
   ring.add(glow)
   ring.name = 'safeRing'
+  ring.renderOrder = 4
   return ring
 }
 
@@ -1318,12 +1363,9 @@ function createBossGate() {
     tower.position.x = sx
     g.add(tower)
   }
-  // Danger rings / guides
-  for (let i = 0; i < 3; i++) {
-    const ring = createDangerRing(0xfb7185, 0xe11d48)
-    ring.position.set(0, 6 + i * 4, 0)
-    g.add(ring)
-  }
+  const safeRing = createDangerRing(0x86efac, 0x22c55e)
+  safeRing.position.set(0, 10, -0.05)
+  g.add(safeRing)
   g.add(left, right)
   addBossArtOverlay(g, 'scissors')
   g.userData.left = left
@@ -1331,6 +1373,7 @@ function createBossGate() {
   g.userData.phase = 0
   g.userData.gapY = 10
   g.userData.kind = 'scissors'
+  g.userData.safeRing = safeRing
   return g
 }
 
@@ -1378,11 +1421,9 @@ function createWindTunnelGate() {
     debris.push(d)
   }
 
-  for (let i = 0; i < 3; i++) {
-    const ring = createDangerRing(0x7eb8e8, 0x2563eb)
-    ring.position.set(0, 6 + i * 4, 0)
-    g.add(ring)
-  }
+  const safeRing = createDangerRing(0x93c5fd, 0x2563eb)
+  safeRing.position.set(0, 10, -0.05)
+  g.add(safeRing)
   addBossArtOverlay(g, 'wind')
   g.userData.fanL = fanL
   g.userData.fanR = fanR
@@ -1390,6 +1431,7 @@ function createWindTunnelGate() {
   g.userData.phase = 0
   g.userData.gapY = 10
   g.userData.kind = 'wind'
+  g.userData.safeRing = safeRing
   return g
 }
 
@@ -2232,7 +2274,17 @@ function spawnChunk(z) {
 }
 
 let bossCount = 0
+function clearBossApproachHazards() {
+  for (let index = entities.length - 1; index >= 0; index -= 1) {
+    const entity = entities[index]
+    if (!shouldClearForBossApproach({ type: entity.type, z: entity.mesh.position.z })) continue
+    scene.remove(entity.mesh)
+    entities.splice(index, 1)
+  }
+}
+
 function spawnBoss(z = 70) {
+  clearBossApproachHazards()
   const useWind = bossCount % 2 === 1
   const encounterIndex = bossCount
   bossCount++
@@ -4004,17 +4056,16 @@ function animateHazards(dt) {
             : -0.25 - Math.sin(u.phase * 1.3) * 0.2
         }
       }
-      // Highlight safe rings near gap
-      e.mesh.traverse((ch) => {
-        if (ch.name === 'safeRing') {
-          ch.position.y = u.gapY
-          ch.material.opacity = encounter?.motionAllowed === false
-            ? 0.85
-            : 0.7 + Math.sin(elapsed * 8) * 0.2
-          ch.scale.setScalar(encounter?.shapeCue?.includes('ring') ? 1.12 : 1)
-          ch.material.transparent = true
-        }
-      })
+      const safeRing = u.safeRing
+      if (safeRing) {
+        safeRing.position.y = u.gapY
+        safeRing.material.opacity = encounter?.motionAllowed === false
+          ? 0.9
+          : 0.78 + Math.sin(elapsed * 8) * 0.16
+        const passageScale = Math.min(encounter?.passage?.halfWidth || 3.3, encounter?.passage?.halfHeight || 3.2) / 2.45
+        safeRing.scale.setScalar(passageScale * (encounter?.shapeCue?.includes('ring') ? 1.08 : 1))
+        safeRing.material.transparent = true
+      }
     }
     // Spin the billboard card in-plane (not around Y) so it keeps facing the camera
     if (e.type === 'star' && e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.z += dt * 1.6
@@ -4570,7 +4621,8 @@ function update(dt) {
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
     speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.55))
   }
-  const move = speed * dt
+  const approachingBoss = entities.find((entity) => entity.type === 'boss' && !entity.cleared)
+  const move = speed * dt * getBossApproachSpeedScale({ bossZ: approachingBoss?.mesh.position.z })
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
@@ -4601,7 +4653,7 @@ function update(dt) {
 
   // Ambient wisp trail — subtle always-on speed cue, skipped in low-power mode
   const wisp = scene.getObjectByName('ambientWisp')
-  if (wisp && !settings.lowPower && speed > cfg.speedBase * 1.15) {
+  if (wisp && renderQuality.secondaryEffects && speed > cfg.speedBase * 1.15) {
     wisp.visible = true
     for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])
     wispPts[0].set(planeX + (Math.random() - 0.5) * 0.5, planeY - 0.15 + (Math.random() - 0.5) * 0.2, -0.8 - Math.random() * 0.6)
@@ -4872,7 +4924,14 @@ function update(dt) {
       // Only test when gate is in the plane's path slice
       if (dz < 3.5 && dz > -2.5) {
         const gapY = m.userData.gapY || 10
-        const inGap = Math.abs(p.y - gapY) < 2.5 && Math.abs(p.x - m.position.x) < 2.6
+        const encounter = e.director?.snapshot()
+        const inGap = isInsideBossPassage({
+          playerX: p.x,
+          playerY: p.y,
+          bossX: m.position.x,
+          gapY,
+          passage: encounter?.passage,
+        })
         if (!inGap && Math.abs(dz) < 1.8) {
           e.director?.collide()
           die(m.userData.kind === 'wind' ? 'Blown into the wind turbines!' : 'Snipped by the boss scissors!')
@@ -5134,6 +5193,7 @@ function bossTextState() {
     pressure: Number(boss.pressure.toFixed(2)),
     completed: boss.completed,
     shapeCue: boss.shapeCue,
+    passage: boss.passage,
   }
 }
 
@@ -5189,7 +5249,17 @@ window.render_game_to_text = () => JSON.stringify({
     dustVisible: dust.visible,
     shieldPowerColor: POWER_META.shield.color,
   },
-  performance: frameHealth.snapshot(),
+  performance: {
+    ...frameHealth.snapshot(),
+    quality: renderQuality,
+    renderer: {
+      drawCalls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
+      geometries: renderer.info.memory.geometries,
+      textures: renderer.info.memory.textures,
+    },
+    nativeSignal: nativePerformanceSignal,
+  },
   journey: journeyRunConfig ? {
     routeId: journeyRunConfig.routeId,
     destination: journeyRunConfig.zone,
@@ -5365,6 +5435,19 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   windTimer = 999
   bossCount = devBossProof === 'wind' ? 1 : 0
   spawnBoss(60)
+  if (devBossPass) {
+    const boss = entities.find((entity) => entity.type === 'boss')
+    const safeY = boss?.director?.snapshot().safeY ?? 10
+    planeX = 0
+    planeY = safeY
+    plane.position.set(planeX, planeY, 0)
+    mouseTarget.x = planeX
+    mouseTarget.y = planeY
+    if (boss) boss.mesh.position.z = 3
+    invuln = 0
+    elapsed = 2
+    launchGraceSeconds = 0
+  }
   hudEl?.classList.remove('hidden')
   simulationPaused = true
 }

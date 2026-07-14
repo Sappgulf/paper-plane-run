@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { createBossEncounter, describeBossPhase } from '../src/game/boss-director.js'
+import {
+  createBossEncounter,
+  describeBossPhase,
+  getBossPassage,
+  getBossApproachSpeedScale,
+  isInsideBossPassage,
+  shouldClearForBossApproach,
+} from '../src/game/boss-director.js'
 
 describe('boss encounter director', () => {
   test.each(['scissors', 'wind'])('runs warning, pressure, and final pass for %s', (kind) => {
@@ -16,6 +23,52 @@ describe('boss encounter director', () => {
     expect(easy.snapshot().warningSeconds).toBeGreaterThan(hard.snapshot().warningSeconds)
     expect(easy.step(0.9).phase).toBe('warning')
     expect(hard.step(0.9).phase).toBe('pressure')
+  })
+
+  test('gives every difficulty a generous but progressively tighter passage', () => {
+    const easy = getBossPassage({ difficulty: 'easy' })
+    const normal = getBossPassage({ difficulty: 'normal' })
+    const hard = getBossPassage({ difficulty: 'hard' })
+
+    expect(easy.halfWidth).toBeGreaterThan(normal.halfWidth)
+    expect(normal.halfWidth).toBeGreaterThan(hard.halfWidth)
+    expect(easy.halfHeight).toBeGreaterThan(normal.halfHeight)
+    expect(normal.halfHeight).toBeGreaterThan(hard.halfHeight)
+    expect(hard).toMatchObject({ halfWidth: expect.any(Number), halfHeight: expect.any(Number) })
+    expect(hard.halfWidth).toBeGreaterThan(2.6)
+    expect(hard.halfHeight).toBeGreaterThan(2.5)
+  })
+
+  test('uses the same passage contract for a centered clear, forgiving edge, and miss', () => {
+    const passage = getBossPassage({ difficulty: 'normal' })
+
+    expect(isInsideBossPassage({ playerX: 0, playerY: 14, bossX: 0, gapY: 14, passage })).toBe(true)
+    expect(isInsideBossPassage({
+      playerX: passage.halfWidth - 0.05,
+      playerY: 14 + passage.halfHeight - 0.05,
+      bossX: 0,
+      gapY: 14,
+      passage,
+    })).toBe(true)
+    expect(isInsideBossPassage({
+      playerX: passage.halfWidth + 0.05,
+      playerY: 14,
+      bossX: 0,
+      gapY: 14,
+      passage,
+    })).toBe(false)
+  })
+
+  test('slows only the readable boss approach and clears lethal corridor hazards', () => {
+    expect(getBossApproachSpeedScale({ bossZ: 70 })).toBe(0.84)
+    expect(getBossApproachSpeedScale({ bossZ: 95 })).toBe(1)
+    expect(getBossApproachSpeedScale({ bossZ: -4 })).toBe(1)
+
+    expect(shouldClearForBossApproach({ type: 'bird', z: 80 })).toBe(true)
+    expect(shouldClearForBossApproach({ type: 'scissors', z: 20 })).toBe(true)
+    expect(shouldClearForBossApproach({ type: 'building', z: 120 })).toBe(true)
+    expect(shouldClearForBossApproach({ type: 'star', z: 80 })).toBe(false)
+    expect(shouldClearForBossApproach({ type: 'bird', z: -10 })).toBe(false)
   })
 
   test('is deterministic and keeps lanes in the supported range', () => {
@@ -50,6 +103,7 @@ describe('boss encounter director', () => {
       warningSeconds: normal.snapshot().warningSeconds,
       motionAllowed: false,
       shapeCue: 'radial-vane-ring',
+      passage: getBossPassage({ difficulty: 'normal' }),
     })
     expect(accessible.step(2)).toMatchObject({ phase: normal.step(2).phase, safeLane: normal.snapshot().safeLane })
   })

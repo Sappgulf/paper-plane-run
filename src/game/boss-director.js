@@ -6,6 +6,37 @@ const TIMING = Object.freeze({
 
 const LANE_Y = Object.freeze({ '-1': 6, 0: 10, 1: 14 })
 const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
+const PASSAGES = Object.freeze({
+  easy: Object.freeze({ halfWidth: 3.6, halfHeight: 3.5 }),
+  normal: Object.freeze({ halfWidth: 3.3, halfHeight: 3.2 }),
+  hard: Object.freeze({ halfWidth: 2.9, halfHeight: 2.8 }),
+})
+
+export function getBossPassage({ difficulty = 'normal' } = {}) {
+  return PASSAGES[difficulty] || PASSAGES.normal
+}
+
+export function isInsideBossPassage({
+  playerX = 0,
+  playerY = 0,
+  bossX = 0,
+  gapY = 10,
+  passage = PASSAGES.normal,
+} = {}) {
+  const halfWidth = Math.max(0, Number(passage?.halfWidth) || 0)
+  const halfHeight = Math.max(0, Number(passage?.halfHeight) || 0)
+  return Math.abs((Number(playerX) || 0) - (Number(bossX) || 0)) < halfWidth &&
+    Math.abs((Number(playerY) || 0) - (Number(gapY) || 0)) < halfHeight
+}
+
+export function getBossApproachSpeedScale({ bossZ } = {}) {
+  const z = Number(bossZ)
+  return Number.isFinite(z) && z > 0 && z <= 80 ? 0.84 : 1
+}
+
+export function shouldClearForBossApproach({ type, z } = {}) {
+  return ['bird', 'scissors', 'building'].includes(type) && Number(z) >= 0 && Number(z) <= 140
+}
 
 export function describeBossPhase({ kind, phase, safeLane } = {}) {
   const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
@@ -47,6 +78,7 @@ export function createBossEncounter({
 } = {}) {
   if (!['scissors', 'wind'].includes(kind)) throw new TypeError(`Unknown boss kind: ${kind}`)
   const timing = TIMING[difficulty] || TIMING.normal
+  const passage = getBossPassage({ difficulty })
   const safeLane = seededLane(kind, encounterSeed)
   let elapsed = 0
   let terminal = null
@@ -73,6 +105,7 @@ export function createBossEncounter({
       shapeCue: colorblind
         ? (kind === 'wind' ? 'radial-vane-ring' : 'crossed-blade-chevron')
         : kind,
+      passage,
     })
   }
 

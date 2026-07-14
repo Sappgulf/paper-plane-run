@@ -3,7 +3,7 @@ const BOSS_ASSET_ROOT = '/assets/bosses'
 function defineBossArt(id, { alt, palette, shape }) {
   return Object.freeze({
     id,
-    texture: `${BOSS_ASSET_ROOT}/${id}.png`,
+    texture: `${BOSS_ASSET_ROOT}/${id}.webp`,
     preview: `${BOSS_ASSET_ROOT}/${id}.webp`,
     alt,
     palette: Object.freeze(palette),
