@@ -31,10 +31,10 @@
         <div class="hud-card" data-hud-priority="secondary"><span class="label">Best</span><span id="best">0m</span></div>
         <div id="timeattack-hud" class="hud-card timeattack-hud hidden" data-hud-priority="primary"><span class="label">Time</span><span id="timeattack-val">60</span></div>
         <div class="hud-card stars" data-hud-priority="primary"><span class="label">Stars</span><span id="stars">0</span></div>
-        <div class="hud-card mode-chip" data-hud-priority="secondary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
+        <div class="hud-card mode-chip" data-hud-priority="tertiary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
         <div class="hud-card zone-chip" data-hud-priority="secondary"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
         <div id="next-zone-hud" class="hud-card next-zone-chip hidden" data-hud-priority="secondary"><span class="label">Next</span><span id="hud-next-zone">—</span></div>
-        <div id="ghost-delta-hud" class="hud-card ghost-delta-chip hidden" data-hud-priority="secondary"><span class="label">Ghost</span><span id="ghost-delta-val">+0m</span></div>
+        <div id="ghost-delta-hud" class="hud-card ghost-delta-chip hidden" data-hud-priority="tertiary"><span class="label">Ghost</span><span id="ghost-delta-val">+0m</span></div>
         <div id="guardian-hud" class="hud-card guardian-chip hidden" data-hud-priority="secondary"><span class="label">Guardian</span><span id="guardian-hud-val">0</span></div>
         <div id="journey-objective-hud" class="hud-card journey-objective-chip hidden" data-hud-priority="primary"><span class="label">Route goal</span><span id="journey-objective-val">Reach the destination</span></div>
         <div id="combo-hud" class="hud-card combo-hud hidden" data-hud-priority="primary"><span class="label">Combo</span><span id="combo-val">1x</span></div>
@@ -47,7 +47,7 @@
         </div>
         <div id="hotseat-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">Player</span><span id="hotseat-player">1</span></div>
         <div id="coop-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
-        <div id="ctrl-hud" class="hud-card mode-chip" data-hud-priority="secondary"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
+        <div id="ctrl-hud" class="hud-card mode-chip" data-hud-priority="tertiary"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
       </div>
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute" aria-label="Mute">🔊</button>
@@ -166,16 +166,20 @@
             <p class="tagline hangar-wallet">
               Wallet <strong id="hangar-wallet">0</strong>★ · Lifetime <strong id="hangar-lifetime">0</strong>★
             </p>
+            <div class="hangar-group-switch" role="group" aria-label="Hangar section group">
+              <button type="button" id="hangar-group-progress" class="hangar-group-btn active" data-hangar-group="progress" aria-pressed="true">Progress</button>
+              <button type="button" id="hangar-group-meta" class="hangar-group-btn" data-hangar-group="meta" aria-pressed="false">Meta</button>
+            </div>
             <div class="hangar-tabs" role="tablist" aria-label="Hangar sections">
-              <button id="hangar-tab-upgrades" type="button" class="hangar-tab active" data-tab="upgrades" role="tab" aria-controls="tab-upgrades" aria-selected="true" tabindex="0">🔧&nbsp;Upgrades</button>
-              <button id="hangar-tab-skins" type="button" class="hangar-tab" data-tab="skins" role="tab" aria-controls="tab-skins" aria-selected="false" tabindex="-1">🎨&nbsp;Planes</button>
-              <button id="hangar-tab-missions" type="button" class="hangar-tab" data-tab="missions" role="tab" aria-controls="tab-missions" aria-selected="false" tabindex="-1">🎯&nbsp;Missions</button>
-              <button id="hangar-tab-achievements" type="button" class="hangar-tab" data-tab="achievements" role="tab" aria-controls="tab-achievements" aria-selected="false" tabindex="-1">🎖️&nbsp;Awards</button>
-              <button id="hangar-tab-board" type="button" class="hangar-tab" data-tab="board" role="tab" aria-controls="tab-board" aria-selected="false" tabindex="-1">🏆&nbsp;Board</button>
-              <button id="hangar-tab-settings" type="button" class="hangar-tab" data-tab="settings" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1">⚙️&nbsp;Settings</button>
-              <button id="hangar-tab-stats" type="button" class="hangar-tab" data-tab="stats" role="tab" aria-controls="tab-stats" aria-selected="false" tabindex="-1">📊&nbsp;Stats</button>
-              <button id="hangar-tab-postcards" type="button" class="hangar-tab" data-tab="postcards" role="tab" aria-controls="tab-postcards" aria-selected="false" tabindex="-1">💌&nbsp;Postcards</button>
-              <button id="hangar-tab-editor" type="button" class="hangar-tab" data-tab="editor" role="tab" aria-controls="tab-editor" aria-selected="false" tabindex="-1">🛠&nbsp;Editor</button>
+              <button id="hangar-tab-upgrades" type="button" class="hangar-tab active" data-tab="upgrades" data-hangar-group="progress" role="tab" aria-controls="tab-upgrades" aria-selected="true" tabindex="0">🔧&nbsp;Upgrades</button>
+              <button id="hangar-tab-skins" type="button" class="hangar-tab" data-tab="skins" data-hangar-group="progress" role="tab" aria-controls="tab-skins" aria-selected="false" tabindex="-1">🎨&nbsp;Planes</button>
+              <button id="hangar-tab-missions" type="button" class="hangar-tab" data-tab="missions" data-hangar-group="progress" role="tab" aria-controls="tab-missions" aria-selected="false" tabindex="-1">🎯&nbsp;Missions</button>
+              <button id="hangar-tab-achievements" type="button" class="hangar-tab" data-tab="achievements" data-hangar-group="progress" role="tab" aria-controls="tab-achievements" aria-selected="false" tabindex="-1">🎖️&nbsp;Awards</button>
+              <button id="hangar-tab-board" type="button" class="hangar-tab hangar-tab-meta" data-tab="board" data-hangar-group="meta" role="tab" aria-controls="tab-board" aria-selected="false" tabindex="-1">🏆&nbsp;Board</button>
+              <button id="hangar-tab-settings" type="button" class="hangar-tab hangar-tab-meta" data-tab="settings" data-hangar-group="meta" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1">⚙️&nbsp;Settings</button>
+              <button id="hangar-tab-stats" type="button" class="hangar-tab hangar-tab-meta" data-tab="stats" data-hangar-group="meta" role="tab" aria-controls="tab-stats" aria-selected="false" tabindex="-1">📊&nbsp;Stats</button>
+              <button id="hangar-tab-postcards" type="button" class="hangar-tab hangar-tab-meta" data-tab="postcards" data-hangar-group="meta" role="tab" aria-controls="tab-postcards" aria-selected="false" tabindex="-1">💌&nbsp;Postcards</button>
+              <button id="hangar-tab-editor" type="button" class="hangar-tab hangar-tab-meta" data-tab="editor" data-hangar-group="meta" role="tab" aria-controls="tab-editor" aria-selected="false" tabindex="-1">🛠&nbsp;Editor</button>
             </div>
           </div>
           <div class="hangar-body">
@@ -293,6 +297,7 @@
           </div>
           <div class="btn-row wrap gameover-actions gameover-actions-primary">
             <button id="retry-btn" type="button" class="cta-main cta-inline">Fly Again</button>
+            <button id="hangar-from-gameover" type="button" class="cta-main cta-inline hangar-spend-cta hidden">Spend ★ in Hangar</button>
           </div>
           <div class="btn-row wrap gameover-actions gameover-actions-secondary">
             <button id="share-btn" type="button" class="btn-secondary">Share Score</button>

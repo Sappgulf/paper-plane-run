@@ -380,6 +380,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-low-power').check({ force: true })
@@ -424,6 +425,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await page.locator('#editor-import').fill('L1|First%20route|T0.0,8.0,40.0')
@@ -435,6 +437,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   })
 
   await page.locator('#hangar-btn').evaluate((button) => button.click())
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
   await page.locator('#editor-import').fill('L1|Current%20route|R1.0,9.0,35.0;P-2.0,7.0,55.0')
   await tap(page.locator('#editor-load'))
@@ -797,6 +800,20 @@ test('game-over summarizes banked rewards and the next action', async ({ page })
   await expect(summary).toContainText('Banked')
   await expect(summary).toContainText('+3★')
   await expect(summary).toContainText('Spend 3★ in Upgrades or fly again')
+  await expect(page.getByRole('button', { name: 'Spend 3★ in Hangar' })).toBeVisible()
+})
+
+test('Hangar Progress/Meta filter keeps only the active group tabs visible', async ({ page }) => {
+  await openApp(page)
+  await page.getByRole('button', { name: '🏠 Hangar' }).click()
+
+  await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /Editor/ })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Meta' }).click()
+  await expect(page.getByRole('tab', { name: /Board/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeHidden()
+  await expect(page.getByRole('tab', { name: /Editor/ })).toBeVisible()
 })
 
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
@@ -808,6 +825,7 @@ test('mobile Hangar tabs reset the shared scroll position', async ({ page }, tes
   await hangarBody.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await expect(page.getByRole('button', { name: '🏢 Building' })).toBeVisible()
@@ -818,6 +836,7 @@ test('Aim feel selection survives a Hangar tab round trip', async ({ page }, tes
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-mouse-sens').selectOption('0.75')

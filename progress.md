@@ -2,6 +2,15 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-07-16
+
+### Rebase + Hangar/HUD clarity (theme A)
+
+- Rebased `codex/polish-passes-1-3` onto `origin/main` (safe storage, new Fever/Steady/Gold upgrades, bird density, building corridors, wind telegraph).
+- Combined fairness: passage lanes + center-building corridor safety both retained.
+- Hangar Progress/Meta filter (9 tabs preserved), denser mobile HUD (tertiary chips), run-summary CTA + **Spend ★ in Hangar** game-over path.
+- Verification: 220 Vitest; production build + bundle budget PASS; iOS parity 102 files; focused Playwright hangar/gameover desktop lane green.
+
 ## 2026-07-13
 
 - Approved design and implementation plan are committed on `main` at `3833219` and `8372527`.

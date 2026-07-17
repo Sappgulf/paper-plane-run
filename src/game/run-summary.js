@@ -14,13 +14,16 @@ export function buildRunSummary({
 } = {}) {
   const bankedStars = nonNegative(stars) + nonNegative(journeyBonus) + nonNegative(weeklyBonus)
   const improvementMeters = Math.max(0, Math.floor(nonNegative(distance) - nonNegative(previousBest)))
+  const canSpend = bankedStars > 0
   return Object.freeze({
     bankedStars,
     improvementMeters,
     maxCombo: Math.floor(nonNegative(maxCombo)),
     reason: String(reason || ''),
-    nextAction: bankedStars > 0
-      ? `Spend ${bankedStars}★ in Upgrades or fly again`
+    nextActionKind: canSpend ? 'spend' : 'fly',
+    ctaLabel: canSpend ? `Spend ${Math.floor(bankedStars)}★ in Hangar` : 'Fly Again',
+    nextAction: canSpend
+      ? `Spend ${Math.floor(bankedStars)}★ in Upgrades or fly again`
       : 'Fly again and bank your first star',
   })
 }

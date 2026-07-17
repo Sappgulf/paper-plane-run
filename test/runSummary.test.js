@@ -17,7 +17,18 @@ describe('post-run summary', () => {
       improvementMeters: 30,
       maxCombo: 4,
       reason: 'Hit a kite',
+      nextActionKind: 'spend',
+      ctaLabel: 'Spend 12★ in Hangar',
       nextAction: 'Spend 12★ in Upgrades or fly again',
+    })
+  })
+
+  test('steers starless runs toward flying again without a hangar spend CTA', () => {
+    expect(buildRunSummary({ stars: 0, distance: 40, previousBest: 90, maxCombo: 1 })).toMatchObject({
+      bankedStars: 0,
+      nextActionKind: 'fly',
+      ctaLabel: 'Fly Again',
+      nextAction: 'Fly again and bank your first star',
     })
   })
 })

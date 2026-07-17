@@ -15,8 +15,18 @@ describe('shell accessibility contracts', () => {
     expect(markup.match(/role="tab"/g)).toHaveLength(9)
     expect(markup).toContain('aria-selected="true"')
     expect(markup).toContain('role="tabpanel"')
+    expect(markup).toContain('data-hangar-group="progress"')
+    expect(markup).toContain('data-hangar-group="meta"')
+    expect(markup).toContain('id="hangar-group-progress"')
     expect(shell).toContain("setAttribute('aria-selected'")
     expect(shell).toContain("setAttribute('tabindex'")
+    expect(shell).toContain('setHangarGroup')
+  })
+
+  test('game-over offers a spend-in-hangar path when stars are banked', () => {
+    expect(markup).toContain('id="hangar-from-gameover"')
+    expect(engine).toContain("shellBridge?.openHangar?.('upgrades')")
+    expect(engine).toContain('nextActionKind')
   })
 
   test('keeps compact control guidance consistent before and after engine preload', () => {

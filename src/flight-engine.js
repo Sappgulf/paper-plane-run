@@ -3348,6 +3348,11 @@ bindClick('retry-btn', () => {
   if (runKind === 'journey' && !journey?.selectedRouteId) openJourney()
   else startGame(runKind, runKind === 'journey' ? { journeyConfig: buildRunConfiguration(journey) } : {})
 })
+bindClick('hangar-from-gameover', () => {
+  hotseat.active = false
+  gameoverEl?.classList.add('hidden')
+  shellBridge?.openHangar?.('upgrades')
+})
 bindClick('menu-btn', () => {
   if (state === 'dead' && crashT > 0) {
     crashT = 0
@@ -3693,20 +3698,33 @@ function renderRunSummary(summary) {
   if (!runSummaryEl || !summary) return
   runSummaryEl.innerHTML = ''
   const items = [
-    ['Banked', `+${summary.bankedStars}★`],
-    [summary.improvementMeters > 0 ? 'Personal best' : 'Best combo', summary.improvementMeters > 0 ? `+${summary.improvementMeters}m` : `${summary.maxCombo}x`],
-    ['Next', summary.nextAction],
+    { label: 'Banked', value: `+${summary.bankedStars}★`, emphasis: summary.bankedStars > 0 },
+    {
+      label: summary.improvementMeters > 0 ? 'Personal best' : 'Best combo',
+      value: summary.improvementMeters > 0 ? `+${summary.improvementMeters}m` : `${summary.maxCombo}x`,
+    },
+    { label: 'Next', value: summary.nextAction, next: true },
   ]
-  for (const [label, value] of items) {
+  for (const item of items) {
     const row = document.createElement('div')
+    if (item.next) row.classList.add('run-summary-next')
+    if (item.emphasis) row.classList.add('run-summary-banked')
     const key = document.createElement('span')
     const result = document.createElement('strong')
-    key.textContent = label
-    result.textContent = value
+    key.textContent = item.label
+    result.textContent = item.value
     row.append(key, result)
     runSummaryEl.appendChild(row)
   }
   runSummaryEl.classList.remove('hidden')
+
+  const hangarCta = $('hangar-from-gameover')
+  if (hangarCta) {
+    const canSpend = summary.nextActionKind === 'spend' && summary.bankedStars > 0
+    hangarCta.classList.toggle('hidden', !canSpend)
+    hangarCta.textContent = summary.ctaLabel || 'Spend ★ in Hangar'
+    hangarCta.setAttribute('aria-hidden', String(!canSpend))
+  }
 }
 
 function finalizeDeathUnsafe() {

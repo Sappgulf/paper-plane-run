@@ -28,6 +28,11 @@ import { seasonInfo } from './seasonal.js'
 import { dailyKey } from './rng.js'
 import { todaysTwist } from './twists.js'
 import { estimateRunsToAfford } from './game/economy.js'
+import {
+  hangarGroupForTab,
+  isHangarTabInGroup,
+  resolveHangarTabForGroup,
+} from './game/hangar-nav.js'
 import { fetchRemoteTop, getDailyTop, getLocalTop, getTimeAttackTop } from './leaderboard.js'
 import { safeSetItem } from './game/safe-storage.js'
 
@@ -257,31 +262,62 @@ function refreshHangarWallet() {
   if (w2) w2.textContent = String(getWallet())
 }
 
+let hangarGroup = 'progress'
+let hangarTab = 'upgrades'
+
+function syncHangarGroupUi(group = hangarGroup) {
+  hangarGroup = group === 'meta' ? 'meta' : 'progress'
+  document.querySelectorAll('.hangar-group-btn').forEach((button) => {
+    const active = button.dataset.hangarGroup === hangarGroup
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-pressed', String(active))
+  })
+  document.querySelectorAll('.hangar-tab').forEach((button) => {
+    const inGroup = isHangarTabInGroup(button.dataset.tab, hangarGroup)
+    button.classList.toggle('hangar-tab-filtered-out', !inGroup)
+    button.hidden = !inGroup
+    if (!inGroup) {
+      button.setAttribute('tabindex', '-1')
+      button.setAttribute('aria-selected', 'false')
+      button.classList.remove('active')
+    }
+  })
+}
+
 function showHangarTab(tab) {
-  if (tab !== 'skins') stopPlanePreview()
+  const nextTab = tab || 'upgrades'
+  hangarTab = nextTab
+  hangarGroup = hangarGroupForTab(nextTab)
+  if (nextTab !== 'skins') stopPlanePreview()
+  syncHangarGroupUi(hangarGroup)
   document.querySelectorAll('.hangar-tab').forEach((b) => {
-    const selected = b.dataset.tab === tab
+    const selected = b.dataset.tab === nextTab
     b.classList.toggle('active', selected)
     b.setAttribute('aria-selected', String(selected))
     b.setAttribute('tabindex', selected ? '0' : '-1')
   })
   document.querySelectorAll('.hangar-page').forEach((p) => {
-    const selected = p.id === `tab-${tab}`
+    const selected = p.id === `tab-${nextTab}`
     p.classList.toggle('hidden', !selected)
     p.hidden = !selected
   })
   const hangarBody = document.querySelector('.hangar-body')
   if (hangarBody) hangarBody.scrollTop = 0
-  if (tab === 'upgrades') renderUpgrades()
-  if (tab === 'skins') renderSkins()
-  if (tab === 'missions') renderMissions()
-  if (tab === 'achievements') renderAchievements()
-  if (tab === 'board') renderBoard('local')
-  if (tab === 'settings') renderSettings()
-  if (tab === 'stats') renderStats()
-  if (tab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
-  if (tab === 'editor') setupEditor()
+  if (nextTab === 'upgrades') renderUpgrades()
+  if (nextTab === 'skins') renderSkins()
+  if (nextTab === 'missions') renderMissions()
+  if (nextTab === 'achievements') renderAchievements()
+  if (nextTab === 'board') renderBoard('local')
+  if (nextTab === 'settings') renderSettings()
+  if (nextTab === 'stats') renderStats()
+  if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
+  if (nextTab === 'editor') setupEditor()
   refreshHangarWallet()
+}
+
+function setHangarGroup(group) {
+  const nextTab = resolveHangarTabForGroup(group, hangarTab)
+  showHangarTab(nextTab)
 }
 
 function refreshMissionBadge() {
@@ -855,7 +891,7 @@ $('editor-play')?.addEventListener('click', () => {
 function openHangar(tab = 'upgrades') {
   hideAllPanels()
   $('hangar-panel')?.classList.remove('hidden')
-  showHangarTab(tab)
+  showHangarTab(tab || 'upgrades')
 }
 
 let pendingStart = null
@@ -889,6 +925,7 @@ async function syncSettingsWithEngine(nextSettings) {
 const shellBridge = Object.freeze({
   showMenu,
   openJourney,
+  openHangar,
   showPostcardReveal,
   refreshProgression,
   settingsApplied: applyEngineSettingsResult,
@@ -969,6 +1006,12 @@ document.addEventListener('click', (event) => {
     showMenu()
     return
   }
+  if (button?.matches('[data-hangar-group]')) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    setHangarGroup(button.dataset.hangarGroup)
+    return
+  }
   if (button?.matches('.hangar-tab')) {
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -978,7 +1021,7 @@ document.addEventListener('click', (event) => {
 
 document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-  const tabs = [...document.querySelectorAll('.hangar-tab')]
+  const tabs = [...document.querySelectorAll('.hangar-tab')].filter((tab) => !tab.hidden)
   const current = tabs.indexOf(document.activeElement)
   if (current < 0) return
   event.preventDefault()
