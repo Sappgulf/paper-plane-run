@@ -14,6 +14,7 @@ const TEMPLATES = [
   { id: 'daily', label: (n) => `Score ${n}m on today's Daily Route`, type: 'daily_distance', min: 70, max: 250 },
   { id: 'clean_run', label: (n) => `Fly ${n}m without a single power-up`, type: 'clean_distance', min: 90, max: 280 },
   { id: 'sharpshooter', label: (n) => `Pop ${n} hazards with Ink Blast in one run`, type: 'popped', min: 2, max: 8 },
+  { id: 'fever_once', label: (n) => `Trigger Combo Fever ${n} time${n > 1 ? 's' : ''} in one run`, type: 'fever', min: 1, max: 2 },
 ]
 
 function loadState() {
@@ -94,6 +95,9 @@ export function updateMissionsFromRun(stats) {
         break
       case 'popped':
         val = stats.popped || 0
+        break
+      case 'fever':
+        val = stats.fevers || 0
         break
       default:
         val = 0

@@ -160,6 +160,36 @@ export const SKINS = [
     accent: 0x7c3aed,
     map: '/assets/skin-gold.jpg',
   },
+  {
+    id: 'inkveil',
+    ...planeArt('inkveil', 'dart'),
+    name: 'Ink Veil',
+    cost: 0,
+    prestigeReq: 3,
+    body: 0x111827,
+    accent: 0x38bdf8,
+    map: '/assets/skin-neon.jpg',
+  },
+  {
+    id: 'starcrest',
+    ...planeArt('starcrest', 'stunt'),
+    name: 'Starcrest',
+    cost: 0,
+    prestigeReq: 5,
+    body: 0x1e1b4b,
+    accent: 0xfbbf24,
+    map: '/assets/skin-night.jpg',
+  },
+  {
+    id: 'paperlegend',
+    ...planeArt('paperlegend', 'glider'),
+    name: 'Paper Legend',
+    cost: 0,
+    prestigeReq: 10,
+    body: 0xfff7ed,
+    accent: 0xa855f7,
+    map: '/assets/skin-rainbow.jpg',
+  },
 ]
 
 const KNOWN_SKIN_IDS = new Set(SKINS.map((skin) => skin.id))

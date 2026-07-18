@@ -15,9 +15,11 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     turbo: Object.freeze([15, 30, 52]),
     guardian: Object.freeze([35, 70]),
     weapon: Object.freeze([24, 45, 72, 105]),
-    fever: Object.freeze([18, 34, 58]),
-    streak: Object.freeze([14, 26, 44]),
-    wealth: Object.freeze([16, 30, 50]),
+    // First ranks of the late tree stay inside a short normal-run save so the
+    // three newest upgrades never feel gated behind prestige play.
+    fever: Object.freeze([14, 28, 50]),
+    streak: Object.freeze([12, 24, 42]),
+    wealth: Object.freeze([12, 26, 46]),
   }),
   planes: Object.freeze({
     mint: 20,
@@ -67,4 +69,18 @@ export function estimateRunsToAfford({ wallet, cost, starsPerRun = NORMAL_RUN_EA
     runs: missingStars > 0 && earningRate > 0 ? Math.ceil(missingStars / earningRate) : 0,
     affordable: missingStars === 0,
   }
+}
+
+/** Sum future purchase costs for ranks that are still available. */
+export function estimateUpgradeTreeCost({ levels = {}, priceTable = FUTURE_PRICE_TABLE.upgrades } = {}) {
+  let total = 0
+  let firstRankTotal = 0
+  for (const [id, prices] of Object.entries(priceTable)) {
+    const owned = Math.max(0, Math.floor(nonNegativeNumber(levels[id])))
+    firstRankTotal += nonNegativeNumber(prices[0])
+    for (let rank = owned; rank < prices.length; rank += 1) {
+      total += nonNegativeNumber(prices[rank])
+    }
+  }
+  return Object.freeze({ total, firstRankTotal, upgradeCount: Object.keys(priceTable).length })
 }

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { FUTURE_PRICE_TABLE, NORMAL_RUN_EARNINGS, estimateProgression, estimateRunsToAfford } from '../src/game/economy.js'
+import {
+  FUTURE_PRICE_TABLE,
+  NORMAL_RUN_EARNINGS,
+  estimateProgression,
+  estimateRunsToAfford,
+  estimateUpgradeTreeCost,
+} from '../src/game/economy.js'
 import { UPGRADES, addWallet, buyUpgrade, getWallet } from '../src/upgrades.js'
 import { SKINS, getLifetimeStars, listSkins, purchasePlane } from '../src/skins.js'
 
@@ -89,5 +95,27 @@ describe('economy progression model', () => {
     expect(purchasePlane('mint')).toEqual({ ok: true, cost: planeCost })
     expect(getWallet()).toBe(0)
     expect(getLifetimeStars()).toBe(lifetimeRequirement)
+  })
+
+  test('keeps every non-premium first rank inside five normal runs after the late-tree additions', () => {
+    const earlyIds = UPGRADES
+      .map(({ id }) => id)
+      .filter((id) => id !== 'guardian' && id !== 'weapon')
+    for (const id of earlyIds) {
+      const firstRank = FUTURE_PRICE_TABLE.upgrades[id][0]
+      expect(firstRank).toBeLessThanOrEqual(21)
+      expect(estimateRunsToAfford({ wallet: 0, cost: firstRank }).runs).toBeLessThanOrEqual(3)
+    }
+    expect(FUTURE_PRICE_TABLE.upgrades.fever[0]).toBe(14)
+    expect(FUTURE_PRICE_TABLE.upgrades.streak[0]).toBe(12)
+    expect(FUTURE_PRICE_TABLE.upgrades.wealth[0]).toBe(12)
+  })
+
+  test('prices the full future upgrade tree without requiring an impossible first session', () => {
+    const tree = estimateUpgradeTreeCost()
+    expect(tree.upgradeCount).toBe(UPGRADES.length)
+    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 35 }).walletStars)
+    expect(tree.total).toBeGreaterThan(tree.firstRankTotal)
+    expect(runsToAfford(tree.total)).toBeGreaterThan(runsToAfford(tree.firstRankTotal))
   })
 })

@@ -41,6 +41,7 @@ import { track } from './analytics.js'
 import { DeskAR } from './ar.js'
 import {
   addLifetimeDistance,
+  addLifetimeFever,
   getRunCount,
   incrementRunCount,
   addLifetimePopped,
@@ -97,6 +98,35 @@ import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
+import {
+  advanceFeverState,
+  createFeverState,
+  describeComboHudValue,
+  describeFeverHudValue,
+  FEVER_SCORE_MUL,
+  shouldTriggerFever,
+} from './game/combo-fever.js'
+import {
+  advanceStarStreakState,
+  createStarStreakState,
+  registerStarPickup,
+} from './game/star-streak.js'
+import { planStarSpawns } from './game/star-spawn.js'
+import {
+  describeNearMissFloat,
+  feverConfettiOffsets,
+  feverEnterShake,
+  nearMissConfettiBursts,
+  nearMissHudTier,
+  nearMissShakeAmount,
+} from './game/near-miss-feedback.js'
+import { consumeGuardianCharge, shouldGuardianSave } from './game/guardian-runtime.js'
+import {
+  advanceShot,
+  inkPopReward,
+  resolveWeaponFire,
+  shotHitsTarget,
+} from './game/weapon-runtime.js'
 import {
   getAltitudeRecovery,
   getBoostSafety,
@@ -479,14 +509,14 @@ let combo = 0
 let maxCombo = 0
 let comboTimer = 0
 /** Combo Fever: a short score-multiplier burst triggered by a big near-miss streak */
-const FEVER_SCORE_MUL = 1.5
 let feverActive = false
 let feverTimer = 0
 let feverFloatTimeout = null
 /** Consecutive star pickups within a short window — separate from the near-miss combo */
 let starStreak = 0
 let starStreakTimer = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0 }
+let starStreakWindow = 0
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
 let lastPhotoDataUrl = null
@@ -888,23 +918,30 @@ const confetti = []
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
 /** Ink Blast: fires a forward projectile that pops small airborne hazards. */
 function fireWeapon() {
-  if (state !== 'playing') return
   const fx = activeUpgradeEffects
-  const weapon = getWeaponState({
+  const result = resolveWeaponFire({
     weaponLevel: fx.weaponLevel,
     cooldownSeconds: fx.weaponCooldown,
     cooldownLeft: fireCooldown,
+    playing: state === 'playing',
   })
-  if (!weapon.ready) return
-  fireCooldown = weapon.cooldownSeconds
+  if (!result.fired) return
+  fireCooldown = result.cooldownLeft
   updateWeaponFeedback()
   const m = createShot()
   m.position.set(planeX, planeY, 4)
   scene.add(m)
-  entities.push({ mesh: m, type: 'shot', radius: 0.5, ttl: 1.4 })
+  entities.push({
+    mesh: m,
+    type: 'shot',
+    radius: result.shot.radius,
+    ttl: result.shot.ttl,
+    speed: result.shot.speed,
+  })
   audio.shoot()
   if (settings.haptics) Haptic.nearMiss()
   fireBtn?.classList.add('firing')
+  fireBtn?.classList.remove('weapon-ready')
   setTimeout(() => fireBtn?.classList.remove('firing'), 90)
 }
 
@@ -913,22 +950,33 @@ function updateShots(dt) {
   const toRemove = new Set()
   for (const e of entities) {
     if (e.type !== 'shot' || toRemove.has(e)) continue
-    e.mesh.position.z += 46 * dt
-    e.ttl -= dt
-    if (e.ttl <= 0) {
+    const next = advanceShot({
+      z: e.mesh.position.z,
+      ttl: e.ttl,
+      dt,
+      speed: e.speed || 46,
+    })
+    e.mesh.position.z = next.z
+    e.ttl = next.ttl
+    if (next.expired) {
       toRemove.add(e)
       continue
     }
     for (const target of entities) {
       if (toRemove.has(target) || (target.type !== 'bird' && target.type !== 'scissors')) continue
-      const dx = target.mesh.position.x - e.mesh.position.x
-      const dy = target.mesh.position.y - e.mesh.position.y
-      const dz = target.mesh.position.z - e.mesh.position.z
-      const hitR = (target.radius || 0.7) + e.radius
-      if (dx * dx + dy * dy + dz * dz < hitR * hitR) {
+      if (shotHitsTarget({
+        shotX: e.mesh.position.x,
+        shotY: e.mesh.position.y,
+        shotZ: e.mesh.position.z,
+        shotRadius: e.radius,
+        targetX: target.mesh.position.x,
+        targetY: target.mesh.position.y,
+        targetZ: target.mesh.position.z,
+        targetRadius: target.radius || 0.7,
+      })) {
         toRemove.add(target)
         toRemove.add(e)
-        stars += 2
+        stars += inkPopReward()
         starsEl.textContent = String(stars)
         runStats.popped++
         audio.popTarget()
@@ -2238,7 +2286,8 @@ function spawnChunk(z) {
   }
 
   const ufx = activeUpgradeEffects
-  const spawnRates = getSpawnRates({
+  const starPlan = planStarSpawns({
+    random: rng,
     starChance: cfg.starChance,
     powerChance: cfg.powerChance,
     ramp,
@@ -2247,18 +2296,20 @@ function spawnChunk(z) {
     twistStarMul: activeTwist?.starMul || 1,
     doubleStarBonus: ufx.doubleStarBonus,
   })
-  // Stars — often 1–2
-  const starRolls = rng() < spawnRates.doubleStarChance ? 2 : 1
-  for (let s = 0; s < starRolls; s++) {
-    if (rng() < spawnRates.starChance) {
-      const st = createStar()
-      st.position.set(safePickupX(), 3 + rng() * 17, z + rng() * 8)
-      scene.add(st)
-      entities.push({ mesh: st, type: 'star', radius: 0.9 })
-    }
+  // Stars — often 1–2; Gold Rush raises cluster odds through planStarSpawns
+  for (let s = 0; s < starPlan.starCount; s++) {
+    const st = createStar()
+    st.position.set(safePickupX(), 3 + rng() * 17, z + rng() * 8)
+    scene.add(st)
+    entities.push({ mesh: st, type: 'star', radius: 0.9, cluster: starPlan.cluster })
+  }
+  if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
+    powerBanner.textContent = '💰 Gold Rush cluster!'
+    powerBanner.classList.remove('hidden')
+    bannerTimer = Math.max(bannerTimer, 1.4)
   }
   // Powers — boosted chance; boost is more common early in pool
-  if (rng() < spawnRates.powerChance) {
+  if (starPlan.powerSpawn) {
     const classic = POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
     let pool
     if (rng() < 0.28) pool = TOY_KINDS
@@ -2723,6 +2774,13 @@ function updateWeaponFeedback(playing = state === 'playing', fx = activeUpgradeE
   fireBtn.dataset.ready = String(weapon.ready)
   fireBtn.dataset.cooldown = weapon.cooldownRemaining.toFixed(2)
   fireBtn.classList.toggle('cooling', weapon.unlocked && !weapon.ready)
+  const wasReady = fireBtn.classList.contains('weapon-ready')
+  fireBtn.classList.toggle('weapon-ready', weapon.unlocked && weapon.ready)
+  if (weapon.unlocked && weapon.ready && !wasReady) {
+    fireBtn.classList.remove('weapon-ready-pulse')
+    void fireBtn.offsetWidth
+    fireBtn.classList.add('weapon-ready-pulse')
+  }
   fireBtn.textContent = weapon.ready ? '🖋 Ready' : `🖋 ${weapon.cooldownRemaining.toFixed(1)}s`
   fireBtn.setAttribute('aria-label', weapon.ready
     ? 'Ink Blast ready'
@@ -2786,12 +2844,13 @@ function resetGame() {
   comboTimer = 0
   starStreak = 0
   starStreakTimer = 0
+  starStreakWindow = 0
   streakHud?.classList.add('hidden')
   feverActive = false
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
   journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
@@ -3600,9 +3659,8 @@ function die(reason) {
   }
 
   // Guardian Crease: a purchased free save, used when no shield is active
-  if (guardianLeft > 0 && !isCleanEnd) {
-    guardianLeft--
-    const guardian = getGuardianState({
+  if (shouldGuardianSave({ remaining: guardianLeft, isCleanEnd })) {
+    const guardian = consumeGuardianCharge({
       charges: activeUpgradeEffects.guardianCharges,
       remaining: guardianLeft,
     })
@@ -3610,19 +3668,26 @@ function die(reason) {
     if (guardianHudVal) guardianHudVal.textContent = String(guardian.remaining)
     guardianHud?.classList.toggle('hidden', !guardian.visible)
     guardianHud?.setAttribute('data-hud-priority', guardian.visible ? 'primary' : 'secondary')
+    guardianHud?.classList.remove('guardian-save-flash')
+    void guardianHud?.offsetWidth
+    guardianHud?.classList.add('guardian-save-flash')
     audio.shieldHit()
-    if (settings.haptics) Haptic.nearMiss()
-    shake = 0.6
-    invuln = 1.4
+    if (settings.haptics) Haptic.power()
+    shake = Math.max(shake, guardian.shake)
+    invuln = guardian.invulnSeconds
     damageFlash = 1.1
     _damageOrigColor.copy(planeBodyMat.color)
     velY = Math.max(velY, 0) + 12
     velX *= 0.4
     speedBoost = Math.max(speedBoost, 6)
     spawnConfetti(planeX, planeY, 1)
-    powerBanner.textContent = '🛟 Guardian Crease saved you!'
+    spawnConfetti(planeX, planeY + 0.5, 0)
+    powerBanner.textContent = guardian.banner
     powerBanner.classList.remove('hidden')
-    bannerTimer = 2.2
+    bannerTimer = guardian.bannerSeconds
+    document.getElementById('warn-flash')?.classList.remove('guardian-flash')
+    void document.getElementById('warn-flash')?.offsetWidth
+    document.getElementById('warn-flash')?.classList.add('guardian-flash')
     return
   }
 
@@ -4112,67 +4177,86 @@ function registerNearMiss(kind = null) {
   maxCombo = Math.max(maxCombo, combo)
   runStats.maxCombo = maxCombo
   comboTimer = 1.6
-  const feverTuning = getFeverTuning(activeUpgradeEffects)
-  const toFever = feverActive ? 0 : Math.max(0, feverTuning.threshold - combo)
-  comboVal.textContent = toFever > 0 && toFever <= 3 ? `${combo}x · 🔥${toFever}` : `${combo}x`
+  comboVal.textContent = describeComboHudValue({
+    combo,
+    feverActive,
+    feverThresholdBonus: activeUpgradeEffects.feverThresholdBonus,
+  })
   comboHud.classList.remove('hidden')
-  comboHud.classList.remove('combo-pulse')
+  comboHud.classList.remove('combo-pulse', 'combo-tier-warm', 'combo-tier-hot', 'combo-tier-legend')
+  const tier = nearMissHudTier(combo)
+  if (tier) comboHud.classList.add(tier)
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
   comboHud.classList.add('combo-pulse')
-  comboFloat.textContent = combo >= 3 ? `${combo}x NEAR MISS!` : 'Near miss!'
+  comboFloat.textContent = describeNearMissFloat(combo)
   comboFloat.classList.remove('fever-float')
+  comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
-  setTimeout(() => comboFloat.classList.add('hidden'), 500)
+  setTimeout(() => comboFloat.classList.add('hidden'), combo >= 6 ? 700 : 500)
   audio.nearMiss(combo, kind)
   Haptic.nearMiss()
-  spawnConfetti(planeX, planeY, 2)
+  const bursts = nearMissConfettiBursts(combo)
+  for (let i = 0; i < bursts; i += 1) spawnConfetti(planeX, planeY + i * 0.25, 2 - i)
   distance += 5 * combo * 0.25
   // Small camera punch that grows with the streak — bigger chains feel bigger.
-  shake = Math.max(shake, 0.1 + Math.min(combo, 10) * 0.02)
-  if (combo >= feverTuning.threshold) triggerFever(feverTuning)
+  if (!settings.reducedMotion) shake = Math.max(shake, nearMissShakeAmount(combo))
+  if (shouldTriggerFever({
+    combo,
+    feverActive,
+    feverThresholdBonus: activeUpgradeEffects.feverThresholdBonus,
+  })) {
+    triggerFever()
+  }
 }
 
 /** A short score-multiplier burst for stringing together a big near-miss streak. */
-function triggerFever(feverTuning = getFeverTuning(activeUpgradeEffects)) {
-  feverActive = true
-  feverTimer = feverTuning.duration
-  shake = Math.max(shake, 0.45)
+function triggerFever() {
+  const fever = createFeverState(activeUpgradeEffects)
+  feverActive = fever.active
+  feverTimer = fever.timer
+  if (!settings.reducedMotion) shake = Math.max(shake, feverEnterShake())
   feverFx?.classList.add('fever-active')
   feverHud?.classList.remove('hidden')
-  comboFloat.textContent = 'FEVER!'
+  const feverVal = $('fever-val')
+  if (feverVal) feverVal.textContent = describeFeverHudValue(fever)
+  comboFloat.textContent = '🔥 FEVER!'
   comboFloat.classList.add('fever-float')
   comboFloat.classList.remove('hidden')
   clearTimeout(feverFloatTimeout)
-  feverFloatTimeout = setTimeout(() => comboFloat.classList.add('hidden'), 900)
+  feverFloatTimeout = setTimeout(() => comboFloat.classList.add('hidden'), 1000)
   audio.fever()
   Haptic.power()
-  // A bigger celebratory burst than a regular near-miss's single spawnConfetti call
-  spawnConfetti(planeX, planeY, 0)
-  spawnConfetti(planeX, planeY + 0.6, 1)
-  spawnConfetti(planeX, planeY - 0.6, -1)
+  for (const offset of feverConfettiOffsets()) {
+    spawnConfetti(planeX, planeY + offset.y, offset.z)
+  }
+  runStats.fevers = (runStats.fevers || 0) + 1
+  addLifetimeFever(1)
 }
 
 /** Consecutive star pickups within a short window — every 5th grants bonus stars. */
 function registerStarStreak() {
-  starStreak++
-  starStreakTimer = getStreakTuning(activeUpgradeEffects).windowSeconds
+  const pickup = registerStarPickup({
+    count: starStreak,
+    streakWindowBonus: activeUpgradeEffects.streakWindowBonus,
+  })
+  starStreak = pickup.count
+  starStreakTimer = pickup.timer
+  starStreakWindow = pickup.windowSeconds
   if (streakVal) streakVal.textContent = String(starStreak)
-  if (starStreak >= 2 && streakHud) {
+  if (pickup.visible && streakHud) {
     streakHud.classList.remove('hidden')
     streakHud.classList.remove('combo-pulse')
     void streakHud.offsetWidth
     streakHud.classList.add('combo-pulse')
   }
-  if (starStreak % 5 === 0) {
-    const tier = starStreak / 5
-    const bonus = 1 + tier
-    stars += bonus
+  if (pickup.milestone) {
+    stars += pickup.bonusStars
     runStats.stars = stars
     starsEl.textContent = String(stars)
-    audio.starStreak(tier)
+    audio.starStreak(pickup.count / 5)
     if (settings.haptics) Haptic.collect()
     spawnConfetti(planeX, planeY, 1)
-    powerBanner.textContent = `⭐ Star Streak x${starStreak}! +${bonus}`
+    powerBanner.textContent = pickup.banner
     powerBanner.classList.remove('hidden')
     bannerTimer = 2.0
   }
@@ -4374,17 +4458,32 @@ function update(dt) {
       comboHud.classList.add('hidden')
     }
   }
-  if (starStreakTimer > 0) {
-    starStreakTimer -= dt
-    if (starStreakTimer <= 0) {
-      starStreak = 0
+  if (starStreak > 0 || starStreakTimer > 0) {
+    const prevCount = starStreak
+    const nextStreak = advanceStarStreakState({ count: starStreak, timer: starStreakTimer }, dt)
+    starStreak = nextStreak.count
+    starStreakTimer = nextStreak.timer
+    if (prevCount >= 2 && !nextStreak.visible) {
+      streakHud?.classList.add('hidden')
+      powerBanner.textContent = '⭐ Star streak broken'
+      powerBanner.classList.remove('hidden')
+      bannerTimer = Math.max(bannerTimer, 1.1)
+    } else if (!nextStreak.visible) {
       streakHud?.classList.add('hidden')
     }
   }
   if (feverActive) {
-    feverTimer -= dt
-    if (feverTimer <= 0) {
-      feverActive = false
+    const nextFever = advanceFeverState({
+      active: feverActive,
+      timer: feverTimer,
+      threshold: getFeverTuning(activeUpgradeEffects).threshold,
+      duration: getFeverTuning(activeUpgradeEffects).duration,
+    }, dt)
+    feverActive = nextFever.active
+    feverTimer = nextFever.timer
+    const feverVal = $('fever-val')
+    if (feverVal) feverVal.textContent = describeFeverHudValue(nextFever)
+    if (!nextFever.active) {
       feverFx?.classList.remove('fever-active')
       feverHud?.classList.add('hidden')
     }
@@ -5196,6 +5295,20 @@ function upgradeRuntimeTextState() {
     },
     guardian: runtime.guardian,
     weapon: runtime.weapon,
+    fever: {
+      ...runtime.fever,
+      active: feverActive,
+      timer: Number(feverTimer.toFixed(2)),
+      scoreMul: FEVER_SCORE_MUL,
+      hud: describeFeverHudValue({ active: feverActive, timer: feverTimer }),
+    },
+    streak: {
+      ...runtime.streak,
+      count: starStreak,
+      timer: Number(starStreakTimer.toFixed(2)),
+      windowSeconds: runtime.streak.windowSeconds,
+      visible: starStreak >= 2,
+    },
   }
 }
 
@@ -5420,6 +5533,38 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-collision') {
   scissors.position.set(devCollisionProof === 'hit' ? 0 : 2.3, planeY, difficulty.speedBase / 60)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-fever') {
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  for (let index = 0; index < 12; index += 1) registerNearMiss()
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-streak') {
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  for (let index = 0; index < 5; index += 1) registerStarStreak()
   simulationPaused = true
 }
 

@@ -17,7 +17,19 @@ import {
   purchasePlane,
   refreshUnlocks,
 } from './skins.js'
-import { addWallet, buyUpgrade, canPrestige, describeUpgradeEffect, doPrestige, getPrestigeBonusPercent, getPrestigeLevel, getWallet, listUpgrades } from './upgrades.js'
+import {
+  addWallet,
+  buyUpgrade,
+  canPrestige,
+  describeUpgradeEffect,
+  doPrestige,
+  getAllUpgradeLevels,
+  getPrestigeBonusPercent,
+  getPrestigeLevel,
+  getWallet,
+  listUpgrades,
+  UPGRADES,
+} from './upgrades.js'
 import { buildRunConfiguration, createJourney, getRouteChoices, selectJourneyPilot, selectJourneyRoute } from './journey.js'
 import { clearJourney, loadJourney, saveJourney } from './journey-storage.js'
 import { buildPostcardShareModel, loadPostcardAlbum } from './journey-postcards.js'
@@ -28,6 +40,10 @@ import { seasonInfo } from './seasonal.js'
 import { dailyKey } from './rng.js'
 import { todaysTwist } from './twists.js'
 import { estimateRunsToAfford } from './game/economy.js'
+import {
+  describeEarlyPathBanner,
+  nextRecommendedUpgrade,
+} from './game/upgrade-path.js'
 import {
   hangarGroupForTab,
   isHangarTabInGroup,
@@ -609,11 +625,17 @@ function renderPrestige() {
   panel.innerHTML = ''
   const info = document.createElement('div')
   info.className = 'prestige-info'
+  const milestoneHint =
+    level < 3 ? 'Next cosmetic: Ink Veil at Prestige 3'
+    : level < 5 ? 'Next cosmetic: Starcrest at Prestige 5'
+    : level < 10 ? 'Next cosmetic: Paper Legend at Prestige 10'
+    : level >= 50 ? 'Paper Legend title unlocked'
+    : 'All prestige planes available to claim'
   info.innerHTML = capped
-    ? `<strong>✦ Golden Fold ${level} · MAX</strong><span>Maximum prestige reached · +${bonusPercent}% score & star luck</span>`
+    ? `<strong>✦ Paper Legend ${level} · MAX</strong><span>Maximum prestige · +${bonusPercent}% score & star luck · ${milestoneHint}</span>`
     : level > 0
-    ? `<strong>✦ Golden Fold ${level}</strong><span>+${bonusPercent}% score & star luck, permanently</span>`
-    : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus</span>`
+    ? `<strong>✦ Golden Fold ${level}</strong><span>+${bonusPercent}% score & star luck · ${milestoneHint}</span>`
+    : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus · claim prestige planes at 1 / 3 / 5 / 10</span>`
   panel.appendChild(info)
   if (ready) {
     const btn = document.createElement('button')
@@ -640,10 +662,17 @@ function renderUpgrades() {
   if (!grid) return
   grid.innerHTML = ''
   const wallet = getWallet()
+  const recommendation = nextRecommendedUpgrade(getAllUpgradeLevels(), UPGRADES)
+  const pathBanner = describeEarlyPathBanner(recommendation, UPGRADES)
+  const pathEl = document.createElement('div')
+  pathEl.className = pathBanner.visible ? 'upgrade-path-banner' : 'upgrade-path-banner path-complete'
+  pathEl.innerHTML = `<strong>${pathBanner.title}</strong><span>${pathBanner.body}</span>`
+  grid.appendChild(pathEl)
   for (const u of listUpgrades()) {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
     card.className = 'upgrade-card'
+    if (pathBanner.visible && pathBanner.upgradeId === u.id) card.classList.add('upgrade-recommended')
     const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
     const action = document.createElement(u.maxed ? 'span' : 'button')
     if (u.maxed) {
@@ -1006,16 +1035,18 @@ document.addEventListener('click', (event) => {
     showMenu()
     return
   }
-  if (button?.matches('[data-hangar-group]')) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    setHangarGroup(button.dataset.hangarGroup)
-    return
-  }
+  // Hangar section tabs also carry data-hangar-group for filtering — match the
+  // tab role first so Progress/Meta filter buttons do not swallow tab clicks.
   if (button?.matches('.hangar-tab')) {
     event.preventDefault()
     event.stopImmediatePropagation()
     showHangarTab(button.dataset.tab)
+    return
+  }
+  if (button?.matches('[data-hangar-group]')) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    setHangarGroup(button.dataset.hangarGroup)
   }
 }, true)
 

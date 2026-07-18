@@ -2,7 +2,44 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-07-17 — Max Everything P0–P5
+
+Design: `docs/superpowers/specs/2026-07-17-max-everything-design.md`
+Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
+
+### P0 Stabilize
+- Landed pure modules: `combo-fever`, `star-streak`, `star-spawn` wired into flight loop + live upgrade fixtures.
+- Soft first ranks for fever/streak/wealth; `estimateUpgradeTreeCost` covered.
+
+### P1 Feel Max
+- Near-miss tier float/HUD/confetti (`near-miss-feedback`), stronger fever enter juice, star-streak break banner.
+- Guardian save flash + weapon ready pulse.
+
+### P2 Architecture
+- Extracted pure runtimes: `weapon-runtime`, `guardian-runtime`, `near-miss-feedback`, `upgrade-path` (spawn already modular).
+
+### P3 Meta Max
+- Hangar early-path banner + recommended card highlight.
+- Prestige cosmetics: Ink Veil (P3), Starcrest (P5), Paper Legend (P10).
+- Fever Pitch achievement + daily fever mission template.
+- Fever+streak dual-max synergy (+0.35s fever duration).
+
+### P4 Content Max
+- Zone 6 **Midnight Origami** @ 1700m with generated sky/ground art.
+- (Third boss / Journey chapter 2 left gated per design.)
+
+### P5 Ship
+- Full verification, commit, push, Vercel production deploy.
+
 ## 2026-07-16
+
+### Upgrades proof, economy, modularization (items 1–5)
+
+- Fever Focus / Steady Hands / Gold Rush extracted to pure modules (`combo-fever`, `star-streak`, `star-spawn`) and wired into the flight loop with HUD/text-state feedback.
+- Live Playwright fixtures: `#test-upgrade-live-fever`, `#test-upgrade-live-streak`; max-upgrade text state asserts fever/streak/wealth.
+- Economy: softened first ranks for fever/streak/wealth; `estimateUpgradeTreeCost` + early-path tests for the 14-upgrade tree.
+- Scope guard tests: no new modes/bosses/currencies.
+- Ship proof: vitest, build, budget, iOS parity, production deploy.
 
 ### Rebase + Hangar/HUD clarity (theme A)
 

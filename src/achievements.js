@@ -8,6 +8,7 @@ import { safeSetItem } from './game/safe-storage.js'
 const DIST_KEY = 'paper-plane-run-lifetime-distance'
 const RUNS_KEY = 'paper-plane-run-total-runs'
 const POPPED_KEY = 'paper-plane-run-lifetime-popped'
+const FEVER_KEY = 'paper-plane-run-lifetime-fever'
 const CLAIMED_KEY = 'paper-plane-run-achievements-claimed'
 
 export function getLifetimeDistance() {
@@ -29,6 +30,13 @@ export function getLifetimePopped() {
 export function addLifetimePopped(n) {
   if (!(n > 0)) return
   safeSetItem(POPPED_KEY, String(getLifetimePopped() + Math.floor(n)))
+}
+export function getLifetimeFever() {
+  return Number(localStorage.getItem(FEVER_KEY) || 0)
+}
+export function addLifetimeFever(n) {
+  if (!(n > 0)) return
+  safeSetItem(FEVER_KEY, String(getLifetimeFever() + Math.floor(n)))
 }
 
 function loadClaimed() {
@@ -93,6 +101,19 @@ export const ACHIEVEMENTS = [
       { threshold: 100, reward: 20 },
       { threshold: 400, reward: 40 },
       { threshold: 1500, reward: 80 },
+    ],
+  },
+  {
+    id: 'fever',
+    name: 'Fever Pitch',
+    icon: '🔥',
+    getValue: getLifetimeFever,
+    unit: ' fevers',
+    tiers: [
+      { threshold: 3, reward: 10 },
+      { threshold: 15, reward: 20 },
+      { threshold: 50, reward: 40 },
+      { threshold: 150, reward: 80 },
     ],
   },
 ]

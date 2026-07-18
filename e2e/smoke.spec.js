@@ -129,8 +129,8 @@ test('Hangar exposes prestige cap without offering a rewardless reset', async ({
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
 
   const panel = page.locator('#prestige-panel')
-  await expect(panel.locator('strong')).toHaveText('✦ Golden Fold 50 · MAX')
-  await expect(panel.locator('span')).toHaveText('Maximum prestige reached · +150% score & star luck')
+  await expect(panel.locator('strong')).toHaveText('✦ Paper Legend 50 · MAX')
+  await expect(panel.locator('span')).toContainText('+150% score & star luck')
   await expect(panel.getByRole('button', { name: /Prestige/ })).toHaveCount(0)
   await expect(panel).not.toContainText('+3%')
   expect(errors).toEqual([])
@@ -497,8 +497,12 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
     turbo: { graceSeconds: 1.35, collisionScale: 0.6 },
     guardian: { charges: 2, remaining: 2 },
     weapon: { unlocked: true, ready: true, cooldownSeconds: 0.38 },
+    fever: { threshold: 5, duration: 6.6, active: false },
+    streak: { count: 0 },
   })
+  expect(shieldUpgrades.streak.windowSeconds).toBeCloseTo(3.4)
   expect(shieldUpgrades.luck.starChance).toBeCloseTo(0.8584)
+  expect(shieldUpgrades.luck.doubleStarChance).toBeGreaterThan(0.25)
   if (process.env.CAPTURE_TASK7_PROOF === '1') {
     await page.screenshot({
       path: `output/task-7-browser-proof/max-shield-${testInfo.project.name}.png`,
@@ -541,6 +545,8 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   expect(baselineSpawn.upgrades.handling.follow).toBeCloseTo(0.275)
   expect(baselineSpawn.upgrades.luck.twistStarMultiplier).toBe(1.6)
   expect(baselineSpawn.upgrades.luck.starChance).toBeCloseTo(0.928)
+  expect(baselineSpawn.upgrades.fever.threshold).toBe(8)
+  expect(baselineSpawn.upgrades.streak.windowSeconds).toBeCloseTo(2.2)
   expect(baselineSpawn.fairness.airDamageRadius).toBe(2.104)
   expect(baselineSpawn.fairness.visibleHazards.length).toBeGreaterThan(0)
   expect(baselineSpawn.fairness.visibleHazards.every(({ passageLane }) => [-1, 0, 1].includes(passageLane))).toBe(true)
@@ -550,6 +556,30 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   const maxSpawn = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(maxSpawn.entities.counts.star).toBeGreaterThan(baselineSpawn.entities.counts.star)
   expect(maxSpawn.entities.counts.power).toBeGreaterThan(baselineSpawn.entities.counts.power)
+  expect(maxSpawn.upgrades.fever.threshold).toBe(5)
+  // Max fever + streak synergy adds +0.35s duration on top of Fever Focus max.
+  expect(maxSpawn.upgrades.fever.duration).toBeCloseTo(6.6)
+  expect(maxSpawn.upgrades.streak.windowSeconds).toBeCloseTo(3.4)
+  expect(maxSpawn.upgrades.luck.doubleStarChance).toBeGreaterThan(baselineSpawn.upgrades.luck.doubleStarChance)
+
+  await openApp(page, '/?upgrade-proof=fever-max#test-upgrade-live-fever')
+  await waitForGameText(page)
+  const feverLive = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(feverLive.upgrades.fever.active).toBe(true)
+  expect(feverLive.upgrades.fever.threshold).toBe(5)
+  expect(feverLive.upgrades.fever.timer).toBeGreaterThan(0)
+  await expect(page.locator('#fever-hud')).toBeVisible()
+  await expect(page.locator('#fever-val')).toContainText('1.5x')
+
+  await openApp(page, '/?upgrade-proof=streak-max#test-upgrade-live-streak')
+  await waitForGameText(page)
+  const streakLive = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(streakLive.upgrades.streak.count).toBe(5)
+  expect(streakLive.upgrades.streak.visible).toBe(true)
+  expect(streakLive.upgrades.streak.windowSeconds).toBeCloseTo(3.4)
+  await expect(page.locator('#streak-hud')).toBeVisible()
+  await expect(page.locator('#streak-val')).toHaveText('5')
+  await expect(page.locator('#power-banner')).toContainText('Star Streak')
 
   await openApp(page, '/?upgrade-proof=wingspan-max&collision=near#test-upgrade-live-collision')
   await waitForGameText(page)

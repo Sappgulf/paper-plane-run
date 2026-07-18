@@ -30,6 +30,9 @@ describe('plane collection art manifest', () => {
       'valentine',
       'spring',
       'goldenfold',
+      'inkveil',
+      'starcrest',
+      'paperlegend',
     ])
 
     for (const plane of SKINS) {
@@ -99,6 +102,9 @@ describe('plane collection purchases', () => {
       { id: 'valentine', requirement: { type: 'season', value: 'valentine' }, price: null },
       { id: 'spring', requirement: { type: 'season', value: 'spring' }, price: null },
       { id: 'goldenfold', requirement: { type: 'prestige', value: 1 }, price: null },
+      { id: 'inkveil', requirement: { type: 'prestige', value: 3 }, price: null },
+      { id: 'starcrest', requirement: { type: 'prestige', value: 5 }, price: null },
+      { id: 'paperlegend', requirement: { type: 'prestige', value: 10 }, price: null },
     ])
   })
 

@@ -67,6 +67,19 @@ export const ZONES = [
     groundTint: 0x8a90b0,
     hazardBias: { building: 1.3, bird: 1.3, scissors: 1.4 },
   },
+  {
+    id: 'midnight',
+    name: 'Midnight Origami',
+    from: 1700,
+    fog: 0x1e1b3a,
+    hemiSky: 0x3b2f6b,
+    hemiGround: 0x1a1628,
+    exposure: 0.88,
+    sky: '/assets/sky-midnight.jpg',
+    ground: '/assets/ground-midnight.jpg',
+    groundTint: 0x2a2440,
+    hazardBias: { building: 1.35, bird: 1.45, scissors: 1.35 },
+  },
 ]
 
 export function zoneAt(distance) {

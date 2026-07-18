@@ -18,9 +18,9 @@ npm install && npm run dev
 | 4 | Crash polaroid photo share |
 | 5 | Haptics + generative music |
 | 6 | Tutorial rings |
-| 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora) |
-| — | **Plane upgrades** (handling, lift, glide, magnet, shield, luck, wings, trail) |
-| — | **Expanded skins** (Neon, Rainbow, Storm Foil, Sunset Letter + seasonal) |
+| 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora → Midnight Origami) |
+| — | **Plane upgrades** (14-upgrade tree incl. Fever Focus, Steady Hands, Gold Rush + synergies) |
+| — | **Expanded skins** (Neon, Rainbow, Storm Foil, Sunset Letter + seasonal + prestige Ink Veil / Starcrest / Paper Legend) |
 | 8 | Daily missions |
 | 9 | Ghost best-run race |
 | 10 | Hot-seat multiplayer |

@@ -425,6 +425,7 @@ export function getUpgradeEffects() {
   const streak = formulas.streak
   const wealth = formulas.wealth
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
+  const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
     ...handling.runtime,
     ...lift.runtime,
@@ -445,6 +446,9 @@ export function getUpgradeEffects() {
     prestigeLevel,
     prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,
+    synergyFever,
+    // Max fever + streak: a tiny extra fever duration (feel, not a new system).
+    feverDurationBonus: fever.runtime.feverDurationBonus + (synergyFever ? 0.35 : 0),
   }
 }
 

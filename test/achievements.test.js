@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { addLifetimePopped, getLifetimePopped, getAchievementProgress, claimAchievementTier } from '../src/achievements.js'
+import {
+  addLifetimeFever,
+  addLifetimePopped,
+  getLifetimeFever,
+  getLifetimePopped,
+  getAchievementProgress,
+  claimAchievementTier,
+} from '../src/achievements.js'
 
 describe('Sharpshooter achievement', () => {
   beforeEach(() => {
@@ -26,5 +33,20 @@ describe('Sharpshooter achievement', () => {
     addLifetimePopped(0)
     addLifetimePopped(-5)
     expect(getLifetimePopped()).toBe(0)
+  })
+})
+
+describe('Fever Pitch achievement', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  test('tracks lifetime fever triggers', () => {
+    expect(getLifetimeFever()).toBe(0)
+    addLifetimeFever(3)
+    expect(getLifetimeFever()).toBe(3)
+    const fever = getAchievementProgress(0).find((a) => a.id === 'fever')
+    expect(fever.tiers[0].done).toBe(true)
+    expect(claimAchievementTier('fever', 0)).toBe(10)
   })
 })
