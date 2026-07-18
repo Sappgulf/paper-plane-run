@@ -2,6 +2,16 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-07-18 — Boss portal rebuild (playable + fixed assets)
+
+Root causes: full-face art overlays (stapler white plate) blocked the hole; fixed-size ring ≠ collision; blades/fans/jaws sat inside the flyable space.
+
+- Open rectangular portal sized to the real passage on all three bosses.
+- Art is a small badge above the hole; scissors/wind/stapler badges cut to alpha.
+- Side hazards only (blades/fans outside, stapler jaws top/bottom); debris never enters the hole.
+- Wider passages, mid-band lanes (8/10/12), slower approach, edge grace, longer recovery/invuln.
+- Headlines tell players to “fly the glowing ring.”
+
 ## 2026-07-18 — Chapter 2 + Stapler boss + boss fairness
 
 - **Boss fairness:** longer warning/pressure windows; larger easy/normal/hard passages (hard ≥ 3.2 half-width); slower approach band; farther hazard clear; longer post-clear recovery + invuln.

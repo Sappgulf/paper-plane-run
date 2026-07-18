@@ -32,29 +32,30 @@ export const BOSS_ART = Object.freeze({
 })
 
 /**
- * Creates an optional visual layer for a procedural boss. The owning boss
- * remains fully rendered and collidable if this asynchronous texture request
- * fails, including when an offline bundle is incomplete.
+ * Small identity badge for a boss — NEVER a full-face gate cover.
+ * A large opaque plane over the portal was reading as a solid wall and
+ * (for stapler) a white box. Badges sit above the open portal only.
  */
-export function createBossArtOverlay({ THREE, kind, size, loadTexture }) {
+export function createBossArtOverlay({ THREE, kind, size = 2.4, loadTexture }) {
   const art = BOSS_ART[kind]
   if (!art) return null
 
   const material = new THREE.MeshBasicMaterial({
     transparent: true,
-    opacity: 0.9,
-    alphaTest: 0.01,
+    opacity: 0.92,
+    alphaTest: 0.12,
     depthWrite: false,
     side: THREE.DoubleSide,
   })
   const overlay = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material)
   overlay.name = `bossArt-${kind}`
-  overlay.renderOrder = 2
+  overlay.renderOrder = 5
   overlay.visible = false
 
   const showTexture = (texture) => {
     if (!texture) return
     texture.colorSpace = THREE.SRGBColorSpace
+    // Discard pure white / near-white backdrops that some assets ship with.
     material.map = texture
     material.needsUpdate = true
     overlay.visible = true

@@ -683,14 +683,14 @@ function loadTex(rawUrl) {
   return texCache[url]
 }
 
-// Boss art is strictly a late-loading presentation layer. A failed request
-// leaves the existing procedural gate visible, which is also its offline
-// fallback; no geometry, phase, or collision state is owned by this texture.
-function addBossArtOverlay(group, kind) {
+// Boss art is a small identity badge ABOVE the open portal — never a full-face
+// cover. Large opaque planes were reading as solid walls (and stapler shipped
+// with a white plate). Collision stays 100% procedural.
+function addBossArtOverlay(group, kind, gapY = 10, halfHeight = 3.7) {
   const overlay = createBossArtOverlay({
     THREE: BOSS_ART_THREE,
     kind,
-    size: 12,
+    size: 2.6,
     loadTexture: (rawUrl, onLoad, onError) => loader.load(
       resolveAssetUrl(rawUrl),
       onLoad,
@@ -699,9 +699,9 @@ function addBossArtOverlay(group, kind) {
     ),
   })
   if (!overlay) return
-  overlay.position.set(0, 10, 0.45)
-  overlay.renderOrder = 0
-  overlay.material.opacity = 0.68
+  // Park the badge above the safe opening so the flyable hole stays empty.
+  overlay.position.set(0, gapY + halfHeight + 1.8, 0.55)
+  overlay.renderOrder = 5
   group.add(overlay)
   group.userData.artOverlay = overlay
 }
@@ -1347,125 +1347,171 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
 
 // Builders
 
-/** A boss gate's "safe lane" marker ring — smoother torus than the old
- *  low-poly one, with a soft glow halo behind it so the safe gap reads as
- *  an inviting portal rather than a thin flat hoop.
- *
- *  IMPORTANT: this ring must face the camera (hole toward +Z, i.e. no
- *  rotation) so it reads as a hoop to fly through. A torus viewed edge-on
- *  projects as a solid bar spanning its full diameter, not a ring — that's
- *  the "wood plank" look this hazard used to have when it was rotated 90°. */
-// Geometry shared across both boss variants (scissors=red, wind=blue) — only
-// the material color differs, so no need to rebuild the torus mesh data
-// each of the 3 rings per boss gate.
-const dangerRingGeo = new THREE.TorusGeometry(2.45, 0.15, 12, 36)
-const dangerRingGlowGeo = new THREE.TorusGeometry(2.45, 0.28, 8, 36)
-
-function createDangerRing(color, emissive) {
-  const ring = new THREE.Mesh(
-    dangerRingGeo,
-    new THREE.MeshStandardMaterial({
-      color, emissive, emissiveIntensity: 0.55, roughness: 0.3, side: THREE.DoubleSide,
-      depthTest: false,
-    }),
-  )
-  const glow = new THREE.Mesh(
-    dangerRingGlowGeo,
-    new THREE.MeshBasicMaterial({
-      color: emissive, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide,
-      depthTest: false,
-    }),
-  )
-  ring.add(glow)
-  ring.name = 'safeRing'
-  ring.renderOrder = 4
-  return ring
+/**
+ * Boss portal design rules:
+ * 1. The flyable hole is an OPEN rectangle matching the collision passage.
+ * 2. Hazards live OUTSIDE that rectangle (left/right or above/below).
+ * 3. A bright safe ring is scaled to the real opening (not a tiny fixed torus).
+ * 4. Art is a small badge above the hole — never a full-face cover.
+ */
+const portalFrameMat = new THREE.MeshStandardMaterial({ color: 0xd9cbb8, roughness: 0.72, metalness: 0.05 })
+const portalAccentMats = {
+  scissors: new THREE.MeshStandardMaterial({ color: 0xe96957, emissive: 0x7f1d1d, emissiveIntensity: 0.25, roughness: 0.45 }),
+  wind: new THREE.MeshStandardMaterial({ color: 0x58c7dc, emissive: 0x0e7490, emissiveIntensity: 0.3, roughness: 0.4 }),
+  stapler: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x92400e, emissiveIntensity: 0.28, roughness: 0.42 }),
 }
 
-// Giant closing-gate blade for the boss fight. Was a BoxGeometry(0.4, 0.15, 8)
-// — width, thin-height, LENGTH along Z (pointing straight at the camera) —
-// the same "length axis pointed at the player" mistake fixed on the regular
-// flying scissors and the bird/dragonfly wings: it foreshortened to a nearly
-// invisible thin diagonal line instead of reading as a dramatic giant blade.
-// Length now runs along Y (vertical, in the screen plane) so it's always
-// visible edge-to-edge, with a bright edge glint for a bit of shine.
-const bossBladeGeo = new THREE.BoxGeometry(0.5, 9, 0.2)
-const bossBladeEdgeGeo = new THREE.PlaneGeometry(0.06, 9)
-
-function createBossBlade() {
-  const blade = new THREE.Mesh(bossBladeGeo, scissorsMat)
-  const edge = new THREE.Mesh(bossBladeEdgeGeo, scissorsEdgeMat)
-  edge.position.set(0.22, 0, 0.11)
-  blade.add(edge)
-  return blade
-}
-
-function createBossGate() {
-  const g = new THREE.Group()
-  // Two giant scissor blades forming a closing gate with a moving gap
-  const left = createBossBlade()
-  left.position.set(-3.5, 10, 0)
-  left.rotation.z = 0.35
-  const right = createBossBlade()
-  right.position.set(3.5, 10, 0)
-  right.rotation.z = -0.35
-  // Frame towers
-  for (const sx of [-8, 8]) {
-    const tower = createBuilding(2.5, 18, 2.5, buildingMats[0])
-    tower.position.x = sx
-    g.add(tower)
+function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) {
+  // Build a rectangular hoop whose inner opening matches collision passage.
+  const group = new THREE.Group()
+  group.name = 'safeRing'
+  const thickness = 0.28
+  const depth = 0.22
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    emissive,
+    emissiveIntensity: 0.7,
+    roughness: 0.28,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  })
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: emissive,
+    transparent: true,
+    opacity: 0.2,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  })
+  const fullW = halfWidth * 2
+  const fullH = halfHeight * 2
+  const bars = [
+    // top / bottom
+    { size: [fullW + thickness * 2, thickness, depth], pos: [0, halfHeight + thickness / 2, 0] },
+    { size: [fullW + thickness * 2, thickness, depth], pos: [0, -halfHeight - thickness / 2, 0] },
+    // left / right
+    { size: [thickness, fullH, depth], pos: [-halfWidth - thickness / 2, 0, 0] },
+    { size: [thickness, fullH, depth], pos: [halfWidth + thickness / 2, 0, 0] },
+  ]
+  for (const bar of bars) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...bar.size), mat)
+    mesh.position.set(...bar.pos)
+    mesh.renderOrder = 4
+    group.add(mesh)
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(bar.size[0] * 1.15, bar.size[1] * 1.15, bar.size[2] * 0.5),
+      glowMat,
+    )
+    glow.position.set(...bar.pos)
+    glow.renderOrder = 3
+    group.add(glow)
   }
-  const safeRing = createDangerRing(0x86efac, 0x22c55e)
+  // Soft fill so the hole reads even when the frame is distant.
+  const fill = new THREE.Mesh(
+    new THREE.PlaneGeometry(fullW * 0.92, fullH * 0.92),
+    new THREE.MeshBasicMaterial({
+      color: emissive,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      depthTest: false,
+    }),
+  )
+  fill.position.z = -0.02
+  fill.renderOrder = 2
+  group.add(fill)
+  group.userData.halfWidth = halfWidth
+  group.userData.halfHeight = halfHeight
+  return group
+}
+
+function addBossSideTowers(group) {
+  for (const sx of [-9.5, 9.5]) {
+    const tower = createBuilding(2.2, 16, 2.2, buildingMats[0])
+    tower.position.x = sx
+    group.add(tower)
+  }
+}
+
+/** Shared open portal + optional side décor for every boss kind. */
+function createBossPortalBase(kind, passage) {
+  const halfWidth = passage?.halfWidth ?? 4
+  const halfHeight = passage?.halfHeight ?? 3.7
+  const g = new THREE.Group()
+  addBossSideTowers(g)
+
+  const colors = {
+    scissors: { ring: 0x86efac, emissive: 0x22c55e },
+    wind: { ring: 0x93c5fd, emissive: 0x2563eb },
+    stapler: { ring: 0xfcd34d, emissive: 0xf59e0b },
+  }[kind] || { ring: 0x86efac, emissive: 0x22c55e }
+
+  const safeRing = createSafePortalRing(colors.ring, colors.emissive, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
-  g.add(left, right)
-  addBossArtOverlay(g, 'scissors')
-  g.userData.left = left
-  g.userData.right = right
+
+  // Decorative frame lips just outside the safe rectangle (never inside it).
+  const accent = portalAccentMats[kind] || portalFrameMat
+  const outerPad = 0.55
+  const lipDepth = 0.45
+  const leftLip = new THREE.Mesh(
+    new THREE.BoxGeometry(outerPad, halfHeight * 2 + 1.2, lipDepth),
+    accent,
+  )
+  leftLip.position.set(-halfWidth - outerPad / 2 - 0.15, 10, 0)
+  const rightLip = leftLip.clone()
+  rightLip.position.x = halfWidth + outerPad / 2 + 0.15
+  g.add(leftLip, rightLip)
+
+  addBossArtOverlay(g, kind, 10, halfHeight)
   g.userData.phase = 0
   g.userData.gapY = 10
-  g.userData.kind = 'scissors'
+  g.userData.kind = kind
   g.userData.safeRing = safeRing
+  g.userData.halfWidth = halfWidth
+  g.userData.halfHeight = halfHeight
+  g.userData.leftLip = leftLip
+  g.userData.rightLip = rightLip
+  return g
+}
+
+function createBossGate(passage) {
+  const g = createBossPortalBase('scissors', passage)
+  const halfWidth = g.userData.halfWidth
+  // Blades stay OUTSIDE the open portal — tall panels parked left/right.
+  const bladeW = 1.1
+  const bladeH = g.userData.halfHeight * 2 + 2.5
+  const left = new THREE.Mesh(new THREE.BoxGeometry(bladeW, bladeH, 0.35), scissorsMat)
+  const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(0.12, bladeH, 0.05), scissorsEdgeMat)
+  leftEdge.position.set(bladeW * 0.4, 0, 0.2)
+  left.add(leftEdge)
+  left.position.set(-halfWidth - bladeW * 0.7 - 0.4, 10, 0.1)
+  const right = left.clone()
+  right.position.x = halfWidth + bladeW * 0.7 + 0.4
+  g.add(left, right)
+  g.userData.left = left
+  g.userData.right = right
   return g
 }
 
 const staplerJawMat = new THREE.MeshStandardMaterial({ color: 0xc4c9d4, metalness: 0.18, roughness: 0.38 })
-const staplerBodyMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.72 })
 
-/** Horizontal jaw pair — safe slot is a tall center gap between top and bottom plates. */
-function createStaplerGate() {
-  const g = new THREE.Group()
-  for (const sx of [-8, 8]) {
-    const tower = createBuilding(2.5, 18, 2.5, buildingMats[0])
-    tower.position.x = sx
-    g.add(tower)
-  }
-  const body = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 1.4), staplerBodyMat)
-  body.position.set(0, 10, 0.4)
-  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, 0.55), staplerJawMat)
-  topJaw.position.set(0, 14.2, 0)
-  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, 0.55), staplerJawMat)
-  bottomJaw.position.set(0, 5.8, 0)
-  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.6, 10), scissorsEdgeMat)
-  hinge.rotation.z = Math.PI / 2
-  hinge.position.set(4.2, 10, 0.2)
-  const safeRing = createDangerRing(0xfcd34d, 0xf59e0b)
-  safeRing.position.set(0, 10, -0.05)
-  g.add(body, topJaw, bottomJaw, hinge, safeRing)
-  addBossArtOverlay(g, 'stapler')
+/** Top/bottom jaws only — the center slot is always open and matches the ring. */
+function createStaplerGate(passage) {
+  const g = createBossPortalBase('stapler', passage)
+  const halfWidth = g.userData.halfWidth
+  const halfHeight = g.userData.halfHeight
+  const jawH = 1.15
+  const jawW = halfWidth * 2 + 1.6
+  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
+  topJaw.position.set(0, 10 + halfHeight + jawH * 0.55 + 0.2, 0.15)
+  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
+  bottomJaw.position.set(0, 10 - halfHeight - jawH * 0.55 - 0.2, 0.15)
+  g.add(topJaw, bottomJaw)
   g.userData.topJaw = topJaw
   g.userData.bottomJaw = bottomJaw
-  g.userData.phase = 0
-  g.userData.gapY = 10
-  g.userData.kind = 'stapler'
-  g.userData.safeRing = safeRing
   return g
-}
-
-function createBossMesh(kind) {
-  if (kind === 'wind') return createWindTunnelGate()
-  if (kind === 'stapler') return createStaplerGate()
-  return createBossGate()
 }
 
 const windFanMat = new THREE.MeshStandardMaterial({ color: 0x9ab4cc, roughness: 0.5, metalness: 0.15 })
@@ -1487,43 +1533,39 @@ function createFan(radius) {
   return g
 }
 
-/** A "wind tunnel" boss gauntlet: two spinning turbines with a drifting safe lane
- *  and loose paper debris swirling in the danger zone, instead of closing blades. */
-function createWindTunnelGate() {
-  const g = new THREE.Group()
-  for (const sx of [-8, 8]) {
-    const tower = createBuilding(2.5, 18, 2.5, buildingMats[0])
-    tower.position.x = sx
-    g.add(tower)
-  }
-  const fanL = createFan(3.2)
-  fanL.position.set(-3.4, 10, 0)
-  const fanR = createFan(3.2)
-  fanR.position.set(3.4, 10, 0)
-  g.add(fanL, fanR)
+/** Wind tunnel: turbines parked outside the portal; debris never enters the hole. */
+function createWindTunnelGate(passage) {
+  const g = createBossPortalBase('wind', passage)
+  const halfWidth = g.userData.halfWidth
+  const fanR = 2.2
+  const fanL = createFan(fanR)
+  fanL.position.set(-halfWidth - fanR - 0.8, 10, 0.2)
+  const fanRgt = createFan(fanR)
+  fanRgt.position.set(halfWidth + fanR + 0.8, 10, 0.2)
+  g.add(fanL, fanRgt)
 
   const debris = []
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 8; i++) {
     const d = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), windDebrisMat)
+    // Orbit only OUTSIDE the safe opening.
     d.userData.orbit = rng() * Math.PI * 2
-    d.userData.radius = 2.4 + rng() * 2.6
-    d.userData.speed = 2 + rng() * 2
+    d.userData.radius = halfWidth + 1.6 + rng() * 1.8
+    d.userData.speed = 1.6 + rng() * 1.4
+    d.userData.yBias = (rng() - 0.5) * halfHeight * 0.6
     g.add(d)
     debris.push(d)
   }
 
-  const safeRing = createDangerRing(0x93c5fd, 0x2563eb)
-  safeRing.position.set(0, 10, -0.05)
-  g.add(safeRing)
-  addBossArtOverlay(g, 'wind')
   g.userData.fanL = fanL
-  g.userData.fanR = fanR
+  g.userData.fanR = fanRgt
   g.userData.debris = debris
-  g.userData.phase = 0
-  g.userData.gapY = 10
-  g.userData.kind = 'wind'
-  g.userData.safeRing = safeRing
   return g
+}
+
+function createBossMesh(kind, passage) {
+  if (kind === 'wind') return createWindTunnelGate(passage)
+  if (kind === 'stapler') return createStaplerGate(passage)
+  return createBossGate(passage)
 }
 
 const roofPropMats = {
@@ -2384,9 +2426,6 @@ function spawnBoss(z = 70, forcedKind = null) {
   const kind = forcedKind && ['scissors', 'wind', 'stapler'].includes(forcedKind)
     ? forcedKind
     : bossKindForIndex(encounterIndex)
-  const gate = createBossMesh(kind)
-  gate.position.set(0, 0, z)
-  scene.add(gate)
   const director = createBossEncounter({
     kind,
     difficulty: difficulty.id,
@@ -2394,7 +2433,30 @@ function spawnBoss(z = 70, forcedKind = null) {
     reducedMotion: settings.reducedMotion,
     colorblind: settings.colorblindPowers,
   })
-  const opening = describeBossPhase(director.snapshot())
+  const openingSnap = director.snapshot()
+  // Build the open portal to the *same* passage the collision test uses.
+  const gate = createBossMesh(kind, openingSnap.passage)
+  gate.position.set(0, 0, z)
+  gate.userData.gapY = openingSnap.safeY
+  if (gate.userData.safeRing) gate.userData.safeRing.position.y = openingSnap.safeY
+  // Park side décor relative to the committed lane immediately.
+  if (gate.userData.left) gate.userData.left.position.y = openingSnap.safeY
+  if (gate.userData.right) gate.userData.right.position.y = openingSnap.safeY
+  if (gate.userData.leftLip) gate.userData.leftLip.position.y = openingSnap.safeY
+  if (gate.userData.rightLip) gate.userData.rightLip.position.y = openingSnap.safeY
+  if (gate.userData.fanL) gate.userData.fanL.position.y = openingSnap.safeY
+  if (gate.userData.fanR) gate.userData.fanR.position.y = openingSnap.safeY
+  if (gate.userData.topJaw) {
+    gate.userData.topJaw.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 0.85
+  }
+  if (gate.userData.bottomJaw) {
+    gate.userData.bottomJaw.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 0.85
+  }
+  if (gate.userData.artOverlay) {
+    gate.userData.artOverlay.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 1.8
+  }
+  scene.add(gate)
+  const opening = describeBossPhase(openingSnap)
   entities.push({
     mesh: gate,
     type: 'boss',
@@ -2406,9 +2468,11 @@ function spawnBoss(z = 70, forcedKind = null) {
     lastBossPhase: 'warning',
   })
   bossActive = true
+  // Brief approach invuln so a late hazard can't snipe the commit.
+  invuln = Math.max(invuln, 0.35)
   zoneBanner.textContent = `${bossBannerEmoji(kind)} BOSS · ${opening.headline}`
   zoneBanner.classList.remove('hidden')
-  zoneBannerTimer = 3.4
+  zoneBannerTimer = 3.6
   track('boss_start', { distance: Math.floor(distance), kind })
   audio.windGust()
   Haptic.power()
@@ -4157,49 +4221,52 @@ function animateHazards(dt) {
         audio.incoming()
         if (settings.haptics) Haptic.tap()
       }
+      const halfH = encounter?.passage?.halfHeight ?? u.halfHeight ?? 3.7
       if (u.kind === 'wind') {
-        if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 9
-        if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 9
-        u.fanL && (u.fanL.position.y = u.gapY + 3)
-        u.fanR && (u.fanR.position.y = u.gapY + 3)
+        if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 7
+        if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 7
+        if (u.fanL) u.fanL.position.y = u.gapY
+        if (u.fanR) u.fanR.position.y = u.gapY
         if (u.debris) {
           for (const d of u.debris) {
             if (encounter?.motionAllowed !== false) d.userData.orbit += dt * d.userData.speed
             const r = d.userData.radius
-            d.position.set(Math.cos(d.userData.orbit) * r, u.gapY + 3 + Math.sin(d.userData.orbit * 1.3) * r * 0.6, Math.sin(d.userData.orbit) * 0.6)
-            if (encounter?.motionAllowed !== false) d.rotation.z += dt * 3
+            // Debris stays outside the portal radius.
+            d.position.set(
+              Math.cos(d.userData.orbit) * r,
+              u.gapY + (d.userData.yBias || 0) + Math.sin(d.userData.orbit * 1.1) * 0.8,
+              Math.sin(d.userData.orbit) * 0.5,
+            )
+            if (encounter?.motionAllowed !== false) d.rotation.z += dt * 2.4
           }
         }
       } else if (u.kind === 'stapler') {
-        // Jaws press toward the safe lane while leaving a tall center slot.
+        // Mild press animation that never closes the open slot.
         const press = encounter?.motionAllowed === false
-          ? 0.35
-          : 0.55 + Math.sin(u.phase * 1.1) * 0.2
-        if (u.topJaw) u.topJaw.position.y = u.gapY + 3.6 + press
-        if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - 3.6 - press
+          ? 0.15
+          : 0.25 + Math.sin(u.phase * 1.05) * 0.12
+        if (u.topJaw) u.topJaw.position.y = u.gapY + halfH + 0.85 + press
+        if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - halfH - 0.85 - press
       } else {
+        // Scissors side blades: gentle bob only — never tilt into the portal.
         if (u.left) {
-          u.left.position.y = u.gapY + 3
-          u.left.rotation.z = encounter?.motionAllowed === false
-            ? 0.25
-            : 0.25 + Math.sin(u.phase * 1.3) * 0.2
+          u.left.position.y = u.gapY + (encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 1.2) * 0.25)
+          u.left.rotation.z = 0
         }
         if (u.right) {
-          u.right.position.y = u.gapY + 3
-          u.right.rotation.z = encounter?.motionAllowed === false
-            ? -0.25
-            : -0.25 - Math.sin(u.phase * 1.3) * 0.2
+          u.right.position.y = u.gapY + (encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 1.2 + 1) * 0.25)
+          u.right.rotation.z = 0
         }
       }
+      if (u.leftLip) u.leftLip.position.y = u.gapY
+      if (u.rightLip) u.rightLip.position.y = u.gapY
+      if (u.artOverlay) u.artOverlay.position.y = u.gapY + halfH + 1.8
       const safeRing = u.safeRing
       if (safeRing) {
         safeRing.position.y = u.gapY
-        safeRing.material.opacity = encounter?.motionAllowed === false
-          ? 0.9
-          : 0.78 + Math.sin(elapsed * 8) * 0.16
-        const passageScale = Math.min(encounter?.passage?.halfWidth || 3.3, encounter?.passage?.halfHeight || 3.2) / 2.45
-        safeRing.scale.setScalar(passageScale * (encounter?.shapeCue?.includes('ring') ? 1.08 : 1))
-        safeRing.material.transparent = true
+        // Soft pulse on the portal fill / frame without rescaling collision size.
+        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(elapsed * 7) * 0.02
+        safeRing.scale.set(pulse, pulse, 1)
       }
     }
     // Spin the billboard card in-plane (not around Y) so it keeps facing the camera
@@ -5101,12 +5168,15 @@ function update(dt) {
           gapY,
           passage: encounter?.passage,
         })
-        if (!inGap && Math.abs(dz) < 1.8) {
+        // Only punish a clear miss near the gate plane — grazing the glowing
+        // ring edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage.
+        if (!inGap && Math.abs(dz) < 1.55) {
           e.director?.collide()
           die(bossCrashReason(m.userData.kind))
           return
         }
-        if (dz < -1.2 && inGap) {
+        // Success once the plane has threaded past the gate while in the hole.
+        if (dz < -0.9 && inGap) {
           // Successfully threaded — reward once
           if (!e.cleared) {
             e.cleared = true

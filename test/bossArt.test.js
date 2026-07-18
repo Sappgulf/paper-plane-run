@@ -36,13 +36,13 @@ describe('boss artwork registry', () => {
     expect(BOSS_ART.stapler.shape.cue).toMatch(/jaw|slot/i)
   })
 
-  test('keeps procedural boss geometry visible until its cosmetic texture loads or fails', () => {
+  test('keeps procedural boss geometry visible until its cosmetic badge loads or fails', () => {
     let loaded
     let failed
     const overlay = createBossArtOverlay({
       THREE,
       kind: 'scissors',
-      size: 16,
+      size: 2.6,
       loadTexture: (url, onLoad, onError) => {
         expect(url).toBe(BOSS_ART.scissors.texture)
         loaded = onLoad
@@ -51,6 +51,8 @@ describe('boss artwork registry', () => {
     })
 
     expect(overlay.name).toBe('bossArt-scissors')
+    // Small badge only — never a full-face cover over the portal.
+    expect(overlay.geometry.parameters.width).toBeLessThanOrEqual(3)
     expect(overlay.visible).toBe(false)
     expect(overlay.material.map).toBeNull()
 

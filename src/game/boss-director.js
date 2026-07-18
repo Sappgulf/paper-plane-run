@@ -1,19 +1,23 @@
 const TIMING = Object.freeze({
-  // Longer warning/pressure windows so the safe lane is readable before commit.
-  easy: Object.freeze({ warning: 1.55, pressure: 1.65 }),
-  normal: Object.freeze({ warning: 1.25, pressure: 1.4 }),
-  hard: Object.freeze({ warning: 1.0, pressure: 1.15 }),
+  // Long enough that the glowing portal is readable before the commit slice.
+  easy: Object.freeze({ warning: 1.8, pressure: 1.7 }),
+  normal: Object.freeze({ warning: 1.5, pressure: 1.5 }),
+  hard: Object.freeze({ warning: 1.2, pressure: 1.25 }),
 })
 
-const LANE_Y = Object.freeze({ '-1': 6, 0: 10, 1: 14 })
+// Keep lanes in the middle flight band — avoid extreme low that hugs the ground.
+const LANE_Y = Object.freeze({ '-1': 8, 0: 10, 1: 12 })
 const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
 
-// Generous passages — hard stays tighter than normal but still flyable.
+// Generous, flyable openings. Values are half-extents of the safe rectangle.
 const PASSAGES = Object.freeze({
-  easy: Object.freeze({ halfWidth: 4.0, halfHeight: 3.9 }),
-  normal: Object.freeze({ halfWidth: 3.65, halfHeight: 3.55 }),
-  hard: Object.freeze({ halfWidth: 3.25, halfHeight: 3.15 }),
+  easy: Object.freeze({ halfWidth: 4.4, halfHeight: 4.0 }),
+  normal: Object.freeze({ halfWidth: 4.0, halfHeight: 3.7 }),
+  hard: Object.freeze({ halfWidth: 3.6, halfHeight: 3.4 }),
 })
+
+/** Extra forgiveness so a grazing edge still counts as a pass. */
+export const PASSAGE_EDGE_GRACE = 0.35
 
 export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler'])
 
@@ -27,9 +31,10 @@ export function isInsideBossPassage({
   bossX = 0,
   gapY = 10,
   passage = PASSAGES.normal,
+  grace = PASSAGE_EDGE_GRACE,
 } = {}) {
-  const halfWidth = Math.max(0, Number(passage?.halfWidth) || 0)
-  const halfHeight = Math.max(0, Number(passage?.halfHeight) || 0)
+  const halfWidth = Math.max(0, Number(passage?.halfWidth) || 0) + Math.max(0, Number(grace) || 0)
+  const halfHeight = Math.max(0, Number(passage?.halfHeight) || 0) + Math.max(0, Number(grace) || 0)
   return Math.abs((Number(playerX) || 0) - (Number(bossX) || 0)) < halfWidth &&
     Math.abs((Number(playerY) || 0) - (Number(gapY) || 0)) < halfHeight
 }
@@ -38,23 +43,23 @@ export function isInsideBossPassage({
 export function getBossApproachSpeedScale({ bossZ } = {}) {
   const z = Number(bossZ)
   if (!Number.isFinite(z) || z <= 0) return 1
-  if (z <= 50) return 0.72
-  if (z <= 90) return 0.78
+  if (z <= 55) return 0.62
+  if (z <= 95) return 0.72
   return 1
 }
 
 /** Clear lethal clutter farther out so the approach lane stays empty. */
 export function shouldClearForBossApproach({ type, z } = {}) {
-  return ['bird', 'scissors', 'building'].includes(type) && Number(z) >= 0 && Number(z) <= 160
+  return ['bird', 'scissors', 'building'].includes(type) && Number(z) >= 0 && Number(z) <= 180
 }
 
 /** Stars and recovery granted when a boss is successfully threaded. */
 export function getBossClearReward() {
   return Object.freeze({
     stars: 5,
-    recoveryMeters: 95,
-    invulnSeconds: 0.65,
-    hitStopSeconds: 0.06,
+    recoveryMeters: 110,
+    invulnSeconds: 0.85,
+    hitStopSeconds: 0.05,
   })
 }
 
@@ -62,35 +67,35 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
   const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
   if (phase === 'final-pass') {
     const headline = kind === 'wind'
-      ? `Final gust · commit ${laneLabel}`
+      ? `Final gust · fly the glowing ring · ${laneLabel}`
       : kind === 'stapler'
-        ? `Jaws closing · commit ${laneLabel}`
-        : `Final cut · commit ${laneLabel}`
+        ? `Jaws closing · fly the glowing ring · ${laneLabel}`
+        : `Final cut · fly the glowing ring · ${laneLabel}`
     return Object.freeze({
       laneLabel,
       headline,
       intensity: 1,
-      hitStopSeconds: 0.03,
+      hitStopSeconds: 0.025,
     })
   }
   if (phase === 'pressure') {
     const headline = kind === 'wind'
-      ? `Wind rising · hold ${laneLabel}`
+      ? `Wind rising · hold the ring · ${laneLabel}`
       : kind === 'stapler'
-        ? `Stapler press · hold ${laneLabel}`
-        : `Blades closing · hold ${laneLabel}`
+        ? `Stapler press · hold the ring · ${laneLabel}`
+        : `Blades closing · hold the ring · ${laneLabel}`
     return Object.freeze({
       laneLabel,
       headline,
       intensity: 0.72,
-      hitStopSeconds: 0.015,
+      hitStopSeconds: 0.012,
     })
   }
   const headline = kind === 'wind'
-    ? `Wind opening · ${laneLabel} lane`
+    ? `Wind gate · safe ring is ${laneLabel}`
     : kind === 'stapler'
-      ? `Stapler gate · ${laneLabel} lane`
-      : `Scissors opening · ${laneLabel} lane`
+      ? `Stapler gate · safe ring is ${laneLabel}`
+      : `Scissors gate · safe ring is ${laneLabel}`
   return Object.freeze({
     laneLabel,
     headline,
@@ -104,9 +109,9 @@ export function bossKindForIndex(index = 0) {
 }
 
 export function bossCrashReason(kind) {
-  if (kind === 'wind') return 'Blown into the wind turbines!'
-  if (kind === 'stapler') return 'Pinned by the stapler jaws!'
-  return 'Snipped by the boss scissors!'
+  if (kind === 'wind') return 'Missed the wind ring!'
+  if (kind === 'stapler') return 'Missed the stapler ring!'
+  return 'Missed the scissors ring!'
 }
 
 export function bossBannerEmoji(kind) {
