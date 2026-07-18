@@ -603,6 +603,32 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 
 .upgrade-grid { display: grid; gap: 10px; }
+.journey-chapter-picker {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+.journey-chapter-card {
+  text-align: left;
+  border: 1.5px solid rgba(61,44,41,.12);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255,250,242,.96);
+  box-shadow: 0 8px 18px rgba(61,44,41,.06);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.journey-chapter-card strong { font-size: 15px; color: #3d2c29; }
+.journey-chapter-card span { font-size: 13px; font-weight: 700; color: #7c3aed; }
+.journey-chapter-card small { font-size: 12px; font-weight: 700; color: #8a6f68; }
+.journey-chapter-card.locked { opacity: 0.55; cursor: not-allowed; }
+.journey-chapter-card:not(.locked):hover {
+  border-color: rgba(124,58,237,.4);
+  box-shadow: 0 0 0 2px rgba(167,139,250,.25);
+}
+
 .upgrade-path-banner {
   grid-column: 1 / -1;
   display: flex;

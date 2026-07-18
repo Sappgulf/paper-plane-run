@@ -1,4 +1,4 @@
-import { JOURNEY_STEPS, PILOTS } from './journey.js'
+import { PILOTS, chapterMeta, stepsForChapter } from './journey.js'
 import { getPilotMasteryView } from './journey-mastery.js'
 import { getJourneyArtwork } from './journey-art.js'
 
@@ -21,7 +21,18 @@ function cosmeticLabel(id) {
 
 function routeLabel(routeId) {
   const destination = routeId?.split('-')[0]
-  const names = { rooftops: 'Paper City', city: 'Paper City', harbor: 'Harbor', storm: 'Storm Front', aurora: 'Aurora' }
+  const names = {
+    rooftops: 'Paper City',
+    city: 'Paper City',
+    harbor: 'Harbor',
+    storm: 'Storm Front',
+    aurora: 'Aurora',
+    golden: 'Golden Fold',
+    midnight: 'Midnight Desk',
+    scrapyard: 'Stapler Alley',
+    'desk-finale': 'Desk Showdown',
+    sunset: 'Golden Fold',
+  }
   const risk = routeId?.includes('-risky-') ? 'Risky route' : 'Scenic route'
   return `${names[destination] || 'Journey route'} · ${risk}`
 }
@@ -29,17 +40,21 @@ function routeLabel(routeId) {
 export function renderJourneyMap(root, journey) {
   if (!root || !journey) return
   const pilot = PILOTS[journey.pilotId] || PILOTS.navigator
+  const chapter = journey.chapter || 1
+  const steps = stepsForChapter(chapter)
+  const meta = chapterMeta(chapter)
   root.innerHTML = `
     <div class="journey-summary">
       <span>${pilot.icon} ${escapeHtml(pilot.name)}</span>
-      <span>💌 ${journey.earnedStampIds.length}/${JOURNEY_STEPS.length} stamps</span>
-      <span>🔺 Red Dart</span>
+      <span>📖 Ch.${chapter} · ${escapeHtml(meta.title)}</span>
+      <span>💌 ${journey.earnedStampIds.length}/${steps.length} stamps</span>
+      <span>${chapter === 2 ? '📎 Stapler' : '🔺 Red Dart'}</span>
     </div>
     <ol class="journey-map-line" aria-label="Journey progress">
-      ${JOURNEY_STEPS.map((step, index) => {
+      ${steps.map((step, index) => {
         const state = index < journey.stepIndex ? 'complete' : index === journey.stepIndex ? 'current' : 'upcoming'
         return `<li class="journey-stop ${state}"${state === 'current' ? ' aria-current="step"' : ''}>
-          <span class="journey-stop-icon">${index < journey.stepIndex ? '✓' : index === JOURNEY_STEPS.length - 1 ? '🔺' : ['🏙️', '⚓', '⛈️'][index]}</span>
+          <span class="journey-stop-icon">${index < journey.stepIndex ? '✓' : step.icon || '📍'}</span>
           <span>${escapeHtml(step.label)}</span>
         </li>`
       }).join('')}
@@ -126,7 +141,7 @@ function postcardImage(card) {
 export function renderPostcardAlbum(root, postcards, onOpen) {
   if (!root) return
   if (!postcards.length) {
-    root.innerHTML = '<div class="journey-empty"><span>💌</span><strong>No postcards yet</strong><p>Complete a four-flight Journey to make your first one.</p></div>'
+    root.innerHTML = '<div class="journey-empty"><span>💌</span><strong>No postcards yet</strong><p>Complete a four-flight Journey chapter to make your first one.</p></div>'
     return
   }
   root.innerHTML = postcards.map((card) => {

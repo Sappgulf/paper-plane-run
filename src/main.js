@@ -30,8 +30,22 @@ import {
   listUpgrades,
   UPGRADES,
 } from './upgrades.js'
-import { buildRunConfiguration, createJourney, getRouteChoices, selectJourneyPilot, selectJourneyRoute } from './journey.js'
-import { clearJourney, loadJourney, saveJourney } from './journey-storage.js'
+import {
+  buildRunConfiguration,
+  chapterMeta,
+  createJourney,
+  getRouteChoices,
+  selectJourneyPilot,
+  selectJourneyRoute,
+} from './journey.js'
+import {
+  clearJourney,
+  isChapterUnlocked,
+  loadJourney,
+  loadUnlockedChapters,
+  saveJourney,
+  unlockJourneyChapter,
+} from './journey-storage.js'
 import { buildPostcardShareModel, loadPostcardAlbum } from './journey-postcards.js'
 import { renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from './journey-ui.js'
 import { loadMastery } from './journey-mastery-storage.js'
@@ -174,10 +188,46 @@ function getJourneyStampCount() {
   return stamps.size
 }
 
+function startJourneyChapter(chapter = 1) {
+  const chapterId = chapter === 2 ? 2 : 1
+  if (chapterId === 2 && !isChapterUnlocked(localStorage, 2)) {
+    // Completing any Chapter 1 postcard unlocks Ch2; also allow if player has stamps.
+    if (getJourneyStampCount() < 4) return false
+    unlockJourneyChapter(localStorage, 2)
+  }
+  journey = createJourney(Date.now(), Date.now(), chapterId)
+  saveJourney(localStorage, journey)
+  track('journey_chapter_started', { chapter: chapterId, journeyId: journey.id })
+  return true
+}
+
+function renderJourneyChapterPicker(root) {
+  if (!root) return
+  const unlocked = loadUnlockedChapters(localStorage)
+  const chapter2Open = unlocked.includes(2) || getJourneyStampCount() >= 4
+  root.innerHTML = `
+    <div class="journey-chapter-picker">
+      <button type="button" class="journey-chapter-card" data-chapter="1">
+        <strong>${chapterMeta(1).title}</strong>
+        <span>${chapterMeta(1).subtitle}</span>
+        <small>Four flights · Red Dart finale</small>
+      </button>
+      <button type="button" class="journey-chapter-card${chapter2Open ? '' : ' locked'}" data-chapter="2" ${chapter2Open ? '' : 'disabled'}>
+        <strong>${chapterMeta(2).title}</strong>
+        <span>${chapterMeta(2).subtitle}</span>
+        <small>${chapter2Open ? 'Four flights · Stapler finale' : 'Complete Chapter 1 to unlock'}</small>
+      </button>
+    </div>`
+  root.onclick = (event) => {
+    const button = event.target.closest?.('[data-chapter]')
+    if (!button || button.disabled) return
+    if (startJourneyChapter(Number(button.dataset.chapter))) renderJourney()
+  }
+}
+
 function renderJourney() {
   if (!journey) {
-    journey = createJourney(Date.now(), Date.now())
-    saveJourney(localStorage, journey)
+    startJourneyChapter(1)
   }
   renderJourneyMap($('journey-map'), journey)
   renderPilotChoices($('journey-pilots'), journey, getJourneyStampCount(), (pilotId) => {
@@ -187,11 +237,37 @@ function renderJourney() {
   }, mastery)
   const routes = $('journey-route-choices')
   if (journey.status === 'complete') {
-    routes.innerHTML = '<div class="journey-empty"><span>💌</span><strong>Journey complete!</strong><p>Your postcard is waiting in the Hangar.</p></div>'
+    const chapter = journey.chapter || 1
+    const ch2Ready = chapter === 1 || isChapterUnlocked(localStorage, 2) || getJourneyStampCount() >= 4
+    if (chapter === 1) unlockJourneyChapter(localStorage, 2)
+    routes.innerHTML = `
+      <div class="journey-empty">
+        <span>💌</span>
+        <strong>Chapter ${chapter} complete!</strong>
+        <p>Your postcard is waiting in the Hangar.</p>
+        <div class="btn-row wrap" style="margin-top:10px;justify-content:center">
+          ${ch2Ready && chapter === 1
+            ? '<button type="button" class="cta-main cta-inline" data-journey-action="chapter-2">Begin Chapter 2</button>'
+            : ''}
+          <button type="button" class="btn-secondary" data-journey-action="replay">Replay this chapter</button>
+        </div>
+      </div>`
     $('journey-choice-title').textContent = 'Postcard complete'
+    routes.onclick = (event) => {
+      const action = event.target.closest?.('[data-journey-action]')?.dataset.journeyAction
+      if (action === 'chapter-2') {
+        startJourneyChapter(2)
+        renderJourney()
+      } else if (action === 'replay') {
+        startJourneyChapter(chapter)
+        renderJourney()
+      }
+    }
     return
   }
-  $('journey-choice-title').textContent = journey.selectedRouteId ? 'Selected route' : 'Choose the next route'
+  $('journey-choice-title').textContent = journey.selectedRouteId
+    ? 'Selected route'
+    : `Chapter ${journey.chapter || 1} · choose the next route`
   renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
     ...route,
     selected: route.id === journey.selectedRouteId,
@@ -200,11 +276,12 @@ function renderJourney() {
     journey = selectJourneyRoute(journey, routeId)
     saveJourney(localStorage, journey)
     journeyRunConfig = buildRunConfiguration(journey)
-    track('journey_route_selected', { routeId, step: journey.stepIndex })
+    track('journey_route_selected', { routeId, step: journey.stepIndex, chapter: journey.chapter || 1 })
     void startMode('journey', { journeyConfig: journeyRunConfig })
   })
   track('journey_route_offered', {
     journeyId: journey.id,
+    chapter: journey.chapter || 1,
     step: journey.stepIndex,
     routeIds: getRouteChoices(journey).map((route) => route.id),
   })

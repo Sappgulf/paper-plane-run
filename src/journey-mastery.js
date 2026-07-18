@@ -65,7 +65,9 @@ export function normalizeMasteryState(value) {
   const navigator = value.pilots.navigator?.counters
   const daredevil = value.pilots.daredevil?.counters
   if (!navigator || !daredevil || !Array.isArray(navigator.destinations)) return null
-  const destinations = [...new Set(navigator.destinations.filter((id) => ['city', 'harbor', 'storm', 'aurora'].includes(id)))]
+  const destinations = [...new Set(navigator.destinations.filter((id) => [
+    'city', 'harbor', 'storm', 'aurora', 'sunset', 'midnight',
+  ].includes(id)))]
   const navigatorCounters = {
     routesCompleted: integer(navigator.routesCompleted),
     shortcutGatesCleared: integer(navigator.shortcutGatesCleared),

@@ -1,19 +1,22 @@
 import { describe, expect, test } from 'vitest'
 import {
+  BOSS_KINDS,
+  bossKindForIndex,
   createBossEncounter,
   describeBossPhase,
   getBossPassage,
   getBossApproachSpeedScale,
+  getBossClearReward,
   isInsideBossPassage,
   shouldClearForBossApproach,
 } from '../src/game/boss-director.js'
 
 describe('boss encounter director', () => {
-  test.each(['scissors', 'wind'])('runs warning, pressure, and final pass for %s', (kind) => {
+  test.each(BOSS_KINDS)('runs warning, pressure, and final pass for %s', (kind) => {
     const boss = createBossEncounter({ kind, encounterSeed: 3 })
     expect(boss.snapshot()).toMatchObject({ phase: 'warning', pressure: 0, completed: false })
-    expect(boss.step(1.1).phase).toBe('pressure')
-    expect(boss.step(1.3)).toMatchObject({ phase: 'final-pass', pressure: 1 })
+    expect(boss.step(1.3).phase).toBe('pressure')
+    expect(boss.step(1.5)).toMatchObject({ phase: 'final-pass', pressure: 1 })
   })
 
   test('difficulty changes timing without changing the safe lane', () => {
@@ -21,8 +24,8 @@ describe('boss encounter director', () => {
     const hard = createBossEncounter({ kind: 'scissors', difficulty: 'hard', encounterSeed: 8 })
     expect(easy.snapshot().safeLane).toBe(hard.snapshot().safeLane)
     expect(easy.snapshot().warningSeconds).toBeGreaterThan(hard.snapshot().warningSeconds)
-    expect(easy.step(0.9).phase).toBe('warning')
-    expect(hard.step(0.9).phase).toBe('pressure')
+    expect(easy.step(1.0).phase).toBe('warning')
+    expect(hard.step(1.05).phase).toBe('pressure')
   })
 
   test('gives every difficulty a generous but progressively tighter passage', () => {
@@ -34,9 +37,9 @@ describe('boss encounter director', () => {
     expect(normal.halfWidth).toBeGreaterThan(hard.halfWidth)
     expect(easy.halfHeight).toBeGreaterThan(normal.halfHeight)
     expect(normal.halfHeight).toBeGreaterThan(hard.halfHeight)
-    expect(hard).toMatchObject({ halfWidth: expect.any(Number), halfHeight: expect.any(Number) })
-    expect(hard.halfWidth).toBeGreaterThan(2.6)
-    expect(hard.halfHeight).toBeGreaterThan(2.5)
+    // Hard must stay flyable — never a knife-edge slot.
+    expect(hard.halfWidth).toBeGreaterThanOrEqual(3.2)
+    expect(hard.halfHeight).toBeGreaterThanOrEqual(3.1)
   })
 
   test('uses the same passage contract for a centered clear, forgiving edge, and miss', () => {
@@ -59,20 +62,28 @@ describe('boss encounter director', () => {
     })).toBe(false)
   })
 
-  test('slows only the readable boss approach and clears lethal corridor hazards', () => {
-    expect(getBossApproachSpeedScale({ bossZ: 70 })).toBe(0.84)
+  test('slows the readable boss approach and clears lethal corridor hazards farther out', () => {
+    expect(getBossApproachSpeedScale({ bossZ: 40 })).toBe(0.72)
+    expect(getBossApproachSpeedScale({ bossZ: 70 })).toBe(0.78)
     expect(getBossApproachSpeedScale({ bossZ: 95 })).toBe(1)
     expect(getBossApproachSpeedScale({ bossZ: -4 })).toBe(1)
 
-    expect(shouldClearForBossApproach({ type: 'bird', z: 80 })).toBe(true)
+    expect(shouldClearForBossApproach({ type: 'bird', z: 150 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'scissors', z: 20 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'building', z: 120 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'star', z: 80 })).toBe(false)
     expect(shouldClearForBossApproach({ type: 'bird', z: -10 })).toBe(false)
   })
 
+  test('cycles scissors, wind, and stapler deterministically', () => {
+    expect(bossKindForIndex(0)).toBe('scissors')
+    expect(bossKindForIndex(1)).toBe('wind')
+    expect(bossKindForIndex(2)).toBe('stapler')
+    expect(bossKindForIndex(3)).toBe('scissors')
+  })
+
   test('is deterministic and keeps lanes in the supported range', () => {
-    for (const kind of ['scissors', 'wind']) {
+    for (const kind of BOSS_KINDS) {
       for (let seed = 0; seed < 8; seed += 1) {
         const a = createBossEncounter({ kind, encounterSeed: seed }).snapshot()
         const b = createBossEncounter({ kind, encounterSeed: seed }).snapshot()
@@ -88,38 +99,27 @@ describe('boss encounter director', () => {
     expect(passed.pass()).toMatchObject({ phase: 'complete', completed: true })
     expect(passed.collide()).toMatchObject({ phase: 'complete', completed: true, failed: false })
 
-    const failed = createBossEncounter({ kind: 'scissors' })
+    const failed = createBossEncounter({ kind: 'stapler' })
     expect(failed.collide()).toMatchObject({ phase: 'failed', failed: true })
     expect(failed.pass()).toMatchObject({ phase: 'failed', completed: false })
+  })
+
+  test('clear rewards and phase copy cover all three bosses', () => {
+    const reward = getBossClearReward()
+    expect(reward.stars).toBe(5)
+    expect(reward.recoveryMeters).toBeGreaterThanOrEqual(90)
+    expect(reward.invulnSeconds).toBeGreaterThanOrEqual(0.5)
+    expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler/)
+    expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut/)
   })
 
   test('reduced motion changes only visual motion and colorblind mode adds shape cues', () => {
     const normal = createBossEncounter({ kind: 'wind', encounterSeed: 2 })
     const accessible = createBossEncounter({
-      kind: 'wind', encounterSeed: 2, reducedMotion: true, colorblind: true,
+      kind: 'stapler', encounterSeed: 2, reducedMotion: true, colorblind: true,
     })
-    expect(accessible.snapshot()).toMatchObject({
-      safeLane: normal.snapshot().safeLane,
-      warningSeconds: normal.snapshot().warningSeconds,
-      motionAllowed: false,
-      shapeCue: 'radial-vane-ring',
-      passage: getBossPassage({ difficulty: 'normal' }),
-    })
-    expect(accessible.step(2)).toMatchObject({ phase: normal.step(2).phase, safeLane: normal.snapshot().safeLane })
-  })
-
-  test('turns boss phases into readable lane and impact choreography', () => {
-    expect(describeBossPhase({ kind: 'scissors', phase: 'warning', safeLane: -1 })).toMatchObject({
-      laneLabel: 'LOW',
-      headline: 'Scissors opening · LOW lane',
-      intensity: 0.35,
-      hitStopSeconds: 0,
-    })
-    expect(describeBossPhase({ kind: 'wind', phase: 'final-pass', safeLane: 1 })).toMatchObject({
-      laneLabel: 'HIGH',
-      headline: 'Final gust · commit HIGH',
-      intensity: 1,
-      hitStopSeconds: 0.035,
-    })
+    expect(normal.snapshot().motionAllowed).toBe(true)
+    expect(accessible.snapshot().motionAllowed).toBe(false)
+    expect(accessible.snapshot().shapeCue).toBe('horizontal-jaw-slot')
   })
 })

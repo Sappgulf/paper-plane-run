@@ -4,11 +4,11 @@ import * as THREE from 'three'
 
 import { BOSS_ART, createBossArtOverlay } from '../src/game/boss-art.js'
 
-const BOSS_IDS = ['scissors', 'wind']
+const BOSS_IDS = ['scissors', 'stapler', 'wind']
 
 describe('boss artwork registry', () => {
   test('ships compressed WebP boss art for both runtime and preview use', () => {
-    expect(Object.keys(BOSS_ART)).toEqual(BOSS_IDS)
+    expect(Object.keys(BOSS_ART).sort()).toEqual(BOSS_IDS)
 
     for (const id of BOSS_IDS) {
       const art = BOSS_ART[id]
@@ -33,6 +33,7 @@ describe('boss artwork registry', () => {
 
     expect(BOSS_ART.scissors.shape.cue).toMatch(/blade/i)
     expect(BOSS_ART.wind.shape.cue).toMatch(/vane|turbine/i)
+    expect(BOSS_ART.stapler.shape.cue).toMatch(/jaw|slot/i)
   })
 
   test('keeps procedural boss geometry visible until its cosmetic texture loads or fails', () => {

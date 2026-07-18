@@ -36,6 +36,30 @@ describe('Living Journey domain', () => {
     expect(zones).toEqual(['city', 'harbor', 'storm', 'aurora'])
   })
 
+  it('maps Chapter 2 through sunset, midnight, storm, and midnight finale', () => {
+    let journey = createJourney(12, 1000, 2)
+    expect(journey.chapter).toBe(2)
+    const zones = []
+    for (let step = 0; step < 4; step += 1) {
+      journey = selectJourneyRoute(journey, getRouteChoices(journey)[0].id)
+      zones.push(buildRunConfiguration(journey).zone)
+      journey = resolveJourneyFlight(journey, { completed: true, distance: 350, stars: 1 })
+    }
+    expect(zones).toEqual(['sunset', 'midnight', 'storm', 'midnight'])
+    expect(journey.status).toBe('complete')
+    expect(journey.postcard.chapter).toBe(2)
+  })
+
+  it('uses stapler finale modifiers on Chapter 2', () => {
+    let journey = createJourney(5, 1000, 2)
+    for (let step = 0; step < 3; step += 1) {
+      journey = selectJourneyRoute(journey, getRouteChoices(journey)[0].id)
+      journey = resolveJourneyFlight(journey, { completed: true, distance: 300, stars: 1 })
+    }
+    const choices = getRouteChoices(journey)
+    expect(choices.map((route) => route.modifier)).toEqual(['stapler-finale', 'red-dart-stapler'])
+  })
+
   it('preserves stars on crash but awards stamps only on completion', () => {
     const base = createJourney(10, 1000)
     const selected = selectJourneyRoute(base, getRouteChoices(base)[0].id)

@@ -55,9 +55,13 @@ import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
 import { createBossArtOverlay } from './game/boss-art.js'
 import {
+  bossBannerEmoji,
+  bossCrashReason,
+  bossKindForIndex,
   createBossEncounter,
   describeBossPhase,
   getBossApproachSpeedScale,
+  getBossClearReward,
   isInsideBossPassage,
   shouldClearForBossApproach,
 } from './game/boss-director.js'
@@ -1425,6 +1429,45 @@ function createBossGate() {
   return g
 }
 
+const staplerJawMat = new THREE.MeshStandardMaterial({ color: 0xc4c9d4, metalness: 0.18, roughness: 0.38 })
+const staplerBodyMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.72 })
+
+/** Horizontal jaw pair — safe slot is a tall center gap between top and bottom plates. */
+function createStaplerGate() {
+  const g = new THREE.Group()
+  for (const sx of [-8, 8]) {
+    const tower = createBuilding(2.5, 18, 2.5, buildingMats[0])
+    tower.position.x = sx
+    g.add(tower)
+  }
+  const body = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 1.4), staplerBodyMat)
+  body.position.set(0, 10, 0.4)
+  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, 0.55), staplerJawMat)
+  topJaw.position.set(0, 14.2, 0)
+  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.1, 0.55), staplerJawMat)
+  bottomJaw.position.set(0, 5.8, 0)
+  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.6, 10), scissorsEdgeMat)
+  hinge.rotation.z = Math.PI / 2
+  hinge.position.set(4.2, 10, 0.2)
+  const safeRing = createDangerRing(0xfcd34d, 0xf59e0b)
+  safeRing.position.set(0, 10, -0.05)
+  g.add(body, topJaw, bottomJaw, hinge, safeRing)
+  addBossArtOverlay(g, 'stapler')
+  g.userData.topJaw = topJaw
+  g.userData.bottomJaw = bottomJaw
+  g.userData.phase = 0
+  g.userData.gapY = 10
+  g.userData.kind = 'stapler'
+  g.userData.safeRing = safeRing
+  return g
+}
+
+function createBossMesh(kind) {
+  if (kind === 'wind') return createWindTunnelGate()
+  if (kind === 'stapler') return createStaplerGate()
+  return createBossGate()
+}
+
 const windFanMat = new THREE.MeshStandardMaterial({ color: 0x9ab4cc, roughness: 0.5, metalness: 0.15 })
 const windDebrisMat = new THREE.MeshStandardMaterial({ color: 0xe8ddc8, roughness: 0.85 })
 
@@ -2334,16 +2377,18 @@ function clearBossApproachHazards() {
   }
 }
 
-function spawnBoss(z = 70) {
+function spawnBoss(z = 70, forcedKind = null) {
   clearBossApproachHazards()
-  const useWind = bossCount % 2 === 1
   const encounterIndex = bossCount
   bossCount++
-  const gate = useWind ? createWindTunnelGate() : createBossGate()
+  const kind = forcedKind && ['scissors', 'wind', 'stapler'].includes(forcedKind)
+    ? forcedKind
+    : bossKindForIndex(encounterIndex)
+  const gate = createBossMesh(kind)
   gate.position.set(0, 0, z)
   scene.add(gate)
   const director = createBossEncounter({
-    kind: useWind ? 'wind' : 'scissors',
+    kind,
     difficulty: difficulty.id,
     encounterSeed: encounterIndex,
     reducedMotion: settings.reducedMotion,
@@ -2353,7 +2398,7 @@ function spawnBoss(z = 70) {
   entities.push({
     mesh: gate,
     type: 'boss',
-    kind: useWind ? 'wind' : 'scissors',
+    kind,
     radius: 4,
     halfH: 20,
     isBoss: true,
@@ -2361,10 +2406,10 @@ function spawnBoss(z = 70) {
     lastBossPhase: 'warning',
   })
   bossActive = true
-  zoneBanner.textContent = `${useWind ? '🌬️' : '✂️'} BOSS · ${opening.headline}`
+  zoneBanner.textContent = `${bossBannerEmoji(kind)} BOSS · ${opening.headline}`
   zoneBanner.classList.remove('hidden')
-  zoneBannerTimer = 3
-  track('boss_start', { distance: Math.floor(distance), kind: useWind ? 'wind' : 'scissors' })
+  zoneBannerTimer = 3.4
+  track('boss_start', { distance: Math.floor(distance), kind })
   audio.windGust()
   Haptic.power()
 }
@@ -2461,7 +2506,7 @@ function dispatchJourneyEncounter(event) {
   case 'shortcut-gate': {
     const count = Math.max(1, Math.min(3, event.params?.count || 1))
     for (let index = 0; index < count; index += 1) {
-      spawnBoss(64 + index * 22)
+      spawnBoss(64 + index * 22, event.params?.kind || null)
       const gate = entities.at(-1)
       gate.journeyGate = true
       gate.journeyGateRequired = event.params?.required !== false
@@ -2485,7 +2530,7 @@ function dispatchJourneyEncounter(event) {
     })
     break
   case 'boss-gate':
-    spawnBoss(72)
+    spawnBoss(72, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
     break
   default:
     spawnMiniGauntlet(64)
@@ -4104,11 +4149,11 @@ function animateHazards(dt) {
         const presentation = describeBossPhase(encounter)
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
-        zoneBanner.textContent = `${u.kind === 'wind' ? '🌬️' : '✂️'} ${presentation.headline}`
+        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} ${presentation.headline}`
         zoneBanner.classList.remove('hidden')
-        zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.8
+        zoneBannerTimer = settings.reducedMotion ? 1.35 : 2.0
         hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
-        notifications.show(presentation.headline, { duration: settings.reducedMotion ? 1200 : 1900 })
+        notifications.show(presentation.headline, { duration: settings.reducedMotion ? 1400 : 2100 })
         audio.incoming()
         if (settings.haptics) Haptic.tap()
       }
@@ -4125,6 +4170,13 @@ function animateHazards(dt) {
             if (encounter?.motionAllowed !== false) d.rotation.z += dt * 3
           }
         }
+      } else if (u.kind === 'stapler') {
+        // Jaws press toward the safe lane while leaving a tall center slot.
+        const press = encounter?.motionAllowed === false
+          ? 0.35
+          : 0.55 + Math.sin(u.phase * 1.1) * 0.2
+        if (u.topJaw) u.topJaw.position.y = u.gapY + 3.6 + press
+        if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - 3.6 - press
       } else {
         if (u.left) {
           u.left.position.y = u.gapY + 3
@@ -5051,7 +5103,7 @@ function update(dt) {
         })
         if (!inGap && Math.abs(dz) < 1.8) {
           e.director?.collide()
-          die(m.userData.kind === 'wind' ? 'Blown into the wind turbines!' : 'Snipped by the boss scissors!')
+          die(bossCrashReason(m.userData.kind))
           return
         }
         if (dz < -1.2 && inGap) {
@@ -5067,16 +5119,20 @@ function update(dt) {
               }
               updateJourneyObjectiveHud()
             }
+            const reward = getBossClearReward()
             bossActive = false
-            bossRecoveryUntil = distance + 70
-            hitStopTimer = 0.07
-            track('boss_clear', { distance: Math.floor(distance) })
-            stars += 5
+            bossRecoveryUntil = distance + reward.recoveryMeters
+            hitStopTimer = reward.hitStopSeconds
+            track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
+            stars += reward.stars
             starsEl.textContent = String(stars)
             audio.missionComplete()
             if (settings.haptics) Haptic.collect()
-            invuln = Math.max(invuln, 0.4)
+            invuln = Math.max(invuln, reward.invulnSeconds)
             spawnConfetti(planeX, planeY, 2)
+            powerBanner.textContent = `${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`
+            powerBanner.classList.remove('hidden')
+            bannerTimer = Math.max(bannerTimer, 1.8)
           }
         }
         if (m.position.z < -20) {
@@ -5596,7 +5652,7 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   invuln = 999
   nextSpawnZ = 1000
   windTimer = 999
-  bossCount = devBossProof === 'wind' ? 1 : 0
+  bossCount = devBossProof === 'wind' ? 1 : devBossProof === 'stapler' ? 2 : 0
   spawnBoss(60)
   if (devBossPass) {
     const boss = entities.find((entity) => entity.type === 'boss')

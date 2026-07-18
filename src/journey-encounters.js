@@ -30,6 +30,16 @@ const ZONE_EVENTS = Object.freeze({
     Object.freeze({ type: 'boss-gate', lanes: [-1, 0, 1], params: { required: true } }),
     Object.freeze({ type: 'boss-gate', lanes: [-1, 1], params: { required: true, final: true } }),
   ]),
+  sunset: Object.freeze([
+    Object.freeze({ type: 'formation', lanes: [-1, 0, 1], params: { direction: 1, speed: 2.0 } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, count: 2 } }),
+    Object.freeze({ type: 'formation', lanes: [-1, 1], params: { direction: -1, speed: 2.4 } }),
+  ]),
+  midnight: Object.freeze([
+    Object.freeze({ type: 'visibility-pocket', lanes: [-1, 0, 1], params: { duration: 4.0, density: 0.68 } }),
+    Object.freeze({ type: 'boss-gate', lanes: [-1, 0, 1], params: { required: true, kind: 'stapler' } }),
+    Object.freeze({ type: 'boss-gate', lanes: [-1, 1], params: { required: true, final: true, kind: 'stapler' } }),
+  ]),
 })
 
 function seededHash(seed, stageIndex, variantIndex = 0) {

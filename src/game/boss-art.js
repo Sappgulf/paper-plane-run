@@ -24,6 +24,11 @@ export const BOSS_ART = Object.freeze({
     palette: { primary: '#172b57', accent: '#58c7dc', paper: '#f7e8c5' },
     shape: { cue: 'radial turbine vanes inside an octagonal ring', silhouette: 'turbine' },
   }),
+  stapler: defineBossArt('stapler', {
+    alt: 'Cream paper desk stapler with navy jaws and a coral hinge, open slot in the middle.',
+    palette: { primary: '#172b57', accent: '#f59e0b', paper: '#f7e8c5' },
+    shape: { cue: 'horizontal jaw pair with a clear center slot', silhouette: 'stapler' },
+  }),
 })
 
 /**

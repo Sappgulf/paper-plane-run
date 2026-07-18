@@ -31,6 +31,22 @@ export const JOURNEY_ART = Object.freeze({
     icon: '🌌',
     palette: 'aurora',
   }),
+  sunset: Object.freeze({
+    id: 'sunset',
+    name: 'Golden Fold Approach',
+    src: '/assets/journey/sunset-postcard.webp',
+    alt: 'A cream paper plane gliding through warm golden origami hills at sunset.',
+    icon: '🌅',
+    palette: 'sunset',
+  }),
+  midnight: Object.freeze({
+    id: 'midnight',
+    name: 'Midnight Desk',
+    src: '/assets/journey/midnight-postcard.webp',
+    alt: 'A cream paper plane over a violet midnight origami city under a starry paper sky.',
+    icon: '🌙',
+    palette: 'midnight',
+  }),
 })
 
 export function getJourneyArtwork(destinationId) {

@@ -21,8 +21,10 @@ describe('Journey encounter director', () => {
     ['harbor', ['gust', 'shortcut-gate']],
     ['storm', ['visibility-pocket', 'reveal']],
     ['aurora', ['rival', 'boss-gate']],
+    ['sunset', ['formation', 'shortcut-gate']],
+    ['midnight', ['visibility-pocket', 'boss-gate']],
   ])('authors recognizable %s encounters', (zone, types) => {
-    const timeline = buildEncounterTimeline({ seed: 7, zone, modifier: 'crosswind', routeId: `${zone}-route`, finale: zone === 'aurora' })
+    const timeline = buildEncounterTimeline({ seed: 7, zone, modifier: 'crosswind', routeId: `${zone}-route`, finale: zone === 'aurora' || zone === 'midnight' })
     expect(timeline.events.map((event) => event.type)).toEqual(expect.arrayContaining(types))
     expect(timeline.events.every((event) => event.distance >= 40 && event.distance <= 460)).toBe(true)
     expect(timeline.events.flatMap((event) => event.lanes || []).every((lane) => lane >= -1 && lane <= 1)).toBe(true)

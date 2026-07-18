@@ -28,7 +28,7 @@ npm install && npm run dev
 | 12 | Route editor + share codes |
 | 13 | **Co-op wind** — P1 flies, P2 throws wind |
 | 14 | **Physics toys** — torn wing, paperclip, rubber-band sling |
-| 15 | **Boss gates** every 500m (giant scissors) |
+| 15 | **Boss gates** every 500m (scissors · wind tunnel · stapler jaws) |
 | 16 | **Desk AR** — camera background runway |
 | 17 | **Seasonal themes** + free seasonal skins |
 | 18 | **Low-power mode** — DPR/shadows/dust |
@@ -37,15 +37,17 @@ npm install && npm run dev
 | — | **Time Attack** — 60s, most stars wins |
 | — | **Ink Blast weapon** — pop birds/scissors for bonus stars |
 | — | **Prestige** — max the upgrade tree, reset for a permanent bonus + cosmetic |
-| — | **Living Journey** — four connected flights with route choices, pilots, stamps, Red Dart finale, and collectible postcards |
+| — | **Living Journey** — Chapter 1 (City→Aurora) + Chapter 2 Desk After Dark, stamps, postcards, Red Dart / stapler finales |
 
 ## Living Journey
 
-Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier, objective, and reward multiplier. Every destination now has authored arrival, escalation, and signature encounters with seeded lane and timing variation, so retries remain recognizable without rerolling.
+Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier, objective, and reward multiplier. Every destination has authored arrival, escalation, and signature encounters with seeded lane and timing variation, so retries remain recognizable without rerolling.
 
-Milo and Pip each have three cosmetic-only mastery levels covering routes, shortcut gates, near misses, risky finishes, destinations, and the Red Dart finale. Mastery can unlock portraits, trails, and postcard borders; stars remain the only spendable upgrade currency.
+**Chapter 1** runs Paper City → Harbor → Storm → Aurora (Red Dart / scissors finale). Finishing Chapter 1 unlocks **Chapter 2 · Desk After Dark**: Golden Fold → Midnight Desk → Stapler Alley → Desk Showdown (stapler gauntlet / Red Dart staple run).
 
-Completing all four routes unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. The four handcrafted paper-diorama images use stable asset paths and ship inside both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
+Milo and Pip each have three cosmetic-only mastery levels covering routes, shortcut gates, near misses, risky finishes, destinations, and finales. Mastery can unlock portraits, trails, and postcard borders; stars remain the only spendable upgrade currency.
+
+Completing a chapter unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. Destination paper-diorama images ship in both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 
 ## Co-op controls
 

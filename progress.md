@@ -2,6 +2,13 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-07-18 — Chapter 2 + Stapler boss + boss fairness
+
+- **Boss fairness:** longer warning/pressure windows; larger easy/normal/hard passages (hard ≥ 3.2 half-width); slower approach band; farther hazard clear; longer post-clear recovery + invuln.
+- **Third boss · Stapler Gate:** cycles with scissors/wind; procedural jaws + art overlay; journey midnight/chapter-2 finale uses stapler.
+- **Journey Chapter 2 · Desk After Dark:** sunset → midnight → stapler alley → desk showdown; unlock on Chapter 1 complete; v3 journey storage + migration; sunset/midnight postcard art.
+- Verification: unit suite green; build/budget/iOS parity; production deploy.
+
 ## 2026-07-17 — Max Everything P0–P5
 
 Design: `docs/superpowers/specs/2026-07-17-max-everything-design.md`
