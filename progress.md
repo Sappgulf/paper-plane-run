@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-07-18 — Imagine boss emblems
+
+- Generated paper-diorama scissors / wind / stapler emblems; cut to real alpha webp+png.
+- Badges placed top + left + right of the open portal (never covering the hole).
+- Wind ring interiors kept transparent; badge materials use alphaTest for clean edges.
+
 ## 2026-07-18 — Boss portal rebuild (playable + fixed assets)
 
 Root causes: full-face art overlays (stapler white plate) blocked the hole; fixed-size ring ≠ collision; blades/fans/jaws sat inside the flyable space.

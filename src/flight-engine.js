@@ -53,7 +53,7 @@ import {
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS } from './game/flyers.js'
-import { createBossArtOverlay } from './game/boss-art.js'
+import { createBossArtOverlay, getBossBadgeLayout } from './game/boss-art.js'
 import {
   bossBannerEmoji,
   bossCrashReason,
@@ -683,27 +683,35 @@ function loadTex(rawUrl) {
   return texCache[url]
 }
 
-// Boss art is a small identity badge ABOVE the open portal — never a full-face
-// cover. Large opaque planes were reading as solid walls (and stapler shipped
-// with a white plate). Collision stays 100% procedural.
-function addBossArtOverlay(group, kind, gapY = 10, halfHeight = 3.7) {
-  const overlay = createBossArtOverlay({
-    THREE: BOSS_ART_THREE,
-    kind,
-    size: 2.6,
-    loadTexture: (rawUrl, onLoad, onError) => loader.load(
-      resolveAssetUrl(rawUrl),
-      onLoad,
-      undefined,
-      onError,
-    ),
-  })
-  if (!overlay) return
-  // Park the badge above the safe opening so the flyable hole stays empty.
-  overlay.position.set(0, gapY + halfHeight + 1.8, 0.55)
-  overlay.renderOrder = 5
-  group.add(overlay)
-  group.userData.artOverlay = overlay
+// Imagine-crafted paper emblems as top + side badges around the open portal.
+// Collision stays 100% procedural — badges never cover the flyable hole.
+function addBossArtOverlay(group, kind, gapY = 10, halfWidth = 4, halfHeight = 3.7) {
+  const layout = getBossBadgeLayout({ halfWidth, halfHeight, gapY })
+  const loadTexture = (rawUrl, onLoad, onError) => loader.load(
+    resolveAssetUrl(rawUrl),
+    onLoad,
+    undefined,
+    onError,
+  )
+  const badges = []
+  for (const key of ['top', 'left', 'right']) {
+    const slot = layout[key]
+    const overlay = createBossArtOverlay({
+      THREE: BOSS_ART_THREE,
+      kind,
+      size: slot.size,
+      loadTexture,
+    })
+    if (!overlay) continue
+    overlay.position.set(slot.x, slot.y, slot.z)
+    overlay.scale.x = slot.scaleX
+    overlay.userData.badgeSlot = key
+    group.add(overlay)
+    badges.push(overlay)
+  }
+  group.userData.artBadges = badges
+  // Keep a primary handle for older animation code paths.
+  group.userData.artOverlay = badges[0] || null
 }
 const cutoutTexCache = {}
 /**
@@ -1464,7 +1472,7 @@ function createBossPortalBase(kind, passage) {
   rightLip.position.x = halfWidth + outerPad / 2 + 0.15
   g.add(leftLip, rightLip)
 
-  addBossArtOverlay(g, kind, 10, halfHeight)
+  addBossArtOverlay(g, kind, 10, halfWidth, halfHeight)
   g.userData.phase = 0
   g.userData.gapY = 10
   g.userData.kind = kind
@@ -2452,8 +2460,16 @@ function spawnBoss(z = 70, forcedKind = null) {
   if (gate.userData.bottomJaw) {
     gate.userData.bottomJaw.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 0.85
   }
-  if (gate.userData.artOverlay) {
-    gate.userData.artOverlay.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 1.8
+  const badgeLayout = getBossBadgeLayout({
+    halfWidth: openingSnap.passage.halfWidth,
+    halfHeight: openingSnap.passage.halfHeight,
+    gapY: openingSnap.safeY,
+  })
+  for (const badge of gate.userData.artBadges || []) {
+    const slot = badgeLayout[badge.userData.badgeSlot]
+    if (!slot) continue
+    badge.position.set(slot.x, slot.y, slot.z)
+    badge.scale.x = slot.scaleX
   }
   scene.add(gate)
   const opening = describeBossPhase(openingSnap)
@@ -4260,7 +4276,17 @@ function animateHazards(dt) {
       }
       if (u.leftLip) u.leftLip.position.y = u.gapY
       if (u.rightLip) u.rightLip.position.y = u.gapY
-      if (u.artOverlay) u.artOverlay.position.y = u.gapY + halfH + 1.8
+      const halfW = encounter?.passage?.halfWidth ?? u.halfWidth ?? 4
+      if (u.artBadges?.length) {
+        const layout = getBossBadgeLayout({ halfWidth: halfW, halfHeight: halfH, gapY: u.gapY })
+        for (const badge of u.artBadges) {
+          const slot = layout[badge.userData.badgeSlot]
+          if (!slot) continue
+          badge.position.set(slot.x, slot.y, slot.z)
+        }
+      } else if (u.artOverlay) {
+        u.artOverlay.position.y = u.gapY + halfH + 1.8
+      }
       const safeRing = u.safeRing
       if (safeRing) {
         safeRing.position.y = u.gapY
