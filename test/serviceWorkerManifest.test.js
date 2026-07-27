@@ -22,6 +22,10 @@ describe('service worker build manifest', () => {
     writeFileSync(join(directory, 'assets', 'bosses', 'wind.webp'), 'wind')
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'plane')
     writeFileSync(join(directory, 'sw.js'), 'template')
+    mkdirSync(join(directory, '.vite'), { recursive: true })
+    writeFileSync(join(directory, '.vite', 'manifest.json'), '{"x":1}')
+    writeFileSync(join(directory, 'manifest.json'), '{"vite":true}')
+    writeFileSync(join(directory, 'chunk.js.map'), 'map')
 
     const manifest = buildPrecacheManifest(directory)
 
@@ -32,6 +36,9 @@ describe('service worker build manifest', () => {
       '/assets/planes/classic.webp',
       '/index.html',
     ])
+    expect(manifest.urls).not.toContain('/.vite/manifest.json')
+    expect(manifest.urls).not.toContain('/manifest.json')
+    expect(manifest.urls).not.toContain('/chunk.js.map')
     expect(manifest.version).toMatch(/^paper-plane-run-[a-f0-9]{12}$/)
 
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'changed plane')

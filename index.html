@@ -10,13 +10,15 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Paper Plane" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#c8dff5" />
     <meta name="description" content="Paper Plane Run — soar through a paper world." />
     <title>Paper Plane Run</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=optional" rel="stylesheet" />
   </head>
   <body>
     <div id="game-root" class="mouse-mode">
@@ -38,7 +40,11 @@
         <div id="guardian-hud" class="hud-card guardian-chip hidden" data-hud-priority="secondary"><span class="label">Guardian</span><span id="guardian-hud-val">0</span></div>
         <div id="journey-objective-hud" class="hud-card journey-objective-chip hidden" data-hud-priority="primary"><span class="label">Route goal</span><span id="journey-objective-val">Reach the destination</span></div>
         <div id="combo-hud" class="hud-card combo-hud hidden" data-hud-priority="primary"><span class="label">Combo</span><span id="combo-val">1x</span></div>
-        <div id="streak-hud" class="hud-card streak-hud hidden" data-hud-priority="primary"><span class="label">Streak</span><span id="streak-val">0</span></div>
+        <div id="streak-hud" class="hud-card streak-hud hidden" data-hud-priority="primary">
+          <span class="label">Streak</span>
+          <span id="streak-val">0</span>
+          <div class="power-bar streak-bar"><div id="streak-fill"></div></div>
+        </div>
         <div id="fever-hud" class="hud-card fever-hud hidden" data-hud-priority="primary"><span class="label">🔥 Fever</span><span id="fever-val">1.5x</span></div>
         <div id="power-hud" class="hud-card power-hud hidden" data-hud-priority="primary">
           <span class="label">Power</span>
@@ -51,6 +57,7 @@
       </div>
 
       <button id="mute-btn" type="button" class="icon-btn" title="Mute" aria-label="Mute">🔊</button>
+      <button id="pause-btn" type="button" class="icon-btn pause-btn hidden" title="Pause" aria-label="Pause flight">❚❚</button>
       <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install" aria-label="Install Paper Plane Run">⬇️</button>
 
       <div id="install-hint" class="hidden" role="dialog" aria-label="Install Paper Plane Run">
@@ -60,6 +67,10 @@
           <p id="install-hint-body">Tap <b>Share</b>, then <b>Add to Home Screen</b> for a fullscreen, offline-ready app.</p>
           <button id="install-hint-close" type="button" class="cta-main install-hint-btn">Got it</button>
         </div>
+      </div>
+      <div id="sw-update-banner" class="hidden" role="status" aria-live="polite">
+        <span>New version ready</span>
+        <button id="sw-update-btn" type="button">Restart</button>
       </div>
       <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR" aria-label="Desk AR camera">📷</button>
 
@@ -119,7 +130,7 @@
             <button id="start-btn" type="button" class="action-pill" title="The original endless flight">✈️&nbsp;Classic</button>
             <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores">📅&nbsp;Daily</button>
             <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓&nbsp;Tutorial</button>
-            <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar</button>
+            <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</button>
             <button id="timeattack-btn" type="button" class="action-pill" title="60 seconds — grab as many stars as you can">⏱&nbsp;Time Attack</button>
             <button id="coop-btn" type="button" class="action-pill" title="Two players, one plane — P2 throws wind gusts to help or hinder">🌬&nbsp;Co-op</button>
             <button id="hotseat-btn" type="button" class="action-pill" title="Take turns — highest distance wins">👥&nbsp;Hot-seat</button>
@@ -184,7 +195,7 @@
           </div>
           <div class="hangar-body">
             <section id="tab-upgrades" class="hangar-page" role="tabpanel" aria-labelledby="hangar-tab-upgrades">
-              <p class="page-intro">Spend flight stars. Each rank sharpens the plane.</p>
+              <p id="upgrades-intro" class="page-intro">Spend flight stars. Each rank sharpens the plane.</p>
               <div id="prestige-panel" class="prestige-panel hidden"></div>
               <div id="upgrades-grid" class="upgrade-grid"></div>
             </section>
@@ -275,6 +286,18 @@
         </div>
       </div>
 
+      <div id="pause-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Flight paused">
+        <div class="pause-card">
+          <h2>Paused</h2>
+          <p class="detail">Take a breath — the paper sky can wait.</p>
+          <button id="pause-resume" type="button" class="cta-main">▶ Resume</button>
+          <div class="btn-row wrap pause-actions">
+            <button id="pause-mute" type="button" class="btn-secondary">Mute</button>
+            <button id="pause-menu" type="button" class="btn-secondary">Main menu</button>
+          </div>
+        </div>
+      </div>
+
       <div id="gameover" class="panel menu-panel hidden">
         <div class="menu-card">
           <h2 id="gameover-title">Crashed!</h2>
@@ -285,6 +308,10 @@
           <div id="run-summary" class="run-summary hidden" aria-label="Run summary"></div>
           <div id="journey-result-progress" class="hidden" aria-live="polite"></div>
           <p id="challenge-result" class="challenge-result hidden"></p>
+          <div class="btn-row wrap gameover-actions gameover-actions-primary">
+            <button id="retry-btn" type="button" class="cta-main cta-inline">Fly Again</button>
+            <button id="hangar-from-gameover" type="button" class="cta-main cta-inline hangar-spend-cta hidden">Spend ★ in Hangar</button>
+          </div>
           <div id="photo-wrap" class="photo-wrap hidden">
             <div class="polaroid">
               <img id="photo-img" alt="Crash photo" />
@@ -294,10 +321,6 @@
               <button type="button" id="photo-save" class="btn-secondary">Save photo</button>
               <button type="button" id="photo-share" class="btn-secondary">Share photo</button>
             </div>
-          </div>
-          <div class="btn-row wrap gameover-actions gameover-actions-primary">
-            <button id="retry-btn" type="button" class="cta-main cta-inline">Fly Again</button>
-            <button id="hangar-from-gameover" type="button" class="cta-main cta-inline hangar-spend-cta hidden">Spend ★ in Hangar</button>
           </div>
           <div class="btn-row wrap gameover-actions gameover-actions-secondary">
             <button id="share-btn" type="button" class="btn-secondary">Share Score</button>

@@ -13,7 +13,13 @@ export function buildPrecacheManifest(directory) {
   const root = resolve(directory)
   const files = walk(root)
     .filter((path) => statSync(path).isFile())
-    .filter((path) => !path.endsWith(`${sep}sw.js`) && !path.endsWith('.map'))
+    .filter((path) => {
+      if (path.endsWith(`${sep}sw.js`) || path.endsWith('.map')) return false
+      const rel = relative(root, path).split(sep).join('/')
+      // Build tooling only — not needed for offline play
+      if (rel === 'manifest.json' || rel.startsWith('.vite/')) return false
+      return true
+    })
     .sort()
   const urls = ['/', ...files.map((path) => `/${relative(root, path).split(sep).join('/')}`)]
   const hash = createHash('sha256')

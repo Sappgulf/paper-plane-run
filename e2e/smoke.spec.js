@@ -12,9 +12,9 @@ const UPGRADE_CARD_CONTRACTS = [
   { name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
   { name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
   { name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
-  { name: 'Fever Focus', current: 'Fever trigger -2 combo · duration +1.50s', next: 'Fever trigger -3 combo · duration +2.25s' },
-  { name: 'Steady Hands', current: 'Star streak window +0.80s', next: 'Star streak window +1.20s' },
-  { name: 'Gold Rush', current: 'Star cluster odds +16%', next: 'Star cluster odds +24%' },
+  { name: 'Fever Focus', current: 'Fever at 6 near-misses · 5.50s', next: 'Fever at 5 near-misses · 6.25s' },
+  { name: 'Steady Hands', current: 'Star streak window 3.00s', next: 'Star streak window 3.40s' },
+  { name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
 ]
 
 function openApp(page, path = '/') {
@@ -153,7 +153,7 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const mint = page.locator('.skin-card', { hasText: 'Mint Fold' })
-  await expect(mint).toContainText('Purchase 20★')
+  await expect(mint).toContainText('Purchase 18★')
   await tap(mint)
   await expect(mint).toContainText('Equipped')
   await expect(page.locator('#hangar-wallet')).toHaveText('0')
@@ -829,8 +829,8 @@ test('game-over summarizes banked rewards and the next action', async ({ page })
   await expect(summary).toBeVisible({ timeout: 15_000 })
   await expect(summary).toContainText('Banked')
   await expect(summary).toContainText('+3★')
-  await expect(summary).toContainText('Spend 3★ in Upgrades or fly again')
-  await expect(page.getByRole('button', { name: 'Spend 3★ in Hangar' })).toBeVisible()
+  await expect(summary).toContainText('Banked 3★ · keep flying toward an upgrade')
+  await expect(page.getByRole('button', { name: 'Hangar · 3★' })).toBeVisible()
 })
 
 test('Hangar Progress/Meta filter keeps only the active group tabs visible', async ({ page }) => {

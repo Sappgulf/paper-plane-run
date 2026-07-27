@@ -27,6 +27,8 @@ import { ZONES, zoneAt, nextZone, zoneProgress } from './zones.js'
 import {
   getUpgradeEffects,
   addWallet,
+  getWallet,
+  listUpgrades,
   UPGRADES,
 } from './upgrades.js'
 import {
@@ -93,7 +95,7 @@ import {
 } from './journey.js'
 import { applyJourneyRewardOnce, loadJourney, saveJourney } from './journey-storage.js'
 import { savePostcardOnce } from './journey-postcards.js'
-import { renderJourneyResultProgress } from './journey-ui.js'
+import { cosmeticLabel, renderJourneyResultProgress } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
 import { getPilotEffect } from './journey-modifiers.js'
@@ -219,6 +221,7 @@ if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
 const comboFloat = $('combo-float')
 const feverFx = $('fever-fx')
 const feverHud = $('fever-hud')
+const feverVal = $('fever-val')
 const powerHud = $('power-hud')
 const powerLabel = $('power-label')
 const powerFill = $('power-fill')
@@ -2136,6 +2139,9 @@ const mouseTarget = { x: 0, y: 8 }
 
 let state = 'menu'
 let simulationPaused = false
+let manualPause = false
+const pauseOverlay = $('pause-overlay')
+const pauseBtn = $('pause-btn')
 let distance = 0
 let stars = 0
 let speed = 28
@@ -2701,6 +2707,7 @@ const TUTORIAL_HINTS = [
   { at: 40, text: 'Nice flying! Keep chasing the rings ahead.' },
   { at: 55, text: '⭐ Stars add to your score — fly through them.' },
   { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
+  { at: 125, text: 'Chain near-misses to ignite Combo Fever — a short score multiplier burst!' },
   { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
   { at: 160, text: 'Almost there — line up the last ring!' },
 ]
@@ -3435,17 +3442,75 @@ if (stickZone && stickBase) {
 }
 
 // Input
+function retryCurrentRun() {
+  if (runKind === 'journey') journey = loadJourney(localStorage).journey
+  if (runKind === 'journey' && !journey?.selectedRouteId) {
+    openJourney()
+    return
+  }
+  startGame(runKind, runKind === 'journey' ? { journeyConfig: buildRunConfiguration(journey) } : {})
+}
+
+function syncPauseUi() {
+  const showPauseControl = state === 'playing'
+  pauseBtn?.classList.toggle('hidden', !showPauseControl)
+  pauseOverlay?.classList.toggle('hidden', !(manualPause && state === 'playing'))
+  if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
+  const muteLabel = $('pause-mute')
+  if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
+}
+
+function applyPauseState({ banner = true } = {}) {
+  const transition = nextPauseState(simulationPaused, {
+    hidden: document.visibilityState === 'hidden',
+    manual: manualPause && state === 'playing',
+  })
+  simulationPaused = transition.paused
+  if (simulationPaused) {
+    keys.clear()
+    audio.ctx?.suspend().catch(() => {})
+  } else {
+    timer?.reset?.()
+    audio.ctx?.resume().catch(() => {})
+    if (transition.resumed && state === 'playing') {
+      invuln = Math.max(invuln, transition.graceSeconds || 0)
+      if (banner) {
+        powerBanner.textContent = '▶ Resumed'
+        powerBanner.classList.remove('hidden')
+        bannerTimer = 1.5
+      }
+      if (settings.haptics) Haptic.tap()
+    }
+  }
+  syncPauseUi()
+}
+
+function setManualPause(on) {
+  if (state !== 'playing' && on) return
+  manualPause = Boolean(on)
+  applyPauseState()
+}
+
 window.addEventListener('keydown', (e) => {
   keys.add(e.code)
+  if (e.code === 'Escape') {
+    if (state === 'playing') {
+      e.preventDefault()
+      setManualPause(!manualPause)
+    }
+    return
+  }
+  if (manualPause && state === 'playing') return
   if (e.code === 'Space') {
     e.preventDefault()
     // Don't restart mid-sling charge during play
     if (state === 'playing' && activePower?.kind === 'sling') return
     if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
-    else if (state === 'dead' && crashT <= 0) startGame(runKind === 'layout' ? 'layout' : runKind)
+    else if (state === 'dead' && crashT <= 0) retryCurrentRun()
   }
   if (e.code === 'KeyM') {
     muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
+    syncPauseUi()
   }
 })
 window.addEventListener('keyup', (e) => keys.delete(e.code))
@@ -3498,7 +3563,10 @@ function openJourney() {
 
 function showMenu() {
   state = 'menu'
+  manualPause = false
   hideAllPanels()
+  pauseOverlay?.classList.add('hidden')
+  pauseBtn?.classList.add('hidden')
   if (shellBridge?.showMenu) shellBridge.showMenu()
   else menuEl?.classList.remove('hidden')
   hudEl?.classList.add('hidden')
@@ -3512,6 +3580,7 @@ function showMenu() {
   showStick(false)
   shellBridge?.refreshProgression?.()
   updateControlUI()
+  applyPauseState({ banner: false })
 }
 
 function showPostcardReveal(card) {
@@ -3527,21 +3596,31 @@ const bindClick = (id, fn) => {
   if (element) element.onclick = fn
 }
 
-bindClick('retry-btn', () => {
-  if (runKind === 'journey') journey = loadJourney(localStorage).journey
-  if (runKind === 'journey' && !journey?.selectedRouteId) openJourney()
-  else startGame(runKind, runKind === 'journey' ? { journeyConfig: buildRunConfiguration(journey) } : {})
-})
+bindClick('retry-btn', () => retryCurrentRun())
 bindClick('hangar-from-gameover', () => {
   hotseat.active = false
   gameoverEl?.classList.add('hidden')
-  shellBridge?.openHangar?.('upgrades')
+  const focusId = $('hangar-from-gameover')?.dataset?.focusUpgrade || null
+  shellBridge?.openHangar?.('upgrades', focusId ? { focusUpgradeId: focusId } : undefined)
 })
 bindClick('menu-btn', () => {
   if (state === 'dead' && crashT > 0) {
     crashT = 0
     finalizeDeath()
   }
+  manualPause = false
+  hotseat.active = false
+  showMenu()
+})
+bindClick('pause-btn', () => setManualPause(!manualPause))
+bindClick('pause-resume', () => setManualPause(false))
+bindClick('pause-mute', () => {
+  muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
+  syncPauseUi()
+})
+bindClick('pause-menu', () => {
+  manualPause = false
+  applyPauseState({ banner: false })
   hotseat.active = false
   showMenu()
 })
@@ -3649,10 +3728,13 @@ async function startGame(kind = 'classic', opts = {}) {
     }
     if (kind === 'coop') hotseat.active = false
     hideAllPanels()
+    manualPause = false
     resetGame()
     state = 'playing'
     hudEl?.classList.remove('hidden')
     showStick(true)
+    syncPauseUi()
+    applyPauseState({ banner: false })
     if (hotseat.active) {
       hotseatHud?.classList.remove('hidden')
       if (hotseatPlayerEl) hotseatPlayerEl.textContent = String(hotseat.turn + 1)
@@ -3884,6 +3966,30 @@ function finalizeDeath() {
   crashT = -1
 }
 
+const HANGAR_ONBOARD_KEY = 'paper-plane-run-hangar-onboard'
+
+function maybeShowHangarOnboarding(reason, summary) {
+  if (localStorage.getItem(HANGAR_ONBOARD_KEY) === '1') return
+  const tutorialJustDone = reason === 'Tutorial complete!'
+  const wallet = summary?.walletAfterRun ?? getWallet()
+  const canBuy = listUpgrades().some((upgrade) => upgrade.canAfford)
+  // First clear tutorial, or first time the wallet can fund a core upgrade.
+  if (!tutorialJustDone && !(canBuy && wallet >= 10)) return
+  safeSetItem(HANGAR_ONBOARD_KEY, '1')
+  const message = canBuy
+    ? 'Tip: open Hangar and buy Fold Handling or Lift Crease — sharper flight!'
+    : 'Tip: bank ★ in Classic, then spend them on upgrades in the Hangar.'
+  notifications.show(message, { duration: settings.reducedMotion ? 2800 : 5200 })
+  const hangarCta = $('hangar-from-gameover')
+  if (hangarCta && hangarCta.classList.contains('hidden')) {
+    hangarCta.classList.remove('hidden')
+    hangarCta.textContent = canBuy ? (summary?.ctaLabel || 'Open Hangar') : 'Open Hangar'
+    hangarCta.setAttribute('aria-hidden', 'false')
+    if (summary?.focusUpgradeId) hangarCta.dataset.focusUpgrade = summary.focusUpgradeId
+  }
+  shellBridge?.refreshProgression?.()
+}
+
 function renderRunSummary(summary) {
   if (!runSummaryEl || !summary) return
   runSummaryEl.innerHTML = ''
@@ -3910,14 +4016,19 @@ function renderRunSummary(summary) {
 
   const hangarCta = $('hangar-from-gameover')
   if (hangarCta) {
-    const canSpend = summary.nextActionKind === 'spend' && summary.bankedStars > 0
-    hangarCta.classList.toggle('hidden', !canSpend)
-    hangarCta.textContent = summary.ctaLabel || 'Spend ★ in Hangar'
-    hangarCta.setAttribute('aria-hidden', String(!canSpend))
+    const showHangar = summary.nextActionKind === 'spend' || summary.nextActionKind === 'hangar'
+    hangarCta.classList.toggle('hidden', !showHangar)
+    hangarCta.textContent = summary.ctaLabel || 'Open Hangar'
+    hangarCta.setAttribute('aria-hidden', String(!showHangar))
+    if (summary.focusUpgradeId) hangarCta.dataset.focusUpgrade = summary.focusUpgradeId
+    else delete hangarCta.dataset.focusUpgrade
   }
 }
 
 function finalizeDeathUnsafe() {
+  manualPause = false
+  pauseOverlay?.classList.add('hidden')
+  pauseBtn?.classList.add('hidden')
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
@@ -4032,6 +4143,10 @@ function finalizeDeathUnsafe() {
       addWallet(weeklyBonus)
     }
   }
+  const walletAfterRun = getWallet()
+  const affordableUpgrades = listUpgrades()
+    .filter((upgrade) => upgrade.canAfford)
+    .map((upgrade) => ({ id: upgrade.id, name: upgrade.name, cost: upgrade.cost }))
   const runSummary = buildRunSummary({
     stars,
     journeyBonus,
@@ -4040,6 +4155,8 @@ function finalizeDeathUnsafe() {
     previousBest: previousBestDistance,
     maxCombo,
     reason,
+    walletAfterRun,
+    affordableUpgrades,
   })
   refreshUnlocks(season.id)
   updateMissionsFromRun({
@@ -4106,12 +4223,14 @@ function finalizeDeathUnsafe() {
       : 'Fly Again'
   }
   renderRunSummary(runSummary)
+  maybeShowHangarOnboarding(reason, runSummary)
 
   renderJourneyResultProgress(journeyResultProgressEl, runKind === 'journey' ? lastJourneyResult : null)
   if (lastJourneyResult?.unlockedCosmetic) {
-    notifications.show(`Mastery unlocked · ${lastJourneyResult.unlockedCosmetic}`, {
+    notifications.show(`Mastery unlocked · ${cosmeticLabel(lastJourneyResult.unlockedCosmetic)}`, {
       duration: settings.reducedMotion ? 1800 : 3200,
     })
+    if (settings.haptics) Haptic.collect()
   }
   if (completedJourneyRoute && journey?.status === 'complete' && journey.postcard) {
     requestAnimationFrame(() => showPostcardReveal(journey.postcard))
@@ -4362,7 +4481,6 @@ function triggerFever() {
   if (!settings.reducedMotion) shake = Math.max(shake, feverEnterShake())
   feverFx?.classList.add('fever-active')
   feverHud?.classList.remove('hidden')
-  const feverVal = $('fever-val')
   if (feverVal) feverVal.textContent = describeFeverHudValue(fever)
   comboFloat.textContent = '🔥 FEVER!'
   comboFloat.classList.add('fever-float')
@@ -4388,6 +4506,8 @@ function registerStarStreak() {
   starStreakTimer = pickup.timer
   starStreakWindow = pickup.windowSeconds
   if (streakVal) streakVal.textContent = String(starStreak)
+  const streakFill = $('streak-fill')
+  if (streakFill) streakFill.style.width = '100%'
   if (pickup.visible && streakHud) {
     streakHud.classList.remove('hidden')
     streakHud.classList.remove('combo-pulse')
@@ -4608,6 +4728,13 @@ function update(dt) {
     const nextStreak = advanceStarStreakState({ count: starStreak, timer: starStreakTimer }, dt)
     starStreak = nextStreak.count
     starStreakTimer = nextStreak.timer
+    const streakFill = $('streak-fill')
+    const streakWindow = Math.max(0.01, starStreakWindow || getStreakTuning(activeUpgradeEffects).windowSeconds)
+    if (streakFill) {
+      streakFill.style.width = nextStreak.visible
+        ? `${THREE.MathUtils.clamp(starStreakTimer / streakWindow, 0, 1) * 100}%`
+        : '0%'
+    }
     if (prevCount >= 2 && !nextStreak.visible) {
       streakHud?.classList.add('hidden')
       powerBanner.textContent = '⭐ Star streak broken'
@@ -4626,7 +4753,6 @@ function update(dt) {
     }, dt)
     feverActive = nextFever.active
     feverTimer = nextFever.timer
-    const feverVal = $('fever-val')
     if (feverVal) feverVal.textContent = describeFeverHudValue(nextFever)
     if (!nextFever.active) {
       feverFx?.classList.remove('fever-active')
@@ -5333,23 +5459,8 @@ function update(dt) {
 // Boot — start render loop first so a UI error never blanks the game
 const timer = new THREE.Timer()
 document.addEventListener('visibilitychange', () => {
-  const transition = nextPauseState(simulationPaused, document.visibilityState)
-  simulationPaused = transition.paused
-  if (simulationPaused) {
-    keys.clear()
-    audio.ctx?.suspend().catch(() => {})
-    return
-  }
-
-  // Flush time accumulated while the page was hidden so simulation resumes
-  // from a fresh frame instead of consuming a large background delta.
-  timer.reset()
-  audio.ctx?.resume().catch(() => {})
-  if (transition.resumed && state === 'playing') {
-    powerBanner.textContent = '▶ Resumed'
-    powerBanner.classList.remove('hidden')
-    bannerTimer = 1.5
-  }
+  // Flush background time on the next apply so resume doesn't eat a huge delta.
+  applyPauseState()
 })
 function frame() {
   if (!simulationPaused) {
@@ -5587,6 +5698,8 @@ if (import.meta.env.DEV && devTestState === '#test-gameover') {
     previousBest: 160,
     maxCombo: 2,
     reason: 'Hit a paper skyscraper',
+    walletAfterRun: 3,
+    affordableUpgrades: [],
   }))
 }
 

@@ -325,18 +325,22 @@ function prestigeMet(s) {
 export function listSkins(seasonId = 'default') {
   const owned = loadOwnership()
   const equipped = getEquippedSkinId()
+  const wallet = getWallet()
   return SKINS.map((s) => {
     const seasonalFree = s.seasonal && s.seasonal === seasonId
     const available = availabilityMet(s, seasonId)
     const state = equipped === s.id ? 'equipped' : owned.has(s.id) ? 'owned' : available ? 'available' : 'locked'
+    const price = getPrice(s)
+    const canAfford = state === 'available' && (price == null || wallet >= price.value)
     return {
       ...s,
       state,
       requirement: getRequirement(s),
-      price: getPrice(s),
+      price,
       unlocked: state === 'owned' || state === 'equipped',
       equipped: state === 'equipped',
       canUnlock: state === 'available',
+      canAfford,
       seasonalFree,
     }
   })

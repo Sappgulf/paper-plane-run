@@ -35,9 +35,15 @@ describe('economy progression model', () => {
     const normalRunWallet = estimateProgression({ starsPerRun: 7, runs: 3 }).walletStars
 
     expect(FUTURE_PRICE_TABLE.upgrades.handling[0]).toBe(10)
-    expect(FUTURE_PRICE_TABLE.planes.mint).toBe(20)
+    expect(FUTURE_PRICE_TABLE.planes.mint).toBe(18)
     expect(normalRunWallet).toBeGreaterThanOrEqual(FUTURE_PRICE_TABLE.upgrades.handling[0])
     expect(normalRunWallet).toBeGreaterThanOrEqual(FUTURE_PRICE_TABLE.planes.mint)
+    // Handling + Mint within four normal runs keeps the early loop snappy.
+    expect(estimateProgression({ starsPerRun: 7, runs: 4 }).walletStars).toBeGreaterThanOrEqual(
+      FUTURE_PRICE_TABLE.upgrades.handling[0] + FUTURE_PRICE_TABLE.planes.mint,
+    )
+    // Rank-2 core upgrade is a one-run save after the first buy.
+    expect(FUTURE_PRICE_TABLE.upgrades.handling[1]).toBeLessThanOrEqual(NORMAL_RUN_EARNINGS[2].stars * 2)
   })
 
   test('turns an upgrade shortfall into clear next-run guidance', () => {
@@ -57,11 +63,11 @@ describe('economy progression model', () => {
     const midTierCost = FUTURE_PRICE_TABLE.upgrades.handling[3]
     const latePlaneCost = FUTURE_PRICE_TABLE.planes.rainbow
 
-    expect(midTierCost).toBe(55)
+    expect(midTierCost).toBe(50)
     expect(estimateProgression({ starsPerRun: 7, runs: 3 }).walletStars).toBeLessThan(midTierCost)
     expect(runsToAfford(midTierCost)).toBe(8)
-    expect(latePlaneCost).toBe(140)
-    expect(runsToAfford(latePlaneCost)).toBe(20)
+    expect(latePlaneCost).toBe(125)
+    expect(runsToAfford(latePlaneCost)).toBe(18)
   })
 
   test('has one monotonic future-price table for every paid upgrade rank and plane', () => {
@@ -106,9 +112,9 @@ describe('economy progression model', () => {
       expect(firstRank).toBeLessThanOrEqual(21)
       expect(estimateRunsToAfford({ wallet: 0, cost: firstRank }).runs).toBeLessThanOrEqual(3)
     }
-    expect(FUTURE_PRICE_TABLE.upgrades.fever[0]).toBe(14)
+    expect(FUTURE_PRICE_TABLE.upgrades.fever[0]).toBe(15)
     expect(FUTURE_PRICE_TABLE.upgrades.streak[0]).toBe(12)
-    expect(FUTURE_PRICE_TABLE.upgrades.wealth[0]).toBe(12)
+    expect(FUTURE_PRICE_TABLE.upgrades.wealth[0]).toBe(14)
   })
 
   test('prices the full future upgrade tree without requiring an impossible first session', () => {

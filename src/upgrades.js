@@ -230,9 +230,11 @@ const UPGRADE_FORMULAS = {
   fever(level) {
     const thresholdReduction = level
     const durationBonusSeconds = roundedEffectValue(level * 0.75)
+    const threshold = Math.max(4, 8 - thresholdReduction)
+    const durationSeconds = roundedEffectValue(4 + durationBonusSeconds)
     return effect(
-      `Fever trigger -${thresholdReduction} combo · duration +${durationBonusSeconds.toFixed(2)}s`,
-      { thresholdReduction, durationBonusSeconds },
+      `Fever at ${threshold} near-misses · ${durationSeconds.toFixed(2)}s`,
+      { thresholdReduction, durationBonusSeconds, threshold, durationSeconds },
       {
         feverThresholdBonus: thresholdReduction,
         feverDurationBonus: durationBonusSeconds,
@@ -241,15 +243,20 @@ const UPGRADE_FORMULAS = {
   },
   streak(level) {
     const windowBonusSeconds = roundedEffectValue(level * 0.4)
-    return effect(`Star streak window +${windowBonusSeconds.toFixed(2)}s`, { windowBonusSeconds }, {
+    const windowSeconds = roundedEffectValue(2.2 + windowBonusSeconds)
+    return effect(`Star streak window ${windowSeconds.toFixed(2)}s`, { windowBonusSeconds, windowSeconds }, {
       streakWindowBonus: windowBonusSeconds,
     })
   },
   wealth(level) {
     const doubleStarPercent = level * 8
-    return effect(`Star cluster odds +${doubleStarPercent}%`, { doubleStarPercent }, {
-      doubleStarBonus: doubleStarPercent / 100,
-    })
+    return effect(
+      `Cluster chance +${doubleStarPercent}% (stacks with Lucky Scrap)`,
+      { doubleStarPercent },
+      {
+        doubleStarBonus: doubleStarPercent / 100,
+      },
+    )
   },
 }
 

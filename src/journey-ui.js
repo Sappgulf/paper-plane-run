@@ -15,8 +15,18 @@ const COSMETIC_LABELS = Object.freeze({
   'pip-foil-border': 'Redline foil border',
 })
 
-function cosmeticLabel(id) {
+export function cosmeticLabel(id) {
   return COSMETIC_LABELS[id] || String(id || '').replaceAll('-', ' ')
+}
+
+export function stampLabel(stampId) {
+  const raw = String(stampId || '').trim()
+  if (!raw) return 'Stamp'
+  return raw
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function routeLabel(routeId) {
@@ -71,7 +81,7 @@ export function renderRouteChoices(root, cards, onSelect) {
       <span>${escapeHtml(card.modifierLabel)}</span>
       <small>${escapeHtml(card.description)}</small>
       ${card.objective ? `<small class="route-objective">Goal · ${escapeHtml(card.objective.label)}</small>` : ''}
-      <span class="route-reward">${card.rewardMultiplier.toFixed(2)}× rewards · ${escapeHtml(card.stampId)}</span>
+      <span class="route-reward">${card.rewardMultiplier.toFixed(2)}× rewards · ${escapeHtml(stampLabel(card.stampId))}</span>
     </button>`).join('')
   root.onclick = (event) => {
     const button = event.target.closest?.('[data-route-id]')

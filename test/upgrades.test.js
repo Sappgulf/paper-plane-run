@@ -107,26 +107,41 @@ const UPGRADE_CONTRACTS = [
   {
     id: 'fever',
     labels: [
-      'Fever trigger -0 combo · duration +0.00s',
-      'Fever trigger -1 combo · duration +0.75s',
-      'Fever trigger -2 combo · duration +1.50s',
-      'Fever trigger -3 combo · duration +2.25s',
+      'Fever at 8 near-misses · 4.00s',
+      'Fever at 7 near-misses · 4.75s',
+      'Fever at 6 near-misses · 5.50s',
+      'Fever at 5 near-misses · 6.25s',
     ],
     values: [0, 1, 2, 3].map((thresholdReduction) => ({
       thresholdReduction,
       durationBonusSeconds: thresholdReduction * 0.75,
+      threshold: Math.max(4, 8 - thresholdReduction),
+      durationSeconds: 4 + thresholdReduction * 0.75,
     })),
     directions: { thresholdReduction: 'up', durationBonusSeconds: 'up' },
   },
   {
     id: 'streak',
-    labels: ['Star streak window +0.00s', 'Star streak window +0.40s', 'Star streak window +0.80s', 'Star streak window +1.20s'],
-    values: [0, 0.4, 0.8, 1.2].map((windowBonusSeconds) => ({ windowBonusSeconds })),
+    labels: [
+      'Star streak window 2.20s',
+      'Star streak window 2.60s',
+      'Star streak window 3.00s',
+      'Star streak window 3.40s',
+    ],
+    values: [0, 0.4, 0.8, 1.2].map((windowBonusSeconds) => ({
+      windowBonusSeconds,
+      windowSeconds: Number((2.2 + windowBonusSeconds).toFixed(2)),
+    })),
     directions: { windowBonusSeconds: 'up' },
   },
   {
     id: 'wealth',
-    labels: ['Star cluster odds +0%', 'Star cluster odds +8%', 'Star cluster odds +16%', 'Star cluster odds +24%'],
+    labels: [
+      'Cluster chance +0% (stacks with Lucky Scrap)',
+      'Cluster chance +8% (stacks with Lucky Scrap)',
+      'Cluster chance +16% (stacks with Lucky Scrap)',
+      'Cluster chance +24% (stacks with Lucky Scrap)',
+    ],
     values: [0, 8, 16, 24].map((doubleStarPercent) => ({ doubleStarPercent })),
     directions: { doubleStarPercent: 'up' },
   },

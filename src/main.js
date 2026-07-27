@@ -157,8 +157,59 @@ installHint?.addEventListener('click', (event) => {
   if (event.target === installHint) installHint.classList.add('hidden')
 })
 
+function swScriptUrl() {
+  const base = import.meta.env.BASE_URL || '/'
+  return `${base}sw.js`.replace(/\/{2,}/g, '/').replace(':/', '://')
+}
+
+let pendingSwWorker = null
+
+function showSwUpdateBanner(worker) {
+  const banner = $('sw-update-banner')
+  const btn = $('sw-update-btn')
+  if (!banner || !btn || !worker) return
+  pendingSwWorker = worker
+  // Never interrupt an active flight — only surface on menu/hangar shells.
+  if (!$('hud')?.classList.contains('hidden')) return
+  banner.classList.remove('hidden')
+  btn.onclick = () => {
+    btn.disabled = true
+    btn.textContent = 'Updating…'
+    worker.postMessage({ type: 'SKIP_WAITING' })
+  }
+}
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
+  let refreshing = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return
+    refreshing = true
+    window.location.reload()
+  })
+  window.addEventListener('load', () => {
+    const scriptUrl = swScriptUrl()
+    navigator.serviceWorker
+      .register(scriptUrl)
+      .then((registration) => {
+        if (registration.waiting) showSwUpdateBanner(registration.waiting)
+        registration.addEventListener('updatefound', () => {
+          const installing = registration.installing
+          if (!installing) return
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              showSwUpdateBanner(registration.waiting || installing)
+            }
+          })
+        })
+        // Check for updates when returning to the menu tab
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') registration.update().catch(() => {})
+        })
+      })
+      .catch((err) => {
+        if (import.meta.env.DEV) console.warn('Service worker registration failed', err)
+      })
+  })
 }
 
 function stopPlanePreview() {
@@ -178,6 +229,8 @@ function showMenu() {
   hideAllPanels()
   menu?.classList.remove('hidden')
   hud?.classList.add('hidden')
+  refreshHangarWallet()
+  if (pendingSwWorker) showSwUpdateBanner(pendingSwWorker)
 }
 
 function getJourneyStampCount() {
@@ -246,6 +299,7 @@ function renderJourney() {
         <strong>Chapter ${chapter} complete!</strong>
         <p>Your postcard is waiting in the Hangar.</p>
         <div class="btn-row wrap" style="margin-top:10px;justify-content:center">
+          <button type="button" class="cta-main cta-inline" data-journey-action="postcards">View postcard album</button>
           ${ch2Ready && chapter === 1
             ? '<button type="button" class="cta-main cta-inline" data-journey-action="chapter-2">Begin Chapter 2</button>'
             : ''}
@@ -255,7 +309,10 @@ function renderJourney() {
     $('journey-choice-title').textContent = 'Postcard complete'
     routes.onclick = (event) => {
       const action = event.target.closest?.('[data-journey-action]')?.dataset.journeyAction
-      if (action === 'chapter-2') {
+      if (action === 'postcards') {
+        track('journey_postcard_album_opened', { journeyId: journey.id, source: 'journey_complete' })
+        openHangar('postcards')
+      } else if (action === 'chapter-2') {
         startJourneyChapter(2)
         renderJourney()
       } else if (action === 'replay') {
@@ -347,12 +404,19 @@ function showPostcardReveal(card) {
 }
 
 function refreshHangarWallet() {
+  const wallet = getWallet()
   const w = $('hangar-wallet')
   const l = $('hangar-lifetime')
-  if (w) w.textContent = String(getWallet())
+  if (w) w.textContent = String(wallet)
   if (l) l.textContent = String(getLifetimeStars())
   const w2 = $('wallet-stars')
-  if (w2) w2.textContent = String(getWallet())
+  if (w2) w2.textContent = String(wallet)
+  const hangarBtn = $('hangar-btn')
+  if (hangarBtn) {
+    const canBuyUpgrade = listUpgrades().some((upgrade) => upgrade.canAfford)
+    const canBuyPlane = listSkins(season.id).some((plane) => plane.state === 'available' && plane.canAfford)
+    hangarBtn.classList.toggle('hangar-can-spend', canBuyUpgrade || canBuyPlane)
+  }
 }
 
 let hangarGroup = 'progress'
@@ -576,17 +640,39 @@ async function showPlanePreview(stage, canvas, planeDefinition) {
   }
 }
 
+function skinSortRank(plane) {
+  if (plane.equipped) return 0
+  if (plane.state === 'available' && plane.canAfford) return 1
+  if (plane.state === 'owned') return 2
+  if (plane.state === 'available') return 3
+  return 4
+}
+
 function renderSkins(statusMessage = '') {
   refreshUnlocks(season.id)
   refreshHangarWallet()
   const grid = $('skins-grid')
   if (!grid) return
   const status = $('skins-status')
-  if (status) status.textContent = statusMessage
   stopPlanePreview()
   grid.innerHTML = ''
 
-  const planes = listSkins(season.id)
+  const planes = [...listSkins(season.id)].sort((a, b) => {
+    const rank = skinSortRank(a) - skinSortRank(b)
+    if (rank !== 0) return rank
+    const costA = a.price?.value ?? 0
+    const costB = b.price?.value ?? 0
+    return costA - costB
+  })
+  const buyable = planes.filter((plane) => plane.state === 'available' && plane.canAfford).length
+  if (status) {
+    if (statusMessage) status.textContent = statusMessage
+    else if (buyable > 0) {
+      status.textContent = buyable === 1
+        ? '1 plane is ready to buy — highlighted below.'
+        : `${buyable} planes are ready to buy — highlighted below.`
+    } else status.textContent = ''
+  }
   const previewPlane = planes.find((planeDefinition) => planeDefinition.id === getEquippedSkinId()) || planes[0]
   const preview = document.createElement('section')
   preview.className = 'plane-preview'
@@ -615,6 +701,8 @@ function renderSkins(statusMessage = '') {
     card.type = 'button'
     card.dataset.planeId = s.id
     card.className = `skin-card state-${s.state}${s.equipped ? ' equipped' : ''}${s.state === 'locked' ? ' locked' : ''}`
+    if (s.state === 'available' && s.canAfford) card.classList.add('affordable')
+    else if (s.state === 'available' && !s.canAfford) card.classList.add('locked-funds')
     card.setAttribute('aria-pressed', String(s.equipped))
 
     const image = document.createElement('img')
@@ -644,6 +732,14 @@ function renderSkins(statusMessage = '') {
     economy.append(requirement, price)
     card.appendChild(economy)
 
+    if (s.state === 'available' && s.price && !s.canAfford) {
+      const estimate = estimateRunsToAfford({ wallet: getWallet(), cost: s.price.value })
+      const progress = document.createElement('div')
+      progress.className = 'plane-progress'
+      progress.textContent = `${estimate.missingStars}★ to go · ~${estimate.runs} run${estimate.runs === 1 ? '' : 's'}`
+      card.appendChild(progress)
+    }
+
     const action = document.createElement('div')
     action.className = 'meta'
     action.textContent = s.equipped
@@ -652,7 +748,9 @@ function renderSkins(statusMessage = '') {
         ? 'Equip'
         : s.state === 'available'
           ? s.price
-            ? `Purchase ${s.price.value}★`
+            ? s.canAfford
+              ? `Purchase ${s.price.value}★`
+              : `Need ${s.price.value}★`
             : 'Claim free'
           : 'Locked'
     card.appendChild(action)
@@ -732,6 +830,8 @@ function renderPrestige() {
   }
 }
 
+let hangarFocusUpgradeId = null
+
 function renderUpgrades() {
   refreshHangarWallet()
   renderPrestige()
@@ -745,10 +845,42 @@ function renderUpgrades() {
   pathEl.className = pathBanner.visible ? 'upgrade-path-banner' : 'upgrade-path-banner path-complete'
   pathEl.innerHTML = `<strong>${pathBanner.title}</strong><span>${pathBanner.body}</span>`
   grid.appendChild(pathEl)
-  for (const u of listUpgrades()) {
+  const upgrades = [...listUpgrades()].sort((a, b) => {
+    if (a.canAfford !== b.canAfford) return a.canAfford ? -1 : 1
+    if (a.maxed !== b.maxed) return a.maxed ? 1 : -1
+    const costA = a.cost ?? Number.POSITIVE_INFINITY
+    const costB = b.cost ?? Number.POSITIVE_INFINITY
+    if (costA !== costB) return costA - costB
+    return 0
+  })
+  const affordableCount = upgrades.filter((u) => u.canAfford).length
+  const intro = $('upgrades-intro')
+  if (intro) {
+    const allFresh = upgrades.every((u) => u.level === 0)
+    if (affordableCount > 0) {
+      intro.textContent = affordableCount === 1
+        ? 'You can buy 1 upgrade right now — affordable cards are highlighted.'
+        : `You can buy ${affordableCount} upgrades right now — affordable cards are highlighted.`
+    } else if (wallet >= 10 && allFresh) {
+      intro.textContent = 'Tip: Fold Handling or Lift Crease first — sharper control makes longer runs.'
+    } else if (upgrades.every((u) => u.maxed)) {
+      intro.textContent = 'Every fold maxed. Prestige when you are ready for a fresh climb.'
+    } else {
+      intro.textContent = 'Spend flight stars. Each rank sharpens the plane.'
+    }
+  }
+  const wingspan = upgrades.find((u) => u.id === 'wingspan')
+  const trail = upgrades.find((u) => u.id === 'trail')
+  const synergyGold = !!(wingspan?.maxed && trail?.maxed)
+  for (const u of upgrades) {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
     card.className = 'upgrade-card'
+    card.dataset.upgradeId = u.id
+    if (u.maxed) card.classList.add('maxed')
+    else if (u.canAfford) card.classList.add('affordable')
+    else card.classList.add('locked-funds')
+    if (hangarFocusUpgradeId && hangarFocusUpgradeId === u.id) card.classList.add('upgrade-focus')
     if (pathBanner.visible && pathBanner.upgradeId === u.id) card.classList.add('upgrade-recommended')
     const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
     const action = document.createElement(u.maxed ? 'span' : 'button')
@@ -765,14 +897,18 @@ function renderUpgrades() {
         if (res.ok) {
           shellAudio.uiClick()
           if (settings.haptics) Haptic.collect()
+          hangarFocusUpgradeId = null
           renderUpgrades()
         }
       }
     }
+    const blurb = synergyGold && (u.id === 'trail' || u.id === 'wingspan')
+      ? `${u.blurb} · Gold synergy trail active`
+      : u.blurb
     card.innerHTML = `
       <div>
         <div class="u-title">${u.icon} ${u.name}</div>
-        <div class="u-blurb">${u.blurb}</div>
+        <div class="u-blurb">${blurb}</div>
       </div>
     `
     card.appendChild(action)
@@ -798,6 +934,10 @@ function renderUpgrades() {
     barEl.textContent = `${bars}  ${u.level}/${u.max}`
     card.appendChild(barEl)
     grid.appendChild(card)
+  }
+  if (hangarFocusUpgradeId) {
+    const focused = grid.querySelector(`[data-upgrade-id="${hangarFocusUpgradeId}"]`)
+    focused?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
   }
 }
 
@@ -994,7 +1134,8 @@ $('editor-play')?.addEventListener('click', () => {
 })
 
 
-function openHangar(tab = 'upgrades') {
+function openHangar(tab = 'upgrades', options = {}) {
+  hangarFocusUpgradeId = options?.focusUpgradeId || null
   hideAllPanels()
   $('hangar-panel')?.classList.remove('hidden')
   showHangarTab(tab || 'upgrades')
@@ -1085,12 +1226,23 @@ const modeByButtonId = {
   'coop-btn': 'coop',
 }
 
+const COOP_HINT_KEY = 'paper-plane-run-coop-hint'
+function maybeShowCoopHint() {
+  if (localStorage.getItem(COOP_HINT_KEY) === '1') return
+  safeSetItem(COOP_HINT_KEY, '1')
+  const hint = $('daily-hint')
+  if (hint) {
+    hint.textContent = 'Co-op: P1 steers · P2 wind with WASD / IJKL or the purple stick'
+  }
+}
+
 document.addEventListener('click', (event) => {
   const button = event.target.closest?.('button')
   const kind = button && modeByButtonId[button.id]
   if (kind) {
     event.preventDefault()
     event.stopImmediatePropagation()
+    if (kind === 'coop') maybeShowCoopHint()
     void startMode(kind)
     return
   }
@@ -1283,6 +1435,31 @@ if (import.meta.env.DEV && location.hash === '#test-postcard') {
   })
 }
 
+// PWA shortcuts / shared links: /?mode=classic|daily|journey|...
+function consumeLaunchMode() {
+  try {
+    const params = new URLSearchParams(location.search)
+    const mode = (params.get('mode') || '').toLowerCase()
+    if (!mode) return false
+    params.delete('mode')
+    const next = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`
+    history.replaceState(null, '', next)
+    if (mode === 'journey') {
+      queueMicrotask(() => openJourney())
+      return true
+    }
+    if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'timeattack', 'tutorial', 'hotseat', 'coop'].includes(mode)) {
+      const kind = mode === 'classic' ? 'classic' : mode
+      if (kind === 'coop') maybeShowCoopHint()
+      queueMicrotask(() => startMode(kind))
+      return true
+    }
+  } catch {
+    /* ignore bad query */
+  }
+  return false
+}
+
 const retryRequest = sessionStorage.getItem('paper-plane-engine-retry')
 if (retryRequest) {
   sessionStorage.removeItem('paper-plane-engine-retry')
@@ -1292,6 +1469,8 @@ if (retryRequest) {
   } catch {
     queueMicrotask(preloadEngine)
   }
+} else if (consumeLaunchMode()) {
+  /* mode deep-link handled */
 } else if (import.meta.env.DEV && location.hash.startsWith('#test-') && location.hash !== '#test-postcard') {
   queueMicrotask(preloadEngine)
 } else if ('requestIdleCallback' in window) {

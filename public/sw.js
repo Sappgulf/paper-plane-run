@@ -56,8 +56,17 @@ self.addEventListener('install', (event) => {
           // One unavailable optional asset must not prevent the new shell from installing.
         }
       })))
-      .then(() => self.skipWaiting()),
+      .then(() => {
+        // First install activates immediately; updates wait for the menu "Restart" prompt.
+        if (!self.registration.active) return self.skipWaiting()
+      }),
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING' || event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
 })
 
 self.addEventListener('activate', (event) => {
@@ -75,12 +84,16 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
+  // Never cache the service worker or API routes
+  if (url.pathname === '/sw.js' || url.pathname.startsWith('/api/')) return
+
   // Network-first for HTML/JS/CSS so updates land; cache fallback offline
   if (
     request.mode === 'navigate' ||
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.html')
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.webmanifest')
   ) {
     event.respondWith(
       fetch(request)
@@ -91,7 +104,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res
         })
-        .catch(() => caches.match(request).then((r) => r || caches.match('/'))),
+        .catch(() => caches.match(request).then((r) => r || caches.match('/') || caches.match('/index.html'))),
     )
     return
   }
@@ -102,8 +115,10 @@ self.addEventListener('fetch', (event) => {
       (cached) =>
         cached ||
         fetch(request).then((res) => {
-          const copy = res.clone()
-          caches.open(CACHE).then((c) => c.put(request, copy))
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(CACHE).then((c) => c.put(request, copy))
+          }
           return res
         }),
     ),

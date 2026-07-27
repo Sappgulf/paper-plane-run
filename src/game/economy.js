@@ -1,35 +1,41 @@
 /**
  * Prices applied only to future purchases. Persisted upgrade levels and plane
  * ownership remain the source of truth for earlier purchases.
+ *
+ * Balance goals (normal ~7★/run):
+ * - First core upgrade (10★) in ~2 runs
+ * - Second core rank or first plane (Mint) within ~3 runs total
+ * - Mid-tree ranks ask for a short save, not a wall
+ * - Late planes reward long play without 20+ run grinds
  */
 export const FUTURE_PRICE_TABLE = Object.freeze({
   upgrades: Object.freeze({
-    handling: Object.freeze([10, 20, 35, 55, 80]),
-    lift: Object.freeze([10, 20, 35, 55, 80]),
-    glide: Object.freeze([12, 24, 42, 65, 90]),
-    magnet: Object.freeze([16, 32, 55, 85]),
-    shield: Object.freeze([15, 28, 48, 75]),
-    luck: Object.freeze([16, 32, 56, 85]),
-    wingspan: Object.freeze([20, 38, 65]),
-    trail: Object.freeze([12, 25, 45]),
-    turbo: Object.freeze([15, 30, 52]),
-    guardian: Object.freeze([35, 70]),
-    weapon: Object.freeze([24, 45, 72, 105]),
+    handling: Object.freeze([10, 18, 32, 50, 75]),
+    lift: Object.freeze([10, 18, 32, 50, 75]),
+    glide: Object.freeze([12, 22, 38, 58, 82]),
+    magnet: Object.freeze([14, 28, 48, 75]),
+    shield: Object.freeze([14, 26, 44, 68]),
+    luck: Object.freeze([14, 28, 50, 78]),
+    wingspan: Object.freeze([18, 34, 58]),
+    trail: Object.freeze([10, 22, 40]),
+    turbo: Object.freeze([14, 28, 48]),
+    guardian: Object.freeze([30, 60]),
+    weapon: Object.freeze([22, 40, 65, 95]),
     // First ranks of the late tree stay inside a short normal-run save so the
     // three newest upgrades never feel gated behind prestige play.
-    fever: Object.freeze([14, 28, 50]),
-    streak: Object.freeze([12, 24, 42]),
-    wealth: Object.freeze([12, 26, 46]),
+    fever: Object.freeze([15, 28, 48]),
+    streak: Object.freeze([12, 22, 38]),
+    wealth: Object.freeze([14, 26, 44]),
   }),
   planes: Object.freeze({
-    mint: 20,
-    coral: 35,
-    night: 55,
-    gold: 80,
-    sunset: 90,
-    stormfoil: 100,
-    neon: 110,
-    rainbow: 140,
+    mint: 18,
+    coral: 32,
+    night: 50,
+    gold: 72,
+    sunset: 82,
+    stormfoil: 92,
+    neon: 105,
+    rainbow: 125,
   }),
 })
 

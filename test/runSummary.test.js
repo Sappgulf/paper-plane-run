@@ -17,6 +17,8 @@ describe('post-run summary', () => {
       improvementMeters: 30,
       maxCombo: 4,
       reason: 'Hit a kite',
+      walletAfterRun: 12,
+      focusUpgradeId: null,
       nextActionKind: 'spend',
       ctaLabel: 'Spend 12★ in Hangar',
       nextAction: 'Spend 12★ in Upgrades or fly again',
@@ -29,6 +31,40 @@ describe('post-run summary', () => {
       nextActionKind: 'fly',
       ctaLabel: 'Fly Again',
       nextAction: 'Fly again and bank your first star',
+    })
+  })
+
+  test('names the cheapest affordable upgrade when the wallet can buy', () => {
+    expect(buildRunSummary({
+      stars: 4,
+      walletAfterRun: 14,
+      affordableUpgrades: [
+        { id: 'lift', name: 'Lift Crease', cost: 10 },
+        { id: 'handling', name: 'Fold Handling', cost: 10 },
+        { id: 'magnet', name: 'Star Magnet', cost: 25 },
+      ],
+    })).toMatchObject({
+      bankedStars: 4,
+      walletAfterRun: 14,
+      focusUpgradeId: 'handling',
+      nextActionKind: 'spend',
+      ctaLabel: 'Buy Fold Handling · 10★',
+      nextAction: 'Buy Fold Handling for 10★ or fly again',
+    })
+  })
+
+  test('nudges Hangar when stars banked but nothing is affordable yet', () => {
+    expect(buildRunSummary({
+      stars: 3,
+      walletAfterRun: 3,
+      affordableUpgrades: [],
+    })).toMatchObject({
+      bankedStars: 3,
+      walletAfterRun: 3,
+      focusUpgradeId: null,
+      nextActionKind: 'hangar',
+      ctaLabel: 'Hangar · 3★',
+      nextAction: 'Banked 3★ · keep flying toward an upgrade',
     })
   })
 })

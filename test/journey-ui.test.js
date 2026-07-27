@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createJourney, getRouteChoices } from '../src/journey.js'
 import { createMasteryState, resolveMasteryOutcome } from '../src/journey-mastery.js'
-import { renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from '../src/journey-ui.js'
+import { cosmeticLabel, renderJourneyMap, renderJourneyResultProgress, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices, stampLabel } from '../src/journey-ui.js'
 
 function root() {
   return { innerHTML: '', onclick: null }
@@ -22,8 +22,15 @@ describe('Journey UI', () => {
     renderRouteChoices(el, cards, select)
     expect(el.innerHTML).toContain('Safe')
     expect(el.innerHTML).toContain('Risky')
+    expect(el.innerHTML).toContain(stampLabel(cards[0].stampId))
+    expect(el.innerHTML).not.toContain(cards[0].stampId)
     el.onclick({ target: { closest: () => ({ dataset: { routeId: cards[1].id } }) } })
     expect(select).toHaveBeenCalledWith(cards[1].id)
+  })
+
+  it('humanizes mastery cosmetic and stamp ids for player-facing copy', () => {
+    expect(cosmeticLabel('pip-ember-trail')).toBe('Ember flight trail')
+    expect(stampLabel('rooftops-steady')).toBe('Rooftops Steady')
   })
 
   it('shows pilot level, next goal, locked reward, and semantic progress', () => {

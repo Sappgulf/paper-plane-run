@@ -25,7 +25,8 @@ describe('shell accessibility contracts', () => {
 
   test('game-over offers a spend-in-hangar path when stars are banked', () => {
     expect(markup).toContain('id="hangar-from-gameover"')
-    expect(engine).toContain("shellBridge?.openHangar?.('upgrades')")
+    expect(engine).toContain('shellBridge?.openHangar?.(')
+    expect(engine).toContain('focusUpgradeId')
     expect(engine).toContain('nextActionKind')
   })
 
