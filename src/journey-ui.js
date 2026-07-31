@@ -1,6 +1,7 @@
 import { PILOTS, chapterMeta, stepsForChapter } from './journey.js'
 import { getPilotMasteryView } from './journey-mastery.js'
 import { getJourneyArtwork } from './journey-art.js'
+import { stampSpriteZone, zoneStampLabel } from './game/zone-stamps.js'
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
@@ -75,6 +76,7 @@ export function renderRouteChoices(root, cards, onSelect) {
   if (!root) return
   root.innerHTML = cards.map((card) => `
     <button type="button" class="journey-route-card ${card.risk}${card.selected ? ' selected' : ''}" data-route-id="${escapeHtml(card.id)}" aria-pressed="${card.selected ? 'true' : 'false'}">
+      <span class="route-stamp zone-stamp" data-zone="${escapeHtml(stampSpriteZone(card.zone))}" role="img" aria-label="${escapeHtml(zoneStampLabel(card.zone))}"></span>
       <span class="route-risk">${card.risk === 'risky' ? '⚠ Risky' : '✓ Safe'}</span>
       <span class="route-icon">${card.icon}</span>
       <strong>${escapeHtml(card.label)}</strong>
@@ -128,6 +130,7 @@ export function renderJourneyResultProgress(root, result) {
   const objective = result.objectiveResult
   const leveledUp = (result.masteryAfter?.level || 0) > (result.masteryBefore?.level || 0)
   root.innerHTML = `<div class="journey-result-progress${result.unlockedCosmetic ? ' unlocked' : ''}">
+    <span class="journey-result-stamp zone-stamp" data-zone="${escapeHtml(stampSpriteZone(result.outcome.destinationId))}" role="img" aria-label="${escapeHtml(zoneStampLabel(result.outcome.destinationId))}"></span>
     ${result.outcome.completed ? '<strong>✓ Stamp earned</strong>' : '<strong>Flight progress saved</strong>'}
     <span>${objective?.completed ? '✓ Objective complete' : '○ Objective missed'} · ${escapeHtml(objective?.label || 'Reach the destination')} ${objective ? `${objective.value}/${objective.target}` : ''}</span>
     <span>${leveledUp ? `★ Mastery Level ${result.masteryAfter.level}` : `Mastery Level ${result.masteryAfter?.level || 0}`} · ${telemetryProgress ? `+${telemetryProgress} flight marks` : 'route logged'}</span>

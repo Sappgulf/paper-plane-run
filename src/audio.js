@@ -222,6 +222,33 @@ export class GameAudio {
     this._tone(base * 2, 0.22, 'sine', 0.1)
   }
 
+  /** Short rising cue when the Journey route opens a shortcut fork. */
+  shortcutGate() {
+    this._tone(330, 0.08, 'triangle', 0.08)
+    this._tone(495, 0.1, 'triangle', 0.1)
+    this._tone(742, 0.16, 'sine', 0.08)
+  }
+
+  /** Crisp paper snap for clearing a boss or shortcut portal. */
+  gateClear() {
+    this._tone(392, 0.07, 'square', 0.08)
+    this._tone(587, 0.09, 'triangle', 0.11)
+    this._tone(880, 0.18, 'sine', 0.1)
+  }
+
+  /** Two-note warning that sits above the existing incoming telegraph. */
+  bossWarning() {
+    this._tone(180, 0.16, 'sawtooth', 0.07, 120)
+    this._tone(540, 0.2, 'square', 0.06, 760)
+  }
+
+  /** Soft major lift for crossing into a new paper zone. */
+  zoneTransition() {
+    this._tone(523, 0.1, 'triangle', 0.08)
+    this._tone(659, 0.12, 'triangle', 0.09)
+    this._tone(784, 0.18, 'sine', 0.08)
+  }
+
   windGust() {
     if (!this.ctx || this.muted) return
     const t = this._now()

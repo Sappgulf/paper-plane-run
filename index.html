@@ -27,6 +27,21 @@
       <div id="fever-fx" aria-hidden="true"></div>
       <div id="edge-indicators" aria-hidden="true"></div>
       <div id="warn-flash" aria-hidden="true"></div>
+      <div id="flight-route" class="hidden" aria-hidden="true">
+        <div class="flight-route-copy">
+          <span id="flight-route-stamp" class="zone-stamp" data-zone="city" role="img" aria-label="Paper City stamp"></span>
+          <div class="flight-route-labels">
+            <span class="flight-route-kicker">Flight path <b id="flight-route-risk">OPEN AIR</b></span>
+            <strong id="flight-route-current">Paper City</strong>
+            <span id="flight-route-next">Open air</span>
+          </div>
+        </div>
+        <div class="flight-route-track"><span id="flight-route-fill"></span></div>
+      </div>
+      <div id="flight-focus" class="hidden" aria-hidden="true">
+        <span class="flight-focus-ring"></span>
+        <span id="flight-focus-cue" class="flight-focus-cue">FOCUS</span>
+      </div>
 
       <div id="hud" class="hidden">
         <div class="hud-card" data-hud-priority="primary"><span class="label">Distance</span><span id="distance">0m</span></div>
@@ -83,6 +98,7 @@
       </div>
       <div id="tutorial-hint" class="hidden"></div>
       <div id="combo-float" class="hidden">Near miss!</div>
+      <div id="flight-feedback" class="hidden" role="status" aria-live="polite"></div>
       <div id="challenge-toast" class="hidden" role="status"></div>
 
       <div id="stick-zone" class="hidden" aria-hidden="true">

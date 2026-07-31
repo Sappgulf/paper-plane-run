@@ -101,6 +101,7 @@ import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObj
 import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
+import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-stamps.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
@@ -229,6 +230,16 @@ const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
 const streakHud = $('streak-hud')
 const streakVal = $('streak-val')
+const flightRouteEl = $('flight-route')
+const flightRouteCurrentEl = $('flight-route-current')
+const flightRouteNextEl = $('flight-route-next')
+const flightRouteFillEl = $('flight-route-fill')
+const flightRouteStampEl = $('flight-route-stamp')
+const flightRouteRiskEl = $('flight-route-risk')
+const flightFocusEl = $('flight-focus')
+const flightFocusCueEl = $('flight-focus-cue')
+const flightFeedbackEl = $('flight-feedback')
+let flightFeedbackTimer = 0
 const distanceEl = $('distance')
 const bestEl = $('best')
 const starsEl = $('stars')
@@ -283,6 +294,7 @@ function checkHazardTelegraph() {
   }
 }
 const _edgeNdc = new THREE.Vector3()
+const _focusNdc = new THREE.Vector3()
 function updateEdgeIndicators() {
   if (!edgeIndicatorEl) return
   const w = innerWidth
@@ -317,6 +329,93 @@ function updateEdgeIndicators() {
 }
 function hideEdgeIndicators() {
   for (const el of edgePool) el.classList.remove('visible')
+}
+
+function hideFlightReadability() {
+  flightRouteEl?.classList.add('hidden')
+  flightFocusEl?.classList.add('hidden')
+}
+
+function showFlightFeedback(message, tone = 'route', duration = 1.05) {
+  if (!flightFeedbackEl) return
+  flightFeedbackEl.textContent = message
+  flightFeedbackEl.dataset.tone = tone
+  flightFeedbackEl.classList.remove('hidden', 'feedback-pop')
+  void flightFeedbackEl.offsetWidth
+  flightFeedbackEl.classList.add('feedback-pop')
+  flightFeedbackTimer = Math.max(flightFeedbackTimer, duration)
+}
+
+function pulseFlightImpact(tone = 'route') {
+  if (!warnFlashEl) return
+  warnFlashEl.classList.remove('impact-pulse', 'impact-hazard', 'impact-star', 'impact-power', 'impact-route')
+  warnFlashEl.classList.add(`impact-${tone}`)
+  void warnFlashEl.offsetWidth
+  warnFlashEl.classList.add('impact-pulse')
+}
+
+function updateFlightReadability(routeState = null) {
+  const playing = state === 'playing'
+  flightRouteEl?.classList.toggle('hidden', !playing)
+  flightFocusEl?.classList.toggle('hidden', !playing)
+  if (!playing) return
+
+  const zone = routeState?.zone || activeZoneAt(distance)
+  flightRouteEl?.setAttribute('data-zone', zone.id)
+  flightRouteEl?.setAttribute('data-route-risk', journeyRunConfig?.risk || 'open')
+  if (flightRouteCurrentEl) flightRouteCurrentEl.textContent = zone.name
+  if (flightRouteRiskEl) flightRouteRiskEl.textContent = routeRiskLabel(journeyRunConfig || {})
+  if (flightRouteStampEl) {
+    const spriteZone = stampSpriteZone(zone.id)
+    flightRouteStampEl.dataset.zone = spriteZone
+    flightRouteStampEl.dataset.earned = String(Boolean(journeyRunConfig?.stampId && journey?.earnedStampIds?.includes(journeyRunConfig.stampId)))
+    flightRouteStampEl.setAttribute('aria-label', zoneStampLabel(zone.name))
+  }
+  if (flightRouteNextEl) {
+    const next = routeState?.next
+    flightRouteNextEl.textContent = next
+      ? `${next.name} · ${Math.max(0, Math.ceil(next.from - distance))}m`
+      : 'Final fold'
+  }
+  if (flightRouteFillEl) {
+    const routeT = Number.isFinite(routeState?.t) ? routeState.t : 0
+    flightRouteFillEl.style.width = `${THREE.MathUtils.clamp(routeT, 0, 1) * 100}%`
+  }
+
+  if (!flightFocusEl) return
+  _focusNdc.copy(plane.position).project(camera)
+  const focusOnScreen = _focusNdc.z <= 1 && Math.abs(_focusNdc.x) < 1.15 && Math.abs(_focusNdc.y) < 1.15
+  if (!focusOnScreen) {
+    flightFocusEl.classList.add('hidden')
+    return
+  }
+  flightFocusEl.classList.remove('hidden')
+  flightFocusEl.style.left = `${(_focusNdc.x * 0.5 + 0.5) * innerWidth}px`
+  flightFocusEl.style.top = `${(1 - (_focusNdc.y * 0.5 + 0.5)) * innerHeight}px`
+
+  let cue = 'clear'
+  let label = 'FLY'
+  let nearestZ = Infinity
+  for (const entity of entities) {
+    const type = entity.type
+    const isPickup = type === 'star' || type === 'power' || type === 'ring'
+    const isHazard = type === 'building' || type === 'bird' || type === 'scissors' || type === 'boss'
+    if ((!isPickup && !isHazard) || entity.mesh.position.z < 3 || entity.mesh.position.z > 46) continue
+    if (entity.mesh.position.z >= nearestZ) continue
+    nearestZ = entity.mesh.position.z
+    if (isHazard) {
+      cue = 'hazard'
+      label = type === 'boss' ? 'GATE AHEAD' : 'DODGE'
+    } else if (type === 'power') {
+      cue = 'power'
+      label = 'POWER'
+    } else {
+      cue = 'star'
+      label = 'STAR LINE'
+    }
+  }
+  flightFocusEl.dataset.cue = cue
+  if (flightFocusCueEl) flightFocusCueEl.textContent = label
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
@@ -633,7 +732,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.shadowMap.enabled = !settings.lowPower
 renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.05
+renderer.toneMappingExposure = 0.98
 renderer.setClearColor(0xc8dff5, 1)
 
 installNativePerformanceListener({
@@ -648,7 +747,7 @@ installNativePerformanceListener({
 })
 
 const scene = new THREE.Scene()
-scene.fog = new THREE.Fog(0xc8dff5, 50, 240)
+scene.fog = new THREE.Fog(0xb8d4e8, 42, 220)
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400)
 
 // A soft generic room environment so metallic/reflective materials (scissors
@@ -1548,6 +1647,7 @@ function createFan(radius) {
 function createWindTunnelGate(passage) {
   const g = createBossPortalBase('wind', passage)
   const halfWidth = g.userData.halfWidth
+  const halfHeight = g.userData.halfHeight
   const fanR = 2.2
   const fanL = createFan(fanR)
   fanL.position.set(-halfWidth - fanR - 0.8, 10, 0.2)
@@ -2600,6 +2700,9 @@ function dispatchJourneyEncounter(event) {
       gate.mesh.position.x = lane * 2.4
       journeyTelemetry.shortcutGatesTotal += gate.journeyGateRequired ? 1 : 0
     }
+    showFlightFeedback(`SHORTCUT FORK · ${count} gate${count === 1 ? '' : 's'}`, 'route', 1.4)
+    pulseFlightImpact('route')
+    audio.shortcutGate()
     break
   }
   case 'visibility-pocket':
@@ -2777,6 +2880,8 @@ function activatePower(kind) {
   powerBanner.textContent = meta.banner
   powerBanner.classList.remove('hidden')
   bannerTimer = 2.4
+  showFlightFeedback(`POWER · ${meta.label}`, 'power', 1.2)
+  pulseFlightImpact('power')
   runStats.powers++
   track('power_pickup', { kind })
 
@@ -2881,6 +2986,9 @@ function applyZone(z, announce) {
     zoneBanner.textContent = `✦ ${z.name}`
     zoneBanner.classList.remove('hidden')
     zoneBannerTimer = 2.5
+    showFlightFeedback(`${z.name} · stamp region`, 'route', 1.7)
+    pulseFlightImpact('route')
+    audio.zoneTransition()
   }
   currentZoneId = z.id
 }
@@ -2928,7 +3036,7 @@ function updateMagnetPullFeedback(target, magnet) {
 }
 
 function applyUpgradeVisuals(fx = activeUpgradeEffects) {
-  plane.scale.setScalar(fx.planeScale)
+  plane.scale.setScalar(fx.planeScale * 1.12)
   const trail = upgradeTrail
   const trailFeedback = getTrailFeedback(fx)
   if (trail) {
@@ -2944,6 +3052,8 @@ function resetGame() {
   const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
   clearPower()
+  flightFeedbackTimer = 0
+  flightFeedbackEl?.classList.add('hidden')
   updateMagnetPullFeedback(null, { active: false })
   distance = 0
   stars = 0
@@ -3033,7 +3143,7 @@ function resetGame() {
   applySkin(getEquippedSkinId())
   applyUpgradeVisuals(upgradeEffects)
   spawnUnfold = 0
-  plane.scale.setScalar(upgradeEffects.planeScale * 0.15)
+  plane.scale.setScalar(upgradeEffects.planeScale * 0.15 * 1.12)
 
   // RNG
   if (runKind === 'daily') {
@@ -3577,6 +3687,9 @@ function showMenu() {
   guardianHud?.classList.add('hidden')
   journeyObjectiveHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
+  hideFlightReadability()
+  flightFeedbackTimer = 0
+  flightFeedbackEl?.classList.add('hidden')
   showStick(false)
   shellBridge?.refreshProgression?.()
   updateControlUI()
@@ -3731,6 +3844,9 @@ async function startGame(kind = 'classic', opts = {}) {
     manualPause = false
     resetGame()
     state = 'playing'
+    // Hydrate the route strip immediately so the shell never exposes an
+    // empty risk/stamp label during the first lazy-engine frame.
+    updateFlightReadability(runKind === 'journey' ? { zone: activeZoneAt(0), t: 1, next: null } : null)
     hudEl?.classList.remove('hidden')
     showStick(true)
     syncPauseUi()
@@ -3908,6 +4024,8 @@ function die(reason) {
   fovPunch = isWin ? 0 : -6
   showStick(false)
   clearPower()
+  showFlightFeedback(isWin ? 'ROUTE COMPLETE' : 'PAPER CRASH', isWin ? 'route' : 'hazard', isWin ? 1.5 : 1.1)
+  pulseFlightImpact(isWin ? 'route' : 'hazard')
 
   // Sync crash pose
   plane.position.set(planeX, planeY, 0)
@@ -4030,6 +4148,8 @@ function finalizeDeathUnsafe() {
   pauseOverlay?.classList.add('hidden')
   pauseBtn?.classList.add('hidden')
   if (speedFxEl) speedFxEl.style.opacity = '0'
+  flightFeedbackTimer = 0
+  flightFeedbackEl?.classList.add('hidden')
   hideEdgeIndicators()
   nextZoneHud?.classList.add('hidden')
   ghostDeltaHud?.classList.add('hidden')
@@ -4354,6 +4474,9 @@ function animateHazards(dt) {
         hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
         notifications.show(presentation.headline, { duration: settings.reducedMotion ? 1400 : 2100 })
         audio.incoming()
+        audio.bossWarning()
+        showFlightFeedback('BOSS GATE · HOLD YOUR LINE', 'hazard', 1.3)
+        pulseFlightImpact('hazard')
         if (settings.haptics) Haptic.tap()
       }
       const halfH = encounter?.passage?.halfHeight ?? u.halfHeight ?? 3.7
@@ -4457,6 +4580,7 @@ function registerNearMiss(kind = null) {
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
   setTimeout(() => comboFloat.classList.add('hidden'), combo >= 6 ? 700 : 500)
+  showFlightFeedback(combo >= 6 ? `FEVER BUILDING · ${combo}x` : `NEAR MISS · ${combo}x`, combo >= 6 ? 'hot' : 'route', combo >= 6 ? 1.0 : 0.7)
   audio.nearMiss(combo, kind)
   Haptic.nearMiss()
   const bursts = nearMissConfettiBursts(combo)
@@ -4524,11 +4648,17 @@ function registerStarStreak() {
     powerBanner.textContent = pickup.banner
     powerBanner.classList.remove('hidden')
     bannerTimer = 2.0
+    showFlightFeedback(pickup.banner, 'star', 1.2)
+    pulseFlightImpact('star')
   }
 }
 
 function update(dt) {
   elapsed += dt
+  if (flightFeedbackTimer > 0) {
+    flightFeedbackTimer -= dt
+    if (flightFeedbackTimer <= 0) flightFeedbackEl?.classList.add('hidden')
+  }
   if (bannerTimer > 0) {
     bannerTimer -= dt
     if (bannerTimer <= 0) powerBanner.classList.add('hidden')
@@ -4542,6 +4672,7 @@ function update(dt) {
   updateSkyFade(dt)
 
   if (state === 'menu') {
+    hideFlightReadability()
     plane.position.set(0, 7 + Math.sin(elapsed * 1.2) * 0.45, 10)
     plane.rotation.y = Math.sin(elapsed * 0.55) * 0.45
     plane.rotation.z = Math.sin(elapsed * 0.9) * 0.18
@@ -4557,6 +4688,7 @@ function update(dt) {
   }
 
   if (state === 'dead') {
+    hideFlightReadability()
     // Dramatic crash: tumble, drop, paper spin
     const isWin = crashReason === 'Tutorial complete!' || crashReason === "Time's up!" || crashReason === 'Journey route complete!'
     if (!isWin) {
@@ -4608,7 +4740,7 @@ function update(dt) {
   if (spawnUnfold < 1) {
     spawnUnfold = Math.min(1, spawnUnfold + dt / 0.4)
     const eased = 1 - Math.pow(1 - spawnUnfold, 3)
-    plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85))
+    plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85) * 1.12)
   }
   if (runKind === 'timeattack' && timeAttackLeft > 0) {
     timeAttackLeft = Math.max(0, timeAttackLeft - dt)
@@ -5183,6 +5315,7 @@ function update(dt) {
 
   scrollWorld(move)
   animateHazards(dt)
+  updateFlightReadability(zp)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
     while (nextSpawnZ < 220) {
@@ -5232,6 +5365,7 @@ function update(dt) {
         starsEl.textContent = String(stars)
         audio.collectStar()
         if (settings.haptics) Haptic.collect()
+        showFlightFeedback('STAR +1', 'star', 0.62)
         spawnConfetti(m.position.x, m.position.y, m.position.z)
         ringsLeft--
       }
@@ -5271,6 +5405,7 @@ function update(dt) {
         distance += 18
         audio.collectStar()
         if (settings.haptics) Haptic.collect()
+        showFlightFeedback('STAR +1 · +18m', 'star', 0.72)
         spawnConfetti(m.position.x, m.position.y, m.position.z)
         registerStarStreak()
         scene.remove(m)
@@ -5352,6 +5487,9 @@ function update(dt) {
             if (settings.haptics) Haptic.collect()
             invuln = Math.max(invuln, reward.invulnSeconds)
             spawnConfetti(planeX, planeY, 2)
+            showFlightFeedback(`GATE CLEARED · +${reward.stars}★`, 'route', 1.6)
+            pulseFlightImpact('route')
+            audio.gateClear()
             powerBanner.textContent = `${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`
             powerBanner.classList.remove('hidden')
             bannerTimer = Math.max(bannerTimer, 1.8)

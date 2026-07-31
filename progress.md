@@ -159,3 +159,29 @@ Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
 - Added `Gold Rush` (id `wealth`, max 3, 16/30/50★, icon 💰) to the upgrade tree: raises the base star-cluster spawn chance (`doubleStarChance` in `getSpawnRates`, `src/game/upgrade-runtime.js`) independently of and stacking with Lucky Scrap's multiplier, so it's a genuinely new economic lever rather than a reskin of Luck.
 - Wired through `src/upgrades.js` formulas/effects, `src/game/economy.js` cost table, both `getSpawnRates` call sites in `src/game/upgrade-runtime.js`/`src/flight-engine.js`, and the usual contract tests (`test/upgrades.test.js`, `test/upgradeRuntime.test.js` including a dedicated stacking test, `e2e/smoke.spec.js` Hangar contract-card and prestige-cap lanes).
 - Verification: `npm test` 34 files / 183 tests passed; `npm run build` and `npm run build:ios` succeeded; `npm run verify:ios-parity` matched all 102 files; Playwright Hangar upgrade-card lane re-verified against the new contract.
+
+## 2026-07-30 — Visual + gameplay pass
+
+- Read the requested frontend, browser, web-game, and game-foundations skills; retained the existing Three.js runtime and its pure simulation helpers.
+- Baseline IAB inspection: menu is visually strong but vertically crowded at 1280×720; live Paper City flight has pale sky/ground contrast and a restrained HUD while the plane/hazards remain readable.
+- Baseline deterministic client: `output/web-game/shot-0.png` through `shot-2.png` with matching `state-0.json` through `state-2.json`; state advanced classic flight from 5m to 29m with hazards/stars/power-ups present and no game-state errors.
+- Generated visual direction concept: `/Users/austinbeatty/.codex/generated_images/019fb5cb-1158-79e2-bda1-eb27973bb835/exec-9ed3b51a-cad9-4d0b-bedb-4c6e6cfa2fcd.png`.
+- Design spec: `docs/superpowers/specs/2026-07-30-paper-plane-visual-game-pass.md`.
+- Implemented the visual pass: brighter Paper City contrast, warm paper tokens, coral journey CTA, compact short-desktop/mobile menu layouts, responsive route strip, and a projected focus ring that calls out the nearest hazard/pickup.
+- Added route/focus DOM surfaces in `index.html`; non-playing states now hide them immediately so crash summaries and the main menu stay clean.
+- Accepted concept and latest desktop/mobile implementation screenshots were inspected at original/high resolution. Native viewport checks covered 1280×720 and 390×844; mobile has no horizontal overflow and the Pilot field remains inside the viewport.
+- IAB flow verified: menu → Journey → safe route → live flight → keyboard input → crash summary → main menu, plus Hangar → Planes → main menu → Classic. IAB showed the route/focus HUD during flight and no route/focus layer on the crash summary.
+- Deterministic web-game client and native Playwright visual smoke passed with hazards, stars, power-ups, distance advance, movement, route/focus visibility, and mobile joystick coverage.
+- Verification: Vitest 51 files / 250 tests passed; production build passed; bundle budget passed at 89,724 initial / 783,507 total bytes; iOS build and parity passed with 114 matching files.
+- Full Playwright matrix completed at 42 passed / 15 intentional skips / 3 desktop failures under two-worker WebGL load. The Hangar purchase and Plane Collection failures pass when isolated; the boss lane exposed and fixed a real Wind-gate `halfHeight` lookup bug, while its stale passage/timing assertions were synchronized to the canonical `4.0 × 3.7`, `1.5s + 1.5s` director contract. The three affected desktop lanes then passed together serialized (3/3).
+- Final gates after the boss fix: Vitest 51 files / 250 tests, production build, bundle budget at 89,724 initial / 783,522 total bytes, iOS build, and 114-file iOS parity all pass.
+- Removed the temporary `scripts/visual_pass_smoke.py` harness; the permanent Vitest, Playwright, and web-game clients remain unchanged.
+
+## 2026-07-30 — Asset, route, feedback, and runtime split pass
+
+- Generated and integrated two paper-craft assets: `public/assets/paper-world-backdrop.png` for menu/Journey/game-over surfaces and `public/assets/zone-stamp-sheet.png` for code-addressable Journey reward stamps.
+- Added `src/game/zone-stamps.js` with stable zone-to-sprite mapping, route-risk copy, and stamp labels; added unit coverage for Chapter 1 and Chapter 2 fallback palettes.
+- Journey route cards now show zone stamps; the live route strip shows the current zone, `SCENIC`/`SHORTCUT` risk multiplier, pending/earned stamp state, zone accent, and the route progress bar. The route strip is synchronously hydrated at flight start so lazy engine startup never exposes an empty label.
+- Added a feedback ribbon and impact pulses for near-misses, star pickups, powers, shortcut forks, boss warnings, gate clears, zone transitions, and crash/route-complete states; added dedicated Web Audio cues for shortcut gates, gate clears, boss warnings, and zone transitions.
+- Split Three.js into a cacheable `three-runtime` chunk with Vite 8/Rolldown code splitting. Production output is now a 91,071-byte initial entry, 122,760-byte flight-engine chunk, and 572,030-byte Three runtime; total JS remains 785,868 bytes under the 819,200-byte budget.
+- Verification: Vitest 52 files / 253 tests passed; production build and bundle budget passed; iOS build/parity passed with 117 matching files; the new Journey browser contract passed on desktop and mobile, and the corrected serialized desktop menu/Journey lane passed 2/2. A full two-worker Playwright run completed 45 passed / 15 intentional skips; its two desktop failures were the pre-adjustment seeded-objective assertion and the known concurrent startup race, both cleared by the serialized affected rerun after the final test fix.

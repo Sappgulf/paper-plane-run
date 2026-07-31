@@ -188,6 +188,7 @@ export function buildRunConfiguration(journey) {
     modifierLabel: route.modifierLabel,
     risk: route.risk,
     rewardMultiplier: route.rewardMultiplier,
+    stampId: route.stampId,
     pilotId: journey.pilotId,
     rival: route.rival,
     finale: route.finale,

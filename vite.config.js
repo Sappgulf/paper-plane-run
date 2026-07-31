@@ -13,6 +13,23 @@ export default defineConfig({
     manifest: true,
     // Keep asset names stable-ish for SW cache of static icons
     assetsInlineLimit: 0,
+    // The flight engine is lazy-loaded, but Three.js used to travel in the
+    // same large async file. Keep the renderer runtime cacheable on its own so
+    // engine/gameplay edits do not invalidate the heaviest dependency chunk.
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'three-runtime',
+              priority: 20,
+              minSize: 0,
+              test: (id) => id.includes('/node_modules/') && (id.includes('/three/') || id.includes('/three@')),
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     host: true,

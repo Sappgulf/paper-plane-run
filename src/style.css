@@ -1,5 +1,16 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --paper: #fffaf2;
+  --paper-strong: rgba(255,250,242,.94);
+  --ink: #243b53;
+  --ink-soft: #58708b;
+  --coral: #e76f51;
+  --gold: #f0b429;
+  --violet: #7357c9;
+  --paper-shadow: rgba(61,44,41,.16);
+}
+
 html, body, #game-root {
   width: 100%; height: 100%; overflow: hidden;
   font-family: 'Nunito', system-ui, sans-serif;
@@ -47,9 +58,19 @@ html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; op
   background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(224,82,74,.35) 100%);
 }
 #warn-flash.warn-pulse { animation: warnPulse 0.55s ease-out; }
+#warn-flash.impact-pulse { animation: impactPulse 0.48s ease-out; }
+#warn-flash.impact-hazard { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(224,82,74,.48) 100%); }
+#warn-flash.impact-star { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(240,180,41,.46) 100%); }
+#warn-flash.impact-power { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(52,211,153,.42) 100%); }
+#warn-flash.impact-route { background: radial-gradient(circle at 50% 50%, transparent 42%, rgba(124,58,237,.38) 100%); }
 @keyframes warnPulse {
   0% { opacity: 0; }
   25% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes impactPulse {
+  0% { opacity: 0; }
+  28% { opacity: .95; }
   100% { opacity: 0; }
 }
 
@@ -64,6 +85,63 @@ html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; op
 .edge-arrow.kind-hazard svg { color: #e0524a; }
 .edge-arrow.kind-star svg { color: #f0b429; }
 .edge-arrow.kind-power svg { color: #7eb8e8; }
+
+/* —— Flight focus + route strip ——
+   These are DOM overlays on purpose: the playfield remains a single canvas,
+   while crisp, readable state feedback stays independent of camera distance. */
+#flight-route {
+  position: absolute; top: max(118px, calc(env(safe-area-inset-top) + 106px)); left: 50%;
+  transform: translateX(-50%); z-index: 5; width: min(250px, 25vw);
+  padding: 8px 12px 9px; border: 1.5px solid rgba(36,59,83,.16);
+  border-radius: 14px; background: rgba(255,250,242,.86);
+  box-shadow: 0 8px 22px rgba(36,59,83,.14), 0 1px 0 rgba(255,255,255,.7) inset;
+  backdrop-filter: blur(12px); pointer-events: none;
+}
+.flight-route-copy { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.flight-route-labels { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.flight-route-kicker { display: flex; justify-content: space-between; gap: 6px; color: var(--ink-soft); font-size: 8px; font-weight: 1000; letter-spacing: .13em; text-transform: uppercase; }
+.flight-route-kicker b { color: var(--route-accent, var(--coral)); font-size: 8px; letter-spacing: .05em; white-space: nowrap; }
+.flight-route-copy strong { min-width: 0; color: var(--ink); font-size: 13px; font-weight: 1000; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flight-route-copy span:last-child { justify-self: end; color: var(--route-accent, var(--coral)); font-size: 10px; font-weight: 900; white-space: nowrap; }
+.flight-route-track { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: rgba(36,59,83,.12); }
+.flight-route-track span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--route-accent, var(--coral)), var(--gold)); transition: width .28s ease-out; }
+
+.zone-stamp {
+  display: inline-block; flex: none; width: 52px; height: 52px; border-radius: 15px;
+  background-color: #fff7e8; background-image: url('/assets/zone-stamp-sheet.png');
+  background-size: 200% 200%; background-repeat: no-repeat;
+  box-shadow: 0 6px 14px rgba(61,44,41,.15), 0 1px 0 rgba(255,255,255,.8) inset;
+  border: 1.5px solid rgba(61,44,41,.12);
+}
+.zone-stamp[data-zone="city"] { background-position: 0 0; }
+.zone-stamp[data-zone="harbor"] { background-position: 100% 0; }
+.zone-stamp[data-zone="storm"] { background-position: 0 100%; }
+.zone-stamp[data-zone="aurora"] { background-position: 100% 100%; }
+#flight-route .zone-stamp { width: 34px; height: 34px; border-radius: 11px; }
+#flight-route .zone-stamp[data-earned="false"] { filter: saturate(.78) brightness(1.04); }
+#flight-route[data-zone="city"] { --route-accent: #e76f51; }
+#flight-route[data-zone="harbor"] { --route-accent: #2a70b8; }
+#flight-route[data-zone="storm"] { --route-accent: #7357c9; }
+#flight-route[data-zone="aurora"] { --route-accent: #c47b18; }
+#flight-route[data-zone="sunset"] { --route-accent: #d45a3c; }
+#flight-route[data-zone="midnight"] { --route-accent: #5d4698; }
+
+#flight-focus {
+  position: absolute; left: 0; top: 0; z-index: 4; width: 88px; height: 88px;
+  transform: translate(-50%, -50%); pointer-events: none; opacity: .84;
+  transition: left .12s linear, top .12s linear, opacity .2s ease;
+}
+.flight-focus-ring { position: absolute; inset: 7px; border: 1px solid rgba(255,250,242,.82); border-radius: 50%; box-shadow: 0 0 0 1px rgba(36,59,83,.22), 0 0 22px rgba(255,250,242,.32); }
+.flight-focus-ring::before, .flight-focus-ring::after { content: ''; position: absolute; background: rgba(255,250,242,.86); box-shadow: 0 0 4px rgba(36,59,83,.25); }
+.flight-focus-ring::before { width: 1px; height: 18px; left: 50%; top: -9px; }
+.flight-focus-ring::after { width: 18px; height: 1px; left: -9px; top: 50%; }
+.flight-focus-cue { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); color: rgba(255,250,242,.9); font-size: 8px; font-weight: 1000; letter-spacing: .16em; text-shadow: 0 1px 4px rgba(36,59,83,.55); white-space: nowrap; }
+#flight-focus[data-cue="hazard"] .flight-focus-ring { border-color: rgba(255,124,95,.96); box-shadow: 0 0 0 1px rgba(134,35,25,.28), 0 0 25px rgba(231,111,81,.45); }
+#flight-focus[data-cue="hazard"] .flight-focus-cue { color: #ffd5c6; }
+#flight-focus[data-cue="star"] .flight-focus-ring { border-color: rgba(255,217,92,.95); box-shadow: 0 0 0 1px rgba(134,96,25,.24), 0 0 24px rgba(240,180,41,.5); }
+#flight-focus[data-cue="power"] .flight-focus-ring { border-color: rgba(143,234,207,.95); box-shadow: 0 0 0 1px rgba(25,92,75,.24), 0 0 24px rgba(105,184,154,.45); }
+html.a11y-reduced-motion #flight-focus { transition: none; }
+html.a11y-reduced-motion .flight-route-track span { transition: none; }
 
 /* —— HUD —— */
 #hud {
@@ -372,6 +450,25 @@ html.a11y-large-stick #wind-stick-knob { width: 66px; height: 66px; }
   box-shadow: 0 10px 28px rgba(217,119,6,.3);
   font-size: 26px;
 }
+#flight-feedback {
+  position: absolute; left: 50%; bottom: max(104px, calc(env(safe-area-inset-bottom) + 84px));
+  transform: translateX(-50%); z-index: 7; pointer-events: none;
+  padding: 7px 13px; border: 1.5px solid rgba(36,59,83,.16); border-radius: 999px;
+  background: rgba(255,250,242,.94); color: var(--ink); font-size: 11px; font-weight: 1000;
+  letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  box-shadow: 0 9px 24px rgba(36,59,83,.16); backdrop-filter: blur(10px);
+}
+#flight-feedback.feedback-pop { animation: feedbackPop .42s cubic-bezier(.2,.85,.25,1); }
+#flight-feedback[data-tone="hazard"] { border-color: rgba(224,82,74,.45); color: #a83b31; }
+#flight-feedback[data-tone="star"] { border-color: rgba(240,180,41,.58); color: #9a6505; }
+#flight-feedback[data-tone="power"] { border-color: rgba(52,211,153,.55); color: #087453; }
+#flight-feedback[data-tone="route"] { border-color: rgba(124,58,237,.48); color: #5b3fa6; }
+#flight-feedback[data-tone="hot"] { border-color: rgba(249,115,22,.62); color: #c2410c; }
+@keyframes feedbackPop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(7px) scale(.88); }
+  55% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
 @keyframes pop {
   from { transform: scale(.72); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
@@ -381,6 +478,7 @@ html.a11y-large-stick #wind-stick-knob { width: 66px; height: 66px; }
   to { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 html.a11y-reduced-motion #combo-float,
+html.a11y-reduced-motion #flight-feedback,
 html.a11y-reduced-motion #wind-banner,
 html.a11y-reduced-motion #power-banner,
 html.a11y-reduced-motion #zone-banner,
@@ -455,14 +553,14 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   background:
-    linear-gradient(165deg, rgba(200,223,245,.55) 0%, rgba(255,236,220,.72) 100%),
-    url('/assets/menu-bg.jpg') center / cover no-repeat;
+    linear-gradient(165deg, rgba(200,223,245,.2) 0%, rgba(255,236,220,.34) 100%),
+    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
 }
 .menu-panel { justify-content: safe center; }
 
 .menu-card {
   width: min(420px, 100%);
-  background: rgba(255,250,242,.78);
+  background: rgba(255,250,242,.84);
   border: 1.5px solid rgba(255,255,255,.65);
   border-radius: 28px;
   padding: 22px 18px 18px;
@@ -1001,13 +1099,13 @@ html.a11y-reduced-motion #streak-fill { transition: none; }
 #gameover {
   background:
     linear-gradient(165deg, rgba(40,30,28,.4), rgba(255,220,200,.78)),
-    url('/assets/menu-bg.jpg') center / cover no-repeat;
+    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
 }
 
 /* —— Living Journey —— */
 .journey-main-cta {
-  background: linear-gradient(180deg,#7f6ac8,#6750b5 55%,#513a9f);
-  box-shadow: 0 12px 28px rgba(91,70,173,.4), 0 1px 0 rgba(255,255,255,.3) inset;
+  background: linear-gradient(180deg,#f39b78,#e76f51 55%,#cf543b);
+  box-shadow: 0 12px 28px rgba(231,111,81,.38), 0 1px 0 rgba(255,255,255,.3) inset;
 }
 .journey-panel { justify-content: safe center; }
 .journey-card { width: min(760px,100%); }
@@ -1023,7 +1121,8 @@ html.a11y-reduced-motion #streak-fill { transition: none; }
 .journey-section { background:#fff7;border:1px solid #6f5a9b18;border-radius:18px;padding:12px;margin:9px 0; }
 .journey-section h3 { margin:0 0 9px;font-size:13px;color:#55466f; }
 .journey-route-choices { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
-.journey-route-card { min-height:172px;border:2px solid #cbbde0;border-radius:18px;background:#fffaf2;padding:13px;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;color:#3e3334;cursor:pointer;font-family:inherit; }
+.journey-route-card { min-height:172px;border:2px solid #cbbde0;border-radius:18px;background:#fffaf2;padding:13px;display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;color:#3e3334;cursor:pointer;font-family:inherit;position:relative;padding-right:76px; }
+.journey-route-card .route-stamp { position:absolute;top:12px;right:12px;width:52px;height:52px; }
 .journey-route-card.risky { border-color:#e78462;background:linear-gradient(145deg,#fffaf2,#ffeadf); }
 .journey-route-card.selected { border-color:#7f6ac8;box-shadow:0 0 0 2px #7f6ac833; }
 .journey-route-card:active { transform:scale(.985); }
@@ -1043,7 +1142,8 @@ html.a11y-reduced-motion #streak-fill { transition: none; }
 .mastery-meter i { display:block;height:100%;background:#7f6ac8;border-radius:inherit; }
 .mastery-goal { grid-column:2;color:#695878; }
 .route-objective { color:#5d4698 !important;font-weight:800; }
-.journey-result-progress { display:grid;gap:5px;margin:12px 0;padding:12px;border:1.5px solid #bba9d8;border-radius:14px;background:#faf7ff;text-align:left;color:#55466f; }
+.journey-result-progress { position:relative;display:grid;gap:5px;margin:12px 0;padding:12px 76px 12px 12px;border:1.5px solid #bba9d8;border-radius:14px;background:#faf7ff;text-align:left;color:#55466f; }
+.journey-result-progress .journey-result-stamp { position:absolute;top:12px;right:12px;width:52px;height:52px; }
 .journey-result-progress span,.journey-result-progress small { font-size:12px; }
 .journey-result-progress.unlocked { border-color:#d79a3a;animation:masteryStamp .45s cubic-bezier(.34,1.56,.64,1); }
 @keyframes masteryStamp { 0%{transform:scale(.92) rotate(-1deg)} 100%{transform:scale(1) rotate(0)} }
@@ -1074,6 +1174,37 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
 .journey-empty span { font-size:44px; }
 .journey-empty .cta-main { margin-top: 10px; min-width: 200px; }
 
+/* Short desktop viewports get a two-column setup block so the main menu
+   behaves like a poster instead of forcing the final actions below the fold. */
+@media (min-width: 760px) and (max-height: 760px) {
+  .menu-panel { padding-top: 10px; padding-bottom: 10px; }
+  .menu-panel .menu-card {
+    width: min(620px, calc(100vw - 32px));
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 10px; row-gap: 0; padding: 16px 16px 14px;
+  }
+  .menu-panel .menu-hero,
+  .menu-panel .journey-main-cta,
+  .menu-panel .menu-actions,
+  .menu-panel .engine-status,
+  .menu-panel .engine-retry,
+  .menu-panel .mini-hint,
+  .menu-panel .landscape-hint,
+  .menu-panel .name-row { grid-column: 1 / -1; }
+  .menu-panel .menu-hero { margin-bottom: 8px; }
+  .menu-panel .menu-hero .logo { width: 76px; margin-bottom: 5px; border-width: 2px; border-radius: 20px; }
+  .menu-panel h1 { font-size: clamp(1.9rem, 4vw, 2.3rem); }
+  .menu-panel .tagline { font-size: 12px; }
+  .menu-panel .menu-section:nth-child(2),
+  .menu-panel .menu-section:nth-child(3) { margin-bottom: 7px; padding: 9px 10px 6px; }
+  .menu-panel .diff-btn { padding: 7px 13px; }
+  .menu-panel .cta-main { margin: 4px 0 8px; padding: 13px 18px; }
+  .menu-panel .menu-actions { gap: 6px; margin-bottom: 4px; }
+  .menu-panel .action-pill { padding: 8px 12px; }
+  .menu-panel .mini-hint { margin: 1px 0 4px; }
+  .menu-panel .name-row input { padding: 6px 10px; }
+}
+
 @media (max-width:700px) {
   .journey-card { padding:16px 12px; }
   .journey-route-choices { grid-template-columns:1fr; }
@@ -1085,7 +1216,10 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
 
 /* Mobile */
 @media (max-width: 520px) {
-  .menu-card { padding: 18px 14px 14px; border-radius: 24px; }
+  .menu-card { padding: 14px 12px 12px; border-radius: 24px; }
+  .menu-hero { margin-bottom: 8px; }
+  .menu-hero .logo { width: min(86px, 24vw); margin-bottom: 6px; border-width: 2px; border-radius: 20px; }
+  .menu-section { padding: 9px 10px 7px; margin-bottom: 8px; }
   .panel h1 { font-size: 1.75rem; }
   .cta-main { font-size: 17px; padding: 15px 16px; }
   .action-pill { font-size: 12px; padding: 9px 12px; }
@@ -1139,6 +1273,18 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
   #gameover .gameover-actions-primary { margin-top: 4px; }
   #gameover .gameover-actions-primary .cta-main { min-width: 180px; }
   #gameover .gameover-actions-secondary { margin-top: 2px; }
+  .menu-panel .landscape-hint { padding: 6px 10px; margin: 2px 0 5px; }
+}
+
+@media (max-width: 820px) {
+  #flight-route {
+    top: max(176px, calc(env(safe-area-inset-top) + 166px));
+    width: min(220px, 58vw); padding: 7px 9px 8px;
+  }
+  .flight-route-copy { gap: 5px; }
+  .flight-route-copy strong { font-size: 11px; }
+  .flight-route-copy span:last-child { font-size: 9px; }
+  #flight-focus { width: 72px; height: 72px; }
 }
 /* Phones (portrait or landscape): the wrapped HUD row can run wide enough
    to collide with the top-right icon buttons, so drop it below them instead

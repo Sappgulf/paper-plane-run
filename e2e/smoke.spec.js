@@ -59,6 +59,29 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('Journey route cards and the live HUD expose stamps and shortcut risk', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+
+  await expect(page.locator('.journey-route-card')).toHaveCount(2)
+  await expect(page.locator('.journey-route-card .zone-stamp')).toHaveCount(2)
+  await expect(page.locator('.journey-route-card .zone-stamp').first()).toHaveAttribute('data-zone', 'city')
+
+  const riskyRoute = page.locator('.journey-route-card.risky')
+  const rewardCopy = await riskyRoute.locator('.route-reward').textContent()
+  const rewardMultiplier = rewardCopy.match(/(\d+\.\d+)× rewards/)?.[1]
+  expect(rewardMultiplier).toBeTruthy()
+  await tap(riskyRoute)
+
+  await expect(page.locator('#flight-route')).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('#flight-route-risk')).toHaveText(`SHORTCUT · ${rewardMultiplier}×`)
+  await expect(page.locator('#flight-route-stamp')).toHaveAttribute('data-zone', 'city')
+  await expect(page.locator('#journey-objective-hud')).toBeVisible()
+  await expect(page.locator('#journey-objective-val')).toHaveText(/\S+/)
+  expect(errors).toEqual([])
+})
+
 test('Hangar upgrade cards show exact current, next, and max contracts', async ({ page }) => {
   test.slow()
   test.setTimeout(240_000)
@@ -651,12 +674,12 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   await waitForGameText(page)
   const scissors = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
-  expect(scissors.boss.passage).toMatchObject({ halfWidth: 3.3, halfHeight: 3.2 })
+  expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.0, halfHeight: 3.7 })
   expect([-1, 0, 1]).toContain(scissors.boss.safeLane)
   expect(scissors.plane.collisionRadius).toBe(0.7)
-  await page.evaluate(() => window.advanceTime(1100))
+  await page.evaluate(() => window.advanceTime(1550))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('pressure')
-  await page.evaluate(() => window.advanceTime(1300))
+  await page.evaluate(() => window.advanceTime(1600))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('final-pass')
 
   await page.addInitScript(() => {
