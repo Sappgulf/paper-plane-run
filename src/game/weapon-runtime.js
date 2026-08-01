@@ -1,4 +1,4 @@
-import { getWeaponState } from './upgrade-runtime.js'
+import { getInkReward, getWeaponState } from './upgrade-runtime.js'
 
 export function resolveWeaponFire({
   weaponLevel = 0,
@@ -53,7 +53,7 @@ export function shotHitsTarget({
   return dx * dx + dy * dy + dz * dz < hitR * hitR
 }
 
-/** Stars awarded when Ink Blast pops a hazard. */
-export function inkPopReward() {
-  return 2
+/** Stars awarded when Ink Blast pops a hazard, including Ink Ledger's bonus. */
+export function inkPopReward({ bonus = 0 } = {}) {
+  return getInkReward({ bonus }).reward
 }

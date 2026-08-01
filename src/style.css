@@ -502,6 +502,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   padding: 12px 16px; border-radius: 16px; text-align: center; pointer-events: none;
   box-shadow: 0 12px 32px rgba(91,33,182,.12);
 }
+#game-root.hangar-open #challenge-toast { visibility: hidden; opacity: 0; }
 
 /* —— Install prompt (custom, since iOS Safari has no beforeinstallprompt) —— */
 #install-hint {
@@ -730,6 +731,32 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   -webkit-overflow-scrolling: touch; padding: 2px 2px 8px;
 }
 .page-intro { font-size: 13px; font-weight: 700; color: #6b554f; margin-bottom: 12px; line-height: 1.35; }
+
+.upgrade-kit {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 8px 10px 8px 8px;
+  border: 1.5px solid rgba(90,159,212,.3);
+  border-radius: 17px;
+  background:
+    linear-gradient(105deg, rgba(255,250,242,.97), rgba(231,246,255,.88)),
+    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
+  box-shadow: 0 8px 20px rgba(61,44,41,.08), 0 1px 0 rgba(255,255,255,.8) inset;
+  overflow: hidden;
+}
+.upgrade-kit-art { width: 74px; height: 54px; border-radius: 12px; overflow: hidden; background: rgba(255,250,242,.7); }
+.upgrade-kit-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.upgrade-kit-copy { min-width: 0; display: grid; gap: 2px; }
+.upgrade-kit-kicker { color: #5a9fd4; font-size: 9px; font-weight: 1000; letter-spacing: .13em; text-transform: uppercase; }
+.upgrade-kit-copy strong { color: #243b53; font-size: 14px; line-height: 1.1; }
+.upgrade-kit-copy small { color: #6b554f; font-size: 10px; font-weight: 800; line-height: 1.25; }
+.upgrade-kit-stats { display: flex; gap: 8px; text-align: center; }
+.upgrade-kit-stats span { display: grid; gap: 1px; min-width: 34px; }
+.upgrade-kit-stats b { color: #d97706; font-size: 14px; line-height: 1; }
+.upgrade-kit-stats small { color: #8a6f68; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
 
 .prestige-panel {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

@@ -94,10 +94,27 @@ export function getMagnetPull({
   }
 }
 
-/** Tough Fiber only changes shield duration; all other power-up durations stay fixed. */
-export function getPowerDuration({ kind, baseDuration = 0, shieldDurationMul = 1 } = {}) {
-  const duration = positiveNumber(baseDuration) * (kind === 'shield' ? positiveNumber(shieldDurationMul, 1) : 1)
-  return { kind, duration }
+/** Tough Fiber specializes shields; Power Loom extends every power-up after that. */
+export function getPowerDuration({ kind, baseDuration = 0, shieldDurationMul = 1, powerDurationMul = 1 } = {}) {
+  const shieldMultiplier = kind === 'shield' ? positiveNumber(shieldDurationMul, 1) : 1
+  const duration = positiveNumber(baseDuration) * shieldMultiplier * positiveNumber(powerDurationMul, 1)
+  return { kind, duration: Number(duration.toFixed(6)) }
+}
+
+/** Gustproof Fold softens authored and random wind impulses without changing Co-op input. */
+export function getWindResistance({ windResistance = 1 } = {}) {
+  const forceMultiplier = clamp(positiveNumber(windResistance, 1), 0.55, 1)
+  return {
+    forceMultiplier,
+    reductionPercent: Math.round((1 - forceMultiplier) * 100),
+  }
+}
+
+/** Ink Ledger raises the fixed reward for an active Ink Blast pop. */
+export function getInkReward({ baseReward = 2, bonus = 0 } = {}) {
+  const base = Math.max(0, Math.floor(positiveNumber(baseReward)))
+  const extra = Math.max(0, Math.floor(positiveNumber(bonus)))
+  return { baseReward: base, bonus: extra, reward: base + extra }
 }
 
 /** Wide Wings affects only the near-miss envelope, never this shared plane hitbox. */
@@ -219,6 +236,12 @@ export function getUpgradeRuntimeSnapshot({
     kind: 'shield',
     baseDuration: SHIELD_BASE_DURATION,
     shieldDurationMul: effects.shieldDurationMul,
+    powerDurationMul: effects.powerDurationMul,
+  })
+  const power = getPowerDuration({
+    kind: 'boost',
+    baseDuration: 5,
+    powerDurationMul: effects.powerDurationMul,
   })
   const collision = getCollisionRadius({ entityRadius: 1.6, planeRadius })
   const nearMissRadius = getNearMissRadius({
@@ -237,6 +260,8 @@ export function getUpgradeRuntimeSnapshot({
   const trail = getTrailFeedback(effects)
   const fever = getFeverTuning(effects)
   const streak = getStreakTuning(effects)
+  const wind = getWindResistance(effects)
+  const ink = getInkReward({ bonus: effects.inkRewardBonus })
 
   return {
     effects,
@@ -245,6 +270,9 @@ export function getUpgradeRuntimeSnapshot({
     glide,
     magnet,
     shield,
+    power,
+    wind,
+    ink,
     luck,
     wingspan: {
       visualScale: positiveNumber(effects.planeScale, 1),

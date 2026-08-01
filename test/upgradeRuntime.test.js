@@ -4,8 +4,11 @@ import { UPGRADES, getUpgradeEffects } from '../src/upgrades.js'
 import {
   getControlResponse,
   getFeverTuning,
+  getInkReward,
+  getPowerDuration,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
+  getWindResistance,
 } from '../src/game/upgrade-runtime.js'
 
 const NORMAL_FLIGHT = {
@@ -53,6 +56,9 @@ const RUNTIME_ASSERTIONS = [
   { id: 'fever', value: (runtime) => runtime.fever.duration, direction: 'up' },
   { id: 'streak', value: (runtime) => runtime.streak.windowSeconds, direction: 'up' },
   { id: 'wealth', value: (runtime) => runtime.luck.doubleStarChance, direction: 'up' },
+  { id: 'gustproof', value: (runtime) => runtime.wind.forceMultiplier, direction: 'down' },
+  { id: 'powerloom', value: (runtime) => runtime.power.duration, direction: 'up' },
+  { id: 'inkledger', value: (runtime) => runtime.ink.reward, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {
@@ -165,5 +171,12 @@ describe('upgrade runtime contracts', () => {
       cooldownRemaining: 0.19,
       cooldownProgress: 0.5,
     })
+  })
+
+  test('keeps new upgrade effects composable at their pure runtime boundaries', () => {
+    expect(getWindResistance({ windResistance: 0.64 })).toEqual({ forceMultiplier: 0.64, reductionPercent: 36 })
+    expect(getPowerDuration({ kind: 'boost', baseDuration: 5, powerDurationMul: 1.36 }).duration).toBeCloseTo(6.8)
+    expect(getPowerDuration({ kind: 'shield', baseDuration: 8, shieldDurationMul: 1.8, powerDurationMul: 1.36 }).duration).toBeCloseTo(19.584)
+    expect(getInkReward({ bonus: 3 })).toEqual({ baseReward: 2, bonus: 3, reward: 5 })
   })
 })

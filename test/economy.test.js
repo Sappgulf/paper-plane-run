@@ -120,7 +120,7 @@ describe('economy progression model', () => {
   test('prices the full future upgrade tree without requiring an impossible first session', () => {
     const tree = estimateUpgradeTreeCost()
     expect(tree.upgradeCount).toBe(UPGRADES.length)
-    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 35 }).walletStars)
+    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 40 }).walletStars)
     expect(tree.total).toBeGreaterThan(tree.firstRankTotal)
     expect(runsToAfford(tree.total)).toBeGreaterThan(runsToAfford(tree.firstRankTotal))
   })

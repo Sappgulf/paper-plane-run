@@ -12,6 +12,7 @@ describe('product scope guard', () => {
     expect(UPGRADES.map(({ id }) => id)).toEqual([
       'handling', 'lift', 'glide', 'magnet', 'shield', 'luck', 'wingspan',
       'trail', 'turbo', 'guardian', 'weapon', 'fever', 'streak', 'wealth',
+      'gustproof', 'powerloom', 'inkledger',
     ])
     expect(Object.keys(BOSS_ART).sort()).toEqual(['scissors', 'stapler', 'wind'])
   })

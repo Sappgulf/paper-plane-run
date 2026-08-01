@@ -123,6 +123,30 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.wealth,
   },
+  {
+    id: 'gustproof',
+    name: 'Gustproof Fold',
+    icon: '🌬️',
+    blurb: 'Soften wind without dulling the challenge',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.gustproof,
+  },
+  {
+    id: 'powerloom',
+    name: 'Power Loom',
+    icon: '⏱️',
+    blurb: 'Stretch every power-up a little longer',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.powerloom,
+  },
+  {
+    id: 'inkledger',
+    name: 'Ink Ledger',
+    icon: '🧾',
+    blurb: 'Pop hazards for extra banked stars',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.inkledger,
+  },
 ]
 
 function findUpgrade(id) {
@@ -257,6 +281,24 @@ const UPGRADE_FORMULAS = {
         doubleStarBonus: doubleStarPercent / 100,
       },
     )
+  },
+  gustproof(level) {
+    const reductionPercent = level * 12
+    return effect(`Wind force -${reductionPercent}%`, { reductionPercent }, {
+      windResistance: Math.max(0.64, 1 - reductionPercent / 100),
+    })
+  },
+  powerloom(level) {
+    const durationPercent = level * 12
+    return effect(`Power duration +${durationPercent}%`, { durationPercent }, {
+      powerDurationMul: 1 + durationPercent / 100,
+    })
+  },
+  inkledger(level) {
+    const bonusStars = level
+    return effect(`Ink pop reward +${bonusStars}★`, { bonusStars }, {
+      inkRewardBonus: bonusStars,
+    })
   },
 }
 
@@ -431,6 +473,9 @@ export function getUpgradeEffects() {
   const fever = formulas.fever
   const streak = formulas.streak
   const wealth = formulas.wealth
+  const gustproof = formulas.gustproof
+  const powerloom = formulas.powerloom
+  const inkledger = formulas.inkledger
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
@@ -450,6 +495,9 @@ export function getUpgradeEffects() {
     ...fever.runtime,
     ...streak.runtime,
     ...wealth.runtime,
+    ...gustproof.runtime,
+    ...powerloom.runtime,
+    ...inkledger.runtime,
     prestigeLevel,
     prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,

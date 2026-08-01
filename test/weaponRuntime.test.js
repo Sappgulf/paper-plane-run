@@ -25,5 +25,6 @@ describe('weapon runtime', () => {
       targetX: 0.2, targetY: 10.1, targetZ: 20.2, targetRadius: 0.7,
     })).toBe(true)
     expect(inkPopReward()).toBe(2)
+    expect(inkPopReward({ bonus: 3 })).toBe(5)
   })
 })

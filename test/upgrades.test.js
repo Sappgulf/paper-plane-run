@@ -145,6 +145,24 @@ const UPGRADE_CONTRACTS = [
     values: [0, 8, 16, 24].map((doubleStarPercent) => ({ doubleStarPercent })),
     directions: { doubleStarPercent: 'up' },
   },
+  {
+    id: 'gustproof',
+    labels: ['Wind force -0%', 'Wind force -12%', 'Wind force -24%', 'Wind force -36%'],
+    values: [0, 12, 24, 36].map((reductionPercent) => ({ reductionPercent })),
+    directions: { reductionPercent: 'up' },
+  },
+  {
+    id: 'powerloom',
+    labels: ['Power duration +0%', 'Power duration +12%', 'Power duration +24%', 'Power duration +36%'],
+    values: [0, 12, 24, 36].map((durationPercent) => ({ durationPercent })),
+    directions: { durationPercent: 'up' },
+  },
+  {
+    id: 'inkledger',
+    labels: ['Ink pop reward +0★', 'Ink pop reward +1★', 'Ink pop reward +2★', 'Ink pop reward +3★'],
+    values: [0, 1, 2, 3].map((bonusStars) => ({ bonusStars })),
+    directions: { bonusStars: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -373,6 +391,9 @@ describe('exact upgrade contracts', () => {
         }
         if (contract.id === 'streak') expect(effects.streakWindowBonus).toBeCloseTo(values.windowBonusSeconds)
         if (contract.id === 'wealth') expect(effects.doubleStarBonus).toBeCloseTo(values.doubleStarPercent / 100)
+        if (contract.id === 'gustproof') expect(effects.windResistance).toBeCloseTo(1 - values.reductionPercent / 100)
+        if (contract.id === 'powerloom') expect(effects.powerDurationMul).toBeCloseTo(1 + values.durationPercent / 100)
+        if (contract.id === 'inkledger') expect(effects.inkRewardBonus).toBe(values.bonusStars)
       }
     }
   })

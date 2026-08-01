@@ -72,6 +72,7 @@ const engineStatusMessage = document.getElementById('engine-status-message')
 const engineRetry = document.getElementById('engine-retry')
 const menu = document.getElementById('menu')
 const hud = document.getElementById('hud')
+const gameRoot = document.getElementById('game-root')
 const shellAudio = new GameAudio()
 const $ = (id) => document.getElementById(id)
 const muteBtn = $('mute-btn')
@@ -181,7 +182,13 @@ function showSwUpdateBanner(worker) {
 
 if ('serviceWorker' in navigator) {
   let refreshing = false
+  // The first service-worker takeover is the initial install becoming active,
+  // not an app update. Reloading for it can race the first menu interaction
+  // and reset the user's just-started navigation. Only reload automatically
+  // when this page was already controlled at load time (a real update).
+  const wasControlledAtLoad = Boolean(navigator.serviceWorker.controller)
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!wasControlledAtLoad) return
     if (refreshing) return
     refreshing = true
     window.location.reload()
@@ -227,6 +234,7 @@ function hideAllPanels() {
 
 function showMenu() {
   hideAllPanels()
+  gameRoot?.classList.remove('hangar-open')
   menu?.classList.remove('hidden')
   hud?.classList.add('hidden')
   refreshHangarWallet()
@@ -596,6 +604,12 @@ function planePriceLabel(plane) {
 }
 
 async function showPlanePreview(stage, canvas, planeDefinition) {
+  // Pointer/focus events from a card can finish after renderSkins() has
+  // replaced the preview DOM. A stale callback must not dispose the newer
+  // renderer or overwrite its selected plane.
+  if (!stage?.isConnected || !canvas?.isConnected) return
+  const request = planePreviewRequest + 1
+  planePreviewRequest = request
   stage.dataset.planeId = planeDefinition.id
   stage.dataset.silhouette = planeDefinition.silhouette
   stage.querySelector('[data-preview-name]').textContent = planeDefinition.name
@@ -611,8 +625,8 @@ async function showPlanePreview(stage, canvas, planeDefinition) {
     return
   }
 
-  stopPlanePreview()
-  const request = planePreviewRequest
+  activePlanePreview?.dispose?.()
+  activePlanePreview = null
   stage.dataset.previewStatus = 'loading'
   stage.querySelector('[data-preview-message]').textContent = 'Folding live preview…'
 
@@ -757,7 +771,12 @@ function renderSkins(statusMessage = '') {
 
     const previewThisPlane = () => void showPlanePreview(preview, previewCanvas, s)
     card.addEventListener('focus', previewThisPlane)
-    card.addEventListener('pointerenter', previewThisPlane)
+    // A purchase can reorder cards while the pointer remains in place. Bind
+    // hover after that layout pass so the card newly inserted under the
+    // pointer does not overwrite the just-equipped preview.
+    requestAnimationFrame(() => {
+      if (card.isConnected) card.addEventListener('pointerenter', previewThisPlane)
+    })
     card.onclick = () => {
       refreshUnlocks(season.id)
       if (s.state === 'owned') {
@@ -854,6 +873,32 @@ function renderUpgrades() {
     return 0
   })
   const affordableCount = upgrades.filter((u) => u.canAfford).length
+  const installedRanks = upgrades.reduce((sum, upgrade) => sum + upgrade.level, 0)
+  const maxRanks = upgrades.reduce((sum, upgrade) => sum + upgrade.max, 0)
+  const upgradeKitTitle = $('upgrade-kit-title')
+  const upgradeKitDetail = $('upgrade-kit-detail')
+  const upgradeKitRanks = $('upgrade-kit-ranks')
+  const upgradeKitReady = $('upgrade-kit-ready')
+  const weatherPair = upgrades.filter((u) => ['gustproof', 'powerloom'].includes(u.id)).every((u) => u.maxed)
+  const inkPair = upgrades.filter((u) => ['weapon', 'inkledger'].includes(u.id)).every((u) => u.maxed)
+  if (upgradeKitTitle) {
+    upgradeKitTitle.textContent = weatherPair
+      ? 'Weatherproof flight kit'
+      : inkPair
+        ? 'Ink-hunter flight kit'
+        : affordableCount > 0
+          ? `${affordableCount} fold${affordableCount === 1 ? '' : 's'} ready to install`
+          : 'Build your next advantage'
+  }
+  if (upgradeKitDetail) {
+    const kitNotes = []
+    if (weatherPair) kitNotes.push('wind and power timing are tuned')
+    if (inkPair) kitNotes.push('hazard pops pay out bigger')
+    if (!kitNotes.length) kitNotes.push('every rank changes a real flight decision')
+    upgradeKitDetail.textContent = `${kitNotes.join(' · ')} · ${maxRanks - installedRanks} ranks left`
+  }
+  if (upgradeKitRanks) upgradeKitRanks.textContent = `${installedRanks}/${maxRanks}`
+  if (upgradeKitReady) upgradeKitReady.textContent = String(affordableCount)
   const intro = $('upgrades-intro')
   if (intro) {
     const allFresh = upgrades.every((u) => u.level === 0)
@@ -1137,6 +1182,7 @@ $('editor-play')?.addEventListener('click', () => {
 function openHangar(tab = 'upgrades', options = {}) {
   hangarFocusUpgradeId = options?.focusUpgradeId || null
   hideAllPanels()
+  gameRoot?.classList.add('hangar-open')
   $('hangar-panel')?.classList.remove('hidden')
   showHangarTab(tab || 'upgrades')
 }

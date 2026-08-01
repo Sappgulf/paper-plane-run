@@ -150,6 +150,7 @@ import {
   getTrailFeedback,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
+  getWindResistance,
   SHIELD_BASE_DURATION,
 } from './game/upgrade-runtime.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
@@ -1090,12 +1091,15 @@ function updateShots(dt) {
       })) {
         toRemove.add(target)
         toRemove.add(e)
-        stars += inkPopReward()
+        const inkReward = inkPopReward({ bonus: activeUpgradeEffects.inkRewardBonus })
+        stars += inkReward
         starsEl.textContent = String(stars)
         runStats.popped++
         audio.popTarget()
         if (settings.haptics) Haptic.collect()
         spawnConfetti(target.mesh.position.x, target.mesh.position.y, target.mesh.position.z)
+        showFlightFeedback(`INK POP · +${inkReward}★`, 'star', 0.9)
+        pulseFlightImpact('star')
         break
       }
     }
@@ -2683,12 +2687,17 @@ function dispatchJourneyEncounter(event) {
         : null
     }
     break
-  case 'gust':
+  case 'gust': {
     windActive = 2.2
-    windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7)
+    const encounterWind = getWindResistance(activeUpgradeEffects)
+    windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7) * encounterWind.forceMultiplier
+    windBanner.textContent = encounterWind.reductionPercent > 0
+      ? `💨 Gust softened · ${encounterWind.reductionPercent}%`
+      : '💨 Wind gust!'
     windBanner.classList.remove('hidden')
     audio.windGust()
     break
+  }
   case 'shortcut-gate': {
     const count = Math.max(1, Math.min(3, event.params?.count || 1))
     for (let index = 0; index < count; index += 1) {
@@ -2870,6 +2879,7 @@ function activatePower(kind) {
     kind,
     baseDuration: meta.duration,
     shieldDurationMul: fx.shieldDurationMul,
+    powerDurationMul: fx.powerDurationMul,
   }).duration
   activePower = { kind, timeLeft: duration, duration, slingCharged: false }
   audio.powerUp(kind)
@@ -2877,7 +2887,10 @@ function activatePower(kind) {
   powerLabel.textContent = meta.label
   powerFill.style.width = '100%'
   powerHud.classList.remove('hidden')
-  powerBanner.textContent = meta.banner
+  const powerDurationBonus = Math.round(Math.max(0, (fx.powerDurationMul - 1) * 100))
+  powerBanner.textContent = powerDurationBonus > 0
+    ? `${meta.banner} · Power Loom +${powerDurationBonus}%`
+    : meta.banner
   powerBanner.classList.remove('hidden')
   bannerTimer = 2.4
   showFlightFeedback(`POWER · ${meta.label}`, 'power', 1.2)
@@ -5000,10 +5013,13 @@ function update(dt) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
     // Calm Skies twist sets windMul to 0, which is handled by the guard above
     pendingWindActive = 1.6 + rng() * 1.4
-    pendingWindForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
+    const windResistance = getWindResistance(activeUpgradeEffects)
+    pendingWindForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce * windResistance.forceMultiplier
     windTimer = ((6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)) * (activeTwist?.windMul ?? 1)
     windWarningTimer = WIND_WARNING_SECONDS
-    windBanner.textContent = '💨 Wind incoming…'
+    windBanner.textContent = windResistance.reductionPercent > 0
+      ? `💨 Wind incoming · ${windResistance.reductionPercent}% softer`
+      : '💨 Wind incoming…'
     windBanner.classList.remove('hidden')
     audio.windGust()
     if (settings.haptics) Haptic.wind()
@@ -5684,6 +5700,9 @@ function upgradeRuntimeTextState() {
       visualVisible: Boolean(shieldBubble?.visible),
       visualOpacity: Number(shieldBubble?.material.opacity ?? 0),
     },
+    power: runtime.power,
+    wind: runtime.wind,
+    ink: runtime.ink,
     luck: {
       ...runtime.luck,
       twistStarMultiplier: activeTwist?.starMul ?? 1,
