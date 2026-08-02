@@ -3,39 +3,40 @@ const BOSS_ASSET_ROOT = '/assets/bosses'
 function defineBossArt(id, { alt, palette, shape }) {
   return Object.freeze({
     id,
-    texture: `${BOSS_ASSET_ROOT}/${id}.webp`,
-    preview: `${BOSS_ASSET_ROOT}/${id}.webp`,
+    texture: `${BOSS_ASSET_ROOT}/${id}-v2.webp`,
+    preview: `${BOSS_ASSET_ROOT}/${id}-v2.webp`,
     alt,
     palette: Object.freeze(palette),
     shape: Object.freeze(shape),
   })
 }
 
-// Paper-diorama boss emblems — cream / navy / coral (or cyan/amber accents).
-// Used as small badges around the open portal, never as a full-face wall.
+// Paper-diorama boss emblems — strong silhouettes generated for the new
+// readable boss machines. One large emblem sits above each open passage.
 export const BOSS_ART = Object.freeze({
   scissors: defineBossArt('scissors', {
-    alt: 'Cream origami scissors with navy paper handles and a coral hinge pin.',
+    alt: 'Large coral and navy folded-paper scissors with a brass hinge.',
     palette: { primary: '#172b57', accent: '#e96957', paper: '#f7e8c5' },
-    shape: { cue: 'open scissors silhouette', silhouette: 'scissors' },
+    shape: { cue: 'crossed blade silhouette', silhouette: 'scissors' },
   }),
   wind: defineBossArt('wind', {
-    alt: 'Cream paper turbine vanes in a navy octagon ring with cyan hub and coral diamonds.',
+    alt: 'Large navy and cyan folded-paper wind turbine with a cream hub.',
     palette: { primary: '#172b57', accent: '#58c7dc', paper: '#f7e8c5' },
-    shape: { cue: 'radial turbine ring', silhouette: 'turbine' },
+    shape: { cue: 'radial turbine silhouette', silhouette: 'turbine' },
   }),
   stapler: defineBossArt('stapler', {
-    alt: 'Cream paper desk stapler with open jaws, navy base, and coral paper wheel.',
+    alt: 'Open coral and navy folded-paper stapler with a cream paper strip.',
     palette: { primary: '#172b57', accent: '#f59e0b', paper: '#f7e8c5' },
-    shape: { cue: 'open stapler side silhouette', silhouette: 'stapler' },
+    shape: { cue: 'open stapler jaw silhouette', silhouette: 'stapler' },
   }),
 })
 
 /**
- * One transparent emblem badge mesh.
- * size stays small so the flyable portal center stays empty.
+ * One transparent hero emblem mesh.
+ * The runtime keeps it above the passage, so the gameplay opening remains
+ * entirely procedural and unobstructed.
  */
-export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture }) {
+export function createBossArtOverlay({ THREE, kind, size = 5.2, loadTexture }) {
   const art = BOSS_ART[kind]
   if (!art) return null
 
@@ -44,6 +45,7 @@ export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture }) {
     opacity: 1,
     alphaTest: 0.08,
     depthWrite: false,
+    depthTest: false,
     side: THREE.DoubleSide,
   })
   const overlay = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material)
@@ -71,13 +73,13 @@ export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture }) {
 }
 
 /**
- * Layout for badges around an open portal:
- * - top identity badge
- * - left / right side badges (mirrored on right)
+ * Layout for the boss identity and optional decorative side slots around an
+ * open portal. The flight scene currently uses only the top hero slot; the
+ * side slots remain useful to consumers that want a wider boss-card layout.
  * Never covers the center flyable hole.
  */
 export function getBossBadgeLayout({ halfWidth = 4, halfHeight = 3.7, gapY = 10 } = {}) {
-  const topSize = 2.9
+  const topSize = 5.2
   const sideSize = 3.15
   return Object.freeze({
     top: Object.freeze({

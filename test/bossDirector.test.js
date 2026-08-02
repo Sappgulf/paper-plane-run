@@ -15,8 +15,8 @@ describe('boss encounter director', () => {
   test.each(BOSS_KINDS)('runs warning, pressure, and final pass for %s', (kind) => {
     const boss = createBossEncounter({ kind, encounterSeed: 3 })
     expect(boss.snapshot()).toMatchObject({ phase: 'warning', pressure: 0, completed: false })
-    expect(boss.step(1.55).phase).toBe('pressure')
-    expect(boss.step(1.6)).toMatchObject({ phase: 'final-pass', pressure: 1 })
+    expect(boss.step(1.8).phase).toBe('pressure')
+    expect(boss.step(1.7)).toMatchObject({ phase: 'final-pass', pressure: 1 })
   })
 
   test('difficulty changes timing without changing the safe lane', () => {
@@ -25,7 +25,7 @@ describe('boss encounter director', () => {
     expect(easy.snapshot().safeLane).toBe(hard.snapshot().safeLane)
     expect(easy.snapshot().warningSeconds).toBeGreaterThan(hard.snapshot().warningSeconds)
     expect(easy.step(1.2).phase).toBe('warning')
-    expect(hard.step(1.25).phase).toBe('pressure')
+    expect(hard.step(1.5).phase).toBe('pressure')
   })
 
   test('gives every difficulty a generous but progressively tighter passage', () => {
@@ -110,8 +110,8 @@ describe('boss encounter director', () => {
     expect(reward.stars).toBe(5)
     expect(reward.recoveryMeters).toBeGreaterThanOrEqual(100)
     expect(reward.invulnSeconds).toBeGreaterThanOrEqual(0.7)
-    expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|ring/i)
-    expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|glowing ring/)
+    expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|slot/i)
+    expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|open blades/)
   })
 
   test('edge grace keeps near-miss portal edges flyable', () => {

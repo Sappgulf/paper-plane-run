@@ -1,8 +1,8 @@
 const TIMING = Object.freeze({
   // Long enough that the glowing portal is readable before the commit slice.
-  easy: Object.freeze({ warning: 1.8, pressure: 1.7 }),
-  normal: Object.freeze({ warning: 1.5, pressure: 1.5 }),
-  hard: Object.freeze({ warning: 1.2, pressure: 1.25 }),
+  easy: Object.freeze({ warning: 2.0, pressure: 1.8 }),
+  normal: Object.freeze({ warning: 1.75, pressure: 1.65 }),
+  hard: Object.freeze({ warning: 1.45, pressure: 1.45 }),
 })
 
 // Keep lanes in the middle flight band — avoid extreme low that hugs the ground.
@@ -11,13 +11,13 @@ const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
 
 // Generous, flyable openings. Values are half-extents of the safe rectangle.
 const PASSAGES = Object.freeze({
-  easy: Object.freeze({ halfWidth: 4.4, halfHeight: 4.0 }),
-  normal: Object.freeze({ halfWidth: 4.0, halfHeight: 3.7 }),
-  hard: Object.freeze({ halfWidth: 3.6, halfHeight: 3.4 }),
+  easy: Object.freeze({ halfWidth: 4.8, halfHeight: 4.3 }),
+  normal: Object.freeze({ halfWidth: 4.5, halfHeight: 4.05 }),
+  hard: Object.freeze({ halfWidth: 4.1, halfHeight: 3.8 }),
 })
 
 /** Extra forgiveness so a grazing edge still counts as a pass. */
-export const PASSAGE_EDGE_GRACE = 0.35
+export const PASSAGE_EDGE_GRACE = 0.48
 
 export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler'])
 
@@ -67,10 +67,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
   const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
   if (phase === 'final-pass') {
     const headline = kind === 'wind'
-      ? `Final gust · fly the glowing ring · ${laneLabel}`
+      ? `Final gust · thread the turbine · ${laneLabel}`
       : kind === 'stapler'
-        ? `Jaws closing · fly the glowing ring · ${laneLabel}`
-        : `Final cut · fly the glowing ring · ${laneLabel}`
+        ? `Jaws closing · thread the open slot · ${laneLabel}`
+        : `Final cut · thread the open blades · ${laneLabel}`
     return Object.freeze({
       laneLabel,
       headline,
@@ -80,10 +80,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
   }
   if (phase === 'pressure') {
     const headline = kind === 'wind'
-      ? `Wind rising · hold the ring · ${laneLabel}`
+      ? `Wind rising · hold the turbine gap · ${laneLabel}`
       : kind === 'stapler'
-        ? `Stapler press · hold the ring · ${laneLabel}`
-        : `Blades closing · hold the ring · ${laneLabel}`
+        ? `Stapler press · hold the open slot · ${laneLabel}`
+        : `Blades closing · hold the open cut · ${laneLabel}`
     return Object.freeze({
       laneLabel,
       headline,
@@ -92,10 +92,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
     })
   }
   const headline = kind === 'wind'
-    ? `Wind gate · safe ring is ${laneLabel}`
+    ? `Wind boss · turbine gap is ${laneLabel}`
     : kind === 'stapler'
-      ? `Stapler gate · safe ring is ${laneLabel}`
-      : `Scissors gate · safe ring is ${laneLabel}`
+      ? `Stapler boss · open slot is ${laneLabel}`
+      : `Scissors boss · open cut is ${laneLabel}`
   return Object.freeze({
     laneLabel,
     headline,

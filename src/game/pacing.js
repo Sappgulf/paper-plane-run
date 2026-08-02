@@ -28,6 +28,47 @@ function laneX(lane, laneCenters = PASSAGE_LANE_X) {
 }
 
 /**
+ * Reserve the lane the wave promises to the player when placing a center
+ * building. A corridor can be wide enough in aggregate while still putting a
+ * tall building directly on the only advertised lane, which feels random in
+ * the live flight. Returning split ranges lets the caller skip the building
+ * entirely when neither side can preserve the promise.
+ */
+export function getSafeBuildingPlacementRanges({
+  minX = -4.5,
+  maxX = 4.5,
+  safeLane = null,
+  entityRadius = 0,
+  planeRadius = 0.7,
+  margin = 0.85,
+  laneCenters = PASSAGE_LANE_X,
+} = {}) {
+  const low = Math.min(Number(minX) || 0, Number(maxX) || 0)
+  const high = Math.max(Number(minX) || 0, Number(maxX) || 0)
+  if (!PASSAGE_LANES.includes(safeLane)) return [{ minX: low, maxX: high }]
+
+  const protectedX = laneX(safeLane, laneCenters)
+  const clearance = nonNegative(entityRadius) + nonNegative(planeRadius, 0.7) * 0.5 + nonNegative(margin, 0.85)
+  return [
+    { minX: low, maxX: Math.min(high, protectedX - clearance) },
+    { minX: Math.max(low, protectedX + clearance), maxX: high },
+  ].filter((range) => range.minX <= range.maxX)
+}
+
+export function chooseSafeBuildingX({ random = Math.random, ...options } = {}) {
+  const ranges = getSafeBuildingPlacementRanges(options)
+  if (!ranges.length) return null
+  const total = ranges.reduce((sum, range) => sum + (range.maxX - range.minX), 0)
+  let cursor = Math.max(0, Math.min(0.999999, Number(random()) || 0)) * total
+  for (const range of ranges) {
+    const width = range.maxX - range.minX
+    if (cursor <= width) return range.minX + cursor
+    cursor -= width
+  }
+  return ranges.at(-1).maxX
+}
+
+/**
  * Find a guaranteed lateral passage through a group of airborne hazards.
  * `clearance` is the spare horizontal distance after damage envelopes are
  * subtracted; the margin keeps a nominally safe lane from feeling razor-thin.

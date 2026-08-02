@@ -685,12 +685,12 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   await waitForGameText(page)
   const scissors = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
-  expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.0, halfHeight: 3.7 })
+  expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.5, halfHeight: 4.05 })
   expect([-1, 0, 1]).toContain(scissors.boss.safeLane)
   expect(scissors.plane.collisionRadius).toBe(0.7)
-  await page.evaluate(() => window.advanceTime(1550))
+  await page.evaluate(() => window.advanceTime(1800))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('pressure')
-  await page.evaluate(() => window.advanceTime(1600))
+  await page.evaluate(() => window.advanceTime(1700))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('final-pass')
 
   await page.addInitScript(() => {
@@ -707,6 +707,10 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   expect(wind.settings).toMatchObject({ reducedMotion: true, colorblindPowers: true })
   expect(wind.plane.collisionRadius).toBe(0.7)
 
+})
+
+test('boss pass fixture clears the gate and grants its recovery reward', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
   await openApp(page, '/?boss-proof=scissors&boss-pass=1#test-boss-encounter')
   await waitForGameText(page)
   await page.evaluate(() => window.advanceTime(220))
@@ -714,6 +718,48 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   expect(cleared.state).toBe('playing')
   expect(cleared.boss).toMatchObject({ kind: 'scissors', completed: true })
   expect(cleared.stars).toBe(5)
+})
+
+test('ambient paper streets keep traffic moving outside the playable corridor', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page, '/#test-ambient-street')
+  await waitForGameText(page)
+
+  const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(before.entities.counts['ambient-car']).toBeGreaterThanOrEqual(2)
+  expect(before.entities.counts['ambient-person']).toBeGreaterThanOrEqual(4)
+  expect(before.ambient.every((actor) => Math.abs(actor.x) > 13)).toBe(true)
+  const carBefore = before.ambient.find((actor) => actor.type === 'ambient-car')
+  expect(carBefore).toBeTruthy()
+
+  await page.screenshot({
+    path: testInfo.outputPath('ambient-street.png'),
+    animations: 'disabled',
+  })
+  await page.evaluate(() => window.advanceTime(1000))
+  const after = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  const carAfter = after.ambient.find((actor) => actor.type === 'ambient-car')
+  expect(carAfter).toBeTruthy()
+  expect(carAfter.z).not.toBe(carBefore.z)
+  expect(errors).toEqual([])
+})
+
+test('terminal death diagnostics identify the actual nearby building', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page, '/#test-death-diagnostics')
+  await waitForGameText(page)
+
+  const state = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(state.state).toBe('dead')
+  expect(state.deathDiagnostics).toMatchObject({
+    reason: 'Hit a paper skyscraper',
+    nearest: { type: 'building' },
+    player: { x: 0, y: 10 },
+  })
+  expect(state.deathDiagnostics.nearest.z).toBeLessThan(2)
+  expect(errors).toEqual([])
 })
 
 test('native performance pressure lowers visual cost without changing gameplay state', async ({ page }, testInfo) => {

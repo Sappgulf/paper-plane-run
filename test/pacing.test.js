@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import {
   choosePassageLane,
+  chooseSafeBuildingX,
   createPacingWave,
   getCenterBuildingSafeRange,
   getObstacleDamageRadius,
+  getSafeBuildingPlacementRanges,
   getSafeSpawnX,
   getWaveSpacing,
   normalizeControlAxes,
@@ -116,6 +118,49 @@ describe('center building corridor safety', () => {
     const range = getCenterBuildingSafeRange({ leftInnerEdge: -2, rightInnerEdge: 3, radius: 1, safeCorridor: 1.1, gap: 1 })
     expect(range.minX).toBeGreaterThanOrEqual(-2 + 1 + 1.1)
     expect(range.maxX).toBeLessThanOrEqual(3 - 1 - 1.1)
+  })
+
+  test('reserves the advertised safe lane when selecting a center-building x', () => {
+    const ranges = getSafeBuildingPlacementRanges({
+      minX: -4.5,
+      maxX: 4.5,
+      safeLane: 0,
+      entityRadius: 1.5,
+      planeRadius: 0.7,
+      margin: 1,
+    })
+    expect(ranges.every((range) => range.maxX < -2.675 || range.minX > 2.675)).toBe(true)
+
+    const x = chooseSafeBuildingX({
+      random: () => 0.5,
+      minX: -4.5,
+      maxX: 4.5,
+      safeLane: 0,
+      entityRadius: 1.5,
+      planeRadius: 0.7,
+      margin: 1,
+    })
+    expect(x).not.toBeNull()
+    expect(Math.abs(x)).toBeGreaterThan(2.675)
+  })
+
+  test('returns no center-building placement when every interval would consume the safe lane', () => {
+    expect(getSafeBuildingPlacementRanges({
+      minX: -1,
+      maxX: 1,
+      safeLane: 0,
+      entityRadius: 1.2,
+      planeRadius: 0.7,
+      margin: 1,
+    })).toEqual([])
+    expect(chooseSafeBuildingX({
+      minX: -1,
+      maxX: 1,
+      safeLane: 0,
+      entityRadius: 1.2,
+      planeRadius: 0.7,
+      margin: 1,
+    })).toBeNull()
   })
 
   // Mirrors spawnChunk's real building-size formulas so this is a genuine

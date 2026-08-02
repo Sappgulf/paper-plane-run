@@ -78,6 +78,7 @@ import {
   PASSAGE_LANE_X,
   PASSAGE_LANES,
   choosePassageLane,
+  chooseSafeBuildingX,
   createPacingWave,
   getCenterBuildingSafeRange,
   getObstacleDamageRadius,
@@ -800,8 +801,8 @@ function loadTex(rawUrl) {
   return texCache[url]
 }
 
-// Imagine-crafted paper emblems as top + side badges around the open portal.
-// Collision stays 100% procedural — badges never cover the flyable hole.
+// Imagine-crafted paper emblems as a single hero badge above the open portal.
+// Collision stays 100% procedural — the hero art never covers the flyable hole.
 function addBossArtOverlay(group, kind, gapY = 10, halfWidth = 4, halfHeight = 3.7) {
   const layout = getBossBadgeLayout({ halfWidth, halfHeight, gapY })
   const loadTexture = (rawUrl, onLoad, onError) => loader.load(
@@ -810,21 +811,19 @@ function addBossArtOverlay(group, kind, gapY = 10, halfWidth = 4, halfHeight = 3
     undefined,
     onError,
   )
-  const badges = []
-  for (const key of ['top', 'left', 'right']) {
-    const slot = layout[key]
-    const overlay = createBossArtOverlay({
-      THREE: BOSS_ART_THREE,
-      kind,
-      size: slot.size,
-      loadTexture,
-    })
-    if (!overlay) continue
+  const slot = layout.top
+  const overlay = createBossArtOverlay({
+    THREE: BOSS_ART_THREE,
+    kind,
+    size: slot.size,
+    loadTexture,
+  })
+  const badges = overlay ? [overlay] : []
+  if (overlay) {
     overlay.position.set(slot.x, slot.y, slot.z)
     overlay.scale.x = slot.scaleX
-    overlay.userData.badgeSlot = key
+    overlay.userData.badgeSlot = 'top'
     group.add(overlay)
-    badges.push(overlay)
   }
   group.userData.artBadges = badges
   // Keep a primary handle for older animation code paths.
@@ -1181,8 +1180,8 @@ const dragonflyWingMat = new THREE.MeshStandardMaterial({
 // metalness workflow renders highly metallic surfaces near-black without
 // one (no reflections to fill them in) — high metalness here previously
 // made the blades look like dark wood beams instead of shiny silver.
-const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.12, roughness: 0.4 })
-const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.15, roughness: 0.25 })
+const scissorsMat = new THREE.MeshStandardMaterial({ color: 0x172b57, metalness: 0.08, roughness: 0.42 })
+const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xe96957, metalness: 0.06, roughness: 0.32 })
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
@@ -1206,6 +1205,100 @@ const riverRippleMat = new THREE.MeshStandardMaterial({
 const parkMat = new THREE.MeshStandardMaterial({ color: 0x8fc98a, roughness: 0.95 })
 const treeFoliageMat = new THREE.MeshStandardMaterial({ color: 0x6fae6a, roughness: 0.85 })
 const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x9a7350, roughness: 0.8 })
+const streetMat = new THREE.MeshStandardMaterial({ color: 0x7d8ba2, roughness: 0.94 })
+const streetCurbMat = new THREE.MeshStandardMaterial({ color: 0xf7e8c5, roughness: 0.86 })
+const streetMarkMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.82 })
+
+function createAmbientBillboard(rawUrl, width, height) {
+  const g = new THREE.Group()
+  const tex = loadTex(rawUrl)
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
+  const material = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    alphaTest: 0.04,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material)
+  card.position.y = height * 0.5
+  card.rotation.y = Math.PI
+  card.renderOrder = 3
+  g.add(card)
+  g.userData.billboard = card
+  return g
+}
+
+function createStreetPatch() {
+  const g = new THREE.Group()
+  const roadWidth = 9.2
+  const roadDepth = 42
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(roadWidth, roadDepth), streetMat)
+  road.rotation.x = -Math.PI / 2
+  road.position.y = 0.045
+  g.add(road)
+
+  for (const sx of [-1, 1]) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, roadDepth), streetCurbMat)
+    curb.position.set(sx * (roadWidth * 0.5 + 0.2), 0.06, 0)
+    g.add(curb)
+  }
+  for (let z = -roadDepth * 0.5 + 3; z < roadDepth * 0.5; z += 5.5) {
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.025, 2.2), streetMarkMat)
+    dash.position.set(0, 0.08, z)
+    g.add(dash)
+  }
+  return g
+}
+
+function spawnAmbientStreet(z) {
+  const side = rng() < 0.5 ? -1 : 1
+  const roadX = side * (17.2 + rng() * 2.4)
+  const roadWidth = 9.2
+  const street = createStreetPatch()
+  street.position.set(roadX, 0, z + (rng() - 0.5) * 5)
+  scene.add(street)
+  entities.push({ mesh: street, type: 'decor', ambientStreet: true })
+
+  const carCount = 1 + (rng() < 0.32 ? 1 : 0)
+  for (let index = 0; index < carCount; index += 1) {
+    const car = createAmbientBillboard('/assets/ambient-car-v2.webp', 3.5, 2.32)
+    const lane = index === 0 ? -1 : 1
+    const originX = roadX + lane * (1.35 + rng() * 0.7)
+    car.position.set(originX, 0, street.position.z + (rng() - 0.5) * 22)
+    scene.add(car)
+    entities.push({
+      mesh: car,
+      type: 'ambient-car',
+      radius: 0,
+      ambientMotion: {
+        originX,
+        phase: rng() * Math.PI * 2,
+        speed: (side * (6 + rng() * 4)) * (index % 2 ? -1 : 1),
+        weave: 0.18 + rng() * 0.12,
+      },
+    })
+  }
+
+  const personCount = 2 + Math.floor(rng() * 3)
+  for (let index = 0; index < personCount; index += 1) {
+    const person = createAmbientBillboard('/assets/ambient-person-v2.webp', 1.38, 1.38)
+    const sidewalkX = roadX + side * (roadWidth * 0.5 + 1.3 + rng() * 1.6)
+    person.position.set(sidewalkX, 0, street.position.z + (rng() - 0.5) * 22)
+    scene.add(person)
+    entities.push({
+      mesh: person,
+      type: 'ambient-person',
+      radius: 0,
+      ambientMotion: {
+        originX: sidewalkX,
+        phase: rng() * Math.PI * 2,
+        speed: side * (1.2 + rng() * 0.8),
+        weave: 0.12 + rng() * 0.1,
+      },
+    })
+  }
+}
 
 function createRiverPatch() {
   const g = new THREE.Group()
@@ -1262,6 +1355,8 @@ function maybeSpawnGroundDecor(z) {
     park.position.z = z + (rng() - 0.5) * 8
     scene.add(park)
     entities.push({ mesh: park, type: 'decor' })
+  } else if (roll < 0.47) {
+    spawnAmbientStreet(z)
   }
 }
 const windowMat = new THREE.MeshStandardMaterial({
@@ -1480,9 +1575,15 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
  * 1. The flyable hole is an OPEN rectangle matching the collision passage.
  * 2. Hazards live OUTSIDE that rectangle (left/right or above/below).
  * 3. A bright safe ring is scaled to the real opening (not a tiny fixed torus).
- * 4. Art is a small badge above the hole — never a full-face cover.
+ * 4. A compact folded-paper frame gives the gate a machine silhouette.
+ * 5. Art is one hero badge above the hole — never a full-face cover.
  */
 const portalFrameMat = new THREE.MeshStandardMaterial({ color: 0xd9cbb8, roughness: 0.72, metalness: 0.05 })
+const portalShadowMat = new THREE.MeshStandardMaterial({
+  color: 0x172b57,
+  roughness: 0.52,
+  metalness: 0.04,
+})
 const portalAccentMats = {
   scissors: new THREE.MeshStandardMaterial({ color: 0xe96957, emissive: 0x7f1d1d, emissiveIntensity: 0.25, roughness: 0.45 }),
   wind: new THREE.MeshStandardMaterial({ color: 0x58c7dc, emissive: 0x0e7490, emissiveIntensity: 0.3, roughness: 0.4 }),
@@ -1493,8 +1594,8 @@ function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) 
   // Build a rectangular hoop whose inner opening matches collision passage.
   const group = new THREE.Group()
   group.name = 'safeRing'
-  const thickness = 0.28
-  const depth = 0.22
+  const thickness = 0.38
+  const depth = 0.24
   const mat = new THREE.MeshStandardMaterial({
     color,
     emissive,
@@ -1506,7 +1607,7 @@ function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) 
   const glowMat = new THREE.MeshBasicMaterial({
     color: emissive,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.16,
     depthWrite: false,
     side: THREE.DoubleSide,
     depthTest: false,
@@ -1540,7 +1641,7 @@ function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) 
     new THREE.MeshBasicMaterial({
       color: emissive,
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.08,
       depthWrite: false,
       side: THREE.DoubleSide,
       depthTest: false,
@@ -1554,12 +1655,51 @@ function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) 
   return group
 }
 
-function addBossSideTowers(group) {
-  for (const sx of [-9.5, 9.5]) {
-    const tower = createBuilding(2.2, 16, 2.2, buildingMats[0])
-    tower.position.x = sx
-    group.add(tower)
+function addBossFrame(group, kind, halfWidth, halfHeight) {
+  const accent = portalAccentMats[kind] || portalFrameMat
+  const gapY = 10
+  const postWidth = 1.05
+  const postHeight = halfHeight * 2 + 2.35
+  const posts = []
+
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(postWidth, postHeight, 0.82),
+      portalFrameMat,
+    )
+    post.position.set(sx * (halfWidth + 0.78), gapY, 0)
+    post.castShadow = true
+    post.receiveShadow = true
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, postHeight * 0.72, 0.08),
+      portalShadowMat,
+    )
+    stripe.position.set(-sx * 0.2, 0, 0.44)
+    post.add(stripe)
+    group.add(post)
+    posts.push(post)
   }
+
+  const topBeam = new THREE.Mesh(
+    new THREE.BoxGeometry(halfWidth * 2 + 2.45, 0.78, 0.88),
+    accent,
+  )
+  topBeam.position.set(0, gapY + halfHeight + 0.72, 0)
+  topBeam.castShadow = true
+  const bottomBeam = new THREE.Mesh(
+    new THREE.BoxGeometry(halfWidth * 2 + 2.45, 0.62, 0.88),
+    portalShadowMat,
+  )
+  bottomBeam.position.set(0, gapY - halfHeight - 0.68, 0)
+  bottomBeam.castShadow = true
+  const topFold = new THREE.Mesh(
+    new THREE.BoxGeometry(halfWidth * 2 + 1.5, 0.14, 0.94),
+    portalFrameMat,
+  )
+  topFold.position.set(0, gapY + halfHeight + 1.18, 0)
+  group.add(topBeam, bottomBeam, topFold)
+
+  return { posts, topBeam, bottomBeam, topFold }
 }
 
 /** Shared open portal + optional side décor for every boss kind. */
@@ -1567,30 +1707,17 @@ function createBossPortalBase(kind, passage) {
   const halfWidth = passage?.halfWidth ?? 4
   const halfHeight = passage?.halfHeight ?? 3.7
   const g = new THREE.Group()
-  addBossSideTowers(g)
+  const frame = addBossFrame(g, kind, halfWidth, halfHeight)
 
   const colors = {
-    scissors: { ring: 0x86efac, emissive: 0x22c55e },
-    wind: { ring: 0x93c5fd, emissive: 0x2563eb },
+    scissors: { ring: 0xf9b3a8, emissive: 0xe96957 },
+    wind: { ring: 0xa7f3fc, emissive: 0x0891b2 },
     stapler: { ring: 0xfcd34d, emissive: 0xf59e0b },
   }[kind] || { ring: 0x86efac, emissive: 0x22c55e }
 
   const safeRing = createSafePortalRing(colors.ring, colors.emissive, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
-
-  // Decorative frame lips just outside the safe rectangle (never inside it).
-  const accent = portalAccentMats[kind] || portalFrameMat
-  const outerPad = 0.55
-  const lipDepth = 0.45
-  const leftLip = new THREE.Mesh(
-    new THREE.BoxGeometry(outerPad, halfHeight * 2 + 1.2, lipDepth),
-    accent,
-  )
-  leftLip.position.set(-halfWidth - outerPad / 2 - 0.15, 10, 0)
-  const rightLip = leftLip.clone()
-  rightLip.position.x = halfWidth + outerPad / 2 + 0.15
-  g.add(leftLip, rightLip)
 
   addBossArtOverlay(g, kind, 10, halfWidth, halfHeight)
   g.userData.phase = 0
@@ -1599,8 +1726,10 @@ function createBossPortalBase(kind, passage) {
   g.userData.safeRing = safeRing
   g.userData.halfWidth = halfWidth
   g.userData.halfHeight = halfHeight
-  g.userData.leftLip = leftLip
-  g.userData.rightLip = rightLip
+  g.userData.framePosts = frame.posts
+  g.userData.frameTop = frame.topBeam
+  g.userData.frameBottom = frame.bottomBeam
+  g.userData.frameTopFold = frame.topFold
   return g
 }
 
@@ -1615,15 +1744,18 @@ function createBossGate(passage) {
   leftEdge.position.set(bladeW * 0.4, 0, 0.2)
   left.add(leftEdge)
   left.position.set(-halfWidth - bladeW * 0.7 - 0.4, 10, 0.1)
+  left.rotation.z = 0.18
   const right = left.clone()
   right.position.x = halfWidth + bladeW * 0.7 + 0.4
+  right.rotation.z = -0.18
   g.add(left, right)
   g.userData.left = left
   g.userData.right = right
   return g
 }
 
-const staplerJawMat = new THREE.MeshStandardMaterial({ color: 0xc4c9d4, metalness: 0.18, roughness: 0.38 })
+const staplerJawMat = portalAccentMats.stapler
+const staplerBaseMat = portalShadowMat
 
 /** Top/bottom jaws only — the center slot is always open and matches the ring. */
 function createStaplerGate(passage) {
@@ -1634,7 +1766,7 @@ function createStaplerGate(passage) {
   const jawW = halfWidth * 2 + 1.6
   const topJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
   topJaw.position.set(0, 10 + halfHeight + jawH * 0.55 + 0.2, 0.15)
-  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
+  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerBaseMat)
   bottomJaw.position.set(0, 10 - halfHeight - jawH * 0.55 - 0.2, 0.15)
   g.add(topJaw, bottomJaw)
   g.userData.topJaw = topJaw
@@ -1642,12 +1774,13 @@ function createStaplerGate(passage) {
   return g
 }
 
-const windFanMat = new THREE.MeshStandardMaterial({ color: 0x9ab4cc, roughness: 0.5, metalness: 0.15 })
+const windFanMat = new THREE.MeshStandardMaterial({ color: 0x172b57, roughness: 0.46, metalness: 0.08 })
+const windHubMat = new THREE.MeshStandardMaterial({ color: 0xf7e8c5, roughness: 0.68, metalness: 0.02 })
 const windDebrisMat = new THREE.MeshStandardMaterial({ color: 0xe8ddc8, roughness: 0.85 })
 
 function createFan(radius) {
   const g = new THREE.Group()
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.3, 10), windFanMat)
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.3, 10), windHubMat)
   hub.rotation.x = Math.PI / 2
   g.add(hub)
   for (let i = 0; i < 4; i++) {
@@ -2248,6 +2381,7 @@ const _zoneFogColor = new THREE.Color()
 /** Crash sequence timer before game-over UI settles */
 let crashT = 0
 let crashReason = ''
+let lastDeathDiagnostics = null
 let baseFov = 60
 let fovPunch = 0
 /** Mouse screen position 0–1 (updated continuously for aim mode) */
@@ -2448,10 +2582,21 @@ function spawnChunk(z) {
     // corridor — skip it this chunk rather than risk sealing the width shut.
     const safeRange = getCenterBuildingSafeRange({ leftInnerEdge, rightInnerEdge, radius, gap: cfg.gap })
     if (safeRange) {
-      const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
-      b.position.set(safeRange.minX + rng() * (safeRange.maxX - safeRange.minX), 0, z)
-      scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
+      const safeX = chooseSafeBuildingX({
+        random: rng,
+        minX: safeRange.minX,
+        maxX: safeRange.maxX,
+        safeLane,
+        entityRadius: radius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        margin: 1.0,
+      })
+      if (safeX !== null) {
+        const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
+        b.position.set(safeX, 0, z)
+        scene.add(b)
+        entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
+      }
     }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
@@ -2571,6 +2716,16 @@ function spawnBoss(z = 70, forcedKind = null) {
   gate.position.set(0, 0, z)
   gate.userData.gapY = openingSnap.safeY
   if (gate.userData.safeRing) gate.userData.safeRing.position.y = openingSnap.safeY
+  for (const post of gate.userData.framePosts || []) post.position.y = openingSnap.safeY
+  if (gate.userData.frameTop) {
+    gate.userData.frameTop.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 0.72
+  }
+  if (gate.userData.frameBottom) {
+    gate.userData.frameBottom.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 0.68
+  }
+  if (gate.userData.frameTopFold) {
+    gate.userData.frameTopFold.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 1.18
+  }
   // Park side décor relative to the committed lane immediately.
   if (gate.userData.left) gate.userData.left.position.y = openingSnap.safeY
   if (gate.userData.right) gate.userData.right.position.y = openingSnap.safeY
@@ -3163,6 +3318,7 @@ function resetGame() {
   if (timeAttackValEl) timeAttackValEl.textContent = String(TIME_ATTACK_SECONDS)
   crashT = 0
   crashReason = ''
+  lastDeathDiagnostics = null
   fovPunch = 0
   slingHold = 0
   mouseScreen.has = true
@@ -3983,6 +4139,52 @@ function capturePhoto() {
   }
 }
 
+function snapshotDeathEntity(entity) {
+  const position = entity?.mesh?.position
+  const encounter = entity?.director?.snapshot?.()
+  return {
+    type: entity?.type || 'unknown',
+    kind: entity?.kind || entity?.flyerId || null,
+    label: entity?.label || null,
+    x: Number(position?.x?.toFixed?.(2) ?? 0),
+    y: Number(position?.y?.toFixed?.(2) ?? 0),
+    z: Number(position?.z?.toFixed?.(2) ?? 0),
+    radius: entity?.radius ?? null,
+    halfH: entity?.halfH ?? null,
+    passageLane: entity?.passageLane ?? null,
+    journeyEventId: entity?.journeyEventId || null,
+    boss: encounter ? {
+      phase: encounter.phase,
+      safeLane: encounter.safeLane,
+      safeY: encounter.safeY,
+      passage: encounter.passage,
+    } : null,
+  }
+}
+
+function captureDeathDiagnostics(reason) {
+  const nearby = entities
+    .filter((entity) => ['building', 'bird', 'scissors', 'boss'].includes(entity.type))
+    .map((entity) => snapshotDeathEntity(entity))
+    .filter((entity) => Math.abs(entity.z) < 16)
+    .sort((left, right) => Math.abs(left.z) - Math.abs(right.z))
+  return {
+    reason,
+    distance: Math.floor(distance),
+    player: {
+      x: Number(planeX.toFixed(2)),
+      y: Number(planeY.toFixed(2)),
+      velX: Number(velX.toFixed(2)),
+      velY: Number(velY.toFixed(2)),
+    },
+    nearest: nearby[0] || null,
+    nearby: nearby.slice(0, 5),
+    activePower: activePower?.kind || null,
+    invulnerable: Number(Math.max(0, invuln).toFixed(2)),
+    bossActive,
+  }
+}
+
 function die(reason) {
   if (state !== 'playing') return
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
@@ -4049,6 +4251,10 @@ function die(reason) {
     return
   }
 
+  if (!isCleanEnd) {
+    lastDeathDiagnostics = captureDeathDiagnostics(reason)
+    if (import.meta.env.DEV) console.warn('[flight] terminal death', lastDeathDiagnostics)
+  }
   const isWin = isCleanEnd
   state = 'dead'
   crashT = isWin ? 0.35 : 1.05
@@ -4486,6 +4692,19 @@ function animateHazards(dt) {
       }
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
+    if (e.type === 'ambient-car' || e.type === 'ambient-person') {
+      const motion = e.ambientMotion
+      if (motion) {
+        motion.phase += dt * (e.type === 'ambient-car' ? 2.4 : 1.8)
+        e.mesh.position.z += motion.speed * dt
+        e.mesh.position.x = motion.originX + Math.sin(motion.phase) * motion.weave
+        if (e.type === 'ambient-person') {
+          e.mesh.position.y = Math.max(0, Math.sin(motion.phase * 1.7) * 0.035)
+          e.mesh.rotation.z = Math.sin(motion.phase) * 0.025
+        }
+      }
+      if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
+    }
     if (e.type === 'scissors') {
       e.mesh.rotation.z += dt * 1.2
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
@@ -4554,6 +4773,10 @@ function animateHazards(dt) {
       if (u.leftLip) u.leftLip.position.y = u.gapY
       if (u.rightLip) u.rightLip.position.y = u.gapY
       const halfW = encounter?.passage?.halfWidth ?? u.halfWidth ?? 4
+      for (const post of u.framePosts || []) post.position.y = u.gapY
+      if (u.frameTop) u.frameTop.position.y = u.gapY + halfH + 0.72
+      if (u.frameBottom) u.frameBottom.position.y = u.gapY - halfH - 0.68
+      if (u.frameTopFold) u.frameTopFold.position.y = u.gapY + halfH + 1.18
       if (u.artBadges?.length) {
         const layout = getBossBadgeLayout({ halfWidth: halfW, halfHeight: halfH, gapY: u.gapY })
         for (const badge of u.artBadges) {
@@ -5793,6 +6016,15 @@ window.render_game_to_text = () => JSON.stringify({
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
   },
+  ambient: entities
+    .filter((entity) => entity.type === 'ambient-car' || entity.type === 'ambient-person')
+    .slice(0, 12)
+    .map((entity) => ({
+      type: entity.type,
+      x: Number(entity.mesh.position.x.toFixed(2)),
+      y: Number(entity.mesh.position.y.toFixed(2)),
+      z: Number(entity.mesh.position.z.toFixed(2)),
+    })),
   fairness: {
     passageLane: activePassageLane,
     passageLaneX: activePassageLane === null ? null : PASSAGE_LANE_X[activePassageLane + 1],
@@ -5866,6 +6098,7 @@ window.render_game_to_text = () => JSON.stringify({
     masteryLevel: lastJourneyResult.masteryAfter?.level || 0,
     unlockedCosmetic: lastJourneyResult.unlockedCosmetic,
   } : null,
+  deathDiagnostics: lastDeathDiagnostics,
 })
 
 if (import.meta.env.DEV) {
@@ -6073,6 +6306,43 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
     launchGraceSeconds = 0
   }
   hudEl?.classList.remove('hidden')
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-ambient-street') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  spawnAmbientStreet(48)
+  spawnAmbientStreet(96)
+  hudEl?.classList.remove('hidden')
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-death-diagnostics') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 0
+  elapsed = 2
+  launchGraceSeconds = 0
+  nextSpawnZ = 1000
+  windTimer = 999
+  const building = createBuilding(3.2, 20, 3.2, buildingMats[0])
+  building.position.set(0, 0, 0.8)
+  scene.add(building)
+  entities.push({ mesh: building, type: 'building', radius: 1.6, halfH: 20, h: 20, w: 3.2, d: 3.2 })
+  hudEl?.classList.remove('hidden')
+  update(1 / 60)
   simulationPaused = true
 }
 

@@ -13,8 +13,8 @@ describe('boss artwork registry', () => {
     for (const id of BOSS_IDS) {
       const art = BOSS_ART[id]
       expect(art.id).toBe(id)
-      expect(art.texture).toBe(`/assets/bosses/${id}.webp`)
-      expect(art.preview).toBe(`/assets/bosses/${id}.webp`)
+      expect(art.texture).toBe(`/assets/bosses/${id}-v2.webp`)
+      expect(art.preview).toBe(`/assets/bosses/${id}-v2.webp`)
       expect(existsSync(new URL(`../public${art.texture}`, import.meta.url))).toBe(true)
       expect(existsSync(new URL(`../public${art.preview}`, import.meta.url))).toBe(true)
     }
@@ -42,7 +42,7 @@ describe('boss artwork registry', () => {
     const overlay = createBossArtOverlay({
       THREE,
       kind: 'scissors',
-      size: 2.8,
+      size: 5.2,
       loadTexture: (url, onLoad, onError) => {
         expect(url).toBe(BOSS_ART.scissors.texture)
         loaded = onLoad
@@ -51,8 +51,8 @@ describe('boss artwork registry', () => {
     })
 
     expect(overlay.name).toBe('bossArt-scissors')
-    // Small badge only — never a full-face cover over the portal.
-    expect(overlay.geometry.parameters.width).toBeLessThanOrEqual(3.5)
+    // One hero emblem above the portal — never a full-face cover over it.
+    expect(overlay.geometry.parameters.width).toBeLessThanOrEqual(5.5)
     expect(overlay.visible).toBe(false)
     expect(overlay.material.map).toBeNull()
 
