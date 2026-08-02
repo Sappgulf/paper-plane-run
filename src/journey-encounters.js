@@ -9,7 +9,7 @@ export const JOURNEY_ROUTE_DISTANCE = Object.freeze({ standard: 350, finale: 500
 export const JOURNEY_EVENT_BASE_DISTANCES = Object.freeze({
   // Keep the standard signature beat comfortably beyond boss recovery when a
   // zone authors two boss gates (for example Chapter 2's Midnight Desk).
-  standard: Object.freeze([45, 170, 310]),
+  standard: Object.freeze([45, 170, 330]),
   finale: Object.freeze([55, 225, 395]),
 })
 

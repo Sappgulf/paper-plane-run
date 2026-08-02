@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "verify:death-stress": "node scripts/death-stress.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

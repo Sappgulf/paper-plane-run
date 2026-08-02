@@ -57,7 +57,7 @@ export function shouldClearForBossApproach({ type, z } = {}) {
 export function getBossClearReward() {
   return Object.freeze({
     stars: 5,
-    recoveryMeters: 110,
+    recoveryMeters: 128,
     invulnSeconds: 0.85,
     hitStopSeconds: 0.05,
   })
@@ -101,6 +101,22 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
     headline,
     intensity: 0.35,
     hitStopSeconds: 0,
+  })
+}
+
+export function describeBossTelegraph({ kind, phase, safeLane, warningSeconds = 0 } = {}) {
+  const presentation = describeBossPhase({ kind, phase, safeLane })
+  const seconds = Math.max(0, Math.ceil(Number(warningSeconds) || 0))
+  const laneArrow = safeLane === 1 ? '↑' : safeLane === -1 ? '↓' : '•'
+  const laneCue = `${presentation.laneLabel} ${laneArrow}`
+  const label = phase === 'warning' && seconds > 0
+    ? `GATE IN ${seconds} · ${laneCue}`
+    : `HOLD ${laneCue}`
+  return Object.freeze({
+    ...presentation,
+    countdownSeconds: seconds,
+    laneArrow,
+    label,
   })
 }
 

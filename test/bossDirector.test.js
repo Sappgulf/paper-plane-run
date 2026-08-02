@@ -4,6 +4,7 @@ import {
   bossKindForIndex,
   createBossEncounter,
   describeBossPhase,
+  describeBossTelegraph,
   getBossPassage,
   getBossApproachSpeedScale,
   getBossClearReward,
@@ -112,6 +113,8 @@ describe('boss encounter director', () => {
     expect(reward.invulnSeconds).toBeGreaterThanOrEqual(0.7)
     expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|slot/i)
     expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|open blades/)
+    expect(describeBossTelegraph({ kind: 'wind', phase: 'warning', safeLane: -1, warningSeconds: 1.2 }))
+      .toMatchObject({ label: 'GATE IN 2 · LOW ↓', laneArrow: '↓', countdownSeconds: 2 })
   })
 
   test('edge grace keeps near-miss portal edges flyable', () => {

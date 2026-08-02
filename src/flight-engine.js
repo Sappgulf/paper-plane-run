@@ -62,6 +62,7 @@ import {
   bossKindForIndex,
   createBossEncounter,
   describeBossPhase,
+  describeBossTelegraph,
   getBossApproachSpeedScale,
   getBossClearReward,
   isInsideBossPassage,
@@ -77,9 +78,11 @@ import { createFrameHealthMonitor } from './game/frame-health.js'
 import {
   PASSAGE_LANE_X,
   PASSAGE_LANES,
+  SAFE_SPAWN_MARGIN,
   choosePassageLane,
   chooseSafeBuildingX,
   createPacingWave,
+  getBuildingDensityScale,
   getCenterBuildingSafeRange,
   getObstacleDamageRadius,
   getSafeSpawnX,
@@ -1208,6 +1211,9 @@ const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x9a7350, roughness
 const streetMat = new THREE.MeshStandardMaterial({ color: 0x7d8ba2, roughness: 0.94 })
 const streetCurbMat = new THREE.MeshStandardMaterial({ color: 0xf7e8c5, roughness: 0.86 })
 const streetMarkMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.82 })
+const trafficPoleMat = new THREE.MeshStandardMaterial({ color: 0x394b68, roughness: 0.58, metalness: 0.16 })
+const trafficHousingMat = new THREE.MeshStandardMaterial({ color: 0x253754, roughness: 0.5, metalness: 0.12 })
+const trafficLightColors = [0xef4444, 0xfbbf24, 0x34d399]
 
 function createAmbientBillboard(rawUrl, width, height) {
   const g = new THREE.Group()
@@ -1251,6 +1257,81 @@ function createStreetPatch() {
   return g
 }
 
+function createCrosswalkPatch(roadWidth) {
+  const g = new THREE.Group()
+  for (let index = -2; index <= 2; index += 1) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(roadWidth * 0.76, 0.035, 0.42),
+      streetCurbMat,
+    )
+    stripe.position.set(0, 0.095, index * 0.78)
+    g.add(stripe)
+  }
+  return g
+}
+
+function createTrafficSignal() {
+  const g = new THREE.Group()
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.08, 3.7, 8), trafficPoleMat)
+  pole.position.y = 1.85
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.07, 0.07), trafficPoleMat)
+  arm.position.set(0.34, 3.58, 0)
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.18, 0.28), trafficHousingMat)
+  housing.position.set(0.62, 3.0, 0)
+  g.add(pole, arm, housing)
+  const lights = trafficLightColors.map((color, index) => {
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.16,
+      roughness: 0.35,
+    })
+    const light = new THREE.Mesh(new THREE.SphereGeometry(0.105, 8, 8), material)
+    light.position.set(0.62, 3.35 - index * 0.35, -0.17)
+    g.add(light)
+    return light
+  })
+  g.userData.signalLights = lights
+  return g
+}
+
+function spawnAmbientSkylineBuilding(x, z, side) {
+  const w = 4.8 + rng() * 2.4
+  const h = 6.5 + rng() * 7.5
+  const d = 3.2 + rng() * 1.2
+  const building = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
+  building.position.x = x
+  building.position.z = z
+  scene.add(building)
+  entities.push({
+    mesh: building,
+    type: 'ambient-building',
+    radius: 0,
+    ambientMotion: {
+      originX: x,
+      phase: rng() * Math.PI * 2,
+      weave: 0.24 + rng() * 0.18,
+    },
+  })
+
+  const person = createAmbientBillboard('/assets/ambient/rooftop-person-v2.webp', 1.4, 2.05)
+  const personX = x + side * (rng() - 0.5) * Math.min(1.8, w * 0.32)
+  person.position.set(personX, h, z + (rng() - 0.5) * d * 0.4)
+  scene.add(person)
+  entities.push({
+    mesh: person,
+    type: 'ambient-rooftop-person',
+    radius: 0,
+    ambientMotion: {
+      originX: personX,
+      baseY: h,
+      phase: rng() * Math.PI * 2,
+      speed: side * (0.35 + rng() * 0.25),
+      weave: 0.08 + rng() * 0.04,
+    },
+  })
+}
+
 function spawnAmbientStreet(z) {
   const side = rng() < 0.5 ? -1 : 1
   const roadX = side * (17.2 + rng() * 2.4)
@@ -1259,6 +1340,32 @@ function spawnAmbientStreet(z) {
   street.position.set(roadX, 0, z + (rng() - 0.5) * 5)
   scene.add(street)
   entities.push({ mesh: street, type: 'decor', ambientStreet: true })
+
+  const crosswalk = createCrosswalkPatch(roadWidth)
+  crosswalk.position.set(roadX, 0, street.position.z + (rng() - 0.5) * 12)
+  scene.add(crosswalk)
+  entities.push({ mesh: crosswalk, type: 'decor', ambientStreet: true })
+
+  for (const signalSide of [-1, 1]) {
+    const signal = createTrafficSignal()
+    signal.position.set(roadX + signalSide * (roadWidth * 0.5 + 0.8), 0, street.position.z + 5.4)
+    signal.scale.x = signalSide
+    scene.add(signal)
+    entities.push({
+      mesh: signal,
+      type: 'ambient-signal',
+      radius: 0,
+      signalLights: signal.userData.signalLights,
+      signalOffset: rng() * 4.5,
+    })
+  }
+
+  const skylineSide = street.position.x >= 0 ? 1 : -1
+  spawnAmbientSkylineBuilding(
+    street.position.x + skylineSide * (5.8 + rng() * 3.5),
+    street.position.z + (rng() - 0.5) * 10,
+    skylineSide,
+  )
 
   const carCount = 1 + (rng() < 0.32 ? 1 : 0)
   for (let index = 0; index < carCount; index += 1) {
@@ -1280,6 +1387,23 @@ function spawnAmbientStreet(z) {
     })
   }
 
+  const truck = createAmbientBillboard('/assets/ambient/delivery-truck-v2.webp', 4.8, 3.28)
+  const truckLane = 1.35
+  const truckX = roadX + truckLane
+  truck.position.set(truckX, 0, street.position.z - 9 + rng() * 12)
+  scene.add(truck)
+  entities.push({
+    mesh: truck,
+    type: 'ambient-truck',
+    radius: 0,
+    ambientMotion: {
+      originX: truckX,
+      phase: rng() * Math.PI * 2,
+      speed: -side * (4.5 + rng() * 1.5),
+      weave: 0.12,
+    },
+  })
+
   const personCount = 2 + Math.floor(rng() * 3)
   for (let index = 0; index < personCount; index += 1) {
     const person = createAmbientBillboard('/assets/ambient-person-v2.webp', 1.38, 1.38)
@@ -1292,6 +1416,7 @@ function spawnAmbientStreet(z) {
       radius: 0,
       ambientMotion: {
         originX: sidewalkX,
+        baseY: 0,
         phase: rng() * Math.PI * 2,
         speed: side * (1.2 + rng() * 0.8),
         weave: 0.12 + rng() * 0.1,
@@ -1590,6 +1715,60 @@ const portalAccentMats = {
   stapler: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x92400e, emissiveIntensity: 0.28, roughness: 0.42 }),
 }
 
+const bossCueActiveMats = {
+  scissors: new THREE.MeshBasicMaterial({ color: 0xffc1b6, transparent: true, opacity: 0.96, depthWrite: false, depthTest: false }),
+  wind: new THREE.MeshBasicMaterial({ color: 0xb9f7ff, transparent: true, opacity: 0.96, depthWrite: false, depthTest: false }),
+  stapler: new THREE.MeshBasicMaterial({ color: 0xffe28a, transparent: true, opacity: 0.96, depthWrite: false, depthTest: false }),
+}
+const bossCueDimMats = {
+  scissors: new THREE.MeshBasicMaterial({ color: 0xf7e8c5, transparent: true, opacity: 0.18, depthWrite: false, depthTest: false }),
+  wind: new THREE.MeshBasicMaterial({ color: 0xf7e8c5, transparent: true, opacity: 0.18, depthWrite: false, depthTest: false }),
+  stapler: new THREE.MeshBasicMaterial({ color: 0xf7e8c5, transparent: true, opacity: 0.18, depthWrite: false, depthTest: false }),
+}
+const bossCueChevronGeo = new THREE.BoxGeometry(1.12, 0.16, 0.06)
+
+function createBossChevron(material) {
+  const chevron = new THREE.Group()
+  const left = new THREE.Mesh(bossCueChevronGeo, material)
+  left.position.x = -0.38
+  left.rotation.z = -0.62
+  const right = new THREE.Mesh(bossCueChevronGeo, material)
+  right.position.x = 0.38
+  right.rotation.z = 0.62
+  chevron.add(left, right)
+  return chevron
+}
+
+function createBossLaneCues(kind, halfWidth) {
+  const group = new THREE.Group()
+  group.name = 'bossLaneCues'
+  const x = 0
+  const activeMat = bossCueActiveMats[kind] || bossCueActiveMats.scissors
+  const dimMat = bossCueDimMats[kind] || bossCueDimMats.scissors
+  const markers = []
+  for (const [lane, y] of [[-1, 8], [0, 10], [1, 12]]) {
+    const active = createBossChevron(activeMat)
+    const dim = createBossChevron(dimMat)
+    active.position.set(x, y, -0.62)
+    dim.position.set(x, y, -0.62)
+    active.visible = false
+    group.add(active, dim)
+    markers.push({ lane, active, dim })
+  }
+  group.userData.markers = markers
+  return group
+}
+
+function setBossLaneCueState(gate, encounter, pulse = 0) {
+  const group = gate?.userData?.laneCues
+  for (const marker of group?.userData?.markers || []) {
+    const active = marker.lane === encounter?.safeLane
+    marker.active.visible = active
+    marker.dim.visible = !active
+    if (active) marker.active.scale.setScalar(1 + pulse * 0.16)
+  }
+}
+
 function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) {
   // Build a rectangular hoop whose inner opening matches collision passage.
   const group = new THREE.Group()
@@ -1717,13 +1896,15 @@ function createBossPortalBase(kind, passage) {
 
   const safeRing = createSafePortalRing(colors.ring, colors.emissive, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
-  g.add(safeRing)
+  const laneCues = createBossLaneCues(kind, halfWidth)
+  g.add(safeRing, laneCues)
 
   addBossArtOverlay(g, kind, 10, halfWidth, halfHeight)
   g.userData.phase = 0
   g.userData.gapY = 10
   g.userData.kind = kind
   g.userData.safeRing = safeRing
+  g.userData.laneCues = laneCues
   g.userData.halfWidth = halfWidth
   g.userData.halfHeight = halfHeight
   g.userData.framePosts = frame.posts
@@ -2501,10 +2682,10 @@ function clearEntities() {
   confetti.length = 0
 }
 
-function pickHazardType(zone) {
+function pickHazardType(zone, buildingDensity = 1) {
   const bias = zone.hazardBias
   const weights = [
-    ['building', 0.28 * bias.building * difficulty.hazardScale],
+    ['building', 0.28 * bias.building * difficulty.hazardScale * buildingDensity],
     ['bird', 0.22 * bias.bird * difficulty.hazardScale],
     ['scissors', 0.16 * bias.scissors * difficulty.hazardScale],
   ]
@@ -2525,6 +2706,7 @@ function spawnChunk(z) {
   const cfg = difficulty
   const zone = activeZoneAt(distance)
   const recovering = distance < bossRecoveryUntil
+  const buildingDensity = getBuildingDensityScale({ distance, recovery: recovering })
   const waveSpacing = getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) * cfg.gap
   const wave = createPacingWave({
     index: Math.max(0, Math.round((z - 35) / Math.max(1, waveSpacing))),
@@ -2541,6 +2723,7 @@ function spawnChunk(z) {
     random: rng,
     safeLane: safeLane ?? 0,
     maxAbs,
+    margin: SAFE_SPAWN_MARGIN,
     damageRadius: getObstacleDamageRadius({
       entityRadius,
       planeRadius: PLANE_COLLISION_RADIUS,
@@ -2571,7 +2754,7 @@ function spawnChunk(z) {
     }
   }
 
-  const ht = recovering ? null : pickHazardType(zone)
+  const ht = recovering ? null : pickHazardType(zone, buildingDensity)
   if (ht === 'building') {
     const w = 2 + rng() * 3
     const h = (7 + rng() * (10 + ramp * 16)) * cfg.buildingH
@@ -2739,6 +2922,7 @@ function spawnBoss(z = 70, forcedKind = null) {
   if (gate.userData.bottomJaw) {
     gate.userData.bottomJaw.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 0.85
   }
+  setBossLaneCueState(gate, openingSnap)
   const badgeLayout = getBossBadgeLayout({
     halfWidth: openingSnap.passage.halfWidth,
     halfHeight: openingSnap.passage.halfHeight,
@@ -2761,6 +2945,7 @@ function spawnBoss(z = 70, forcedKind = null) {
     isBoss: true,
     director,
     lastBossPhase: 'warning',
+    lastBossCountdown: -1,
   })
   bossActive = true
   // Brief approach invuln so a late hazard can't snipe the commit.
@@ -4692,18 +4877,40 @@ function animateHazards(dt) {
       }
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
-    if (e.type === 'ambient-car' || e.type === 'ambient-person') {
+    if (
+      e.type === 'ambient-car' ||
+      e.type === 'ambient-person' ||
+      e.type === 'ambient-truck' ||
+      e.type === 'ambient-rooftop-person'
+    ) {
       const motion = e.ambientMotion
       if (motion) {
-        motion.phase += dt * (e.type === 'ambient-car' ? 2.4 : 1.8)
+        motion.phase += dt * (e.type === 'ambient-car' || e.type === 'ambient-truck' ? 2.4 : 1.8)
         e.mesh.position.z += motion.speed * dt
         e.mesh.position.x = motion.originX + Math.sin(motion.phase) * motion.weave
-        if (e.type === 'ambient-person') {
-          e.mesh.position.y = Math.max(0, Math.sin(motion.phase * 1.7) * 0.035)
+        if (e.type === 'ambient-person' || e.type === 'ambient-rooftop-person') {
+          e.mesh.position.y = (motion.baseY || 0) + Math.sin(motion.phase * 1.7) * 0.035
           e.mesh.rotation.z = Math.sin(motion.phase) * 0.025
         }
       }
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
+    }
+    if (e.type === 'ambient-building') {
+      const motion = e.ambientMotion
+      if (motion) {
+        motion.phase += dt * 0.45
+        e.mesh.position.x = motion.originX + Math.sin(motion.phase) * motion.weave
+        e.mesh.rotation.z = Math.sin(motion.phase * 0.8) * 0.008
+      }
+    }
+    if (e.type === 'ambient-signal') {
+      const cycle = (elapsed + (e.signalOffset || 0)) % 4.5
+      const lights = e.signalLights || []
+      for (const [index, light] of lights.entries()) {
+        const active = index === (cycle < 2.5 ? 0 : cycle < 3.2 ? 1 : 2)
+        light.material.emissiveIntensity = active ? 0.9 : 0.16
+        light.scale.setScalar(active ? 1.08 : 0.86)
+      }
     }
     if (e.type === 'scissors') {
       e.mesh.rotation.z += dt * 1.2
@@ -4717,10 +4924,27 @@ function animateHazards(dt) {
       // difficulty, while the existing collision opening stays unchanged.
       u.gapY = encounter?.safeY ?? 10
       u.encounter = encounter
+      const telegraph = describeBossTelegraph(encounter || {})
+      const approachPulse = encounter?.motionAllowed === false
+        ? 0
+        : 0.5 + Math.sin(u.phase * 1.25) * 0.5
+      u.bossIntensity = telegraph.intensity
+      setBossLaneCueState(e.mesh, encounter, approachPulse)
+      if (encounter?.phase === 'warning') {
+        if (telegraph.countdownSeconds > 0 && telegraph.countdownSeconds !== e.lastBossCountdown) {
+          e.lastBossCountdown = telegraph.countdownSeconds
+          zoneBanner.textContent = `${bossBannerEmoji(u.kind)} ${telegraph.label}`
+          zoneBanner.classList.remove('hidden')
+          zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.7
+          showFlightFeedback(telegraph.label, 'hazard', settings.reducedMotion ? 0.8 : 1.0)
+          if (telegraph.countdownSeconds <= 2) pulseFlightImpact('hazard')
+        }
+      } else {
+        e.lastBossCountdown = -1
+      }
       if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
-        const presentation = describeBossPhase(encounter)
-        u.bossIntensity = presentation.intensity
+        const presentation = describeBossTelegraph(encounter)
         document.documentElement.dataset.bossPhase = encounter.phase
         zoneBanner.textContent = `${bossBannerEmoji(u.kind)} ${presentation.headline}`
         zoneBanner.classList.remove('hidden')
@@ -4791,8 +5015,12 @@ function animateHazards(dt) {
       if (safeRing) {
         safeRing.position.y = u.gapY
         // Soft pulse on the portal fill / frame without rescaling collision size.
-        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(elapsed * 7) * 0.02
+        const pulse = encounter?.motionAllowed === false ? 1 : 1 + approachPulse * 0.035
         safeRing.scale.set(pulse, pulse, 1)
+      }
+      if (u.laneCues) {
+        u.laneCues.position.z = -approachPulse * 0.08
+        u.laneCues.scale.setScalar(1 + approachPulse * 0.05)
       }
     }
     // Spin the billboard card in-plane (not around Y) so it keeps facing the camera
@@ -5983,6 +6211,7 @@ function bossTextState() {
   const entity = entities.find((candidate) => candidate.type === 'boss' && candidate.director)
   if (!entity) return null
   const boss = entity.director.snapshot()
+  const telegraph = describeBossTelegraph(boss)
   return {
     kind: boss.kind,
     phase: boss.phase,
@@ -5992,6 +6221,12 @@ function bossTextState() {
     completed: boss.completed,
     shapeCue: boss.shapeCue,
     passage: boss.passage,
+    telegraph: {
+      label: telegraph.label,
+      laneLabel: telegraph.laneLabel,
+      laneArrow: telegraph.laneArrow,
+      countdownSeconds: telegraph.countdownSeconds,
+    },
   }
 }
 
@@ -6017,7 +6252,13 @@ window.render_game_to_text = () => JSON.stringify({
       .map((entity) => entity.type),
   },
   ambient: entities
-    .filter((entity) => entity.type === 'ambient-car' || entity.type === 'ambient-person')
+    .filter((entity) => [
+      'ambient-car',
+      'ambient-person',
+      'ambient-truck',
+      'ambient-building',
+      'ambient-rooftop-person',
+    ].includes(entity.type))
     .slice(0, 12)
     .map((entity) => ({
       type: entity.type,
@@ -6319,6 +6560,7 @@ if (import.meta.env.DEV && devTestState === '#test-ambient-street') {
   invuln = 999
   nextSpawnZ = 1000
   windTimer = 999
+  rng = mulberry32(0xA17E)
   spawnAmbientStreet(48)
   spawnAmbientStreet(96)
   hudEl?.classList.remove('hidden')

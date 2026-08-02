@@ -3,6 +3,7 @@ import {
   choosePassageLane,
   chooseSafeBuildingX,
   createPacingWave,
+  getBuildingDensityScale,
   getCenterBuildingSafeRange,
   getObstacleDamageRadius,
   getSafeBuildingPlacementRanges,
@@ -47,6 +48,12 @@ describe('existing flight pacing', () => {
     for (const difficultyId of ['easy', 'normal', 'hard']) {
       expect(getWaveSpacing({ difficultyId, distance: 5000 })).toBeGreaterThanOrEqual(14)
     }
+  })
+
+  test('late city building density tapers while recovery waves stay clear', () => {
+    expect(getBuildingDensityScale({ distance: 0 })).toBe(1)
+    expect(getBuildingDensityScale({ distance: 2100 })).toBeLessThan(0.8)
+    expect(getBuildingDensityScale({ distance: 2100, recovery: true })).toBe(0)
   })
 
   test('uses a smaller explicit air-damage envelope than the visual near-miss envelope', () => {

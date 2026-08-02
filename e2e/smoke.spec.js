@@ -687,6 +687,7 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
   expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.5, halfHeight: 4.05 })
   expect([-1, 0, 1]).toContain(scissors.boss.safeLane)
+  expect(scissors.boss.telegraph).toMatchObject({ laneLabel: expect.any(String), countdownSeconds: 2 })
   expect(scissors.plane.collisionRadius).toBe(0.7)
   await page.evaluate(() => window.advanceTime(1800))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss.phase)).toBe('pressure')
@@ -729,6 +730,9 @@ test('ambient paper streets keep traffic moving outside the playable corridor', 
   const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(before.entities.counts['ambient-car']).toBeGreaterThanOrEqual(2)
   expect(before.entities.counts['ambient-person']).toBeGreaterThanOrEqual(4)
+  expect(before.entities.counts['ambient-truck']).toBe(2)
+  expect(before.entities.counts['ambient-building']).toBe(2)
+  expect(before.entities.counts['ambient-rooftop-person']).toBe(2)
   expect(before.ambient.every((actor) => Math.abs(actor.x) > 13)).toBe(true)
   const carBefore = before.ambient.find((actor) => actor.type === 'ambient-car')
   expect(carBefore).toBeTruthy()
@@ -918,6 +922,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
 test('mobile game-over puts retry before sharing and inside the viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page, '/#test-gameover')
+  await waitForGameText(page)
 
   const retry = page.getByRole('button', { name: 'Fly Again' })
   const share = page.getByRole('button', { name: 'Share Score' })
@@ -933,6 +938,7 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
 
 test('game-over summarizes banked rewards and the next action', async ({ page }) => {
   await openApp(page, '/#test-gameover')
+  await waitForGameText(page)
 
   const summary = page.locator('#run-summary')
   await expect(summary).toBeVisible({ timeout: 15_000 })

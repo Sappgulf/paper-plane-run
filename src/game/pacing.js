@@ -2,6 +2,7 @@ const BASE_SPACING = Object.freeze({ easy: 24, normal: 20, hard: 17 })
 export const PASSAGE_LANES = Object.freeze([-1, 0, 1])
 export const PASSAGE_LANE_X = Object.freeze([-6, 0, 6])
 export const PASSAGE_MARGIN = 0.35
+export const SAFE_SPAWN_MARGIN = 0.65
 const AIR_DAMAGE_PLANE_WEIGHT = 0.72
 
 function nonNegative(value, fallback = 0) {
@@ -109,7 +110,7 @@ export function getSafeSpawnX({
   safeLane = 0,
   maxAbs = 5,
   damageRadius = 0,
-  margin = PASSAGE_MARGIN,
+  margin = SAFE_SPAWN_MARGIN,
   attempts = 16,
   laneCenters = PASSAGE_LANE_X,
 } = {}) {
@@ -128,9 +129,20 @@ export function getSafeSpawnX({
 
 export function getWaveSpacing({ difficultyId = 'normal', distance = 0, recovery = false } = {}) {
   const base = BASE_SPACING[difficultyId] || BASE_SPACING.normal
-  if (recovery) return base + 12
-  const compression = Math.min(3, Math.max(0, Number(distance) || 0) / 350)
-  return Math.max(14, base - compression)
+  if (recovery) return base + 18
+  const compression = Math.min(2.5, Math.max(0, Number(distance) || 0) / 420)
+  return Math.max(15, base - compression)
+}
+
+/**
+ * Keep the late city lively without stacking more paper towers forever.
+ * The first 700m keeps the authored density; after that, building rolls
+ * gradually hand space back to birds, scissors, pickups, and scenery.
+ */
+export function getBuildingDensityScale({ distance = 0, recovery = false } = {}) {
+  if (recovery) return 0
+  const ramp = Math.min(1, Math.max(0, (Number(distance) || 0) - 700) / 1400)
+  return Number((1 - ramp * 0.24).toFixed(3))
 }
 
 export function createPacingWave({ index = 0, difficultyId = 'normal', afterBoss = false } = {}) {
