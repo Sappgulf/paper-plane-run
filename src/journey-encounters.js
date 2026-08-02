@@ -1,5 +1,18 @@
 export const ENCOUNTER_STAGES = Object.freeze(['arrival', 'escalation', 'signature'])
 
+// Keep authored Journey beats inside the actual flight target. Standard routes
+// finish at 350m; finales get the longer 500m runway for their rival/boss arc.
+// This is exported so route-proof tests and the runtime can share one contract
+// instead of each carrying a slightly different target distance.
+export const JOURNEY_ROUTE_DISTANCE = Object.freeze({ standard: 350, finale: 500 })
+
+export const JOURNEY_EVENT_BASE_DISTANCES = Object.freeze({
+  // Keep the standard signature beat comfortably beyond boss recovery when a
+  // zone authors two boss gates (for example Chapter 2's Midnight Desk).
+  standard: Object.freeze([45, 170, 310]),
+  finale: Object.freeze([55, 225, 395]),
+})
+
 export const OBJECTIVES = Object.freeze({
   'shortcut-gates': Object.freeze({ kind: 'shortcut-gates', label: 'Clear the shortcut gates', metric: 'shortcutGatesCleared' }),
   'near-miss': Object.freeze({ kind: 'near-miss', label: 'Chain close calls', metric: 'nearMisses' }),
@@ -59,6 +72,28 @@ function varyLanes(lanes, seed) {
   return lanes.map((lane) => clamp(lane + offset, -1, 1)).filter((lane, index, values) => values.indexOf(lane) === index)
 }
 
+function modifierTemplate(config, template, index) {
+  // A modifier is a promise made by the route card. If the zone's authored
+  // table does not already contain that beat, fill the missing beat with a
+  // lightweight authored variant instead of showing an objective that the
+  // route cannot satisfy (for example Shortcut Gates in Paper City).
+  if (config.modifier === 'shortcut-gates' && index > 0 && template.type !== 'shortcut-gate') {
+    return {
+      type: 'shortcut-gate',
+      lanes: [-1, 0, 1],
+      params: { required: true, count: index === 1 ? 2 : 1 },
+    }
+  }
+  if (config.modifier === 'moving-formation' && index > 0 && template.type !== 'formation') {
+    return {
+      type: 'formation',
+      lanes: [-1, 0, 1],
+      params: { direction: index % 2 === 0 ? -1 : 1, speed: 2.4 },
+    }
+  }
+  return template
+}
+
 export function buildJourneyObjective(config = {}) {
   let kind = 'completion'
   let target = 1
@@ -80,10 +115,13 @@ export function buildJourneyObjective(config = {}) {
 export function buildEncounterTimeline(config = {}) {
   const templates = ZONE_EVENTS[config.zone] || ZONE_EVENTS.city
   const routeId = config.routeId || `${config.zone || 'city'}-route`
+  const routeKind = config.finale ? 'finale' : 'standard'
+  const targetDistance = JOURNEY_ROUTE_DISTANCE[routeKind]
+  const baseDistances = JOURNEY_EVENT_BASE_DISTANCES[routeKind]
   const events = ENCOUNTER_STAGES.map((stage, index) => {
     const random = seededHash(config.encounterSeed ?? config.seed, index, templates.length)
-    const template = templates[index] || templates[templates.length - 1]
-    const baseDistance = [55, 225, 395][index]
+    const template = modifierTemplate(config, templates[index] || templates[templates.length - 1], index)
+    const baseDistance = baseDistances[index]
     return Object.freeze({
       id: `${routeId}:${stage}:${index}`,
       stage,
@@ -96,6 +134,7 @@ export function buildEncounterTimeline(config = {}) {
   return Object.freeze({
     routeId,
     zone: config.zone || 'city',
+    targetDistance,
     objective: config.objective || buildJourneyObjective(config),
     events: Object.freeze(events),
   })

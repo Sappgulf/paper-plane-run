@@ -98,6 +98,7 @@ import { savePostcardOnce } from './journey-postcards.js'
 import { cosmeticLabel, renderJourneyResultProgress } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
+import { buildJourneyRouteProof, createDeterministicJourneyRoute } from './game/route-proof.js'
 import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
@@ -591,6 +592,7 @@ let journeyRunConfig = null
 let mastery = loadMastery(localStorage).mastery
 let journeyTimeline = null
 let journeyTelemetry = null
+let journeyRouteProof = null
 let journeyPreviousDistance = 0
 let journeyVisibilityTimer = 0
 let lastJourneyResult = null
@@ -643,6 +645,18 @@ const devBossProof = import.meta.env.DEV
 const devBossPass = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-pass') === '1'
   : false
+const devRouteSeed = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('route-seed')
+  : null
+const devRouteChapter = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('route-chapter')
+  : null
+const devRouteStep = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('route-step')
+  : null
+const devRouteRisk = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('route-risk')
+  : null
 function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (!import.meta.env.DEV) return
   let levels = {}
@@ -3106,7 +3120,17 @@ function resetGame() {
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
   runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
-  journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
+  journeyRouteProof = runKind === 'journey' && journeyRunConfig
+    ? buildJourneyRouteProof({
+      seed: journeyRunConfig.routeSeed || journey?.seed,
+      chapter: journeyRunConfig.chapter,
+      stepIndex: journeyRunConfig.stepIndex,
+      risk: journeyRunConfig.risk,
+    })
+    : null
+  journeyTimeline = journeyRouteProof?.timeline || (runKind === 'journey' && journeyRunConfig
+    ? buildEncounterTimeline(journeyRunConfig)
+    : null)
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
     shortcutGatesCleared: 0,
@@ -3170,8 +3194,6 @@ function resetGame() {
       fogMul: journeyRunConfig.modifier === 'low-visibility' ? 0.55 : 1,
       starMul: journeyRunConfig.modifier === 'star-trail' ? 1.6 : 1,
     }
-    if (journeyRunConfig.finale) nextBossAt = 180
-    if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
     if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
   } else if (runKind === 'layout') {
     rng = Math.random
@@ -4772,7 +4794,7 @@ function update(dt) {
     }
   }
   if (runKind === 'journey' && journeyRunConfig) {
-    const target = journeyRunConfig.finale ? 500 : 350
+    const target = journeyTimeline?.targetDistance || journeyRunConfig.targetDistance || (journeyRunConfig.finale ? 500 : 350)
     if (distance >= target) {
       die('Journey route complete!')
       return
@@ -5211,6 +5233,7 @@ function update(dt) {
   if (
     runKind !== 'tutorial' &&
     runKind !== 'layout' &&
+    runKind !== 'journey' &&
     distance >= nextGauntletAt &&
     !bossActive
   ) {
@@ -5222,6 +5245,7 @@ function update(dt) {
   if (
     runKind !== 'tutorial' &&
     runKind !== 'layout' &&
+    runKind !== 'journey' &&
     distance >= nextBossAt &&
     !bossActive
   ) {
@@ -5813,13 +5837,28 @@ window.render_game_to_text = () => JSON.stringify({
   },
   journey: journeyRunConfig ? {
     routeId: journeyRunConfig.routeId,
+    routeSeed: journeyRunConfig.routeSeed,
+    encounterSeed: journeyRunConfig.encounterSeed,
     destination: journeyRunConfig.zone,
+    targetDistance: journeyTimeline?.targetDistance || journeyRunConfig.targetDistance || null,
     pilotId: journeyRunConfig.pilotId,
     objective: journeyRunConfig.objective,
     objectiveText: journeyObjectiveText(),
     triggeredEncounterIds: [...(journeyTelemetry?.completedEventIds || [])],
     visibleEncounterIds: entities.filter((entity) => entity.journeyEventId && entity.mesh.position.z > -25 && entity.mesh.position.z < 110).map((entity) => entity.journeyEventId),
     telemetry: journeyTelemetry ? { ...journeyTelemetry, completedEventIds: [...journeyTelemetry.completedEventIds] } : null,
+  } : null,
+  routeProof: journeyRouteProof ? {
+    seed: journeyRouteProof.seed,
+    encounterSeed: journeyRouteProof.encounterSeed,
+    routeId: journeyRouteProof.routeId,
+    targetDistance: journeyRouteProof.targetDistance,
+    objective: journeyRouteProof.objective,
+    authoredBossDistances: journeyRouteProof.authoredBossDistances,
+    checks: journeyRouteProof.checks,
+    allChecksPass: journeyRouteProof.allChecksPass,
+    balance: journeyRouteProof.balance.normal,
+    fingerprint: journeyRouteProof.fingerprint,
   } : null,
   result: lastJourneyResult ? {
     completed: lastJourneyResult.outcome.completed,
@@ -6035,6 +6074,25 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   }
   hudEl?.classList.remove('hidden')
   simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-route-proof') {
+  const selection = createDeterministicJourneyRoute({
+    seed: devRouteSeed || undefined,
+    chapter: devRouteChapter || undefined,
+    stepIndex: devRouteStep || undefined,
+    risk: devRouteRisk || undefined,
+  })
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  journey = selection.journey
+  journeyRunConfig = selection.config
+  runKind = 'journey'
+  resetGame()
+  invuln = 999
+  state = 'playing'
+  hudEl?.classList.remove('hidden')
+  showStick(true)
 }
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {

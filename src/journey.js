@@ -1,4 +1,4 @@
-import { buildJourneyObjective } from './journey-encounters.js'
+import { buildJourneyObjective, JOURNEY_ROUTE_DISTANCE } from './journey-encounters.js'
 
 export const JOURNEY_VERSION = 3
 export const DAREDEVIL_STAMP_REQUIREMENT = 4
@@ -180,6 +180,7 @@ export function buildRunConfiguration(journey) {
   const encounterSeed = hash(journey.seed, journey.stepIndex, route.risk === 'risky' ? 1 : 0)
   const base = {
     journeyId: journey.id,
+    routeSeed: journey.seed,
     chapter: journey.chapter || 1,
     stepIndex: journey.stepIndex,
     routeId: route.id,
@@ -192,6 +193,7 @@ export function buildRunConfiguration(journey) {
     pilotId: journey.pilotId,
     rival: route.rival,
     finale: route.finale,
+    targetDistance: route.finale ? JOURNEY_ROUTE_DISTANCE.finale : JOURNEY_ROUTE_DISTANCE.standard,
     seed: encounterSeed,
     encounterSeed,
     attemptId: `${journey.id}:${route.id}:${journey.attemptNumber || 1}`,

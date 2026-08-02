@@ -49,6 +49,10 @@ Milo and Pip each have three cosmetic-only mastery levels covering routes, short
 
 Completing a chapter unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. Destination paper-diorama images ship in both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 
+### Deterministic route verification
+
+`npm run verify:routes` checks every Chapter 1/2 safe and risky route for the selected seed, authored-beat reachability, objective budget, safe passage, and boss recovery spacing. The browser contract can be replayed against an isolated dev port with `PLAYWRIGHT_PORT=4190 npm run test:e2e -- --project=desktop -g "deterministic Journey route proof"`.
+
 ## Co-op controls
 
 | Player | Input |

@@ -770,6 +770,35 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   expect(errors).toEqual([])
 })
 
+test('deterministic Journey route proof survives a live replay', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
+  const errors = collectConsoleErrors(page)
+  await openApp(page, '/?route-seed=20260730&route-chapter=1&route-step=0&route-risk=safe#test-route-proof')
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function', null, { timeout: 45_000 })
+
+  const initial = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(initial.mode).toBe('journey')
+  expect(initial.journey).toMatchObject({
+    routeSeed: 20260730,
+    targetDistance: 350,
+  })
+  expect(initial.routeProof).toMatchObject({
+    seed: 20260730,
+    targetDistance: 350,
+    allChecksPass: true,
+  })
+  const fingerprint = initial.routeProof.fingerprint
+
+  const replayed = await page.evaluate(() => {
+    window.advanceTime(14000)
+    return JSON.parse(window.render_game_to_text())
+  })
+  expect(replayed.routeProof.fingerprint).toBe(fingerprint)
+  expect(replayed.journey.triggeredEncounterIds.length).toBeGreaterThanOrEqual(3)
+  expect(errors).toEqual([])
+})
+
 test('postcard reveal opens details and keeps share fallback visible', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', { configurable: true, value: undefined })

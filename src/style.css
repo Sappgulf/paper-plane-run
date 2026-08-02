@@ -108,7 +108,7 @@ html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; op
 
 .zone-stamp {
   display: inline-block; flex: none; width: 52px; height: 52px; border-radius: 15px;
-  background-color: #fff7e8; background-image: url('/assets/zone-stamp-sheet.png');
+  background-color: #fff7e8; background-image: url('/assets/zone-stamp-sheet-v2.webp');
   background-size: 200% 200%; background-repeat: no-repeat;
   box-shadow: 0 6px 14px rgba(61,44,41,.15), 0 1px 0 rgba(255,255,255,.8) inset;
   border: 1.5px solid rgba(61,44,41,.12);
@@ -555,7 +555,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   -webkit-overflow-scrolling: touch;
   background:
     linear-gradient(165deg, rgba(200,223,245,.2) 0%, rgba(255,236,220,.34) 100%),
-    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
+    url('/assets/paper-world-backdrop-v2.webp') center / cover no-repeat;
 }
 .menu-panel { justify-content: safe center; }
 
@@ -743,7 +743,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   border-radius: 17px;
   background:
     linear-gradient(105deg, rgba(255,250,242,.97), rgba(231,246,255,.88)),
-    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
+    url('/assets/paper-world-backdrop-v2.webp') center / cover no-repeat;
   box-shadow: 0 8px 20px rgba(61,44,41,.08), 0 1px 0 rgba(255,255,255,.8) inset;
   overflow: hidden;
 }
@@ -1126,7 +1126,7 @@ html.a11y-reduced-motion #streak-fill { transition: none; }
 #gameover {
   background:
     linear-gradient(165deg, rgba(40,30,28,.4), rgba(255,220,200,.78)),
-    url('/assets/paper-world-backdrop.png') center / cover no-repeat;
+    url('/assets/paper-world-backdrop-v2.webp') center / cover no-repeat;
 }
 
 /* —— Living Journey —— */

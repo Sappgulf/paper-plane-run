@@ -14,6 +14,8 @@ describe('Journey encounter director', () => {
     expect(a).toEqual(b)
     expect(a.events.map((event) => event.stage)).toEqual(expect.arrayContaining(ENCOUNTER_STAGES))
     expect(a.events.every((event, index) => index === 0 || event.distance >= a.events[index - 1].distance)).toBe(true)
+    expect(a.targetDistance).toBe(350)
+    expect(a.events.every((event) => event.distance < a.targetDistance)).toBe(true)
   })
 
   it.each([
@@ -27,6 +29,7 @@ describe('Journey encounter director', () => {
     const timeline = buildEncounterTimeline({ seed: 7, zone, modifier: 'crosswind', routeId: `${zone}-route`, finale: zone === 'aurora' || zone === 'midnight' })
     expect(timeline.events.map((event) => event.type)).toEqual(expect.arrayContaining(types))
     expect(timeline.events.every((event) => event.distance >= 40 && event.distance <= 460)).toBe(true)
+    expect(timeline.events.every((event) => event.distance < timeline.targetDistance)).toBe(true)
     expect(timeline.events.flatMap((event) => event.lanes || []).every((lane) => lane >= -1 && lane <= 1)).toBe(true)
   })
 
