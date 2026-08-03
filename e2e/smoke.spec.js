@@ -77,6 +77,20 @@ test('install hint traps focus and restores the launcher control', async ({ page
   await expect(page.locator('#install-btn')).toBeFocused()
 })
 
+test('native shell suppresses browser-only install and update prompts', async ({ page }) => {
+  await openApp(page)
+  await page.evaluate(() => {
+    document.documentElement.classList.add('native-shell')
+    document.querySelector('#install-btn').classList.remove('hidden')
+    document.querySelector('#install-hint').classList.remove('hidden')
+    document.querySelector('#sw-update-banner').classList.remove('hidden')
+  })
+
+  await expect(page.locator('#install-btn')).toBeHidden()
+  await expect(page.locator('#install-hint')).toBeHidden()
+  await expect(page.locator('#sw-update-banner')).toBeHidden()
+})
+
 test('seasonal event notice waits for the first flight instead of covering the menu', async ({ page }) => {
   await page.addInitScript(() => {
     const key = 'paper-plane-run-settings-v1'
@@ -297,10 +311,13 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   await expect(halloween).toContainText('Equipped')
   await expect(page.locator('#hangar-wallet')).toHaveText('2')
   await expect(page.locator('#skins-status')).toHaveText('Jack-o-Plane claimed and equipped.')
-  await expect.poll(() => page.evaluate(() => ({
-    equipped: localStorage.getItem('paper-plane-run-skin'),
-    owned: JSON.parse(localStorage.getItem('paper-plane-run-skins')),
-  }))).toMatchObject({ equipped: 'halloween', owned: expect.arrayContaining(['mint', 'halloween']) })
+  await expect.poll(
+    () => page.evaluate(() => ({
+      equipped: localStorage.getItem('paper-plane-run-skin'),
+      owned: JSON.parse(localStorage.getItem('paper-plane-run-skins')),
+    })),
+    { timeout: 15_000 },
+  ).toMatchObject({ equipped: 'halloween', owned: expect.arrayContaining(['mint', 'halloween']) })
   expect(errors).toEqual([])
 })
 
@@ -1057,6 +1074,69 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
   await expect(share).toBeVisible()
 })
 
+test('mobile game-over keeps photo actions reachable instead of clipping them', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile')
+  await openApp(page, '/#test-gameover')
+  await waitForGameText(page)
+
+  await page.locator('#photo-wrap').evaluate((wrap) => {
+    wrap.classList.remove('hidden')
+    const image = wrap.querySelector('#photo-img')
+    image.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1400"%3E%3Crect width="800" height="1400" fill="%23dbeafe"/%3E%3C/svg%3E'
+  })
+  await page.locator('#photo-img').evaluate((image) => image.decode?.())
+
+  const savePhoto = page.getByRole('button', { name: 'Save photo' })
+  await savePhoto.scrollIntoViewIfNeeded()
+  await expect(savePhoto).toBeInViewport()
+  await expect(savePhoto).toBeVisible()
+  expect(await page.locator('#photo-wrap').evaluate((wrap) => getComputedStyle(wrap).overflow)).not.toBe('hidden')
+})
+
+test('mobile shell keeps utility controls and update status clear of panel titles', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile')
+  await openApp(page)
+  await tap(page.getByRole('button', { name: /🏠 Hangar/ }))
+
+  expect(await page.evaluate(() => {
+    document.querySelector('#sw-update-banner')?.classList.remove('hidden')
+    document.querySelector('#game-root')?.classList.add('sw-update-visible')
+    const ar = document.querySelector('#ar-btn')?.getBoundingClientRect()
+    const heading = document.querySelector('#hangar-panel h2')?.getBoundingClientRect()
+    const update = document.querySelector('#sw-update-banner')?.getBoundingClientRect()
+    const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top)
+    return {
+      arClearsTitle: !overlaps(ar, heading),
+      updateClearsTitle: !overlaps(update, heading),
+    }
+  })).toEqual({ arClearsTitle: true, updateClearsTitle: true })
+
+  await tap(page.locator('#hangar-panel [data-back]'))
+  const updateLayout = await page.evaluate(() => {
+    document.querySelector('#sw-update-banner')?.classList.remove('hidden')
+    document.querySelector('#game-root')?.classList.add('sw-update-visible')
+    const update = document.querySelector('#sw-update-banner')?.getBoundingClientRect()
+    const ar = document.querySelector('#ar-btn')?.getBoundingClientRect()
+    const mute = document.querySelector('#mute-btn')?.getBoundingClientRect()
+    const installButton = document.querySelector('#install-btn')
+    const install = installButton?.getBoundingClientRect()
+    const installHidden = installButton ? getComputedStyle(installButton).visibility === 'hidden' : true
+    const menuContent = [
+      document.querySelector('#menu .logo'),
+      document.querySelector('#menu h1'),
+      document.querySelector('#menu .menu-section'),
+      document.querySelector('#menu .name-row'),
+    ].map((element) => element?.getBoundingClientRect()).filter(Boolean)
+    const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top)
+    return {
+      clearsMenuContent: Boolean(update && menuContent.every((rect) => !overlaps(update, rect))),
+      clearsUtilities: !overlaps(update, ar) && !overlaps(update, mute) && (installHidden || !overlaps(update, install)),
+      installDeferred: installHidden,
+    }
+  })
+  expect(updateLayout).toEqual({ clearsMenuContent: true, clearsUtilities: true, installDeferred: true })
+})
+
 test('game-over summarizes banked rewards and the next action', async ({ page }) => {
   await openApp(page, '/#test-gameover')
   await waitForGameText(page)
@@ -1103,6 +1183,15 @@ test('mobile Hangar tabs reset the shared scroll position', async ({ page }, tes
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await page.evaluate(() => document.fonts.ready)
+
+  const progressTabsFit = await page.locator('.hangar-tabs').evaluate((tabs) => {
+    const visibleTabs = [...tabs.querySelectorAll('.hangar-tab')].filter((tab) => tab.getClientRects().length > 0)
+    const tabsRect = tabs.getBoundingClientRect()
+    return visibleTabs.every((tab) => tab.getBoundingClientRect().right <= tabsRect.right + 1)
+  })
+  expect(progressTabsFit).toBe(true)
+  await expect(page.locator('.upgrade-card[data-upgrade-id="handling"] .u-buy')).toHaveCSS('opacity', '1')
 
   const hangarBody = page.locator('.hangar-body')
   await hangarBody.evaluate((element) => {

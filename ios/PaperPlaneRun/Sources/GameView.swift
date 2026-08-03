@@ -84,6 +84,14 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         // never shipped in any iOS WebKit), so the same game code that already
         // calls Haptic.* on the web gets real Taptic Engine feedback here.
         contentController.add(self, name: "haptics")
+        // Mark the bundled build as native before its shell renders. This
+        // keeps browser-only PWA affordances (Install / web update prompts)
+        // out of the App Store-style wrapper without forking the web app.
+        contentController.addUserScript(WKUserScript(
+            source: "document.documentElement.classList.add('native-shell')",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
         #if DEBUG
         // Forwards the web build's console.* calls to Xcode's console, since
         // there's no attached Safari Web Inspector session by default. Debug

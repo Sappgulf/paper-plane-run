@@ -1621,7 +1621,6 @@ function preloadEngine() {
       engineFailed = true
       engineFailureRequiresReload = Boolean(error?.requiresReload)
       console.warn('Flight engine preload failed', error)
-      restoreActionableMenu()
       showEngineFailure(error, 'Couldn’t prepare your plane. Check your connection and retry.')
     })
 }
