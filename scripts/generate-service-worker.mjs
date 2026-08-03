@@ -9,6 +9,27 @@ function walk(directory) {
   })
 }
 
+// These are legacy, high-cost duplicates with confirmed runtime replacements.
+// They remain in the deploy output for compatibility, but should not be
+// downloaded into every install's offline cache.
+export const PRECACHE_EXCLUDED_FILES = new Set([
+  'assets/paper-world-backdrop.png',
+  'assets/zone-stamp-sheet.png',
+  'assets/ambient-car-v2.png',
+  'assets/ambient-person-v2.png',
+  'assets/ambient/delivery-truck-v2.png',
+  'assets/ambient/rooftop-person-v2.png',
+  'assets/bosses/scissors.png',
+  'assets/bosses/scissors.webp',
+  'assets/bosses/scissors-v2.png',
+  'assets/bosses/stapler.png',
+  'assets/bosses/stapler.webp',
+  'assets/bosses/stapler-v2.png',
+  'assets/bosses/wind.png',
+  'assets/bosses/wind.webp',
+  'assets/bosses/wind-v2.png',
+])
+
 export function buildPrecacheManifest(directory) {
   const root = resolve(directory)
   const files = walk(root)
@@ -18,6 +39,7 @@ export function buildPrecacheManifest(directory) {
       const rel = relative(root, path).split(sep).join('/')
       // Build tooling only — not needed for offline play
       if (rel === 'manifest.json' || rel.startsWith('.vite/')) return false
+      if (PRECACHE_EXCLUDED_FILES.has(rel)) return false
       return true
     })
     .sort()

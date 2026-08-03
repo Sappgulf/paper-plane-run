@@ -55,4 +55,14 @@ describe('Journey pilot mastery', () => {
     expect(loadMastery(localStorage)).toEqual({ mastery: createMasteryState(), recovered: true })
     expect(localStorage.getItem('unrelated')).toBe('keep')
   })
+
+  it('reports blocked mastery storage without throwing', () => {
+    const blocked = {
+      getItem: () => { throw new Error('blocked') },
+      setItem: () => { throw new Error('blocked') },
+      removeItem: () => { throw new Error('blocked') },
+    }
+    expect(loadMastery(blocked)).toEqual({ mastery: createMasteryState(), recovered: false, storageError: true })
+    expect(saveMastery(blocked, createMasteryState())).toBe(false)
+  })
 })

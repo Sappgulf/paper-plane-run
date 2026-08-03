@@ -3,7 +3,7 @@
  * Each achievement has ordered tiers; clearing a tier's threshold lets the
  * player claim a one-time wallet-star reward.
  */
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const DIST_KEY = 'paper-plane-run-lifetime-distance'
 const RUNS_KEY = 'paper-plane-run-total-runs'
@@ -12,27 +12,27 @@ const FEVER_KEY = 'paper-plane-run-lifetime-fever'
 const CLAIMED_KEY = 'paper-plane-run-achievements-claimed'
 
 export function getLifetimeDistance() {
-  return Number(localStorage.getItem(DIST_KEY) || 0)
+  return Number(safeValue(DIST_KEY) || 0)
 }
 export function addLifetimeDistance(m) {
   if (!(m > 0)) return
   safeSetItem(DIST_KEY, String(getLifetimeDistance() + Math.floor(m)))
 }
 export function getRunCount() {
-  return Number(localStorage.getItem(RUNS_KEY) || 0)
+  return Number(safeValue(RUNS_KEY) || 0)
 }
 export function incrementRunCount() {
   safeSetItem(RUNS_KEY, String(getRunCount() + 1))
 }
 export function getLifetimePopped() {
-  return Number(localStorage.getItem(POPPED_KEY) || 0)
+  return Number(safeValue(POPPED_KEY) || 0)
 }
 export function addLifetimePopped(n) {
   if (!(n > 0)) return
   safeSetItem(POPPED_KEY, String(getLifetimePopped() + Math.floor(n)))
 }
 export function getLifetimeFever() {
-  return Number(localStorage.getItem(FEVER_KEY) || 0)
+  return Number(safeValue(FEVER_KEY) || 0)
 }
 export function addLifetimeFever(n) {
   if (!(n > 0)) return
@@ -41,7 +41,7 @@ export function addLifetimeFever(n) {
 
 function loadClaimed() {
   try {
-    return JSON.parse(localStorage.getItem(CLAIMED_KEY) || '{}')
+    return JSON.parse(safeValue(CLAIMED_KEY) || '{}')
   } catch {
     return {}
   }

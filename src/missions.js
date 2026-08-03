@@ -1,5 +1,5 @@
 import { dailyKey, dailySeed, mulberry32 } from './rng.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const KEY = 'paper-plane-run-missions'
 
@@ -19,7 +19,7 @@ const TEMPLATES = [
 
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}')
+    return JSON.parse(safeValue(KEY) || '{}')
   } catch {
     return {}
   }

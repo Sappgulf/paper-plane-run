@@ -7,7 +7,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -75,18 +75,31 @@
       <button id="pause-btn" type="button" class="icon-btn pause-btn hidden" title="Pause" aria-label="Pause flight">❚❚</button>
       <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install" aria-label="Install Paper Plane Run">⬇️</button>
 
-      <div id="install-hint" class="hidden" role="dialog" aria-label="Install Paper Plane Run">
+      <div id="confirm-dialog" class="hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+        <div class="confirm-card">
+          <div class="confirm-icon">✦</div>
+          <h3 id="confirm-title">Are you sure?</h3>
+          <p id="confirm-message"></p>
+          <div class="btn-row wrap confirm-actions">
+            <button id="confirm-cancel" type="button" class="btn-secondary" data-confirm-action="cancel">Not yet</button>
+            <button id="confirm-accept" type="button" class="cta-main cta-inline confirm-danger" data-confirm-action="accept">Continue</button>
+          </div>
+        </div>
+      </div>
+      <div id="install-hint" class="hidden" role="dialog" aria-modal="true" aria-labelledby="install-hint-title">
         <div class="install-hint-card">
           <div class="install-hint-icon">✈️</div>
-          <h3>Add to Home Screen</h3>
+          <h3 id="install-hint-title">Add to Home Screen</h3>
           <p id="install-hint-body">Tap <b>Share</b>, then <b>Add to Home Screen</b> for a fullscreen, offline-ready app.</p>
           <button id="install-hint-close" type="button" class="cta-main install-hint-btn">Got it</button>
         </div>
       </div>
       <div id="sw-update-banner" class="hidden" role="status" aria-live="polite">
-        <span>New version ready</span>
+        <span id="sw-update-message">New version ready</span>
         <button id="sw-update-btn" type="button">Restart</button>
       </div>
+      <div id="network-status" class="hidden" role="status" aria-live="polite"></div>
+      <div id="shell-status" class="hidden" role="status" aria-live="polite"></div>
       <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR" aria-label="Desk AR camera">📷</button>
 
       <div id="banner-stack">
@@ -109,7 +122,7 @@
         <div id="wind-stick-base"><div id="wind-stick-knob"></div></div>
         <p class="stick-hint">Wind</p>
       </div>
-      <button id="fire-btn" type="button" class="hidden" title="Ink Blast (X)">🖋️</button>
+      <button id="fire-btn" type="button" class="hidden" title="Ink Blast (X)" aria-label="Ink Blast — press X">🖋️</button>
 
       <!-- MAIN MENU -->
       <div id="menu" class="panel menu-panel">
@@ -244,9 +257,10 @@
               <div class="tab-row">
                 <button type="button" class="tab active" data-board="local">Device</button>
                 <button type="button" class="tab" data-board="daily">Daily</button>
-                <button type="button" class="tab" data-board="remote">Global</button>
+                <button type="button" class="tab" data-board="remote" title="Shared live board; scores may reset if the remote service restarts">Global · live</button>
                 <button type="button" class="tab" data-board="timeattack">⏱&nbsp;Time Attack</button>
               </div>
+              <p id="board-status" class="share-status" role="status" aria-live="polite"></p>
               <ol id="board-list" class="list-card board-list"></ol>
             </section>
             <section id="tab-settings" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-settings">
@@ -314,9 +328,9 @@
         </div>
       </div>
 
-      <div id="pause-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Flight paused">
+      <div id="pause-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
         <div class="pause-card">
-          <h2>Paused</h2>
+          <h2 id="pause-title">Paused</h2>
           <p class="detail">Take a breath — the paper sky can wait.</p>
           <button id="pause-resume" type="button" class="cta-main">▶ Resume</button>
           <div class="btn-row wrap pause-actions">
@@ -326,7 +340,7 @@
         </div>
       </div>
 
-      <div id="gameover" class="panel menu-panel hidden">
+      <div id="gameover" class="panel menu-panel hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
         <div class="menu-card">
           <h2 id="gameover-title">Crashed!</h2>
           <p id="new-best-badge" class="new-best-badge hidden">🏆 New Best!</p>
@@ -342,7 +356,7 @@
           </div>
           <div id="photo-wrap" class="photo-wrap hidden">
             <div class="polaroid">
-              <img id="photo-img" alt="Crash photo" />
+              <img id="photo-img" alt="Flight recap" />
               <p id="photo-caption"></p>
             </div>
             <div class="btn-row wrap">

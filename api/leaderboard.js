@@ -1,7 +1,8 @@
 /**
- * Lightweight global leaderboard for Vercel serverless.
- * In-memory per warm instance + best-effort durability via response merge.
- * Clients also keep a local leaderboard.
+ * Lightweight shared leaderboard for Vercel serverless.
+ * Scores are in-memory for the lifetime of a warm instance. The client
+ * labels that honestly as best-effort; durable history needs an external
+ * store and is intentionally outside this no-new-backend polish pass.
  */
 
 const g = globalThis
@@ -48,10 +49,10 @@ export default async function handler(req, res) {
     if (daily) {
       const key = `${dayKey()}|${mode}`
       const list = board.daily[key] || []
-      return res.status(200).json({ source: 'remote', daily: true, mode, day: dayKey(), scores: list })
+      return res.status(200).json({ source: 'remote', durability: 'warm-instance', freshness: 'best-effort', daily: true, mode, day: dayKey(), scores: list })
     }
     const scores = board.all.filter((s) => s.mode === mode).slice(0, 15)
-    return res.status(200).json({ source: 'remote', daily: false, mode, scores })
+    return res.status(200).json({ source: 'remote', durability: 'warm-instance', freshness: 'best-effort', daily: false, mode, scores })
   }
 
   if (req.method === 'POST') {

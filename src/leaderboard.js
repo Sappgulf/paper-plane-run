@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
@@ -11,7 +11,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 function load(key) {
   try {
-    return JSON.parse(localStorage.getItem(key) || '[]')
+    return JSON.parse(safeValue(key) || '[]')
   } catch {
     return []
   }
@@ -19,6 +19,16 @@ function load(key) {
 
 function save(key, rows) {
   safeSetItem(key, JSON.stringify(rows.slice(0, 20)))
+}
+
+async function fetchRemote(url, options) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey }) {
@@ -75,7 +85,7 @@ export function getDailyTop(dailyKey, mode, limit = 10) {
 export async function fetchRemoteTop(mode = 'normal', daily = false) {
   try {
     const q = new URLSearchParams({ mode, daily: daily ? '1' : '0' })
-    const res = await fetch(`${API_BASE}/api/leaderboard?${q}`)
+    const res = await fetchRemote(`${API_BASE}/api/leaderboard?${q}`)
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -85,7 +95,7 @@ export async function fetchRemoteTop(mode = 'normal', daily = false) {
 
 export async function submitRemoteScore(entry) {
   try {
-    const res = await fetch(`${API_BASE}/api/leaderboard`, {
+    const res = await fetchRemote(`${API_BASE}/api/leaderboard`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),

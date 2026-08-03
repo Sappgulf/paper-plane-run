@@ -89,7 +89,10 @@ import {
   getWaveSpacing,
   normalizeControlAxes,
 } from './game/pacing.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { getSafeStorage, safeSetItem, safeValue } from './game/safe-storage.js'
+import { clearFlightPresentation } from './game/flight-presentation.js'
+import { focusFirst } from './game/modal-focus.js'
+import { getRecapCopy, isCleanEndReason } from './game/recap-copy.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -98,7 +101,7 @@ import {
   selectJourneyRoute,
 } from './journey.js'
 import { applyJourneyRewardOnce, loadJourney, saveJourney } from './journey-storage.js'
-import { savePostcardOnce } from './journey-postcards.js'
+import { loadPostcardAlbum, savePostcardOnce } from './journey-postcards.js'
 import { cosmeticLabel, renderJourneyResultProgress } from './journey-ui.js'
 import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
@@ -475,17 +478,27 @@ const dailyHint = $('daily-hint')
 const pilotNameInput = $('pilot-name')
 let shellBridge = null
 
+function readJourneySave() {
+  const result = loadJourney(storage)
+  if (result.storageError) {
+    shellBridge?.showPersistenceStatus?.('Local Journey progress is unavailable. You can still fly, but this route may not persist.')
+  }
+  return result.journey
+}
+
 let audio = new GameAudio()
 if (muteBtn) muteBtn.textContent = audio.muted ? '🔇' : '🔊'
 
 // Settings / season / AR / analytics
 let settings = loadSettings()
 let nativePerformanceSignal = normalizeNativePerformanceSignal()
+const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches && navigator.maxTouchPoints > 0
 let renderQuality = getAdaptiveQuality({
   status: 'warming',
   devicePixelRatio,
   lowPower: settings.lowPower,
   nativeSignal: nativePerformanceSignal,
+  touchPrimary: isTouchPrimary,
 })
 const frameHealth = createFrameHealthMonitor({
   onChange(snapshot) {
@@ -501,6 +514,7 @@ function refreshUpgradeEffects() {
 applyDocumentA11y(settings)
 const deskAR = new DeskAR()
 let season = seasonInfo(settings.forceSeason)
+let seasonNoticeShown = false
 track('session_start', { season: season.id, dpr: devicePixelRatio })
 
 // Distance milestones for funnel
@@ -540,21 +554,22 @@ const DIFFS = {
 }
 const DIFF_KEY = 'paper-plane-run-diff'
 const BEST_PREFIX = 'paper-plane-run-best-'
+const storage = getSafeStorage()
 
 function loadBest(id) {
   if (id === 'normal') {
-    const legacy = localStorage.getItem('paper-plane-run-best')
-    if (legacy && !localStorage.getItem(BEST_PREFIX + id)) {
+    const legacy = safeValue('paper-plane-run-best', storage)
+    if (legacy && !safeValue(BEST_PREFIX + id, storage)) {
       safeSetItem(BEST_PREFIX + id, legacy)
     }
   }
-  return Number(localStorage.getItem(BEST_PREFIX + id) || 0)
+  return Number(safeValue(BEST_PREFIX + id, storage) || 0)
 }
 function saveBest(id, v) {
   safeSetItem(BEST_PREFIX + id, String(v))
 }
 
-let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
+let difficulty = DIFFS[safeValue(DIFF_KEY, storage)] || DIFFS.normal
 let bestDistance = loadBest(difficulty.id)
 let bestTimeAttackStars = loadBest('timeattack-stars')
 if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
@@ -591,9 +606,11 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 /** @type {'classic'|'daily'|'tutorial'|'hotseat'|'layout'|'journey'} */
 let runKind = 'classic'
-let journey = loadJourney(localStorage).journey
+const initialJourneyLoad = loadJourney(storage)
+const initialMasteryLoad = loadMastery(storage)
+let journey = initialJourneyLoad.journey
 let journeyRunConfig = null
-let mastery = loadMastery(localStorage).mastery
+let mastery = initialMasteryLoad.mastery
 let journeyTimeline = null
 let journeyTelemetry = null
 let journeyRouteProof = null
@@ -630,7 +647,7 @@ let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
 let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
-let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
+let tutorialDone = safeValue('paper-plane-run-tutorial', storage) === '1'
 let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
 let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
@@ -695,12 +712,6 @@ function configureDevUpgradeProof(proof = devUpgradeProof) {
   history.replaceState({}, '', location.pathname)
 }
 
-// "Mouse" mode's copy ("Move cursor…") and 🖱 icon read as confusing on a
-// touch-only tablet like an iPad, where there's no cursor and the same
-// mode is actually driven by dragging a finger. Relabel it for touch
-// devices without touching the underlying 'mouse' setting value.
-const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches && navigator.maxTouchPoints > 0
-
 // ---------------------------------------------------------------------------
 // Three.js setup
 // ---------------------------------------------------------------------------
@@ -732,6 +743,7 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
     devicePixelRatio,
     lowPower: settings.lowPower,
     nativeSignal: nativePerformanceSignal,
+    touchPrimary: isTouchPrimary,
   })
   renderer.setPixelRatio(renderQuality.pixelRatio)
   renderer.setSize(innerWidth, innerHeight, false)
@@ -774,11 +786,28 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 40
 // rendering flat/near-black — this scene never had any environment lighting,
 // which is why metalness had to be kept very low everywhere as a workaround.
 // Skipped in low-power mode: it's a one-time cost, not per-frame, but the
-// PMREM render pass itself is non-trivial on weak/mobile GPUs.
-if (!settings.lowPower) {
+// PMREM render pass itself is non-trivial on weak/mobile GPUs. Schedule it
+// after boot so the menu becomes usable before this optional visual pass runs.
+function installSceneEnvironment() {
+  if (settings.lowPower || scene.environment) return
   const pmrem = new THREE.PMREMGenerator(renderer)
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
   pmrem.dispose()
+}
+
+if (!settings.lowPower) {
+  const scheduleEnvironment = () => {
+    // Never put the one-time PMREM pass on the first flight's critical path.
+    // If the pilot has already started, wait until the run returns to a shell.
+    if (state === 'playing') {
+      window.setTimeout(scheduleEnvironment, 1500)
+      return
+    }
+    installSceneEnvironment()
+  }
+  // Give the shell a short, stable window to become interactive before
+  // spending GPU time on optional reflections.
+  window.setTimeout(scheduleEnvironment, 10000)
 }
 
 // Every asset path in this file is authored as a root-absolute string
@@ -2575,6 +2604,7 @@ let simulationPaused = false
 let manualPause = false
 const pauseOverlay = $('pause-overlay')
 const pauseBtn = $('pause-btn')
+let pauseFocusReturn = null
 let distance = 0
 let stars = 0
 let speed = 28
@@ -3929,7 +3959,7 @@ if (stickZone && stickBase) {
 
 // Input
 function retryCurrentRun() {
-  if (runKind === 'journey') journey = loadJourney(localStorage).journey
+  if (runKind === 'journey') journey = readJourneySave()
   if (runKind === 'journey' && !journey?.selectedRouteId) {
     openJourney()
     return
@@ -3944,6 +3974,13 @@ function syncPauseUi() {
   if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
   const muteLabel = $('pause-mute')
   if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
+}
+
+function restorePauseFocus(target) {
+  if (!target?.isConnected || target.closest?.('.hidden')) return
+  requestAnimationFrame(() => {
+    if (!target.closest?.('.hidden')) target.focus?.()
+  })
 }
 
 function applyPauseState({ banner = true } = {}) {
@@ -3973,8 +4010,19 @@ function applyPauseState({ banner = true } = {}) {
 
 function setManualPause(on) {
   if (state !== 'playing' && on) return
-  manualPause = Boolean(on)
+  const next = Boolean(on)
+  if (next) {
+    pauseFocusReturn = document.activeElement?.focus ? document.activeElement : null
+  }
+  const focusReturn = next ? null : pauseFocusReturn
+  if (!next) pauseFocusReturn = null
+  manualPause = next
   applyPauseState()
+  if (next) {
+    requestAnimationFrame(() => focusFirst(pauseOverlay))
+  } else {
+    restorePauseFocus(focusReturn)
+  }
 }
 
 window.addEventListener('keydown', (e) => {
@@ -4038,6 +4086,11 @@ window.addEventListener(
 // Shell bridge and runtime-only controls
 // ---------------------------------------------------------------------------
 function hideAllPanels() {
+  clearFlightPresentation()
+  notifications.clear()
+  bannerTimer = 0
+  zoneBannerTimer = 0
+  pauseFocusReturn = null
   for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
     $(id)?.classList.add('hidden')
   }
@@ -4054,7 +4107,10 @@ function showMenu() {
   pauseOverlay?.classList.add('hidden')
   pauseBtn?.classList.add('hidden')
   if (shellBridge?.showMenu) shellBridge.showMenu()
-  else menuEl?.classList.remove('hidden')
+  else {
+    menuEl?.classList.remove('hidden')
+    requestAnimationFrame(() => focusFirst(menuEl))
+  }
   hudEl?.classList.add('hidden')
   if (speedFxEl) speedFxEl.style.opacity = '0'
   hideEdgeIndicators()
@@ -4194,7 +4250,7 @@ async function startGame(kind = 'classic', opts = {}) {
     if (opts.shellBridge) shellBridge = opts.shellBridge
     const settingsResult = await syncRuntimeSettings(opts.settings || loadSettings())
     shellBridge?.settingsApplied?.(settingsResult)
-    setDifficulty(localStorage.getItem(DIFF_KEY) || 'normal', { persist: false })
+    setDifficulty(safeValue(DIFF_KEY, storage) || 'normal', { persist: false })
     // Finish deferred death rewards if restarting mid-crash
     if (state === 'dead' && crashT > 0) {
       crashT = 0
@@ -4203,7 +4259,7 @@ async function startGame(kind = 'classic', opts = {}) {
     void audio.unlock()
     audio.uiClick()
     runKind = kind
-    if (kind === 'journey') journey = loadJourney(localStorage).journey
+    if (kind === 'journey') journey = readJourneySave()
     journeyRunConfig = kind === 'journey' ? (opts.journeyConfig || buildRunConfiguration(journey)) : null
     if (kind === 'journey' && !journeyRunConfig) {
       openJourney()
@@ -4220,6 +4276,10 @@ async function startGame(kind = 'classic', opts = {}) {
     manualPause = false
     resetGame()
     state = 'playing'
+    if (!seasonNoticeShown && season.id !== 'default' && challengeToast) {
+      seasonNoticeShown = true
+      notifications.show(`✦ ${season.name} event — free seasonal skins!`, { duration: 5000 })
+    }
     // Hydrate the route strip immediately so the shell never exposes an
     // empty risk/stamp label during the first lazy-engine frame.
     updateFlightReadability(runKind === 'journey' ? { zone: activeZoneAt(0), t: 1, next: null } : null)
@@ -4313,8 +4373,12 @@ function buildRecapCard() {
 
 function capturePhoto() {
   try {
+    const copy = getRecapCopy(crashReason)
     lastPhotoDataUrl = buildRecapCard()
     photoImg.src = lastPhotoDataUrl
+    photoImg.alt = copy.imageAlt
+    $('photo-save').textContent = copy.saveLabel
+    $('photo-share').textContent = copy.shareLabel
     photoCaption.textContent = runKind === 'timeattack'
       ? `${stars}★ in 60s · ${difficulty.label}`
       : `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
@@ -4375,7 +4439,7 @@ function die(reason) {
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
   // clock running out. Neither should be absorbed by shield/guardian, and
   // neither plays the tumble-crash animation.
-  const isCleanEnd = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
+  const isCleanEnd = isCleanEndReason(reason)
 
   // Invulnerability (after shield break / boost start)
   if (invuln > 0 && !isCleanEnd) return
@@ -4506,6 +4570,7 @@ function finalizeDeath() {
     finalDetailEl.textContent = crashReason || ''
     hudEl.classList.add('hidden')
     gameoverEl.classList.remove('hidden')
+    requestAnimationFrame(() => focusFirst(gameoverEl))
   }
   crashT = -1
 }
@@ -4513,7 +4578,7 @@ function finalizeDeath() {
 const HANGAR_ONBOARD_KEY = 'paper-plane-run-hangar-onboard'
 
 function maybeShowHangarOnboarding(reason, summary) {
-  if (localStorage.getItem(HANGAR_ONBOARD_KEY) === '1') return
+  if (safeValue(HANGAR_ONBOARD_KEY, storage) === '1') return
   const tutorialJustDone = reason === 'Tutorial complete!'
   const wallet = summary?.walletAfterRun ?? getWallet()
   const canBuy = listUpgrades().some((upgrade) => upgrade.canAfford)
@@ -4571,6 +4636,10 @@ function renderRunSummary(summary) {
 
 function finalizeDeathUnsafe() {
   manualPause = false
+  clearFlightPresentation()
+  notifications.clear()
+  bannerTimer = 0
+  zoneBannerTimer = 0
   pauseOverlay?.classList.add('hidden')
   pauseBtn?.classList.add('hidden')
   if (speedFxEl) speedFxEl.style.opacity = '0'
@@ -4582,7 +4651,7 @@ function finalizeDeathUnsafe() {
   guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
-  const isWin = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
+  const isWin = isCleanEndReason(reason)
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack' && runKind !== 'journey'
@@ -4622,7 +4691,7 @@ function finalizeDeathUnsafe() {
       ? Math.max(0, Math.round(stars * (journeyRunConfig.rewardMultiplier - 1)))
       : 0
     const rewardId = `${journeyRunConfig.attemptId}:bonus`
-    if (journeyBonus > 0 && applyJourneyRewardOnce(localStorage, { id: rewardId })) {
+    if (journeyBonus > 0 && applyJourneyRewardOnce(storage, { id: rewardId })) {
       addLifetimeStars(journeyBonus)
       addWallet(journeyBonus)
     } else if (journeyBonus > 0) journeyBonus = 0
@@ -4654,7 +4723,9 @@ function finalizeDeathUnsafe() {
       masteryLevel: masteryAfter?.level || 0,
       decorationIds: Object.freeze([...(masteryAfter?.cosmetics || [])]),
     })
-    try { saveMastery(localStorage, mastery) } catch (error) { console.warn('Journey mastery save failed', error) }
+    if (!saveMastery(storage, mastery)) {
+      shellBridge?.showPersistenceStatus?.('Journey mastery could not be saved. Keep this tab open and try again later.')
+    }
     lastJourneyResult = Object.freeze({
       outcome: journeyOutcome,
       objectiveResult,
@@ -4663,9 +4734,17 @@ function finalizeDeathUnsafe() {
       unlockedCosmetic: masteryAfter?.cosmetics.find((id) => !masteryBefore?.cosmetics.includes(id)) || null,
     })
     journey = resolveJourneyFlight(journey, journeyOutcome)
-    saveJourney(localStorage, journey)
-    if (journey.postcard && savePostcardOnce(localStorage, journey.postcard)) {
+    if (!saveJourney(storage, journey)) {
+      shellBridge?.showPersistenceStatus?.('Journey progress could not be saved. Your completed flight is still shown, but keep this tab open.')
+    }
+    const postcardSaved = journey.postcard && savePostcardOnce(storage, journey.postcard)
+    if (postcardSaved) {
       track('journey_postcard_completed', { journeyId: journey.id, rivalBeaten: journey.postcard.rivalBeaten })
+    } else if (journey.postcard) {
+      const existing = loadPostcardAlbum(storage)
+      if (!existing.some((card) => card.id === journey.postcard.id)) {
+        shellBridge?.showPersistenceStatus?.('Your Journey postcard could not be saved. The route result is still available.')
+      }
     }
     track(completedJourneyRoute ? 'journey_flight_completed' : 'journey_flight_crashed', {
       journeyId: journey.id,
@@ -4800,6 +4879,7 @@ function finalizeDeathUnsafe() {
   windBanner.classList.add('hidden')
   powerBanner.classList.add('hidden')
   shareStatus.textContent = ''
+  requestAnimationFrame(() => focusFirst(gameoverEl))
 }
 
 // ---------------------------------------------------------------------------
@@ -5176,7 +5256,7 @@ function update(dt) {
   if (state === 'dead') {
     hideFlightReadability()
     // Dramatic crash: tumble, drop, paper spin
-    const isWin = crashReason === 'Tutorial complete!' || crashReason === "Time's up!" || crashReason === 'Journey route complete!'
+    const isWin = isCleanEndReason(crashReason)
     if (!isWin) {
       plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
       plane.rotation.x += dt * 2.2
@@ -6092,7 +6172,8 @@ document.addEventListener('visibilitychange', () => {
   applyPauseState()
 })
 function frame() {
-  if (!simulationPaused) {
+  const pageVisible = document.visibilityState !== 'hidden'
+  if (!simulationPaused && pageVisible) {
     try {
       timer.update()
       const rawDt = Math.min(timer.getDelta(), 0.05)
@@ -6109,10 +6190,12 @@ function frame() {
       console.error('update error', err)
     }
   }
-  try {
-    renderer.render(scene, camera)
-  } catch (err) {
-    console.error('render error', err)
+  if (pageVisible) {
+    try {
+      renderer.render(scene, camera)
+    } catch (err) {
+      console.error('render error', err)
+    }
   }
   requestAnimationFrame(frame)
 }
@@ -6127,11 +6210,6 @@ try {
   }
   if (layoutPlay && dailyHint) {
     dailyHint.textContent = `Custom route loaded: ${layoutPlay.name}`
-  }
-  // Don't clobber a shared-challenge/custom-route toast that's already claimed
-  // this same banner slot — whichever the visitor arrived for should win.
-  if (season.id !== 'default' && challengeToast && challengeToast.classList.contains('hidden')) {
-    notifications.show(`✦ ${season.name} event — free seasonal skins!`, { duration: 5000 })
   }
   void syncRuntimeSettings(settings).catch((error) => console.warn('Initial settings sync failed', error))
 } catch (err) {
@@ -6371,6 +6449,7 @@ if (import.meta.env.DEV && devTestState === '#test-gameover') {
     walletAfterRun: 3,
     affordableUpgrades: [],
   }))
+  requestAnimationFrame(() => focusFirst(gameoverEl))
 }
 
 if (import.meta.env.DEV && devTestState === '#test-obstacles') {

@@ -9,6 +9,16 @@ describe('shell accessibility contracts', () => {
   test('names every utility icon button', () => {
     expect(markup).toMatch(/id="install-btn"[^>]*aria-label="Install Paper Plane Run"/)
     expect(markup).toMatch(/id="ar-btn"[^>]*aria-label="Desk AR camera"/)
+    expect(markup).toMatch(/id="fire-btn"[^>]*aria-label="Ink Blast — press X"/)
+  })
+
+  test('keeps destructive actions and remote freshness inside the app language', () => {
+    expect(markup).toContain('id="confirm-dialog"')
+    expect(shell).toContain('askForAction')
+    expect(shell).not.toContain('confirm(')
+    expect(shell).not.toContain('alert(')
+    expect(markup).toContain('id="board-status"')
+    expect(markup).toContain('may reset if the remote service restarts')
   })
 
   test('exposes Hangar tabs and selected panels as a real tab interface', () => {

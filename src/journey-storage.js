@@ -1,4 +1,5 @@
 import { JOURNEY_VERSION, PILOTS, stepsForChapter } from './journey.js'
+import { getSafeStorage, safeGetItem, safeRemoveItem, safeSetStorageItem } from './game/safe-storage.js'
 
 export const JOURNEY_STORAGE_KEY = 'paper-plane-run-journey-v1'
 export const JOURNEY_RECEIPTS_KEY = 'paper-plane-run-journey-receipts-v1'
@@ -44,9 +45,9 @@ function migrateJourney(value) {
   return value
 }
 
-export function loadUnlockedChapters(storage = localStorage) {
+export function loadUnlockedChapters(storage = getSafeStorage()) {
   try {
-    const raw = JSON.parse(storage.getItem(JOURNEY_CHAPTER_UNLOCK_KEY) || '[1]')
+    const raw = JSON.parse(safeGetItem(storage, JOURNEY_CHAPTER_UNLOCK_KEY).value || '[1]')
     const set = new Set(Array.isArray(raw) ? raw.map(Number).filter((n) => n === 1 || n === 2) : [1])
     set.add(1)
     return [...set].sort()
@@ -55,54 +56,62 @@ export function loadUnlockedChapters(storage = localStorage) {
   }
 }
 
-export function unlockJourneyChapter(storage = localStorage, chapter = 2) {
+export function unlockJourneyChapter(storage = getSafeStorage(), chapter = 2) {
   const unlocked = new Set(loadUnlockedChapters(storage))
   unlocked.add(Number(chapter) === 2 ? 2 : 1)
   const list = [...unlocked].sort()
-  storage.setItem(JOURNEY_CHAPTER_UNLOCK_KEY, JSON.stringify(list))
+  safeSetStorageItem(storage, JOURNEY_CHAPTER_UNLOCK_KEY, JSON.stringify(list))
   return list
 }
 
-export function isChapterUnlocked(storage = localStorage, chapter = 1) {
+export function isChapterUnlocked(storage = getSafeStorage(), chapter = 1) {
   if (chapter === 1) return true
   return loadUnlockedChapters(storage).includes(Number(chapter))
 }
 
-export function loadJourney(storage = localStorage) {
-  const raw = storage.getItem(JOURNEY_STORAGE_KEY)
+export function loadJourney(storage = getSafeStorage()) {
+  const read = safeGetItem(storage, JOURNEY_STORAGE_KEY)
+  if (!read.ok) return { journey: null, recovered: false, storageError: true }
+  const raw = read.value
   if (!raw) return { journey: null, recovered: false }
   try {
     const journey = migrateJourney(JSON.parse(raw))
     if (!validJourney(journey)) throw new Error('Invalid Journey save')
-    storage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
-    return { journey, recovered: false }
+    const normalized = safeSetStorageItem(storage, JOURNEY_STORAGE_KEY, JSON.stringify(journey))
+    return normalized
+      ? { journey, recovered: false }
+      : { journey, recovered: false, storageError: true }
   } catch {
-    storage.removeItem(JOURNEY_STORAGE_KEY)
-    return { journey: null, recovered: true }
+    const removed = safeRemoveItem(storage, JOURNEY_STORAGE_KEY)
+    return removed
+      ? { journey: null, recovered: true }
+      : { journey: null, recovered: true, storageError: true }
   }
 }
 
-export function saveJourney(storage = localStorage, journey) {
+export function saveJourney(storage = getSafeStorage(), journey) {
   if (!validJourney(journey)) return false
-  storage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
+  if (!safeSetStorageItem(storage, JOURNEY_STORAGE_KEY, JSON.stringify(journey))) return false
   // Completing Chapter 1 permanently unlocks Chapter 2.
   if (journey.status === 'complete' && (journey.chapter || 1) === 1) {
     unlockJourneyChapter(storage, 2)
+    if (!isChapterUnlocked(storage, 2)) return false
   }
   return true
 }
 
-export function clearJourney(storage = localStorage) {
-  storage.removeItem(JOURNEY_STORAGE_KEY)
+export function clearJourney(storage = getSafeStorage()) {
+  return safeRemoveItem(storage, JOURNEY_STORAGE_KEY)
 }
 
-export function applyJourneyRewardOnce(storage = localStorage, reward) {
+export function applyJourneyRewardOnce(storage = getSafeStorage(), reward) {
   if (!reward?.id) return false
   let receipts = []
-  try { receipts = JSON.parse(storage.getItem(JOURNEY_RECEIPTS_KEY) || '[]') } catch { receipts = [] }
+  const read = safeGetItem(storage, JOURNEY_RECEIPTS_KEY)
+  if (!read.ok) return false
+  try { receipts = JSON.parse(read.value || '[]') } catch { receipts = [] }
   if (!Array.isArray(receipts)) receipts = []
   if (receipts.includes(reward.id)) return false
   receipts.push(reward.id)
-  storage.setItem(JOURNEY_RECEIPTS_KEY, JSON.stringify(receipts.slice(-200)))
-  return true
+  return safeSetStorageItem(storage, JOURNEY_RECEIPTS_KEY, JSON.stringify(receipts.slice(-200)))
 }

@@ -40,4 +40,12 @@ describe('Journey postcard album', () => {
     localStorage.setItem('paper-plane-run-postcards-v1', '{broken')
     expect(loadPostcardAlbum(localStorage)).toEqual([])
   })
+
+  it('fails softly when the album cannot be written', () => {
+    const blocked = {
+      getItem: () => null,
+      setItem: () => { throw new Error('blocked') },
+    }
+    expect(savePostcardOnce(blocked, { id: 'blocked', journeyId: 'journey' })).toBe(false)
+  })
 })

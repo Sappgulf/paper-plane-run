@@ -52,4 +52,15 @@ describe('Journey storage', () => {
     expect(applyJourneyRewardOnce(localStorage, { id: 'j1:step1', stamps: 1 })).toBe(true)
     expect(applyJourneyRewardOnce(localStorage, { id: 'j1:step1', stamps: 1 })).toBe(false)
   })
+
+  it('reports blocked storage without throwing or inventing a save', () => {
+    const blocked = {
+      getItem: () => { throw new Error('blocked') },
+      setItem: () => { throw new Error('blocked') },
+      removeItem: () => { throw new Error('blocked') },
+    }
+    expect(loadJourney(blocked)).toEqual({ journey: null, recovered: false, storageError: true })
+    expect(saveJourney(blocked, createJourney(8, 1000))).toBe(false)
+    expect(applyJourneyRewardOnce(blocked, { id: 'blocked-reward' })).toBe(false)
+  })
 })

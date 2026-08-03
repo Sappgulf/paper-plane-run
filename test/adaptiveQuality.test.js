@@ -28,6 +28,19 @@ describe('adaptive render quality', () => {
     })).toEqual({ level: 'low', pixelRatio: 1.25, shadows: false, secondaryEffects: false })
   })
 
+  test('warms high-DPR touch devices at medium cost before promoting quality', () => {
+    expect(getAdaptiveQuality({
+      status: 'warming',
+      devicePixelRatio: 3,
+      touchPrimary: true,
+    })).toEqual({ level: 'medium', pixelRatio: 1.5, shadows: false, secondaryEffects: true })
+    expect(getAdaptiveQuality({
+      status: 'stable',
+      devicePixelRatio: 3,
+      touchPrimary: true,
+    }).level).toBe('high')
+  })
+
   test('treats iOS thermal, low-power, and memory pressure as hard low-quality signals', () => {
     for (const nativeSignal of [
       { thermalState: 'serious' },

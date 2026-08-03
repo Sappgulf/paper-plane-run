@@ -64,7 +64,9 @@ import {
   resolveHangarTabForGroup,
 } from './game/hangar-nav.js'
 import { fetchRemoteTop, getDailyTop, getLocalTop, getTimeAttackTop } from './leaderboard.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { getSafeStorage, safeSetItem, safeValue } from './game/safe-storage.js'
+import { clearFlightPresentation } from './game/flight-presentation.js'
+import { focusFirst, trapFocus } from './game/modal-focus.js'
 
 const engineLoader = createEngineLoader()
 const engineStatus = document.getElementById('engine-status')
@@ -77,18 +79,64 @@ const shellAudio = new GameAudio()
 const $ = (id) => document.getElementById(id)
 const muteBtn = $('mute-btn')
 const installBtn = $('install-btn')
+const storage = getSafeStorage()
+const shellStatus = $('shell-status')
+const networkStatus = $('network-status')
+let shellStatusTimer = 0
+
+function showShellStatus(message, persistent = false) {
+  if (!shellStatus) return
+  window.clearTimeout(shellStatusTimer)
+  shellStatus.textContent = message
+  shellStatus.classList.remove('hidden')
+  if (!persistent) {
+    shellStatusTimer = window.setTimeout(() => {
+      shellStatus.classList.add('hidden')
+    }, 7000)
+  }
+}
+
+function reportStorageFailure(message = 'Progress could not be saved. Keep this tab open.') {
+  showShellStatus(message, true)
+}
+
+function saveJourneyState(nextJourney) {
+  const saved = saveJourney(storage, nextJourney)
+  if (saved) shellStatus?.classList.add('hidden')
+  else reportStorageFailure()
+  return saved
+}
+
+function clearJourneyState() {
+  const cleared = clearJourney(storage)
+  if (!cleared) reportStorageFailure('Journey progress could not be cleared. Check storage permissions.')
+  return cleared
+}
+
+function syncNetworkStatus() {
+  if (!networkStatus) return
+  const offline = navigator.onLine === false
+  networkStatus.classList.toggle('hidden', !offline)
+  if (offline) networkStatus.textContent = 'Offline mode · local flights and progress remain available'
+}
+
+window.addEventListener('online', syncNetworkStatus)
+window.addEventListener('offline', syncNetworkStatus)
+syncNetworkStatus()
 
 let settings = loadSettings()
 let season = seasonInfo(settings.forceSeason)
-let journey = loadJourney(localStorage).journey
-let mastery = loadMastery(localStorage).mastery
+const initialJourneyLoad = loadJourney(storage)
+const initialMasteryLoad = loadMastery(storage)
+let journey = initialJourneyLoad.journey
+let mastery = initialMasteryLoad.mastery
 let journeyRunConfig = null
 let postcardFocusReturn = null
 let activePlanePreview = null
 let planePreviewRequest = 0
 const missionBadge = $('mission-badge')
 const pilotNameInput = $('pilot-name')
-let difficulty = { id: localStorage.getItem('paper-plane-run-diff') || 'normal' }
+let difficulty = { id: safeValue('paper-plane-run-diff', storage) || 'normal' }
 
 const DIFFICULTY_COPY = Object.freeze({
   easy: { label: 'Easy', blurb: 'Slower · roomier · more pickups' },
@@ -102,8 +150,14 @@ function resolveAssetUrl(url) {
 
 applyDocumentA11y(settings)
 
+if (initialJourneyLoad.storageError || initialMasteryLoad.storageError) {
+  reportStorageFailure('Local progress is unavailable in this browser. You can still fly, but Journey rewards may not persist.')
+} else if (initialJourneyLoad.recovered || initialMasteryLoad.recovered) {
+  showShellStatus('A damaged progress record was repaired. Your other saves are safe.')
+}
+
 if (pilotNameInput) {
-  pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
+  pilotNameInput.value = safeValue('paper-plane-run-name', storage) || ''
   pilotNameInput.addEventListener('change', () => {
     safeSetItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
   })
@@ -128,6 +182,23 @@ const isIos =
 const installHint = $('install-hint')
 const installHintBody = $('install-hint-body')
 let deferredInstall = null
+let installFocusReturn = null
+
+function openInstallHint() {
+  if (!installHint) return
+  installFocusReturn = document.activeElement?.focus ? document.activeElement : null
+  installHint.classList.remove('hidden')
+  requestAnimationFrame(() => focusFirst(installHint))
+}
+
+function closeInstallHint() {
+  installHint?.classList.add('hidden')
+  const target = installFocusReturn
+  installFocusReturn = null
+  if (target?.isConnected && !target.closest?.('.hidden')) {
+    requestAnimationFrame(() => target.focus())
+  }
+}
 
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault()
@@ -151,12 +222,91 @@ installBtn?.addEventListener('click', async (event) => {
       ? 'Tap the <b>Share</b> icon in Safari\'s toolbar, then <b>Add to Home Screen</b>.'
       : 'Open your browser menu and choose <b>Install app</b> or <b>Add to Home Screen</b>.'
   }
-  installHint?.classList.remove('hidden')
+  openInstallHint()
 })
-$('install-hint-close')?.addEventListener('click', () => installHint?.classList.add('hidden'))
+$('install-hint-close')?.addEventListener('click', closeInstallHint)
 installHint?.addEventListener('click', (event) => {
-  if (event.target === installHint) installHint.classList.add('hidden')
+  if (event.target === installHint) closeInstallHint()
 })
+
+let actionPromptResolver = null
+let actionPromptFocusReturn = null
+
+function closeActionPrompt(accepted = false) {
+  const dialog = $('confirm-dialog')
+  dialog?.classList.add('hidden')
+  const resolve = actionPromptResolver
+  actionPromptResolver = null
+  const target = actionPromptFocusReturn
+  actionPromptFocusReturn = null
+  if (resolve) resolve(accepted)
+  if (target?.isConnected && !target.closest?.('.hidden')) {
+    requestAnimationFrame(() => target.focus())
+  }
+}
+
+function askForAction({ title, message, acceptLabel = 'Continue' } = {}) {
+  const dialog = $('confirm-dialog')
+  if (!dialog) return Promise.resolve(false)
+  if (actionPromptResolver) closeActionPrompt(false)
+  actionPromptFocusReturn = document.activeElement?.focus ? document.activeElement : null
+  $('confirm-title').textContent = title || 'Are you sure?'
+  $('confirm-message').textContent = message || ''
+  $('confirm-accept').textContent = acceptLabel
+  dialog.classList.remove('hidden')
+  requestAnimationFrame(() => focusFirst(dialog))
+  return new Promise((resolve) => {
+    actionPromptResolver = resolve
+  })
+}
+
+$('confirm-dialog')?.addEventListener('click', (event) => {
+  const action = event.target.closest?.('[data-confirm-action]')?.dataset.confirmAction
+  if (action || event.target === event.currentTarget) closeActionPrompt(action === 'accept')
+})
+
+function getOpenModal() {
+  return document.querySelector('[role="dialog"][aria-modal="true"]:not(.hidden)')
+}
+
+function dismissModal(dialog) {
+  if (!dialog) return false
+  if (dialog.id === 'install-hint') {
+    closeInstallHint()
+    return true
+  }
+  if (dialog.id === 'confirm-dialog') {
+    closeActionPrompt(false)
+    return true
+  }
+  if (dialog.id === 'pause-overlay') {
+    $('pause-resume')?.click()
+    return true
+  }
+  if (dialog.id === 'gameover') {
+    $('menu-btn')?.click()
+    return true
+  }
+  const closeAction = dialog.querySelector?.('[data-postcard-action="continue"], [data-postcard-action="close"]')
+  if (closeAction) {
+    closeAction.click()
+    return true
+  }
+  return false
+}
+
+window.addEventListener('keydown', (event) => {
+  const dialog = getOpenModal()
+  if (!dialog) return
+  if (event.key === 'Escape') {
+    if (dismissModal(dialog)) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    return
+  }
+  if (event.key === 'Tab') trapFocus(dialog, event)
+}, true)
 
 function swScriptUrl() {
   const base = import.meta.env.BASE_URL || '/'
@@ -165,6 +315,11 @@ function swScriptUrl() {
 
 let pendingSwWorker = null
 
+function hideSwUpdateBanner() {
+  $('sw-update-banner')?.classList.add('hidden')
+  gameRoot?.classList.remove('sw-update-visible')
+}
+
 function showSwUpdateBanner(worker) {
   const banner = $('sw-update-banner')
   const btn = $('sw-update-btn')
@@ -172,7 +327,10 @@ function showSwUpdateBanner(worker) {
   pendingSwWorker = worker
   // Never interrupt an active flight — only surface on menu/hangar shells.
   if (!$('hud')?.classList.contains('hidden')) return
+  btn.disabled = false
+  btn.textContent = 'Restart'
   banner.classList.remove('hidden')
+  gameRoot?.classList.add('sw-update-visible')
   btn.onclick = () => {
     btn.disabled = true
     btn.textContent = 'Updating…'
@@ -188,7 +346,10 @@ if ('serviceWorker' in navigator) {
   // when this page was already controlled at load time (a real update).
   const wasControlledAtLoad = Boolean(navigator.serviceWorker.controller)
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!wasControlledAtLoad) return
+    if (!wasControlledAtLoad) {
+      hideSwUpdateBanner()
+      return
+    }
     if (refreshing) return
     refreshing = true
     window.location.reload()
@@ -227,6 +388,7 @@ function stopPlanePreview() {
 
 function hideAllPanels() {
   stopPlanePreview()
+  clearFlightPresentation()
   for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
     $(id)?.classList.add('hidden')
   }
@@ -239,11 +401,12 @@ function showMenu() {
   hud?.classList.add('hidden')
   refreshHangarWallet()
   if (pendingSwWorker) showSwUpdateBanner(pendingSwWorker)
+  requestAnimationFrame(() => focusFirst(menu))
 }
 
 function getJourneyStampCount() {
   const stamps = new Set(journey?.earnedStampIds || [])
-  for (const postcard of loadPostcardAlbum(localStorage)) {
+  for (const postcard of loadPostcardAlbum(storage)) {
     for (const stamp of postcard.stampIds || []) stamps.add(stamp)
   }
   return stamps.size
@@ -251,20 +414,20 @@ function getJourneyStampCount() {
 
 function startJourneyChapter(chapter = 1) {
   const chapterId = chapter === 2 ? 2 : 1
-  if (chapterId === 2 && !isChapterUnlocked(localStorage, 2)) {
+  if (chapterId === 2 && !isChapterUnlocked(storage, 2)) {
     // Completing any Chapter 1 postcard unlocks Ch2; also allow if player has stamps.
     if (getJourneyStampCount() < 4) return false
-    unlockJourneyChapter(localStorage, 2)
+    unlockJourneyChapter(storage, 2)
   }
   journey = createJourney(Date.now(), Date.now(), chapterId)
-  saveJourney(localStorage, journey)
+  saveJourneyState(journey)
   track('journey_chapter_started', { chapter: chapterId, journeyId: journey.id })
   return true
 }
 
 function renderJourneyChapterPicker(root) {
   if (!root) return
-  const unlocked = loadUnlockedChapters(localStorage)
+  const unlocked = loadUnlockedChapters(storage)
   const chapter2Open = unlocked.includes(2) || getJourneyStampCount() >= 4
   root.innerHTML = `
     <div class="journey-chapter-picker">
@@ -293,14 +456,14 @@ function renderJourney() {
   renderJourneyMap($('journey-map'), journey)
   renderPilotChoices($('journey-pilots'), journey, getJourneyStampCount(), (pilotId) => {
     journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
-    saveJourney(localStorage, journey)
+    saveJourneyState(journey)
     renderJourney()
   }, mastery)
   const routes = $('journey-route-choices')
   if (journey.status === 'complete') {
     const chapter = journey.chapter || 1
-    const ch2Ready = chapter === 1 || isChapterUnlocked(localStorage, 2) || getJourneyStampCount() >= 4
-    if (chapter === 1) unlockJourneyChapter(localStorage, 2)
+    const ch2Ready = chapter === 1 || isChapterUnlocked(storage, 2) || getJourneyStampCount() >= 4
+    if (chapter === 1) unlockJourneyChapter(storage, 2)
     routes.innerHTML = `
       <div class="journey-empty">
         <span>💌</span>
@@ -339,7 +502,7 @@ function renderJourney() {
     objective: buildRunConfiguration({ ...journey, selectedRouteId: route.id })?.objective,
   })), (routeId) => {
     journey = selectJourneyRoute(journey, routeId)
-    saveJourney(localStorage, journey)
+    saveJourneyState(journey)
     journeyRunConfig = buildRunConfiguration(journey)
     track('journey_route_selected', { routeId, step: journey.stepIndex, chapter: journey.chapter || 1 })
     void startMode('journey', { journeyConfig: journeyRunConfig })
@@ -356,13 +519,27 @@ function openJourney() {
   hideAllPanels()
   renderJourney()
   $('journey-panel')?.classList.remove('hidden')
+  requestAnimationFrame(() => focusFirst($('journey-panel')))
   track('journey_started', { journeyId: journey.id, step: journey.stepIndex })
 }
 
 function closePostcardOverlay(root) {
   root?.classList.add('hidden')
-  postcardFocusReturn?.focus?.()
+  const target = postcardFocusReturn
   postcardFocusReturn = null
+  const returnOverlay = root?.id === 'postcard-detail' ? target?.closest?.('#postcard-reveal') : null
+  if (returnOverlay) {
+    returnOverlay.classList.remove('hidden')
+    requestAnimationFrame(() => {
+      if (!returnOverlay.classList.contains('hidden')) target.focus?.()
+    })
+    return
+  }
+  if (target?.isConnected && !target.closest?.('.hidden')) {
+    requestAnimationFrame(() => {
+      if (!target.closest?.('.hidden')) target.focus?.()
+    })
+  }
 }
 
 async function sharePostcard(card, root) {
@@ -383,7 +560,7 @@ async function sharePostcard(card, root) {
 function openPostcardDetail(card) {
   const root = $('postcard-detail')
   if (!card || !root) return
-  postcardFocusReturn ||= document.activeElement
+  postcardFocusReturn = document.activeElement
   $('postcard-reveal')?.classList.add('hidden')
   renderPostcardDetail(root, card, {
     close: () => closePostcardOverlay(root),
@@ -447,7 +624,23 @@ function syncHangarGroupUi(group = hangarGroup) {
       button.classList.remove('active')
     }
   })
+  syncHangarTabScrollAffordance()
 }
+
+const hangarTabsEl = document.querySelector('.hangar-tabs')
+
+function syncHangarTabScrollAffordance() {
+  if (!hangarTabsEl) return
+  const scrollable = hangarTabsEl.scrollWidth > hangarTabsEl.clientWidth + 1
+  const atStart = hangarTabsEl.scrollLeft <= 1
+  const atEnd = hangarTabsEl.scrollLeft + hangarTabsEl.clientWidth >= hangarTabsEl.scrollWidth - 1
+  hangarTabsEl.classList.toggle('scrollable', scrollable)
+  hangarTabsEl.dataset.hasPrev = String(scrollable && !atStart)
+  hangarTabsEl.dataset.hasNext = String(scrollable && !atEnd)
+}
+
+hangarTabsEl?.addEventListener('scroll', syncHangarTabScrollAffordance, { passive: true })
+window.addEventListener('resize', syncHangarTabScrollAffordance)
 
 function showHangarTab(tab) {
   const nextTab = tab || 'upgrades'
@@ -475,9 +668,10 @@ function showHangarTab(tab) {
   if (nextTab === 'board') renderBoard('local')
   if (nextTab === 'settings') renderSettings()
   if (nextTab === 'stats') renderStats()
-  if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
+  if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(storage), openPostcardDetail)
   if (nextTab === 'editor') setupEditor()
   refreshHangarWallet()
+  requestAnimationFrame(syncHangarTabScrollAffordance)
 }
 
 function setHangarGroup(group) {
@@ -836,8 +1030,13 @@ function renderPrestige() {
     btn.type = 'button'
     btn.className = 'prestige-btn'
     btn.textContent = level > 0 ? 'Prestige again' : 'Prestige'
-    btn.onclick = () => {
-      if (!confirm(`Reset all upgrade levels for a permanent +${nextBonusPercent - bonusPercent}% score & star luck bonus?`)) return
+    btn.onclick = async () => {
+      const accepted = await askForAction({
+        title: level > 0 ? 'Prestige again?' : 'Begin Prestige?',
+        message: `Reset all upgrade levels for a permanent +${nextBonusPercent - bonusPercent}% score & star luck bonus?`,
+        acceptLabel: level > 0 ? 'Prestige again' : 'Prestige',
+      })
+      if (!accepted) return
       const res = doPrestige()
       if (res.ok) {
         shellAudio.uiClick()
@@ -1048,7 +1247,10 @@ function renderStats() {
 
 async function renderBoard(tab = 'local') {
   const list = $('board-list')
+  const status = $('board-status')
+  if (!list) return
   list.innerHTML = ''
+  if (status) status.textContent = tab === 'remote' ? 'Connecting to the shared board…' : ''
   document.querySelectorAll('[data-board]').forEach((t) =>
     t.classList.toggle('active', t.dataset.board === tab),
   )
@@ -1058,9 +1260,19 @@ async function renderBoard(tab = 'local') {
   else if (tab === 'timeattack') rows = getTimeAttackTop(12)
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
-    rows = remote?.scores || []
+    if (!remote) {
+      if (status) status.textContent = 'Shared board unavailable offline. Device scores remain available.'
+      list.innerHTML = '<li>Global scores could not load — try again when connected.</li>'
+      return
+    }
+    if (status) {
+      status.textContent = remote.durability === 'warm-instance'
+        ? 'Shared live board · may reset when the remote service restarts'
+        : 'Shared live board'
+    }
+    rows = remote.scores || []
     if (!rows.length) {
-      list.innerHTML = '<li>No global scores yet — be the first!</li>'
+      list.innerHTML = '<li>No shared scores yet — be the first!</li>'
       return
     }
   }
@@ -1085,6 +1297,10 @@ async function renderBoard(tab = 'local') {
     list.appendChild(li)
   })
 }
+
+document.querySelectorAll('[data-board]').forEach((button) => {
+  button.addEventListener('click', () => { void renderBoard(button.dataset.board) })
+})
 
 // Editor
 let editorLayout = emptyLayout()
@@ -1189,6 +1405,8 @@ function openHangar(tab = 'upgrades', options = {}) {
 
 let pendingStart = null
 let engineFailed = false
+let engineFailureRequiresReload = false
+let startInFlight = null
 
 function applyEngineSettingsResult(result) {
   if (!result?.settings) return
@@ -1199,18 +1417,23 @@ function applyEngineSettingsResult(result) {
   if (arSetting) arSetting.checked = Boolean(settings.arDesk)
   syncShellControlUi()
   if ($('season-now')) $('season-now').textContent = `${season.name} (${season.id})`
-  if (result.arPermissionDenied) alert('Camera permission needed for Desk AR')
+  if (result.arPermissionDenied) {
+    showShellStatus('Camera permission is needed for Desk AR. Enable it in browser settings and try again.')
+  }
 }
 
 async function syncSettingsWithEngine(nextSettings) {
   try {
     const result = await engineLoader.syncSettings(nextSettings)
+    engineFailed = false
+    engineFailureRequiresReload = false
     applyEngineSettingsResult(result)
     return result
   } catch (error) {
     engineFailed = true
+    engineFailureRequiresReload = Boolean(error?.requiresReload)
     console.warn('Flight engine settings sync failed', error)
-    showEngineStatus('Couldn’t apply flight settings. Check your connection and retry.', { retry: true })
+    showEngineFailure(error, 'Couldn’t apply flight settings. Check your connection and retry.')
     return undefined
   }
 }
@@ -1222,45 +1445,76 @@ const shellBridge = Object.freeze({
   showPostcardReveal,
   refreshProgression,
   settingsApplied: applyEngineSettingsResult,
+  showPersistenceStatus: reportStorageFailure,
 })
 
-function showEngineStatus(message, { retry = false } = {}) {
+function showEngineStatus(message, { retry = false, retryLabel = 'Retry' } = {}) {
   if (engineStatusMessage) engineStatusMessage.textContent = message
-  engineRetry?.classList.toggle('hidden', !retry)
+  if (engineRetry) {
+    engineRetry.textContent = retryLabel
+    engineRetry.classList.toggle('hidden', !retry)
+  }
   engineStatus?.classList.remove('hidden')
 }
 
 function hideEngineStatus() {
   engineStatus?.classList.add('hidden')
-  engineRetry?.classList.add('hidden')
+  if (engineRetry) {
+    engineRetry.textContent = 'Retry'
+    engineRetry.classList.add('hidden')
+  }
+}
+
+function showEngineFailure(error, fallbackMessage) {
+  if (error?.requiresReload) {
+    showEngineStatus('Couldn’t start the flight renderer. Reload the app to try again.', {
+      retry: true,
+      retryLabel: 'Reload app',
+    })
+    return
+  }
+  showEngineStatus(fallbackMessage, { retry: true, retryLabel: 'Retry' })
 }
 
 function restoreActionableMenu() {
   showMenu()
 }
 
-async function startMode(kind, options = {}) {
+function startMode(kind, options = {}) {
+  if (startInFlight) return startInFlight
+
   pendingStart = { kind, options }
-  settings = loadSettings()
-  void shellAudio.unlock()
-  showEngineStatus('Preparing your plane...')
-  try {
-    const result = await engineLoader.start(kind, {
-      ...options,
-      settings,
-      engineAudio: shellAudio,
-      shellBridge,
-    })
-    engineFailed = false
-    hideEngineStatus()
-    return result
-  } catch (error) {
-    engineFailed = true
-    console.warn('Flight engine unavailable', error)
-    restoreActionableMenu()
-    showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
-    return undefined
-  }
+  engineFailed = false
+  engineFailureRequiresReload = false
+  startInFlight = (async () => {
+    hideSwUpdateBanner()
+    settings = loadSettings()
+    void shellAudio.unlock()
+    showEngineStatus('Preparing your plane...')
+    try {
+      const result = await engineLoader.start(kind, {
+        ...options,
+        settings,
+        engineAudio: shellAudio,
+        shellBridge,
+      })
+      engineFailed = false
+      engineFailureRequiresReload = false
+      pendingStart = null
+      hideEngineStatus()
+      return result
+    } catch (error) {
+      engineFailed = true
+      engineFailureRequiresReload = Boolean(error?.requiresReload)
+      console.warn('Flight engine unavailable', error)
+      restoreActionableMenu()
+      showEngineFailure(error, 'Couldn’t prepare your plane. Check your connection and retry.')
+      return undefined
+    } finally {
+      startInFlight = null
+    }
+  })()
+  return startInFlight
 }
 
 const modeByButtonId = {
@@ -1274,7 +1528,7 @@ const modeByButtonId = {
 
 const COOP_HINT_KEY = 'paper-plane-run-coop-hint'
 function maybeShowCoopHint() {
-  if (localStorage.getItem(COOP_HINT_KEY) === '1') return
+  if (safeValue(COOP_HINT_KEY, storage) === '1') return
   safeSetItem(COOP_HINT_KEY, '1')
   const hint = $('daily-hint')
   if (hint) {
@@ -1341,9 +1595,13 @@ document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
 })
 
 engineRetry?.addEventListener('click', () => {
+  // A failed dynamic import is cached as a rejected module promise by the
+  // browser, so a same-page import would immediately fail again. Reloading
+  // gives both import and boot failures a clean module graph; the pending
+  // mode keeps the user's original action intact after the reload.
   if (engineFailed) {
     if (pendingStart) {
-      sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart))
+      try { sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart)) } catch { /* retry remains manual */ }
     }
     location.reload()
     return
@@ -1353,12 +1611,19 @@ engineRetry?.addEventListener('click', () => {
 })
 
 function preloadEngine() {
-  engineLoader.preload().catch((error) => {
-    engineFailed = true
-    console.warn('Flight engine preload failed', error)
-    restoreActionableMenu()
-    showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
-  })
+  return engineLoader.preload()
+    .then(() => {
+      engineFailed = false
+      engineFailureRequiresReload = false
+      if (!pendingStart) hideEngineStatus()
+    })
+    .catch((error) => {
+      engineFailed = true
+      engineFailureRequiresReload = Boolean(error?.requiresReload)
+      console.warn('Flight engine preload failed', error)
+      restoreActionableMenu()
+      showEngineFailure(error, 'Couldn’t prepare your plane. Check your connection and retry.')
+    })
 }
 
 function setShellDifficulty(id, { persist = true } = {}) {
@@ -1438,7 +1703,7 @@ syncShellControlUi()
   const hint = $('landscape-hint')
   if (!hint || !isTouchPrimary) return
   const seenKey = 'paper-plane-run-landscape-hint-seen'
-  if (localStorage.getItem(seenKey)) return
+  if (safeValue(seenKey, storage)) return
   if (innerHeight > innerWidth) hint.classList.remove('hidden')
   hint.addEventListener('click', () => {
     hint.classList.add('hidden')
@@ -1447,17 +1712,31 @@ syncShellControlUi()
 })()
 
 $('journey-restart')?.addEventListener('click', () => {
-  if (journey?.status === 'active' && journey.stepIndex > 0 && !confirm('Start a new Journey? Current map progress will be replaced.')) return
-  clearJourney(localStorage)
-  journey = createJourney(Date.now(), Date.now())
-  saveJourney(localStorage, journey)
-  track('journey_restarted', { journeyId: journey.id })
-  renderJourney()
+  const restart = async () => {
+    if (journey?.status === 'active' && journey.stepIndex > 0) {
+      const accepted = await askForAction({
+        title: 'Start a new Journey?',
+        message: 'Current map progress will be replaced. Completed postcard stamps stay safe.',
+        acceptLabel: 'Start new Journey',
+      })
+      if (!accepted) return
+    }
+    if (!clearJourneyState()) return
+    const nextJourney = createJourney(Date.now(), Date.now())
+    if (!saveJourneyState(nextJourney)) return
+    journey = nextJourney
+    track('journey_restarted', { journeyId: journey.id })
+    renderJourney()
+  }
+  void restart()
 })
 
 function refreshProgression() {
-  journey = loadJourney(localStorage).journey
-  mastery = loadMastery(localStorage).mastery
+  const journeyLoad = loadJourney(storage)
+  const masteryLoad = loadMastery(storage)
+  journey = journeyLoad.journey
+  mastery = masteryLoad.mastery
+  if (journeyLoad.storageError || masteryLoad.storageError) reportStorageFailure('Local progress is unavailable in this browser. You can still fly, but Journey rewards may not persist.')
   refreshMissionBadge()
   refreshHangarWallet()
 }
@@ -1506,9 +1785,10 @@ function consumeLaunchMode() {
   return false
 }
 
-const retryRequest = sessionStorage.getItem('paper-plane-engine-retry')
+let retryRequest = null
+try { retryRequest = sessionStorage.getItem('paper-plane-engine-retry') } catch { /* no session storage */ }
 if (retryRequest) {
-  sessionStorage.removeItem('paper-plane-engine-retry')
+  try { sessionStorage.removeItem('paper-plane-engine-retry') } catch { /* ignore */ }
   try {
     const request = JSON.parse(retryRequest)
     queueMicrotask(() => startMode(request.kind, request.options))

@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const PREFIX = 'paper-plane-run-ghost-'
 
@@ -21,7 +21,7 @@ export function createGhostRecorder() {
 
 export function loadGhost(mode) {
   try {
-    const raw = localStorage.getItem(PREFIX + mode)
+    const raw = safeValue(PREFIX + mode)
     if (!raw) return null
     const data = JSON.parse(raw)
     if (!Array.isArray(data?.path) || !data.path.length) return null

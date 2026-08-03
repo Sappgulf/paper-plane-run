@@ -62,6 +62,107 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('install hint traps focus and restores the launcher control', async ({ page }) => {
+  await openApp(page)
+  await page.evaluate(() => document.querySelector('#install-btn').classList.remove('hidden'))
+  await tap(page.locator('#install-btn'))
+
+  const close = page.getByRole('button', { name: 'Got it' })
+  await expect(page.locator('#install-hint')).toBeVisible()
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#install-hint')).toBeHidden()
+  await expect(page.locator('#install-btn')).toBeFocused()
+})
+
+test('seasonal event notice waits for the first flight instead of covering the menu', async ({ page }) => {
+  await page.addInitScript(() => {
+    const key = 'paper-plane-run-settings-v1'
+    const current = JSON.parse(localStorage.getItem(key) || '{}')
+    localStorage.setItem(key, JSON.stringify({ ...current, forceSeason: 'summer' }))
+  })
+  await openApp(page)
+  await waitForGameText(page)
+
+  await expect(page.locator('#menu')).toBeVisible()
+  await expect(page.locator('#challenge-toast')).toBeHidden()
+
+  await tap(page.getByRole('button', { name: '✈️ Classic' }))
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#challenge-toast')).toContainText('Sunfold event')
+  const toastGap = await page.evaluate(() => {
+    const toast = document.querySelector('#challenge-toast')
+    const hud = document.querySelector('#hud')
+    return toast.getBoundingClientRect().top - hud.getBoundingClientRect().bottom
+  })
+  expect(toastGap).toBeGreaterThanOrEqual(6)
+})
+
+test('destructive Journey actions use the styled prompt and restore focus', async ({ page }) => {
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await page.evaluate(() => {
+    const key = 'paper-plane-run-journey-v1'
+    const journey = JSON.parse(localStorage.getItem(key))
+    journey.stepIndex = 1
+    localStorage.setItem(key, JSON.stringify(journey))
+  })
+  await page.reload()
+  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+
+  const restart = page.getByRole('button', { name: 'Start a new Journey' })
+  await tap(restart)
+  await expect(page.locator('#confirm-dialog')).toBeVisible()
+  await expect(page.locator('#confirm-cancel')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#confirm-dialog')).toBeHidden()
+  await expect(restart).toBeFocused()
+
+  await tap(restart)
+  await tap(page.locator('#confirm-accept'))
+  await expect(page.locator('.journey-stop').first()).toHaveAttribute('aria-current', 'step')
+})
+
+test('blocked Journey storage keeps the shell usable and explains the save failure', async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalSetItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function setItem(key, value) {
+      if (key === 'paper-plane-run-journey-v1') throw new DOMException('QuotaExceededError')
+      return originalSetItem.call(this, key, value)
+    }
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await expect(page.locator('#shell-status')).toContainText('Progress could not be saved')
+  await expect(page.locator('.journey-route-card')).toHaveCount(2)
+})
+
+test('narrow zoomed shell keeps menu content inside a scrollable viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await page.setViewportSize({ width: 320, height: 480 })
+  await openApp(page)
+  await page.evaluate(() => { document.documentElement.style.zoom = '2' })
+
+  const metrics = await page.evaluate(() => {
+    const panel = document.querySelector('#menu')
+    const card = document.querySelector('#menu .menu-card')
+    return {
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      panelHeight: panel.clientHeight,
+      panelScrollHeight: panel.scrollHeight,
+      cardLeft: card.getBoundingClientRect().left,
+      cardRight: card.getBoundingClientRect().right,
+    }
+  })
+  expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+  expect(metrics.cardLeft).toBeGreaterThanOrEqual(0)
+  expect(metrics.cardRight).toBeLessThanOrEqual(metrics.viewportWidth)
+  expect(metrics.panelScrollHeight).toBeGreaterThan(metrics.panelHeight)
+})
+
 test('Journey route cards and the live HUD expose stamps and shortcut risk', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
@@ -379,6 +480,7 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
 
   await expect(page.locator('#engine-status')).toContainText('Couldn’t prepare your plane')
   await expect(page.locator('#engine-retry')).toBeVisible()
+  await expect(page.locator('#engine-retry')).toHaveText('Retry')
   await expect(page.locator('#start-btn')).toBeEnabled()
   await tap(page.locator('#engine-retry'))
   await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
@@ -795,7 +897,7 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await expect(page.locator('.journey-pilot')).toHaveCount(2)
   await expect(page.locator('.journey-pilot').first()).toContainText('Level 0')
   await expect(page.locator('.route-objective').first()).toContainText('Goal')
-  await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
+  await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y pinch-zoom')
   await tap(page.locator('.journey-route-card').first())
 
   await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
@@ -864,6 +966,10 @@ test('postcard reveal opens details and keeps share fallback visible', async ({ 
   await tap(page.getByRole('button', { name: 'Share postcard' }))
   await expect(page.locator('#postcard-detail [data-postcard-status]')).toContainText('copied')
   await expect(page.locator('#postcard-detail')).toBeVisible()
+  await tap(page.getByRole('button', { name: 'Close postcard details' }))
+  await expect(page.locator('#postcard-detail')).toBeHidden()
+  await expect(page.locator('#postcard-reveal')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'View details' })).toBeFocused()
 })
 
 test('postcard reveal respects reduced motion and compact scrolling', async ({ page }) => {
@@ -871,7 +977,15 @@ test('postcard reveal respects reduced motion and compact scrolling', async ({ p
   await openApp(page, '/#test-postcard')
   await expect(page.locator('html')).toHaveClass(/a11y-reduced-motion/)
   await expect(page.locator('.postcard-surface')).toHaveCSS('overflow-y', 'auto')
-  await expect(page.getByRole('button', { name: 'Close postcard' })).toBeInViewport()
+  const close = page.getByRole('button', { name: 'Close postcard' })
+  await expect(close).toBeInViewport()
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByRole('button', { name: 'Continue' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#postcard-reveal')).toBeHidden()
+  await expect(page.locator('#journey-panel')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('#journey-panel')?.id || '')).toBe('journey-panel')
 })
 
 test('Living Journey selection survives a reload', async ({ page }) => {
@@ -890,6 +1004,13 @@ test('visibility pause freezes and resumes flight distance', async ({ page }, te
   await openApp(page)
   await tap(page.locator('#start-btn'))
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 15_000 })
+
+  await tap(page.locator('#pause-btn'))
+  await expect(page.locator('#pause-overlay')).toBeVisible()
+  await expect(page.locator('#pause-resume')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#pause-overlay')).toBeHidden()
+  await expect(page.locator('#pause-btn')).toBeFocused()
 
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
@@ -946,6 +1067,10 @@ test('game-over summarizes banked rewards and the next action', async ({ page })
   await expect(summary).toContainText('+3★')
   await expect(summary).toContainText('Banked 3★ · keep flying toward an upgrade')
   await expect(page.getByRole('button', { name: 'Hangar · 3★' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Fly Again' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#gameover')).toBeHidden()
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('#menu')?.id || '')).toBe('menu')
 })
 
 test('Hangar Progress/Meta filter keeps only the active group tabs visible', async ({ page }) => {
@@ -961,6 +1086,19 @@ test('Hangar Progress/Meta filter keeps only the active group tabs visible', asy
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeVisible()
 })
 
+test('offline mode keeps local boards available and labels the shared board honestly', async ({ page }) => {
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('tab', { name: /Board/ }))
+  await page.context().setOffline(true)
+  await expect(page.locator('#network-status')).toBeVisible()
+  await tap(page.getByRole('button', { name: /Global · live/ }))
+  await expect(page.locator('#board-status')).toContainText('unavailable offline')
+  await expect(page.locator('#board-list')).toContainText('try again when connected')
+  await page.context().setOffline(false)
+})
+
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
@@ -971,10 +1109,25 @@ test('mobile Hangar tabs reset the shared scroll position', async ({ page }, tes
     element.scrollTop = element.scrollHeight
   })
   await tap(page.getByRole('button', { name: 'Meta' }))
+  await expect(page.locator('.hangar-tabs')).toHaveClass(/scrollable/)
+  await expect(page.locator('.hangar-tabs')).toHaveAttribute('data-has-next', 'true')
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await expect(page.getByRole('button', { name: '🏢 Building' })).toBeVisible()
   await expect.poll(() => hangarBody.evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test('clean flight recaps use flight language instead of crash language', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await openApp(page, '/?e2e=journey#test-journey-city')
+  await waitForGameText(page)
+
+  await page.evaluate(() => window.advanceTime(20_000))
+
+  await expect(page.getByRole('heading', { name: 'Route complete!' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('#photo-img')).toHaveAttribute('alt', 'Flight recap')
+  await expect(page.getByRole('button', { name: 'Save recap' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Share recap' })).toBeVisible()
 })
 
 test('Aim feel selection survives a Hangar tab round trip', async ({ page }, testInfo) => {

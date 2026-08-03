@@ -2,7 +2,7 @@
  * Spendable plane upgrades — paid with wallet stars earned in runs.
  */
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
@@ -321,7 +321,7 @@ function normalizePrestigeLevel(level) {
 
 function loadLevels() {
   try {
-    const levels = JSON.parse(localStorage.getItem(LEVELS_KEY) || '{}')
+    const levels = JSON.parse(safeValue(LEVELS_KEY) || '{}')
     return levels && typeof levels === 'object' && !Array.isArray(levels) ? levels : {}
   } catch {
     return {}
@@ -344,7 +344,7 @@ export function getAllUpgradeLevels() {
 
 export function getWallet() {
   migrateWalletOnce()
-  return Math.max(0, Number(localStorage.getItem(WALLET_KEY) || 0))
+  return Math.max(0, Number(safeValue(WALLET_KEY) || 0))
 }
 
 export function addWallet(n) {
@@ -364,9 +364,9 @@ export function spendWallet(n) {
 
 /** One-time: seed wallet from a fraction of lifetime stars for existing players */
 function migrateWalletOnce() {
-  if (localStorage.getItem(MIGRATED) === '1') return
-  const lifetime = Number(localStorage.getItem('paper-plane-run-lifetime-stars') || 0)
-  const existing = localStorage.getItem(WALLET_KEY)
+  if (safeValue(MIGRATED) === '1') return
+  const lifetime = Number(safeValue('paper-plane-run-lifetime-stars') || 0)
+  const existing = safeValue(WALLET_KEY)
   if (existing == null && lifetime > 0) {
     safeSetItem(WALLET_KEY, String(Math.floor(lifetime * 0.5)))
   } else if (existing == null) {
@@ -377,7 +377,7 @@ function migrateWalletOnce() {
 
 /** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
 export function getPrestigeLevel() {
-  return normalizePrestigeLevel(localStorage.getItem(PRESTIGE_KEY) || 0)
+  return normalizePrestigeLevel(safeValue(PRESTIGE_KEY) || 0)
 }
 
 export function getPrestigeBonusPercent(level = getPrestigeLevel()) {

@@ -1,3 +1,5 @@
+import { getSafeStorage, safeGetItem, safeSetStorageItem } from './game/safe-storage.js'
+
 export const POSTCARD_STORAGE_KEY = 'paper-plane-run-postcards-v1'
 
 const DESTINATIONS = new Set(['city', 'harbor', 'storm', 'aurora'])
@@ -21,20 +23,19 @@ export function normalizePostcard(card) {
   }
 }
 
-export function loadPostcardAlbum(storage = localStorage) {
+export function loadPostcardAlbum(storage = getSafeStorage()) {
   try {
-    const cards = JSON.parse(storage.getItem(POSTCARD_STORAGE_KEY) || '[]')
+    const cards = JSON.parse(safeGetItem(storage, POSTCARD_STORAGE_KEY).value || '[]')
     return Array.isArray(cards) ? cards.map(normalizePostcard).filter(Boolean) : []
   } catch { return [] }
 }
 
-export function savePostcardOnce(storage = localStorage, postcard) {
+export function savePostcardOnce(storage = getSafeStorage(), postcard) {
   const normalized = normalizePostcard(postcard)
   if (!normalized) return false
   const cards = loadPostcardAlbum(storage)
   if (cards.some((card) => card.id === normalized.id)) return false
-  storage.setItem(POSTCARD_STORAGE_KEY, JSON.stringify([normalized, ...cards].slice(0, 50)))
-  return true
+  return safeSetStorageItem(storage, POSTCARD_STORAGE_KEY, JSON.stringify([normalized, ...cards].slice(0, 50)))
 }
 
 export function buildPostcardShareModel(card, url = 'https://paper-plane-run.vercel.app') {

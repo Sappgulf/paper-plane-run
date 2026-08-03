@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeValue } from './game/safe-storage.js'
 
 const KEY = 'paper-plane-run-settings-v1'
 
@@ -21,7 +21,7 @@ const DEFAULTS = {
 
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = safeValue(KEY)
     if (!raw) {
       // First run: joysticks + low-power rendering on touch devices (phones
       // are the ones most likely to stutter at full shadow/DPR settings),

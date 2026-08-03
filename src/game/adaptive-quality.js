@@ -20,6 +20,7 @@ export function getAdaptiveQuality({
   devicePixelRatio = 1,
   lowPower = false,
   nativeSignal = {},
+  touchPrimary = false,
 } = {}) {
   const native = normalizeNativePerformanceSignal(nativeSignal)
   const deviceRatio = Math.max(1, Number(devicePixelRatio) || 1)
@@ -28,6 +29,13 @@ export function getAdaptiveQuality({
 
   if (forcedLow) {
     return Object.freeze({ level: 'low', pixelRatio: 1, shadows: false, secondaryEffects: false })
+  }
+  // High-DPR touch devices pay the first shader/texture cost at the exact
+  // moment a player starts flying. Warm them at a medium pixel ratio, then
+  // let the frame-health monitor promote quality once the scene is stable.
+  const constrainedTouchDevice = touchPrimary && deviceRatio > 1.5
+  if (status === 'warming' && constrainedTouchDevice) {
+    return Object.freeze({ level: 'medium', pixelRatio: Math.min(deviceRatio, 1.5), shadows: false, secondaryEffects: true })
   }
   if (status === 'critical') {
     return Object.freeze({ level: 'low', pixelRatio: Math.min(deviceRatio, 1.25), shadows: false, secondaryEffects: false })

@@ -12,14 +12,14 @@ afterEach(() => {
 })
 
 describe('service worker build manifest', () => {
-  test('includes hashed bundles and all shipped gameplay art in a content-addressed release', () => {
+  test('includes required bundles and gameplay art in a content-addressed release', () => {
     const directory = mkdtempSync(join(tmpdir(), 'paper-plane-sw-'))
     directories.push(directory)
     mkdirSync(join(directory, 'assets', 'bosses'), { recursive: true })
     mkdirSync(join(directory, 'assets', 'planes'), { recursive: true })
     writeFileSync(join(directory, 'index.html'), '<html>release</html>')
     writeFileSync(join(directory, 'assets', 'flight-engine-abc.js'), 'engine')
-    writeFileSync(join(directory, 'assets', 'bosses', 'wind.webp'), 'wind')
+    writeFileSync(join(directory, 'assets', 'bosses', 'wind-v2.webp'), 'wind')
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'plane')
     writeFileSync(join(directory, 'sw.js'), 'template')
     mkdirSync(join(directory, '.vite'), { recursive: true })
@@ -31,7 +31,7 @@ describe('service worker build manifest', () => {
 
     expect(manifest.urls).toEqual([
       '/',
-      '/assets/bosses/wind.webp',
+      '/assets/bosses/wind-v2.webp',
       '/assets/flight-engine-abc.js',
       '/assets/planes/classic.webp',
       '/index.html',
@@ -43,5 +43,22 @@ describe('service worker build manifest', () => {
 
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'changed plane')
     expect(buildPrecacheManifest(directory).version).not.toBe(manifest.version)
+  })
+
+  test('leaves verified legacy art duplicates out of the offline precache', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'paper-plane-sw-'))
+    directories.push(directory)
+    mkdirSync(join(directory, 'assets', 'bosses'), { recursive: true })
+    writeFileSync(join(directory, 'assets', 'paper-world-backdrop.png'), 'legacy backdrop')
+    writeFileSync(join(directory, 'assets', 'bosses', 'wind-v2.png'), 'legacy boss png')
+    writeFileSync(join(directory, 'assets', 'bosses', 'wind-v2.webp'), 'runtime boss webp')
+    writeFileSync(join(directory, 'index.html'), '<html>release</html>')
+    writeFileSync(join(directory, 'sw.js'), 'template')
+
+    const manifest = buildPrecacheManifest(directory)
+
+    expect(manifest.urls).toContain('/assets/bosses/wind-v2.webp')
+    expect(manifest.urls).not.toContain('/assets/paper-world-backdrop.png')
+    expect(manifest.urls).not.toContain('/assets/bosses/wind-v2.png')
   })
 })
