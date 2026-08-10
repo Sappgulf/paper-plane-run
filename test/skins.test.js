@@ -4,6 +4,7 @@ import {
   SKINS,
   claimPlane,
   getEquippedSkinId,
+  addLifetimeStars,
   getLifetimeStars,
   isUnlocked,
   listSkins,
@@ -192,6 +193,16 @@ describe('plane collection purchases', () => {
     expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(
       expect.arrayContaining(['classic', 'night']),
     )
+  })
+
+  test('treats malformed lifetime-stars storage as zero and still accepts runtime lifetime rewards', () => {
+    localStorage.setItem('paper-plane-run-lifetime-stars', 'bad data')
+    localStorage.setItem('paper-plane-run-wallet', '20')
+
+    expect(getLifetimeStars()).toBe(0)
+    expect(addLifetimeStars(7.8)).toBe(7)
+    expect(getLifetimeStars()).toBe(7)
+    expect(listSkins().find((plane) => plane.id === 'mint')).toMatchObject({ state: 'locked' })
   })
 
   test('persists a valid fallback when corrupt ownership has no helpful equipped value', () => {

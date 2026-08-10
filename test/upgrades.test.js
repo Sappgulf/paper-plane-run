@@ -190,6 +190,15 @@ describe('upgrade purchases', () => {
     expect(getWallet()).toBe(8)
     expect(localStorage.getItem('paper-plane-run-lifetime-stars')).toBe('200')
   })
+
+  test('treats corrupted wallet storage as zero and keeps gameplay currency operations safe', () => {
+    localStorage.setItem('paper-plane-run-wallet', 'not-a-number')
+
+    expect(getWallet()).toBe(0)
+    expect(spendWallet(1)).toBe(false)
+    expect(addWallet(3.9)).toBe(3)
+    expect(getWallet()).toBe(3)
+  })
 })
 
 describe('prestige', () => {

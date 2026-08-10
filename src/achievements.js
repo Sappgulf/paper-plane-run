@@ -11,32 +11,37 @@ const POPPED_KEY = 'paper-plane-run-lifetime-popped'
 const FEVER_KEY = 'paper-plane-run-lifetime-fever'
 const CLAIMED_KEY = 'paper-plane-run-achievements-claimed'
 
+function parseNonNegativeInt(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0
+}
+
 export function getLifetimeDistance() {
-  return Number(localStorage.getItem(DIST_KEY) || 0)
+  return parseNonNegativeInt(localStorage.getItem(DIST_KEY))
 }
 export function addLifetimeDistance(m) {
   if (!(m > 0)) return
-  safeSetItem(DIST_KEY, String(getLifetimeDistance() + Math.floor(m)))
+  safeSetItem(DIST_KEY, String(getLifetimeDistance() + parseNonNegativeInt(m)))
 }
 export function getRunCount() {
-  return Number(localStorage.getItem(RUNS_KEY) || 0)
+  return parseNonNegativeInt(localStorage.getItem(RUNS_KEY))
 }
 export function incrementRunCount() {
   safeSetItem(RUNS_KEY, String(getRunCount() + 1))
 }
 export function getLifetimePopped() {
-  return Number(localStorage.getItem(POPPED_KEY) || 0)
+  return parseNonNegativeInt(localStorage.getItem(POPPED_KEY))
 }
 export function addLifetimePopped(n) {
   if (!(n > 0)) return
-  safeSetItem(POPPED_KEY, String(getLifetimePopped() + Math.floor(n)))
+  safeSetItem(POPPED_KEY, String(getLifetimePopped() + parseNonNegativeInt(n)))
 }
 export function getLifetimeFever() {
-  return Number(localStorage.getItem(FEVER_KEY) || 0)
+  return parseNonNegativeInt(localStorage.getItem(FEVER_KEY))
 }
 export function addLifetimeFever(n) {
   if (!(n > 0)) return
-  safeSetItem(FEVER_KEY, String(getLifetimeFever() + Math.floor(n)))
+  safeSetItem(FEVER_KEY, String(getLifetimeFever() + parseNonNegativeInt(n)))
 }
 
 function loadClaimed() {

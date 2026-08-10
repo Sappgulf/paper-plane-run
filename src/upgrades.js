@@ -10,6 +10,11 @@ const MIGRATED = 'paper-plane-run-wallet-migrated'
 const PRESTIGE_KEY = 'paper-plane-run-prestige'
 const PRESTIGE_MAX = 50
 
+function parseStarCount(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0
+}
+
 export const UPGRADES = [
   {
     id: 'handling',
@@ -302,18 +307,18 @@ export function getAllUpgradeLevels() {
 
 export function getWallet() {
   migrateWalletOnce()
-  return Math.max(0, Number(localStorage.getItem(WALLET_KEY) || 0))
+  return parseStarCount(localStorage.getItem(WALLET_KEY))
 }
 
 export function addWallet(n) {
   migrateWalletOnce()
-  const v = getWallet() + Math.max(0, Math.floor(n))
+  const v = getWallet() + parseStarCount(n)
   safeSetItem(WALLET_KEY, String(v))
   return v
 }
 
 export function spendWallet(n) {
-  const cost = Math.max(0, Math.floor(n))
+  const cost = parseStarCount(n)
   const w = getWallet()
   if (w < cost) return false
   safeSetItem(WALLET_KEY, String(w - cost))
@@ -323,7 +328,7 @@ export function spendWallet(n) {
 /** One-time: seed wallet from a fraction of lifetime stars for existing players */
 function migrateWalletOnce() {
   if (localStorage.getItem(MIGRATED) === '1') return
-  const lifetime = Number(localStorage.getItem('paper-plane-run-lifetime-stars') || 0)
+  const lifetime = parseStarCount(localStorage.getItem('paper-plane-run-lifetime-stars'))
   const existing = localStorage.getItem(WALLET_KEY)
   if (existing == null && lifetime > 0) {
     safeSetItem(WALLET_KEY, String(Math.floor(lifetime * 0.5)))

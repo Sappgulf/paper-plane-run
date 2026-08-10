@@ -7,6 +7,10 @@ const EQUIP = 'paper-plane-run-skin'
 const STARS_KEY = 'paper-plane-run-lifetime-stars'
 const SCHEMA_VERSION_KEY = 'paper-plane-run-skins-version'
 const SCHEMA_VERSION = '1'
+function parseStarCount(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0
+}
 
 const LEGACY_LIFETIME_REQUIREMENTS = Object.freeze({
   classic: 0,
@@ -234,11 +238,11 @@ function loadOwnership() {
 }
 
 export function getLifetimeStars() {
-  return Number(localStorage.getItem(STARS_KEY) || 0)
+  return parseStarCount(localStorage.getItem(STARS_KEY))
 }
 
 export function addLifetimeStars(n) {
-  const v = getLifetimeStars() + n
+  const v = getLifetimeStars() + parseStarCount(n)
   safeSetItem(STARS_KEY, String(v))
   return v
 }

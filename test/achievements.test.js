@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
+  addLifetimeDistance,
   addLifetimeFever,
   addLifetimePopped,
+  getLifetimeDistance,
   getLifetimeFever,
   getLifetimePopped,
   getAchievementProgress,
@@ -33,6 +35,24 @@ describe('Sharpshooter achievement', () => {
     addLifetimePopped(0)
     addLifetimePopped(-5)
     expect(getLifetimePopped()).toBe(0)
+  })
+
+  test('treats malformed storage as zero and still accepts valid lifetime reward input', () => {
+    localStorage.setItem('paper-plane-run-lifetime-popped', 'bad data')
+    localStorage.setItem('paper-plane-run-lifetime-fever', 'bad data')
+    localStorage.setItem('paper-plane-run-lifetime-distance', 'bad data')
+
+    expect(getLifetimePopped()).toBe(0)
+    expect(getLifetimeFever()).toBe(0)
+    expect(getLifetimeDistance()).toBe(0)
+
+    addLifetimePopped(4.9)
+    addLifetimeFever(3.2)
+    addLifetimeDistance(120.6)
+
+    expect(getLifetimePopped()).toBe(4)
+    expect(getLifetimeFever()).toBe(3)
+    expect(getLifetimeDistance()).toBe(120)
   })
 })
 
