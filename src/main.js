@@ -7,6 +7,7 @@ import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './
 import { getFunnelSummary, track } from './analytics.js'
 import { claimAchievementTier, getAchievementProgress } from './achievements.js'
 import { claimMission, getDailyMissions, unclaimedRewards } from './missions.js'
+import { createNotificationQueue } from './game/notification-queue.js'
 import {
   addLifetimeStars,
   claimPlane,
@@ -107,29 +108,20 @@ const flightEngineWarningState = {
   at: 0,
 }
 
-const settingsToastState = {
-  signature: '',
-  at: 0,
-  hideTimeout: 0,
-}
+const settingsToastQueue = createNotificationQueue({
+  show: (message) => {
+    const toast = $('challenge-toast')
+    if (!toast || !message) return
+    toast.textContent = message
+    toast.classList.remove('hidden')
+  },
+  hide: () => {
+    $('challenge-toast')?.classList.add('hidden')
+  },
+})
 
 function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {}) {
-  const toast = $('challenge-toast')
-  if (!toast || !message) return
-  const now = performance.now ? performance.now() : Date.now()
-  if (settingsToastState.signature === message && now - settingsToastState.at < dedupeMs) {
-    settingsToastState.at = now
-    toast.classList.remove('hidden')
-    window.clearTimeout(settingsToastState.hideTimeout)
-    settingsToastState.hideTimeout = window.setTimeout(() => toast.classList.add('hidden'), durationMs)
-    return
-  }
-  settingsToastState.signature = message
-  settingsToastState.at = now
-  toast.textContent = message
-  toast.classList.remove('hidden')
-  window.clearTimeout(settingsToastState.hideTimeout)
-  settingsToastState.hideTimeout = window.setTimeout(() => toast.classList.add('hidden'), durationMs)
+  settingsToastQueue.show(message, { duration: durationMs, dedupeMs })
 }
 
 function reportFlightEngineWarning(message, error) {

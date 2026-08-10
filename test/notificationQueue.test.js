@@ -26,6 +26,29 @@ describe('gameplay notification queue', () => {
     vi.useRealTimers()
   })
 
+  test('duplicate non-persistent notifications refresh without re-showing', () => {
+    vi.useFakeTimers()
+    const events = []
+    const queue = createNotificationQueue({
+      show: (message) => events.push(['show', message]),
+      hide: () => events.push(['hide']),
+    })
+
+    queue.show('Connection check', { duration: 1000, dedupeMs: 1500 })
+    vi.advanceTimersByTime(700)
+    queue.show('Connection check', { duration: 1000, dedupeMs: 1500 })
+    vi.advanceTimersByTime(699)
+
+    expect(events).toEqual([['show', 'Connection check']])
+
+    vi.advanceTimersByTime(1)
+    expect(events).toEqual([['show', 'Connection check']])
+
+    vi.advanceTimersByTime(800)
+    expect(events).toEqual([['show', 'Connection check'], ['hide']])
+    vi.useRealTimers()
+  })
+
   test('persistent notifications remain visible until explicitly cleared', () => {
     vi.useFakeTimers()
     const events = []
