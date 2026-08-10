@@ -2,6 +2,16 @@
  * Desk runway mode: rear camera as page background, transparent clear color.
  */
 export class DeskAR {
+  static isPermissionDeniedError(error) {
+    if (!error) return false
+    if (error.name === 'NotAllowedError') return true
+    if (error.name === 'SecurityError') {
+      const message = String(error.message || '').toLowerCase()
+      return message.includes('permission') || message.includes('denied')
+    }
+    return false
+  }
+
   constructor() {
     this.video = null
     this.stream = null
@@ -39,7 +49,13 @@ export class DeskAR {
       this.active = true
       return true
     } catch (err) {
-      console.warn('AR desk mode unavailable', err)
+      if (DeskAR.isPermissionDeniedError(err)) {
+        if (import.meta.env.DEV) {
+          console.info('AR desk mode unavailable: camera permission denied')
+        }
+      } else {
+        console.warn('AR desk mode unavailable', err)
+      }
       this.stop()
       return false
     }

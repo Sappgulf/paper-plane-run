@@ -3818,6 +3818,20 @@ async function shareScore() {
 }
 
 async function startGame(kind = 'classic', opts = {}) {
+  function resolveJourneyRunConfig(proposedConfig, fallbackJourney) {
+    if (
+      proposedConfig
+      && proposedConfig.risk === 'risky'
+      && proposedConfig.routeId
+      && Number.isFinite(Number(proposedConfig.rewardMultiplier))
+      && proposedConfig.zone
+      && proposedConfig.pilotId
+    ) {
+      return proposedConfig
+    }
+    return buildRunConfiguration(fallbackJourney)
+  }
+
   try {
     if (opts.engineAudio) audio = opts.engineAudio
     if (opts.shellBridge) shellBridge = opts.shellBridge
@@ -3833,7 +3847,7 @@ async function startGame(kind = 'classic', opts = {}) {
     audio.uiClick()
     runKind = kind
     if (kind === 'journey') journey = loadJourney(localStorage).journey
-    journeyRunConfig = kind === 'journey' ? (opts.journeyConfig || buildRunConfiguration(journey)) : null
+    journeyRunConfig = kind === 'journey' ? resolveJourneyRunConfig(opts.journeyConfig, journey) : null
     if (kind === 'journey' && !journeyRunConfig) {
       openJourney()
       return

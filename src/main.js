@@ -102,6 +102,20 @@ function resolveAssetUrl(url) {
   return url && url.startsWith('/') ? import.meta.env.BASE_URL + url.slice(1) : url
 }
 
+const flightEngineWarningState = {
+  signature: '',
+  at: 0,
+}
+
+function reportFlightEngineWarning(message, error) {
+  const now = performance.now ? performance.now() : Date.now()
+  const signature = `${error?.name || ''}|${error?.cause?.name || ''}|${error?.message || ''}`
+  if (signature === flightEngineWarningState.signature && now - flightEngineWarningState.at < 1500) return
+  flightEngineWarningState.signature = signature
+  flightEngineWarningState.at = now
+  console.warn(message, error)
+}
+
 applyDocumentA11y(settings)
 
 if (pilotNameInput) {
@@ -1252,7 +1266,7 @@ async function startMode(kind, options = {}) {
     return result
   } catch (error) {
     engineFailed = true
-    console.warn('Flight engine unavailable', error)
+    reportFlightEngineWarning('Flight engine unavailable', error)
     restoreActionableMenu()
     showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
     return undefined
@@ -1351,7 +1365,7 @@ engineRetry?.addEventListener('click', () => {
 function preloadEngine() {
   engineLoader.preload().catch((error) => {
     engineFailed = true
-    console.warn('Flight engine preload failed', error)
+    reportFlightEngineWarning('Flight engine preload failed', error)
     restoreActionableMenu()
     showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
   })
