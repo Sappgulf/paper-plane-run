@@ -107,6 +107,25 @@ const flightEngineWarningState = {
   at: 0,
 }
 
+const settingsToastState = {
+  signature: '',
+  at: 0,
+}
+
+function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {}) {
+  const toast = $('challenge-toast')
+  if (!toast || !message) return
+  const now = performance.now ? performance.now() : Date.now()
+  if (settingsToastState.signature === message && now - settingsToastState.at < dedupeMs) {
+    return
+  }
+  settingsToastState.signature = message
+  settingsToastState.at = now
+  toast.textContent = message
+  toast.classList.remove('hidden')
+  window.setTimeout(() => toast.classList.add('hidden'), durationMs)
+}
+
 function reportFlightEngineWarning(message, error) {
   const now = performance.now ? performance.now() : Date.now()
   const signature = `${error?.name || ''}|${error?.cause?.name || ''}|${error?.message || ''}`
@@ -1209,7 +1228,7 @@ function applyEngineSettingsResult(result) {
   if (arSetting) arSetting.checked = Boolean(settings.arDesk)
   syncShellControlUi()
   if ($('season-now')) $('season-now').textContent = `${season.name} (${season.id})`
-  if (result.arPermissionDenied) alert('Camera permission needed for Desk AR')
+  if (result.arPermissionDenied) showSettingsToast('Camera permission needed for Desk AR')
 }
 
 async function syncSettingsWithEngine(nextSettings) {

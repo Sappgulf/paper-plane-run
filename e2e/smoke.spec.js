@@ -444,6 +444,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
   const arWarnings = []
+  let arPermissionDialogs = 0
   page.on('console', (message) => {
     if (message.type() === 'warning' && message.text().includes('AR desk mode unavailable')) {
       arWarnings.push(message.text())
@@ -465,7 +466,10 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
       },
     })
   })
-  page.on('dialog', (dialog) => dialog.dismiss())
+  page.on('dialog', (dialog) => {
+    arPermissionDialogs += 1
+    dialog.dismiss()
+  })
 
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
@@ -508,6 +512,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
     saved: { arDesk: false },
   })
   expect(arWarnings).toHaveLength(0)
+  expect(arPermissionDialogs).toBe(0)
 })
 
 test('replaying custom routes uses the latest editor layout', async ({ page }, testInfo) => {
