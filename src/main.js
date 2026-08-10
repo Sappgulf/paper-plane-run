@@ -85,6 +85,9 @@ let journeyRunConfig = null
 let postcardFocusReturn = null
 let activePlanePreview = null
 let planePreviewRequest = 0
+let planePreviewEpoch = 0
+let previewInteractionBlockUntil = 0
+let previewInteractionLockPlaneId = null
 const missionBadge = $('mission-badge')
 const pilotNameInput = $('pilot-name')
 let difficulty = { id: localStorage.getItem('paper-plane-run-diff') || 'normal' }
@@ -163,6 +166,7 @@ function swScriptUrl() {
 }
 
 let pendingSwWorker = null
+const disableServiceWorker = localStorage.getItem('paper-plane-run-disable-sw') === '1'
 
 function showSwUpdateBanner(worker) {
   const banner = $('sw-update-banner')
@@ -179,7 +183,7 @@ function showSwUpdateBanner(worker) {
   }
 }
 
-if ('serviceWorker' in navigator) {
+if (!disableServiceWorker && 'serviceWorker' in navigator) {
   let refreshing = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return
@@ -595,7 +599,10 @@ function planePriceLabel(plane) {
   return plane.price ? `Wallet ${plane.price.value}★` : 'Free claim'
 }
 
-async function showPlanePreview(stage, canvas, planeDefinition) {
+async function showPlanePreview(stage, canvas, planeDefinition, previewEpoch = planePreviewEpoch) {
+  if (previewEpoch !== planePreviewEpoch) return
+  const now = performance.now?.() ?? Date.now()
+  if (previewInteractionLockPlaneId && now < previewInteractionBlockUntil && planeDefinition.id !== previewInteractionLockPlaneId) return
   stage.dataset.planeId = planeDefinition.id
   stage.dataset.silhouette = planeDefinition.silhouette
   stage.querySelector('[data-preview-name]').textContent = planeDefinition.name
@@ -619,6 +626,7 @@ async function showPlanePreview(stage, canvas, planeDefinition) {
   try {
     const engine = await engineLoader.preload()
     if (request !== planePreviewRequest || !canvas.isConnected) return
+    if (previewEpoch !== planePreviewEpoch) return
     const preview = engine.createPlanePreview?.({
       canvas,
       skinId: planeDefinition.id,
@@ -648,7 +656,8 @@ function skinSortRank(plane) {
   return 4
 }
 
-function renderSkins(statusMessage = '') {
+function renderSkins(statusMessage = '', forcedPlaneId = null) {
+  const now = performance.now?.() ?? Date.now()
   refreshUnlocks(season.id)
   refreshHangarWallet()
   const grid = $('skins-grid')
@@ -673,7 +682,15 @@ function renderSkins(statusMessage = '') {
         : `${buyable} planes are ready to buy — highlighted below.`
     } else status.textContent = ''
   }
-  const previewPlane = planes.find((planeDefinition) => planeDefinition.id === getEquippedSkinId()) || planes[0]
+  if (forcedPlaneId) {
+    previewInteractionLockPlaneId = forcedPlaneId
+    previewInteractionBlockUntil = now + 1_000
+  } else if (previewInteractionLockPlaneId && now >= previewInteractionBlockUntil) {
+    previewInteractionLockPlaneId = null
+  }
+  const equippedPlaneId = forcedPlaneId || getEquippedSkinId()
+  const previewPlane = planes.find((planeDefinition) => planeDefinition.id === equippedPlaneId) || planes[0]
+  const previewEpoch = ++planePreviewEpoch
   const preview = document.createElement('section')
   preview.className = 'plane-preview'
   preview.setAttribute('data-plane-preview', '')
@@ -690,10 +707,22 @@ function renderSkins(statusMessage = '') {
   `
   grid.appendChild(preview)
   const previewCanvas = preview.querySelector('canvas')
+  preview.dataset.planeId = previewPlane.id
+  preview.dataset.silhouette = previewPlane.silhouette
+  const previewName = preview.querySelector('[data-preview-name]')
+  const previewFamily = preview.querySelector('[data-preview-family]')
+  const previewMessage = preview.querySelector('[data-preview-message]')
+  if (previewName) previewName.textContent = previewPlane.name
+  if (previewFamily) previewFamily.textContent = previewPlane.silhouette === 'stunt'
+    ? 'Stunt Fold'
+    : `${previewPlane.silhouette[0].toUpperCase()}${previewPlane.silhouette.slice(1)}${previewPlane.silhouette === 'classic' ? ' Fold' : ''}`
+  if (previewMessage) previewMessage.textContent = 'Updating preview…'
   const previewGeneration = planePreviewRequest
+  preview.dataset.previewEpoch = String(previewEpoch)
   requestAnimationFrame(() => {
+    if (previewEpoch !== planePreviewEpoch) return
     if (previewGeneration !== planePreviewRequest || !previewCanvas.isConnected) return
-    void showPlanePreview(preview, previewCanvas, previewPlane)
+    void showPlanePreview(preview, previewCanvas, previewPlane, previewEpoch)
   })
 
   for (const s of planes) {
@@ -755,15 +784,27 @@ function renderSkins(statusMessage = '') {
           : 'Locked'
     card.appendChild(action)
 
-    const previewThisPlane = () => void showPlanePreview(preview, previewCanvas, s)
+    const previewThisPlane = (event) => {
+      const now = performance.now?.() ?? Date.now()
+      if (previewInteractionLockPlaneId && now < previewInteractionBlockUntil && s.id !== previewInteractionLockPlaneId) return
+      if (previewInteractionLockPlaneId && now >= previewInteractionBlockUntil) {
+        previewInteractionLockPlaneId = null
+      }
+      void showPlanePreview(preview, previewCanvas, s, previewEpoch)
+    }
     card.addEventListener('focus', previewThisPlane)
     card.addEventListener('pointerenter', previewThisPlane)
     card.onclick = () => {
       refreshUnlocks(season.id)
+      if (previewInteractionLockPlaneId && previewInteractionLockPlaneId !== s.id) {
+        previewInteractionLockPlaneId = null
+        previewInteractionBlockUntil = 0
+      }
       if (s.state === 'owned') {
+        previewInteractionBlockUntil = (performance.now?.() ?? Date.now()) + 250
         equipSkin(s.id)
         shellAudio.uiClick()
-        renderSkins(`${s.name} equipped.`)
+        renderSkins(`${s.name} equipped.`, s.id)
         return
       }
       if (s.state === 'available') {
@@ -776,8 +817,9 @@ function renderSkins(statusMessage = '') {
           return
         }
         equipSkin(s.id)
+        previewInteractionBlockUntil = (performance.now?.() ?? Date.now()) + 250
         shellAudio.uiClick()
-        renderSkins(`${s.name} ${s.price ? 'purchased' : 'claimed'} and equipped.`)
+        renderSkins(`${s.name} ${s.price ? 'purchased' : 'claimed'} and equipped.`, s.id)
       }
     }
     grid.appendChild(card)

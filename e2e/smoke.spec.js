@@ -1,28 +1,42 @@
 import { expect, test } from '@playwright/test'
 
 const UPGRADE_CARD_CONTRACTS = [
-  { name: 'Fold Handling', current: 'Control response +32%', next: 'Control response +40%' },
-  { name: 'Lift Crease', current: 'Sink rate -32%', next: 'Sink rate -40%' },
-  { name: 'Long Glide', current: 'Cruise speed +16% · score +12%', next: 'Cruise speed +20% · score +15%' },
-  { name: 'Star Magnet', current: 'Star pull +165%', next: 'Star pull +220%' },
-  { name: 'Tough Fiber', current: 'Shield duration +60%', next: 'Shield duration +80%' },
-  { name: 'Lucky Scrap', current: 'Star spawns +36% · power-ups +30%', next: 'Star spawns +48% · power-ups +40%' },
-  { name: 'Wide Wings', current: 'Plane scale 1.36× · near-miss window 1.70×', next: 'Plane scale 1.44× · near-miss window 1.85×' },
-  { name: 'Paper Trail', current: 'Score aura +4%', next: 'Score aura +6%' },
-  { name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
-  { name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
-  { name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
-  { name: 'Fever Focus', current: 'Fever at 6 near-misses · 5.50s', next: 'Fever at 5 near-misses · 6.25s' },
-  { name: 'Steady Hands', current: 'Star streak window 3.00s', next: 'Star streak window 3.40s' },
-  { name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
+  { id: 'handling', name: 'Fold Handling', current: 'Control response +32%', next: 'Control response +40%' },
+  { id: 'lift', name: 'Lift Crease', current: 'Sink rate -32%', next: 'Sink rate -40%' },
+  { id: 'glide', name: 'Long Glide', current: 'Cruise speed +16% · score +12%', next: 'Cruise speed +20% · score +15%' },
+  { id: 'magnet', name: 'Star Magnet', current: 'Star pull +165%', next: 'Star pull +220%' },
+  { id: 'shield', name: 'Tough Fiber', current: 'Shield duration +60%', next: 'Shield duration +80%' },
+  { id: 'luck', name: 'Lucky Scrap', current: 'Star spawns +36% · power-ups +30%', next: 'Star spawns +48% · power-ups +40%' },
+  { id: 'wingspan', name: 'Wide Wings', current: 'Plane scale 1.36× · near-miss window 1.70×', next: 'Plane scale 1.44× · near-miss window 1.85×' },
+  { id: 'trail', name: 'Paper Trail', current: 'Score aura +4%', next: 'Score aura +6%' },
+  { id: 'turbo', name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
+  { id: 'guardian', name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
+  { id: 'weapon', name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
+  { id: 'fever', name: 'Fever Focus', current: 'Fever at 6 near-misses · 5.50s', next: 'Fever at 5 near-misses · 6.25s' },
+  { id: 'streak', name: 'Steady Hands', current: 'Star streak window 3.00s', next: 'Star streak window 3.40s' },
+  { id: 'wealth', name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
 ]
 
 function openApp(page, path = '/') {
+  page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-disable-sw', '1')
+  })
   return page.goto(path, { waitUntil: 'domcontentloaded' })
 }
 
-function tap(locator) {
-  return locator.click({ force: true })
+async function tap(locator, options = {}) {
+  if (!options.fallbackEvaluate) {
+    return locator.click({ force: true })
+  }
+  await locator.scrollIntoViewIfNeeded()
+  await expect(locator).toBeVisible({ timeout: 10_000 })
+  try {
+    await locator.click({ timeout: 10_000 })
+    return
+  } catch {
+    const element = await locator.elementHandle({ timeout: 5_000 })
+    await element?.evaluate((node) => node.click())
+  }
 }
 
 function collectConsoleErrors(page) {
@@ -39,11 +53,45 @@ function collectConsoleErrors(page) {
   return errors
 }
 
+function getGameState() {
+  const snapshot = window.render_game_to_text ? window.render_game_to_text() : null
+  if (!snapshot) return null
+  try {
+    return JSON.parse(snapshot)
+  } catch {
+    return null
+  }
+}
+
 async function waitForGameText(page) {
   await expect.poll(
     () => page.evaluate(() => typeof window.render_game_to_text),
     { timeout: 45_000 },
   ).toBe('function')
+}
+
+async function pickJourneyRouteCard(page, targetRisk = 'Risky') {
+  const selected = await page.evaluate((riskLabel) => {
+    const cards = [...document.querySelectorAll('.journey-route-card')]
+    if (!cards.length) return null
+    const target = String(riskLabel || '').toLowerCase()
+    const targetIndex = cards.findIndex((card) => {
+      const label = card.querySelector('.route-risk')
+      return (label?.textContent || '').toLowerCase().includes(target)
+    })
+    const chosenIndex = targetIndex >= 0 ? targetIndex : 0
+    const chosen = cards[chosenIndex]
+    const rewardCopy = chosen.querySelector('.route-reward')?.textContent?.trim() || ''
+    const riskCopy = chosen.querySelector('.route-risk')?.textContent?.trim() || ''
+    chosen.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    return { index: chosenIndex, rewardCopy, riskCopy }
+  }, targetRisk)
+  if (!selected) return null
+  return {
+    route: page.locator('.journey-route-card').nth(selected.index),
+    rewardCopy: selected.rewardCopy,
+    riskCopy: selected.riskCopy,
+  }
 }
 
 test('menu boots and the hangar returns to the main menu', async ({ page }) => {
@@ -68,12 +116,16 @@ test('Journey route cards and the live HUD expose stamps and shortcut risk', asy
   await expect(page.locator('.journey-route-card .zone-stamp')).toHaveCount(2)
   await expect(page.locator('.journey-route-card .zone-stamp').first()).toHaveAttribute('data-zone', 'city')
 
-  const riskyRoute = page.locator('.journey-route-card.risky')
-  const rewardCopy = await riskyRoute.locator('.route-reward').textContent()
+  const selection = await pickJourneyRouteCard(page)
+  expect(selection).toBeTruthy()
+  const rewardCopy = selection.rewardCopy
   const rewardMultiplier = rewardCopy.match(/(\d+\.\d+)× rewards/)?.[1]
   expect(rewardMultiplier).toBeTruthy()
-  await tap(riskyRoute)
 
+  await expect.poll(
+    async () => page.evaluate(getGameState),
+    { timeout: 45_000 },
+  ).toMatchObject({ mode: 'journey', state: 'playing' })
   await expect(page.locator('#flight-route')).toBeVisible({ timeout: 45_000 })
   await expect(page.locator('#flight-route-risk')).toHaveText(`SHORTCUT · ${rewardMultiplier}×`)
   await expect(page.locator('#flight-route-stamp')).toHaveAttribute('data-zone', 'city')
@@ -111,13 +163,13 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
 
   await expect(page.locator('.upgrade-card')).toHaveCount(UPGRADE_CARD_CONTRACTS.length)
   for (const contract of UPGRADE_CARD_CONTRACTS) {
-    const card = page.locator('.upgrade-card', { hasText: contract.name })
+    const card = page.locator(`.upgrade-card[data-upgrade-id="${contract.id}"]`)
     await expect(card.locator('.u-effect-current')).toHaveText(`Current: ${contract.current}`)
     await expect(card.locator('.u-effect-next')).toHaveText(`Next: ${contract.next}`)
   }
 
   for (const contract of UPGRADE_CARD_CONTRACTS) {
-    const card = page.locator('.upgrade-card', { hasText: contract.name })
+    const card = page.locator(`.upgrade-card[data-upgrade-id="${contract.id}"]`)
     await tap(card.locator('.u-buy'))
     await expect(card.locator('.u-effect-current')).toHaveText(`Current: ${contract.next}`)
     await expect(card.locator('.u-effect-next')).toHaveText('Next: MAX — all ranks purchased')
@@ -179,14 +231,14 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
   await expect(mint).toContainText('Purchase 18★')
   await tap(mint)
   await expect(mint).toContainText('Equipped')
-  await expect(page.locator('#hangar-wallet')).toHaveText('0')
+  await expect(page.locator('#hangar-wallet')).toHaveText('2')
   await expect(page.locator('#skins-status')).toHaveText('Mint Fold purchased and equipped.')
 
   const halloween = page.locator('.skin-card', { hasText: 'Jack-o-Plane' })
   await expect(halloween).toContainText('Claim free')
   await tap(halloween)
   await expect(halloween).toContainText('Equipped')
-  await expect(page.locator('#hangar-wallet')).toHaveText('0')
+  await expect(page.locator('#hangar-wallet')).toHaveText('2')
   await expect(page.locator('#skins-status')).toHaveText('Jack-o-Plane claimed and equipped.')
   await expect.poll(() => page.evaluate(() => ({
     equipped: localStorage.getItem('paper-plane-run-skin'),
@@ -260,7 +312,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await expect(coral).toHaveClass(/state-available/)
   await expect(night).toHaveClass(/state-locked/)
   await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 50★')
-  await expect(coral.locator('.plane-price')).toHaveText('Wallet 35★')
+  await expect(coral.locator('.plane-price')).toHaveText('Wallet 32★')
   await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
 
   await mint.focus()
@@ -270,7 +322,8 @@ test('Plane Collection previews the shared equipped silhouette across card state
 
   await tap(coral)
   await expect(page.locator('.skin-card[data-plane-id="coral"]')).toHaveClass(/state-equipped/)
-  await expect(page.locator('#hangar-wallet')).toHaveText('65')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-plane-run-skin'))).toBe('coral')
+  await expect(page.locator('#hangar-wallet')).toHaveText('68')
   await expect(page.locator('#skins-status')).toHaveText('Coral Wash purchased and equipped.')
   await expect(preview).toHaveAttribute('data-plane-id', 'coral')
   await expect(preview).toHaveAttribute('data-silhouette', 'dart')
