@@ -445,6 +445,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   test.slow()
   const arWarnings = []
   let arPermissionDialogs = 0
+  const arToast = page.locator('#challenge-toast')
   page.on('console', (message) => {
     if (message.type() === 'warning' && message.text().includes('AR desk mode unavailable')) {
       arWarnings.push(message.text())
@@ -504,6 +505,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   await page.evaluate(() => { window.__denyCamera = true })
   await page.locator('#set-ar').click({ force: true })
   await expect(page.locator('#set-ar')).not.toBeChecked()
+  await expect(arToast).toHaveText('Camera permission needed for Desk AR')
   await expect.poll(() => page.evaluate(() => ({
     runtime: JSON.parse(window.render_game_to_text()).settings,
     saved: JSON.parse(localStorage.getItem('paper-plane-run-settings-v1')),

@@ -110,6 +110,7 @@ const flightEngineWarningState = {
 const settingsToastState = {
   signature: '',
   at: 0,
+  hideTimeout: 0,
 }
 
 function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {}) {
@@ -123,7 +124,8 @@ function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {})
   settingsToastState.at = now
   toast.textContent = message
   toast.classList.remove('hidden')
-  window.setTimeout(() => toast.classList.add('hidden'), durationMs)
+  window.clearTimeout(settingsToastState.hideTimeout)
+  settingsToastState.hideTimeout = window.setTimeout(() => toast.classList.add('hidden'), durationMs)
 }
 
 function reportFlightEngineWarning(message, error) {
