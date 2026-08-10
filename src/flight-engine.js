@@ -535,6 +535,11 @@ const DIFFS = {
 const DIFF_KEY = 'paper-plane-run-diff'
 const BEST_PREFIX = 'paper-plane-run-best-'
 
+function parseBestScore(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
+}
+
 function loadBest(id) {
   if (id === 'normal') {
     const legacy = localStorage.getItem('paper-plane-run-best')
@@ -542,7 +547,7 @@ function loadBest(id) {
       safeSetItem(BEST_PREFIX + id, legacy)
     }
   }
-  return Number(localStorage.getItem(BEST_PREFIX + id) || 0)
+  return parseBestScore(localStorage.getItem(BEST_PREFIX + id))
 }
 function saveBest(id, v) {
   safeSetItem(BEST_PREFIX + id, String(v))
