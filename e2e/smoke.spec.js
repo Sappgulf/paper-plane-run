@@ -506,6 +506,9 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
   await page.locator('#set-ar').click({ force: true })
   await expect(page.locator('#set-ar')).not.toBeChecked()
   await expect(arToast).toHaveText('Camera permission needed for Desk AR')
+  await page.waitForTimeout(2200)
+  await page.locator('#set-ar').click({ force: true })
+  await expect(page.locator('#set-ar')).not.toBeChecked()
   await expect.poll(() => page.evaluate(() => ({
     runtime: JSON.parse(window.render_game_to_text()).settings,
     saved: JSON.parse(localStorage.getItem('paper-plane-run-settings-v1')),
@@ -513,6 +516,10 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
     runtime: { arDesk: false, arActive: false },
     saved: { arDesk: false },
   })
+  await expect(arToast).toBeVisible()
+  await expect(arToast).toHaveText('Camera permission needed for Desk AR')
+  await page.waitForTimeout(2600)
+  await expect(arToast).toBeHidden()
   expect(arWarnings).toHaveLength(0)
   expect(arPermissionDialogs).toBe(0)
 })

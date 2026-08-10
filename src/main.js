@@ -118,6 +118,10 @@ function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {})
   if (!toast || !message) return
   const now = performance.now ? performance.now() : Date.now()
   if (settingsToastState.signature === message && now - settingsToastState.at < dedupeMs) {
+    settingsToastState.at = now
+    toast.classList.remove('hidden')
+    window.clearTimeout(settingsToastState.hideTimeout)
+    settingsToastState.hideTimeout = window.setTimeout(() => toast.classList.add('hidden'), durationMs)
     return
   }
   settingsToastState.signature = message
