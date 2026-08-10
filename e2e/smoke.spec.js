@@ -412,6 +412,12 @@ test('a delayed engine chunk shows preparation before flight starts', async ({ p
 test('an aborted engine chunk offers a retry that can start flight', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
+  const engineWarnings = []
+  page.on('console', (message) => {
+    if (message.type() === 'warning' && message.text().includes('Flight engine')) {
+      engineWarnings.push(message.text())
+    }
+  })
   let engineRequests = 0
   await page.route('**/src/flight-engine.js*', async (route) => {
     engineRequests += 1
@@ -430,11 +436,19 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
   // A registered service worker may satisfy the reload from cache, bypassing
   // page.route; the visible HUD is the authoritative recovery assertion.
   expect(engineRequests).toBeGreaterThanOrEqual(1)
+  expect(engineWarnings.filter((message) => message.includes('Flight engine preload failed'))).toHaveLength(1)
+  expect(engineWarnings.some((message) => message.includes('Flight engine unavailable'))).toBe(false)
 })
 
 test('a preloaded engine applies shell graphics settings and rolls denied AR back', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
+  const arWarnings = []
+  page.on('console', (message) => {
+    if (message.type() === 'warning' && message.text().includes('AR desk mode unavailable')) {
+      arWarnings.push(message.text())
+    }
+  })
   await page.addInitScript(() => {
     window.__denyCamera = false
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
@@ -493,6 +507,7 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
     runtime: { arDesk: false, arActive: false },
     saved: { arDesk: false },
   })
+  expect(arWarnings).toHaveLength(0)
 })
 
 test('replaying custom routes uses the latest editor layout', async ({ page }, testInfo) => {
