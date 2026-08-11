@@ -755,6 +755,20 @@ const scene = new THREE.Scene()
 scene.fog = new THREE.Fog(0xb8d4e8, 42, 220)
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400)
 
+// Chase-camera framing. The camera rides CAM_HEIGHT above the plane, so the aim
+// point has to sit slightly *below* it: aiming level with the plane at a
+// far-forward z flattens the view angle and drops the plane off the bottom of
+// the frame. These values hold the plane around 68% down the screen.
+const CAM_HEIGHT = 4.2
+const CAM_AIM_LIFT = -0.15
+const CAM_AIM_Z = 16
+// Lateral/depth smoothing stays loose so steering reads as momentum. The
+// vertical axis settles far faster: a lagging camera rides above a sinking
+// plane and pushes it off-screen exactly when the player needs to see it.
+const CAM_FOLLOW_X = 0.62
+const CAM_EASE_LATERAL = 0.0005
+const CAM_EASE_VERTICAL = 1e-7
+
 // A soft generic room environment so metallic/reflective materials (scissors
 // blades, power crystals, upgrade halos) pick up real reflections instead of
 // rendering flat/near-black — this scene never had any environment lighting,
@@ -3176,8 +3190,8 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + 3.2, -11)
-  camera.lookAt(0, planeY, 14)
+  camera.position.set(0, planeY + CAM_HEIGHT, -11)
+  camera.lookAt(0, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   ground.position.z = 120
   currentSkyUrl = ''
   currentGroundUrl = ''
@@ -3424,7 +3438,13 @@ function mouseWorldTarget(clientX, clientY, isTouch = false) {
   const hit = _aimRay.ray.intersectPlane(_flightPlane, _aimHit)
   if (hit) {
     let tx = _aimHit.x
-    let ty = _aimHit.y
+    // Vertical aim is mapped straight from the screen row rather than taken
+    // from the ray hit. The camera's height tracks planeY 1:1, so a ray-derived
+    // target is always a fixed offset *above or below the plane* — the plane
+    // then chases that offset into MAX_Y or MIN_Y for every cursor position but
+    // one exact row. Mapping the row onto the altitude band keeps the control
+    // positional: screen top is the ceiling, screen bottom is the floor.
+    let ty = THREE.MathUtils.mapLinear(_aimNdc.y, -1, 1, MIN_Y, MAX_Y)
     if (settings.invertX) tx = -tx
     if (settings.invertY) {
       // Invert around mid altitude band
@@ -5322,9 +5342,14 @@ function update(dt) {
 
   // Camera: pull back slightly during boost
   const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
-  const camY = planeY + 3.1 + (activePower?.kind === 'boost' ? 0.4 : 0)
-  camera.position.lerp(_camTarget.set(planeX * 0.45, camY, camZ), 1 - Math.pow(0.0005, dt))
-  camera.lookAt(planeX * 0.2, planeY + 0.3, 16)
+  const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
+  const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
+  const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
+  _camTarget.set(planeX * CAM_FOLLOW_X, camY, camZ)
+  camera.position.x += (_camTarget.x - camera.position.x) * lateralEase
+  camera.position.z += (_camTarget.z - camera.position.z) * lateralEase
+  camera.position.y += (_camTarget.y - camera.position.y) * verticalEase
+  camera.lookAt(planeX * 0.2, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
     camera.position.x += (Math.random() - 0.5) * shake * 0.45
