@@ -59,6 +59,7 @@ import {
   describeEarlyPathBanner,
   nextRecommendedUpgrade,
   treeForUpgrade,
+  filterUpgradesByTree,
   UPGRADE_TREES,
 } from './game/upgrade-path.js'
 import {
@@ -906,6 +907,7 @@ function renderPrestige() {
 }
 
 let hangarFocusUpgradeId = null
+let hangarUpgradeTree = null
 
 function renderUpgrades() {
   refreshHangarWallet()
@@ -919,19 +921,50 @@ function renderUpgrades() {
   const pathEl = document.createElement('div')
   pathEl.className = pathBanner.visible ? 'upgrade-path-banner' : 'upgrade-path-banner path-complete'
   pathEl.innerHTML = `<strong>${pathBanner.title}</strong><span>${pathBanner.body}</span>`
+  if (pathBanner.visible && pathBanner.upgradeId) {
+    const rec = listUpgrades().find((item) => item.id === pathBanner.upgradeId)
+    if (rec && !rec.maxed) {
+      const recBtn = document.createElement('button')
+      recBtn.type = 'button'
+      recBtn.className = 'u-buy path-buy'
+      recBtn.textContent = rec.canAfford ? `Buy ${rec.name} · ${rec.cost}★` : `${rec.cost}★ needed`
+      recBtn.disabled = !rec.canAfford
+      recBtn.onclick = () => {
+        const res = buyUpgrade(rec.id)
+        if (res.ok) {
+          shellAudio.uiClick()
+          if (settings.haptics) Haptic.collect()
+          hangarFocusUpgradeId = rec.id
+          renderUpgrades()
+        }
+      }
+      pathEl.appendChild(recBtn)
+    }
+  }
   grid.appendChild(pathEl)
   const treeNav = document.createElement('div')
   treeNav.className = 'upgrade-tree-row'
   treeNav.setAttribute('role', 'tablist')
   treeNav.setAttribute('aria-label', 'Upgrade groups')
+  const allChip = document.createElement('button')
+  allChip.type = 'button'
+  allChip.className = `upgrade-tree-chip${hangarUpgradeTree ? '' : ' active'}`
+  allChip.textContent = 'All'
+  allChip.onclick = () => { hangarUpgradeTree = null; renderUpgrades() }
+  treeNav.appendChild(allChip)
   for (const tree of UPGRADE_TREES) {
-    const chip = document.createElement('span')
-    chip.className = 'upgrade-tree-chip'
+    const chip = document.createElement('button')
+    chip.type = 'button'
+    chip.className = `upgrade-tree-chip${hangarUpgradeTree === tree.id ? ' active' : ''}`
     chip.textContent = tree.label
+    chip.onclick = () => { hangarUpgradeTree = tree.id; renderUpgrades() }
     treeNav.appendChild(chip)
   }
   grid.appendChild(treeNav)
-  const upgrades = [...listUpgrades()].sort((a, b) => {
+  const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).sort((a, b) => {
+    const recA = pathBanner.upgradeId === a.id ? 0 : 1
+    const recB = pathBanner.upgradeId === b.id ? 0 : 1
+    if (recA !== recB) return recA - recB
     if (a.canAfford !== b.canAfford) return a.canAfford ? -1 : 1
     if (a.maxed !== b.maxed) return a.maxed ? 1 : -1
     const costA = a.cost ?? Number.POSITIVE_INFINITY
@@ -970,7 +1003,6 @@ function renderUpgrades() {
     if (pathBanner.visible && pathBanner.upgradeId === u.id) card.classList.add('upgrade-recommended')
     const tree = treeForUpgrade(u.id)
     if (tree) card.dataset.tree = tree.id
-    const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
     const action = document.createElement(u.maxed ? 'span' : 'button')
     if (u.maxed) {
       action.className = 'u-max'
@@ -1019,7 +1051,15 @@ function renderUpgrades() {
     }
     const barEl = document.createElement('div')
     barEl.className = 'u-bars'
-    barEl.textContent = `${bars}  ${u.level}/${u.max}`
+    barEl.setAttribute('aria-label', `${u.level} of ${u.max}`)
+    for (let rank = 0; rank < u.max; rank += 1) {
+      const pip = document.createElement('i')
+      if (rank < u.level) pip.className = 'on'
+      barEl.appendChild(pip)
+    }
+    const rankLabel = document.createElement('span')
+    rankLabel.textContent = `${u.level}/${u.max}`
+    barEl.appendChild(rankLabel)
     card.appendChild(barEl)
     grid.appendChild(card)
   }

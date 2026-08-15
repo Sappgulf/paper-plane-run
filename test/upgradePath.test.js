@@ -6,6 +6,7 @@ import {
   describeEarlyPathBanner,
   nextRecommendedUpgrade,
   treeForUpgrade,
+  filterUpgradesByTree,
 } from '../src/game/upgrade-path.js'
 
 describe('upgrade early path', () => {
@@ -31,5 +32,11 @@ describe('upgrade early path', () => {
     expect(treeForUpgrade('handling')?.id).toBe('handle')
     expect(treeForUpgrade('guardian')?.id).toBe('survive')
     expect(treeForUpgrade('trail')?.id).toBe('style')
+  })
+
+  test('filters catalog cards by spend tree', () => {
+    const handle = filterUpgradesByTree(UPGRADES, 'handle')
+    expect(handle.map((item) => item.id)).toEqual(['handling', 'lift', 'glide'])
+    expect(filterUpgradesByTree(UPGRADES, null)).toHaveLength(UPGRADES.length)
   })
 })

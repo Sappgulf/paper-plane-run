@@ -1444,6 +1444,16 @@ function attachPlaneAccents() {
     magnetHalo.visible = false
     plane.add(magnetHalo)
   }
+  if (!plane.getObjectByName('guardianStitch')) {
+    const stitch = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.22, 0.55),
+      new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.85 }),
+    )
+    stitch.name = 'guardianStitch'
+    stitch.position.set(0, 0.12, -0.55)
+    stitch.visible = false
+    plane.add(stitch)
+  }
 }
 
 function syncPlanePowerLook(dt = 0.016) {
@@ -1460,6 +1470,8 @@ function syncPlanePowerLook(dt = 0.016) {
     magnetHalo.visible = (fx.magnetBonus || 0) > 0 && state === 'playing'
     if (magnetHalo.visible) magnetHalo.rotation.z += dt * 1.6
   }
+  const stitch = plane.getObjectByName('guardianStitch')
+  if (stitch) stitch.visible = guardianLeft > 0 && state === 'playing'
   const stretch = boosting ? 1.1 : 1
   plane.scale.setScalar((fx.planeScale || 1) * 1.12 * stretch)
   if (upgradeTrail) {
@@ -5437,7 +5449,8 @@ function update(dt) {
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
   plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
-  plane.rotation.z = THREE.MathUtils.clamp(roll + feverWobble, -0.8, 0.8)
+  const handleMul = 1 + Math.min(0.28, (activeUpgradeEffects.handlingLevel || 0) * 0.05)
+  plane.rotation.z = THREE.MathUtils.clamp((roll + feverWobble) * handleMul, -0.9, 0.9)
   plane.rotation.y = flightPose.yaw
   if (activePower?.kind !== 'tear') {
     const wingL = plane.userData.wingL

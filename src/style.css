@@ -846,10 +846,14 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 4px 0 10px;
 }
 .upgrade-tree-chip {
-  font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
-  padding: 5px 10px; border-radius: 999px; color: #5d4698;
+  font-family: inherit; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 999px; color: #5d4698; cursor: pointer;
   background: rgba(237,233,254,.8); border: 1px solid rgba(124,58,237,.18);
 }
+.upgrade-tree-chip.active {
+  color: #fff; background: linear-gradient(180deg,#a78bfa,#7c3aed); border-color: transparent;
+}
+.path-buy { margin-top: 8px; align-self: flex-start; }
 .upgrade-card[data-tree='handle'] { border-left: 3px solid #5a9fd4; }
 .upgrade-card[data-tree='survive'] { border-left: 3px solid #4ade80; }
 .upgrade-card[data-tree='score'] { border-left: 3px solid #f0b429; }
@@ -891,7 +895,18 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   grid-column: 1 / -1; width: fit-content; padding: 4px 8px; border-radius: 999px;
   background: rgba(126,184,232,.16); color: #35698f; font-size: 10px; font-weight: 900;
 }
-.upgrade-card .u-bars { grid-column: 1 / -1; letter-spacing: 3px; color: #d97706; font-size: 13px; font-weight: 900; }
+.upgrade-card .u-bars {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; color: #b45309;
+  font-size: 11px; font-weight: 900;
+}
+.upgrade-card .u-bars i {
+  width: 10px; height: 10px; border-radius: 3px;
+  background: rgba(61,44,41,.12); box-shadow: inset 0 0 0 1px rgba(61,44,41,.08);
+}
+.upgrade-card .u-bars i.on {
+  background: linear-gradient(180deg,#fcd34d,#f59e0b);
+  box-shadow: 0 2px 6px rgba(245,158,11,.35);
+}
 .upgrade-card .u-buy {
   font-family: inherit; font-weight: 900; font-size: 13px; padding: 9px 12px;
   border-radius: 12px; border: none; cursor: pointer;

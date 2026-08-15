@@ -44,6 +44,13 @@ export function treeForUpgrade(upgradeId) {
   return UPGRADE_TREES.find((tree) => tree.ids.includes(upgradeId)) || null
 }
 
+export function filterUpgradesByTree(upgrades = [], treeId = null) {
+  if (!treeId) return upgrades
+  const tree = UPGRADE_TREES.find((entry) => entry.id === treeId)
+  if (!tree) return upgrades
+  return upgrades.filter((upgrade) => tree.ids.includes(upgrade.id))
+}
+
 export function describeEarlyPathBanner(recommendation, catalog = []) {
   if (!recommendation) {
     return Object.freeze({
