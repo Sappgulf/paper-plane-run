@@ -35,8 +35,9 @@ export function isInsideBossPassage({
 } = {}) {
   const halfWidth = Math.max(0, Number(passage?.halfWidth) || 0) + Math.max(0, Number(grace) || 0)
   const halfHeight = Math.max(0, Number(passage?.halfHeight) || 0) + Math.max(0, Number(grace) || 0)
-  return Math.abs((Number(playerX) || 0) - (Number(bossX) || 0)) < halfWidth &&
-    Math.abs((Number(playerY) || 0) - (Number(gapY) || 0)) < halfHeight
+  const nx = ((Number(playerX) || 0) - (Number(bossX) || 0)) / Math.max(0.01, halfWidth)
+  const ny = ((Number(playerY) || 0) - (Number(gapY) || 0)) / Math.max(0.01, halfHeight)
+  return (nx * nx) + (ny * ny) < 1
 }
 
 /** Slow the world only while the boss is in the readable approach band. */
@@ -87,10 +88,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
   const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
   if (phase === 'final-pass') {
     const headline = kind === 'wind'
-      ? `Final gust · fly the glowing ring · ${laneLabel}`
+      ? 'Final gust · fly the hoop'
       : kind === 'stapler'
-        ? `Jaws closing · fly the glowing ring · ${laneLabel}`
-        : `Final cut · fly the glowing ring · ${laneLabel}`
+        ? 'Jaws closing · fly the hoop'
+        : 'Final cut · fly the hoop'
     return Object.freeze({
       laneLabel,
       headline,
@@ -100,10 +101,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
   }
   if (phase === 'pressure') {
     const headline = kind === 'wind'
-      ? `Wind rising · hold the ring · ${laneLabel}`
+      ? 'Wind rising · hold the hoop'
       : kind === 'stapler'
-        ? `Stapler press · hold the ring · ${laneLabel}`
-        : `Blades closing · hold the ring · ${laneLabel}`
+        ? 'Stapler press · hold the hoop'
+        : 'Blades closing · hold the hoop'
     return Object.freeze({
       laneLabel,
       headline,
@@ -112,10 +113,10 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
     })
   }
   const headline = kind === 'wind'
-    ? `Wind gate · safe ring is ${laneLabel}`
+    ? 'Wind gate · fly the hoop'
     : kind === 'stapler'
-      ? `Stapler gate · safe ring is ${laneLabel}`
-      : `Scissors gate · safe ring is ${laneLabel}`
+      ? 'Stapler gate · fly the hoop'
+      : 'Scissors gate · fly the hoop'
   return Object.freeze({
     laneLabel,
     headline,

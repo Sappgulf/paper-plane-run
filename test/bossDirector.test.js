@@ -48,8 +48,8 @@ describe('boss encounter director', () => {
 
     expect(isInsideBossPassage({ playerX: 0, playerY: 12, bossX: 0, gapY: 12, passage })).toBe(true)
     expect(isInsideBossPassage({
-      playerX: passage.halfWidth - 0.05,
-      playerY: 12 + passage.halfHeight - 0.05,
+      playerX: passage.halfWidth * 0.45,
+      playerY: 12 + passage.halfHeight * 0.45,
       bossX: 0,
       gapY: 12,
       passage,
@@ -119,8 +119,8 @@ describe('boss encounter director', () => {
     expect(reward.stars).toBe(5)
     expect(reward.recoveryMeters).toBeGreaterThanOrEqual(100)
     expect(reward.invulnSeconds).toBeGreaterThanOrEqual(0.7)
-    expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|ring/i)
-    expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|glowing ring/)
+    expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|hoop/i)
+    expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|hoop/)
   })
 
   test('edge grace keeps near-miss portal edges flyable', () => {

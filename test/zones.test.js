@@ -10,6 +10,7 @@ describe('zones', () => {
     const midnight = zoneAt(1700)
     expect(midnight.id).toBe('midnight')
     expect(midnight.name).toBe('Midnight Origami')
+    expect(midnight.nightReadability).toBe(true)
     expect(nextZone(1200)?.id).toBe('midnight')
     expect(nextZone(1700)).toBeNull()
     expect(existsSync(new URL(`../public${midnight.sky}`, import.meta.url))).toBe(true)

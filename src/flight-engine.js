@@ -359,7 +359,7 @@ function pulseFlightImpact(tone = 'route') {
 
 function updateFlightReadability(routeState = null) {
   const playing = state === 'playing'
-  flightRouteEl?.classList.toggle('hidden', !playing)
+  flightRouteEl?.classList.toggle('hidden', !playing || bossActive)
   flightFocusEl?.classList.toggle('hidden', !playing)
   if (!playing) return
 
@@ -828,7 +828,7 @@ function addBossArtOverlay(group, kind, gapY = 10, halfWidth = 4, halfHeight = 3
     onError,
   )
   const badges = []
-  for (const key of ['top', 'left', 'right']) {
+  for (const key of ['top']) {
     const slot = layout[key]
     const overlay = createBossArtOverlay({
       THREE: BOSS_ART_THREE,
@@ -1504,107 +1504,51 @@ const portalAccentMats = {
 }
 
 function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) {
-  // Build a rectangular hoop whose inner opening matches collision passage.
   const group = new THREE.Group()
   group.name = 'safeRing'
-  const thickness = 0.28
-  const depth = 0.22
-  const mat = new THREE.MeshStandardMaterial({
+  const hoopMat = new THREE.MeshStandardMaterial({
     color,
     emissive,
-    emissiveIntensity: 0.7,
-    roughness: 0.28,
+    emissiveIntensity: 1.15,
+    roughness: 0.32,
     side: THREE.DoubleSide,
     depthTest: false,
   })
   const glowMat = new THREE.MeshBasicMaterial({
     color: emissive,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.28,
     depthWrite: false,
     side: THREE.DoubleSide,
     depthTest: false,
   })
-  const fullW = halfWidth * 2
-  const fullH = halfHeight * 2
-  const bars = [
-    // top / bottom
-    { size: [fullW + thickness * 2, thickness, depth], pos: [0, halfHeight + thickness / 2, 0] },
-    { size: [fullW + thickness * 2, thickness, depth], pos: [0, -halfHeight - thickness / 2, 0] },
-    // left / right
-    { size: [thickness, fullH, depth], pos: [-halfWidth - thickness / 2, 0, 0] },
-    { size: [thickness, fullH, depth], pos: [halfWidth + thickness / 2, 0, 0] },
-  ]
-  for (const bar of bars) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...bar.size), mat)
-    mesh.position.set(...bar.pos)
-    mesh.renderOrder = 4
-    group.add(mesh)
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(bar.size[0] * 1.15, bar.size[1] * 1.15, bar.size[2] * 0.5),
-      glowMat,
-    )
-    glow.position.set(...bar.pos)
-    glow.renderOrder = 3
-    group.add(glow)
-  }
-  // Soft fill so the hole reads even when the frame is distant.
-  const fill = new THREE.Mesh(
-    new THREE.PlaneGeometry(fullW * 0.92, fullH * 0.92),
-    new THREE.MeshBasicMaterial({
-      color: emissive,
-      transparent: true,
-      opacity: 0.12,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      depthTest: false,
-    }),
-  )
-  fill.position.z = -0.02
-  fill.renderOrder = 2
-  group.add(fill)
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(1, 0.085, 14, 56), hoopMat)
+  hoop.scale.set(halfWidth, halfHeight, 1)
+  hoop.renderOrder = 5
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(1, 0.16, 10, 40), glowMat)
+  glow.scale.set(halfWidth, halfHeight, 1)
+  glow.renderOrder = 4
+  group.add(glow, hoop)
   group.userData.halfWidth = halfWidth
   group.userData.halfHeight = halfHeight
   return group
 }
 
-function addBossSideTowers(group) {
-  for (const sx of [-12.5, 12.5]) {
-    const tower = createBuilding(2.2, 12, 2.2, buildingMats[0])
-    tower.position.x = sx
-    group.add(tower)
-  }
-}
-
-/** Shared open portal + optional side décor for every boss kind. */
+/** Shared open hoop — no picture-frame, no side towers. */
 function createBossPortalBase(kind, passage) {
   const halfWidth = passage?.halfWidth ?? 4
   const halfHeight = passage?.halfHeight ?? 3.7
   const g = new THREE.Group()
-  addBossSideTowers(g)
 
   const colors = {
-    scissors: { ring: 0x86efac, emissive: 0x22c55e },
-    wind: { ring: 0x93c5fd, emissive: 0x2563eb },
-    stapler: { ring: 0xfcd34d, emissive: 0xf59e0b },
-  }[kind] || { ring: 0x86efac, emissive: 0x22c55e }
+    scissors: { ring: 0xb8f3c8, emissive: 0x4ade80 },
+    wind: { ring: 0xbfdbfe, emissive: 0x60a5fa },
+    stapler: { ring: 0xfde68a, emissive: 0xfbbf24 },
+  }[kind] || { ring: 0xb8f3c8, emissive: 0x4ade80 }
 
   const safeRing = createSafePortalRing(colors.ring, colors.emissive, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
-
-  // Decorative frame lips just outside the safe rectangle (never inside it).
-  const accent = portalAccentMats[kind] || portalFrameMat
-  const outerPad = 0.55
-  const lipDepth = 0.45
-  const leftLip = new THREE.Mesh(
-    new THREE.BoxGeometry(outerPad, halfHeight * 2 + 1.2, lipDepth),
-    accent,
-  )
-  leftLip.position.set(-halfWidth - outerPad / 2 - 0.15, 10, 0)
-  const rightLip = leftLip.clone()
-  rightLip.position.x = halfWidth + outerPad / 2 + 0.15
-  g.add(leftLip, rightLip)
 
   addBossArtOverlay(g, kind, 10, halfWidth, halfHeight)
   g.userData.phase = 0
@@ -1613,8 +1557,6 @@ function createBossPortalBase(kind, passage) {
   g.userData.safeRing = safeRing
   g.userData.halfWidth = halfWidth
   g.userData.halfHeight = halfHeight
-  g.userData.leftLip = leftLip
-  g.userData.rightLip = rightLip
   return g
 }
 
@@ -1644,12 +1586,12 @@ function createStaplerGate(passage) {
   const g = createBossPortalBase('stapler', passage)
   const halfWidth = g.userData.halfWidth
   const halfHeight = g.userData.halfHeight
-  const jawH = 1.15
-  const jawW = halfWidth * 2 + 1.6
-  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
-  topJaw.position.set(0, 10 + halfHeight + jawH * 0.55 + 0.2, 0.15)
-  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.7), staplerJawMat)
-  bottomJaw.position.set(0, 10 - halfHeight - jawH * 0.55 - 0.2, 0.15)
+  const jawH = 0.7
+  const jawW = halfWidth * 1.15
+  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.45), staplerJawMat)
+  topJaw.position.set(0, 10 + halfHeight + jawH * 0.7 + 0.15, 0.15)
+  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.45), staplerJawMat)
+  bottomJaw.position.set(0, 10 - halfHeight - jawH * 0.7 - 0.15, 0.15)
   g.add(topJaw, bottomJaw)
   g.userData.topJaw = topJaw
   g.userData.bottomJaw = bottomJaw
@@ -2787,11 +2729,9 @@ function dispatchJourneyEncounter(event) {
   }
   journeyTelemetry.completedEventIds.push(event.id)
   for (const entity of entities.slice(eventStart)) entity.journeyEventId = event.id
-  const direction = lane < 0 ? 'from the left' : lane > 0 ? 'from the right' : 'through the center'
-  const navigatorHint = journeyRunConfig.pilotId === 'navigator' ? ` · ${direction}` : ''
-  zoneBanner.textContent = `${event.stage.toUpperCase()} · ${event.type.replaceAll('-', ' ')}${navigatorHint}`
+  zoneBanner.textContent = event.type.replaceAll('-', ' ')
   zoneBanner.classList.remove('hidden')
-  zoneBannerTimer = 2.4
+  zoneBannerTimer = 1.6
   track('journey_encounter_started', { routeId: journeyRunConfig.routeId, eventId: event.id, type: event.type })
 }
 
@@ -3031,17 +2971,47 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
   ground.material.needsUpdate = true
 }
 
+function applyNightReadability(enabled) {
+  const night = Boolean(enabled)
+  document.documentElement.dataset.night = night ? '1' : '0'
+  hemi.intensity = night ? 1.55 : 1.15
+  sun.intensity = night ? 1.7 : 1.35
+  sun.color.setHex(night ? 0xffe9b8 : 0xfff0e0)
+  for (const mat of buildingMats) {
+    mat.emissive.setHex(night ? 0x3a3358 : 0x000000)
+    mat.emissiveIntensity = night ? 0.28 : 0
+  }
+  birdMat.emissive.setHex(night ? 0xff8a65 : 0x000000)
+  birdMat.emissiveIntensity = night ? 0.35 : 0
+  birdAccentMat.emissive.setHex(night ? 0xffcc80 : 0x000000)
+  birdAccentMat.emissiveIntensity = night ? 0.22 : 0
+  if (deskAR.active || settings.arDesk) {
+    renderer.setClearColor(0x000000, 0)
+  } else {
+    renderer.setClearColor(night ? 0x6d6496 : 0xc8dff5, 1)
+  }
+}
+
 function applyZone(z, announce) {
   scene.fog.color.setHex(z.fog)
+  if (z.nightReadability) {
+    scene.fog.near = 70
+    scene.fog.far = 240
+  } else {
+    scene.fog.near = 150
+    scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
+  }
   hemi.color.setHex(z.hemiSky)
   hemi.groundColor.setHex(z.hemiGround)
   if (!activePower || activePower.kind !== 'slow') {
     renderer.toneMappingExposure = z.exposure
   }
+  applyNightReadability(z.nightReadability)
   if (z.sky) setSkyTexture(z.sky, announce)
   if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
   audio.setMusicZone(z.id)
   hudZoneEl.textContent = z.name
+  document.documentElement.dataset.zone = z.id
   if (announce && z.id !== currentZoneId) {
     zoneBanner.textContent = `✦ ${z.name}`
     zoneBanner.classList.remove('hidden')
@@ -4552,14 +4522,12 @@ function animateHazards(dt) {
         const presentation = describeBossPhase(encounter)
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
-        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} ${presentation.headline}`
+        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} Fly the glowing hoop`
         zoneBanner.classList.remove('hidden')
-        zoneBannerTimer = settings.reducedMotion ? 1.35 : 2.0
+        zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.7
         hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
-        notifications.show(presentation.headline, { duration: settings.reducedMotion ? 1400 : 2100 })
         audio.incoming()
         audio.bossWarning()
-        showFlightFeedback('BOSS GATE · HOLD YOUR LINE', 'hazard', 1.3)
         pulseFlightImpact('hazard')
         if (settings.haptics) Haptic.tap()
       }

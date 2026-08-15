@@ -120,24 +120,25 @@
             <p class="tagline">Soar the paper skies · dodge · collect · upgrade</p>
           </div>
 
-          <div class="menu-section">
-            <span class="chip-label">Difficulty</span>
-            <div class="diff-row" role="group" aria-label="Difficulty">
-              <button type="button" class="diff-btn" data-diff="easy">Easy</button>
-              <button type="button" class="diff-btn active" data-diff="normal">Normal</button>
-              <button type="button" class="diff-btn" data-diff="hard">Hard</button>
+          <div class="menu-section menu-setup">
+            <div class="menu-setup-col">
+              <span class="chip-label">Difficulty</span>
+              <div class="diff-row" role="group" aria-label="Difficulty">
+                <button type="button" class="diff-btn" data-diff="easy">Easy</button>
+                <button type="button" class="diff-btn active" data-diff="normal">Normal</button>
+                <button type="button" class="diff-btn" data-diff="hard">Hard</button>
+              </div>
+              <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
             </div>
-            <p id="diff-blurb" class="diff-blurb">Balanced flight · classic chaos</p>
-          </div>
-
-          <div class="menu-section">
-            <span class="chip-label">Controls</span>
-            <div class="diff-row control-row" role="group" aria-label="Control scheme">
-              <button type="button" class="diff-btn ctrl-btn active" data-ctrl="mouse">🖱 Mouse</button>
-              <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick">🕹️ Stick</button>
+            <div class="menu-setup-col">
+              <span class="chip-label">Controls</span>
+              <div class="diff-row control-row" role="group" aria-label="Control scheme">
+                <button type="button" class="diff-btn ctrl-btn active" data-ctrl="mouse">Mouse</button>
+                <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick">Stick</button>
+              </div>
+              <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
+              <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
             </div>
-            <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
-            <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
           </div>
 
           <button id="journey-btn" type="button" class="cta-main journey-main-cta">🗺️ Begin Journey</button>

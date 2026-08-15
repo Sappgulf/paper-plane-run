@@ -175,6 +175,13 @@ html.a11y-reduced-motion .flight-route-track span { transition: none; }
 .hud-card[data-hud-priority='tertiary'] > span:nth-child(2) {
   font-size: 12px; font-weight: 800; color: #6b5450;
 }
+@media (min-width: 720px) {
+  .hud-card[data-hud-priority='tertiary'] { display: none; }
+}
+html[data-night='1'] .hud-card {
+  background: rgba(255,250,242,.94);
+  border-color: rgba(255,255,255,.55);
+}
 .hud-card.stars > span:nth-child(2) { color: #d97706; }
 .hud-card.combo-hud > span:nth-child(2) { color: #7c3aed; }
 .hud-card.combo-hud.combo-pulse { animation: comboPulse 0.4s cubic-bezier(.34,1.56,.64,1); }
@@ -615,6 +622,15 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   border-radius: 18px;
   padding: 12px 12px 8px;
   margin-bottom: 10px;
+}
+.menu-setup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  text-align: center;
+}
+@media (max-width: 420px) {
+  .menu-setup { grid-template-columns: 1fr; }
 }
 .chip-label {
   display: block; font-size: 10px; font-weight: 900; letter-spacing: .12em;
