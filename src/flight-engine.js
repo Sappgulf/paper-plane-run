@@ -738,6 +738,12 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
   renderer.shadowMap.enabled = renderQuality.shadows
   if (typeof sun !== 'undefined' && sun) sun.castShadow = renderQuality.shadows
   if (typeof dust !== 'undefined' && dust) dust.visible = renderQuality.secondaryEffects
+  if (typeof entities !== 'undefined') {
+    for (const entity of entities) {
+      const outline = entity.mesh?.userData?.lethalOutline
+      if (outline) outline.visible = renderQuality.secondaryEffects && outline.visible
+    }
+  }
   document.documentElement.dataset.renderQuality = renderQuality.level
   if (deskAR.active || settings.arDesk) {
     renderer.setClearColor(0x000000, 0)
@@ -773,9 +779,9 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 40
 // point has to sit slightly *below* it: aiming level with the plane at a
 // far-forward z flattens the view angle and drops the plane off the bottom of
 // the frame. These values hold the plane around 68% down the screen.
-const CAM_HEIGHT = 3.05
-const CAM_AIM_LIFT = -0.08
-const CAM_AIM_Z = 11
+const CAM_HEIGHT = 3.35
+const CAM_AIM_LIFT = -0.1
+const CAM_AIM_Z = 13
 // Lateral/depth smoothing stays loose so steering reads as momentum. The
 // vertical axis settles far faster: a lagging camera rides above a sinking
 // plane and pushes it off-screen exactly when the player needs to see it.
@@ -1078,7 +1084,7 @@ function tryPaperPush() {
   return true
 }
 
-function fireWeapon() {
+function fireWeapon({ allowPush = false } = {}) {
   const fx = activeUpgradeEffects
   const result = resolveWeaponFire({
     weaponLevel: fx.weaponLevel,
@@ -1087,7 +1093,7 @@ function fireWeapon() {
     playing: state === 'playing',
   })
   if (!result.fired) {
-    tryPaperPush()
+    if (allowPush) tryPaperPush()
     return
   }
   fireCooldown = result.cooldownLeft
@@ -1312,7 +1318,7 @@ function maybeSpawnGroundDecor(z) {
     park.position.z = z + (rng() - 0.5) * 8
     scene.add(park)
     entities.push({ mesh: park, type: 'decor' })
-  } else if (roll < 0.34) {
+  } else if (roll < 0.34 && renderQuality.secondaryEffects) {
     const line = createClothesline()
     const side = rng() < 0.5 ? -1 : 1
     line.position.set(side * (12 + rng() * 8), 0, z)
@@ -1839,6 +1845,23 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
+const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.05, 6, 16)
+const lethalOutlineMat = new THREE.MeshBasicMaterial({
+  color: 0xff6b4a, transparent: true, opacity: 0.75, depthWrite: false,
+})
+function attachLethalOutline(group, radius = 0.85) {
+  if (!group || group.userData.lethalOutline) return group
+  if (!renderQuality.secondaryEffects) return group
+  const outline = new THREE.Mesh(lethalOutlineGeo, lethalOutlineMat)
+  outline.name = 'lethalOutline'
+  outline.rotation.y = Math.PI / 2
+  outline.scale.setScalar(radius)
+  outline.visible = false
+  group.add(outline)
+  group.userData.lethalOutline = outline
+  return group
+}
+
 function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
   const g = new THREE.Group()
   const tex = hasAlpha ? loadTex(texUrl) : loadCutoutTex(texUrl)
@@ -1856,14 +1879,7 @@ function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
   card.rotation.y = Math.PI
   g.add(card)
   g.userData.billboard = card
-  const outline = new THREE.Mesh(
-    new THREE.TorusGeometry(scale * 0.42, 0.05, 8, 22),
-    new THREE.MeshBasicMaterial({ color: 0xff6b4a, transparent: true, opacity: 0.8, depthWrite: false }),
-  )
-  outline.name = 'lethalOutline'
-  outline.rotation.y = Math.PI / 2
-  g.add(outline)
-  g.userData.lethalOutline = outline
+  attachLethalOutline(g, Math.max(0.7, (scale || 1.5) * 0.42))
   return g
 }
 
@@ -2104,16 +2120,7 @@ function createFlyer(kindId) {
     g.userData.wingL = left
     g.userData.wingR = right
   }
-  if (!g.userData.lethalOutline) {
-    const outline = new THREE.Mesh(
-      new THREE.TorusGeometry(0.85, 0.05, 8, 20),
-      new THREE.MeshBasicMaterial({ color: 0xff6b4a, transparent: true, opacity: 0.75, depthWrite: false }),
-    )
-    outline.name = 'lethalOutline'
-    outline.rotation.y = Math.PI / 2
-    g.add(outline)
-    g.userData.lethalOutline = outline
-  }
+  attachLethalOutline(g, 0.85)
   return g
 }
 
@@ -3299,6 +3306,7 @@ function resetGame() {
   crashReason = ''
   fovPunch = 0
   slingHold = 0
+  paperPushCooldown = 0
   mouseScreen.has = true
   mouseScreen.x = 0.5
   mouseScreen.y = 0.5
@@ -3343,7 +3351,7 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + CAM_HEIGHT, -8.2)
+  camera.position.set(0, planeY + CAM_HEIGHT, -9)
   camera.lookAt(0, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   ground.position.z = 120
   currentSkyUrl = ''
@@ -3378,7 +3386,8 @@ function resetGame() {
     }
   }
 
-  for (let i = 0; i < 10; i++) {
+  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 4 : 8
+  for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
     cl.position.set((rng() - 0.5) * 55, 12 + rng() * 18, 20 + rng() * 180)
     cl.scale.setScalar(1.2 + rng() * 1.8)
@@ -3809,7 +3818,7 @@ window.addEventListener('blur', () => keys.clear())
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
-  fireWeapon()
+  fireWeapon({ allowPush: true })
 })
 window.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
@@ -5522,7 +5531,7 @@ function update(dt) {
   checkTutorialHints(dt)
 
   // Camera: pull back slightly during boost
-  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10.2 : -8.2
+  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -11 : -9
   const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
