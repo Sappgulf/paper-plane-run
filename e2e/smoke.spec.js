@@ -756,7 +756,7 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   await waitForGameText(page)
   const scissors = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
-  expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.0, halfHeight: 3.7 })
+  expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.8, halfHeight: 4.4 })
   expect([-1, 0, 1]).toContain(scissors.boss.safeLane)
   expect(scissors.plane.collisionRadius).toBe(0.7)
   await page.evaluate(() => window.advanceTime(1550))

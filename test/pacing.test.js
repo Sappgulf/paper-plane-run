@@ -6,6 +6,8 @@ import {
   getObstacleDamageRadius,
   getSafeSpawnX,
   getWaveSpacing,
+  getFlyableBuildingHeight,
+  getSideBuildingSpread,
   normalizeControlAxes,
 } from '../src/game/pacing.js'
 
@@ -95,6 +97,18 @@ describe('existing flight pacing', () => {
     expect(normalizeControlAxes({ x: 2, y: -2 })).toEqual({ x: 1, y: -1 })
     expect(normalizeControlAxes({ x: 0.4, y: -0.6, invertX: true, invertY: true }))
       .toEqual({ x: -0.4, y: 0.6 })
+  })
+})
+
+describe('flyable building envelope', () => {
+  test('never lets a rooftop reach the flight ceiling', () => {
+    expect(getFlyableBuildingHeight({ requestedHeight: 40, maxAltitude: 16.5, minClearance: 2.6 })).toBeCloseTo(13.9)
+    expect(getFlyableBuildingHeight({ requestedHeight: 6, maxAltitude: 16.5 })).toBe(6)
+  })
+
+  test('keeps side towers outside the three flight lanes', () => {
+    expect(getSideBuildingSpread({ gap: 1, random: () => 0 })).toBeGreaterThan(14)
+    expect(getSideBuildingSpread({ gap: 1, random: () => 1 })).toBeGreaterThan(18)
   })
 })
 

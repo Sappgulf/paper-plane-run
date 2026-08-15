@@ -11,13 +11,13 @@ const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
 
 // Generous, flyable openings. Values are half-extents of the safe rectangle.
 const PASSAGES = Object.freeze({
-  easy: Object.freeze({ halfWidth: 4.4, halfHeight: 4.0 }),
-  normal: Object.freeze({ halfWidth: 4.0, halfHeight: 3.7 }),
-  hard: Object.freeze({ halfWidth: 3.6, halfHeight: 3.4 }),
+  easy: Object.freeze({ halfWidth: 5.2, halfHeight: 4.8 }),
+  normal: Object.freeze({ halfWidth: 4.8, halfHeight: 4.4 }),
+  hard: Object.freeze({ halfWidth: 4.2, halfHeight: 3.9 }),
 })
 
 /** Extra forgiveness so a grazing edge still counts as a pass. */
-export const PASSAGE_EDGE_GRACE = 0.35
+export const PASSAGE_EDGE_GRACE = 0.55
 
 export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler'])
 
@@ -40,6 +40,26 @@ export function isInsideBossPassage({
 }
 
 /** Slow the world only while the boss is in the readable approach band. */
+/**
+ * Until the last commit slice, the glowing hole tracks the plane so a
+ * readable approach never requires snapping to a hidden lane.
+ */
+export function resolveBossGapY({
+  playerY = 10,
+  safeY = 10,
+  bossZ = 80,
+  lockZ = 22,
+  minY = 6.2,
+  maxY = 14.8,
+} = {}) {
+  const py = Number(playerY)
+  const sy = Number(safeY)
+  const z = Number(bossZ)
+  const towardPlayer = Number.isFinite(z) && z > lockZ ? 0.82 : 0.55
+  const blended = (Number.isFinite(py) ? py : 10) * towardPlayer + (Number.isFinite(sy) ? sy : 10) * (1 - towardPlayer)
+  return Math.min(maxY, Math.max(minY, blended))
+}
+
 export function getBossApproachSpeedScale({ bossZ } = {}) {
   const z = Number(bossZ)
   if (!Number.isFinite(z) || z <= 0) return 1

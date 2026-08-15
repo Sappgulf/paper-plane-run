@@ -113,12 +113,31 @@ export function getCenterBuildingSafeRange({
   rightInnerEdge = null,
   radius = 0,
   gap = 1,
-  safeCorridor = 1.1,
+  safeCorridor = 2.6,
 } = {}) {
   const defaultHalfSpan = 4.5 * Number(gap || 1)
   const minX = leftInnerEdge != null ? leftInnerEdge + radius + safeCorridor : -defaultHalfSpan
   const maxX = rightInnerEdge != null ? rightInnerEdge - radius - safeCorridor : defaultHalfSpan
   return minX <= maxX ? { minX, maxX } : null
+}
+
+/** Buildings must stay shorter than the flyable ceiling so rooftops remain an escape. */
+export function getFlyableBuildingHeight({
+  requestedHeight = 8,
+  maxAltitude = 16.5,
+  minClearance = 2.6,
+} = {}) {
+  const floor = 3.8
+  const cap = Math.max(floor, nonNegative(maxAltitude, 16.5) - nonNegative(minClearance, 2.6))
+  return Math.min(Math.max(floor, nonNegative(requestedHeight, 8)), cap)
+}
+
+/** Side towers stay outside the three flight lanes. */
+export function getSideBuildingSpread({ gap = 1, random = Math.random } = {}) {
+  const sample = Number(random())
+  const roll = Number.isFinite(sample) ? sample : 0.5
+  const scale = Math.max(0.7, Number(gap) || 1)
+  return 14.5 * scale + roll * 5.5 * scale
 }
 
 export function normalizeControlAxes({ x = 0, y = 0, invertX = false, invertY = false } = {}) {

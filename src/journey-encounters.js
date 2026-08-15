@@ -63,7 +63,7 @@ export function buildJourneyObjective(config = {}) {
   let kind = 'completion'
   let target = 1
   if (config.finale && config.rival) kind = 'rival'
-  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = 3 }
+  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = 2 }
   else if (config.modifier === 'star-trail') { kind = 'star-trail'; target = 5 }
   else if (config.modifier === 'moving-formation') { kind = 'near-miss'; target = 4 }
   else if (config.modifier === 'low-visibility') kind = 'shieldless'
@@ -83,11 +83,12 @@ export function buildEncounterTimeline(config = {}) {
   const events = ENCOUNTER_STAGES.map((stage, index) => {
     const random = seededHash(config.encounterSeed ?? config.seed, index, templates.length)
     const template = templates[index] || templates[templates.length - 1]
-    const baseDistance = [55, 225, 395][index]
+    const bases = config.finale ? [55, 225, 395] : [48, 145, 248]
+    const baseDistance = bases[index]
     return Object.freeze({
       id: `${routeId}:${stage}:${index}`,
       stage,
-      distance: clamp(baseDistance + (random % 31) - 15, 40, 460),
+      distance: clamp(baseDistance + (random % 25) - 12, 40, config.finale ? 460 : 320),
       type: template.type,
       lanes: Object.freeze(varyLanes(template.lanes, random)),
       params: Object.freeze({ ...template.params, variant: random % 3 }),

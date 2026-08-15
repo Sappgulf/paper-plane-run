@@ -65,6 +65,7 @@ import {
   getBossApproachSpeedScale,
   getBossClearReward,
   isInsideBossPassage,
+  resolveBossGapY,
   shouldClearForBossApproach,
 } from './game/boss-director.js'
 import {
@@ -80,8 +81,10 @@ import {
   choosePassageLane,
   createPacingWave,
   getCenterBuildingSafeRange,
+  getFlyableBuildingHeight,
   getObstacleDamageRadius,
   getSafeSpawnX,
+  getSideBuildingSpread,
   getWaveSpacing,
   normalizeControlAxes,
 } from './game/pacing.js'
@@ -1566,8 +1569,8 @@ function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) 
 }
 
 function addBossSideTowers(group) {
-  for (const sx of [-9.5, 9.5]) {
-    const tower = createBuilding(2.2, 16, 2.2, buildingMats[0])
+  for (const sx of [-12.5, 12.5]) {
+    const tower = createBuilding(2.2, 12, 2.2, buildingMats[0])
     tower.position.x = sx
     group.add(tower)
   }
@@ -2417,7 +2420,7 @@ function spawnChunk(z) {
   })
   const safeLane = recovering ? null : wave.starLane
   if (safeLane !== null) activePassageLane = safeLane
-  const laneSpread = 11 * cfg.gap + rng() * 10 * cfg.gap
+  const laneSpread = getSideBuildingSpread({ gap: cfg.gap, random: rng })
   let leftInnerEdge = null
   let rightInnerEdge = null
 
@@ -2441,7 +2444,10 @@ function spawnChunk(z) {
   for (const side of recovering ? [] : [-1, 1]) {
     if (rng() < 0.82) {
       const w = 2.5 + rng() * 3.5
-      const h = (5 + rng() * (10 + ramp * 14)) * cfg.buildingH
+      const h = getFlyableBuildingHeight({
+        requestedHeight: (5 + rng() * (8 + ramp * 8)) * cfg.buildingH,
+        maxAltitude: MAX_Y,
+      })
       const d = 2.5 + rng() * 3
       const mat = buildingMats[(rng() * buildingMats.length) | 0]
       const b = createBuilding(w, h, d, mat)
@@ -2458,7 +2464,10 @@ function spawnChunk(z) {
   const ht = recovering ? null : pickHazardType(zone)
   if (ht === 'building') {
     const w = 2 + rng() * 3
-    const h = (7 + rng() * (10 + ramp * 16)) * cfg.buildingH
+    const h = getFlyableBuildingHeight({
+      requestedHeight: (6 + rng() * (6 + ramp * 6)) * cfg.buildingH,
+      maxAltitude: MAX_Y,
+    })
     const d = 2 + rng() * 2.5
     const radius = Math.max(w, d) * 0.5
     // Side buildings can occasionally spawn close enough in that a center
@@ -2467,7 +2476,8 @@ function spawnChunk(z) {
     const safeRange = getCenterBuildingSafeRange({ leftInnerEdge, rightInnerEdge, radius, gap: cfg.gap })
     if (safeRange) {
       const b = createBuilding(w, h, d, buildingMats[(rng() * buildingMats.length) | 0])
-      b.position.set(safeRange.minX + rng() * (safeRange.maxX - safeRange.minX), 0, z)
+      b.position.x = safeRange.minX + rng() * (safeRange.maxX - safeRange.minX)
+      b.position.z = z
       scene.add(b)
       entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
     }
@@ -2478,7 +2488,7 @@ function spawnChunk(z) {
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      flyer.position.set(safeAirX(6 * cfg.gap, def.radius), 3.5 + rng() * 18, z + i * 2.5)
+      flyer.position.set(safeAirX(6 * cfg.gap, def.radius), 5 + rng() * 8.5, z + i * 2.5)
       scene.add(flyer)
       entities.push({
         mesh: flyer,
@@ -2576,6 +2586,7 @@ function clearBossApproachHazards() {
 }
 
 function spawnBoss(z = 70, forcedKind = null) {
+  if (bossActive && entities.some((entity) => entity.type === 'boss' && !entity.cleared)) return
   clearBossApproachHazards()
   const encounterIndex = bossCount
   bossCount++
@@ -2732,17 +2743,16 @@ function dispatchJourneyEncounter(event) {
     audio.windGust()
     break
   case 'shortcut-gate': {
-    const count = Math.max(1, Math.min(3, event.params?.count || 1))
-    for (let index = 0; index < count; index += 1) {
-      spawnBoss(64 + index * 22, event.params?.kind || null)
-      const gate = entities.at(-1)
+    spawnBoss(82, event.params?.kind || null)
+    const gate = entities.at(-1)
+    if (gate?.type === 'boss') {
       gate.journeyGate = true
       gate.journeyGateRequired = event.params?.required !== false
-      gate.journeyGateBonus = !!event.params?.bonus && index === count - 1
-      gate.mesh.position.x = lane * 2.4
+      gate.journeyGateBonus = !!event.params?.bonus
+      gate.mesh.position.x = lane * 1.4
       journeyTelemetry.shortcutGatesTotal += gate.journeyGateRequired ? 1 : 0
     }
-    showFlightFeedback(`SHORTCUT FORK · ${count} gate${count === 1 ? '' : 's'}`, 'route', 1.4)
+    showFlightFeedback('SHORTCUT FORK · fly the glowing ring', 'route', 1.4)
     pulseFlightImpact('route')
     audio.shortcutGate()
     break
@@ -2761,7 +2771,15 @@ function dispatchJourneyEncounter(event) {
     })
     break
   case 'boss-gate':
-    spawnBoss(72, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
+    spawnBoss(78, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
+    {
+      const finaleGate = entities.at(-1)
+      if (finaleGate?.type === 'boss') {
+        finaleGate.journeyGate = true
+        finaleGate.journeyGateRequired = event.params?.required !== false
+        journeyTelemetry.shortcutGatesTotal += finaleGate.journeyGateRequired ? 1 : 0
+      }
+    }
     break
   default:
     spawnMiniGauntlet(64)
@@ -4523,7 +4541,11 @@ function animateHazards(dt) {
       u.phase += dt * 2.2
       // The director commits to one readable lane. Timing varies by
       // difficulty, while the existing collision opening stays unchanged.
-      u.gapY = encounter?.safeY ?? 10
+      u.gapY = resolveBossGapY({
+        playerY: planeY,
+        safeY: encounter?.safeY ?? 10,
+        bossZ: e.mesh.position.z,
+      })
       u.encounter = encounter
       if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
@@ -5204,7 +5226,16 @@ function update(dt) {
     speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.55))
   }
   const approachingBoss = entities.find((entity) => entity.type === 'boss' && !entity.cleared)
-  const move = speed * dt * getBossApproachSpeedScale({ bossZ: approachingBoss?.mesh.position.z })
+  const bossZ = approachingBoss?.mesh.position.z
+  if (approachingBoss && Number(bossZ) < 28 && Number(bossZ) > 0) {
+    const assistY = resolveBossGapY({
+      playerY: planeY,
+      safeY: approachingBoss.director?.snapshot()?.safeY ?? 10,
+      bossZ,
+    })
+    planeY += (assistY - planeY) * Math.min(1, dt * 2.4)
+  }
+  const move = speed * dt * getBossApproachSpeedScale({ bossZ })
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
@@ -5261,6 +5292,7 @@ function update(dt) {
     !bossActive
   ) {
     spawnMiniGauntlet(60)
+    invuln = Math.max(invuln, 0.55)
     nextGauntletAt += 500
   }
 
@@ -5524,13 +5556,13 @@ function update(dt) {
         })
         // Only punish a clear miss near the gate plane — grazing the glowing
         // ring edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage.
-        if (!inGap && Math.abs(dz) < 1.55) {
+        if (!inGap && Math.abs(dz) < 1.05) {
           e.director?.collide()
           die(bossCrashReason(m.userData.kind))
           return
         }
         // Success once the plane has threaded past the gate while in the hole.
-        if (dz < -0.9 && inGap) {
+        if (dz < -0.55 && inGap) {
           // Successfully threaded — reward once
           if (!e.cleared) {
             e.cleared = true

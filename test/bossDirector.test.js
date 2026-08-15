@@ -8,6 +8,7 @@ import {
   getBossApproachSpeedScale,
   getBossClearReward,
   isInsideBossPassage,
+  resolveBossGapY,
   shouldClearForBossApproach,
 } from '../src/game/boss-director.js'
 
@@ -55,12 +56,20 @@ describe('boss encounter director', () => {
     })).toBe(true)
     // Outside both half-width and edge grace is a true miss.
     expect(isInsideBossPassage({
-      playerX: passage.halfWidth + 0.5,
+      playerX: passage.halfWidth + 0.8,
       playerY: 12,
       bossX: 0,
       gapY: 12,
       passage,
     })).toBe(false)
+  })
+
+  test('tracks the plane with the glowing hole until the commit slice', () => {
+    const far = resolveBossGapY({ playerY: 14, safeY: 8, bossZ: 60 })
+    const near = resolveBossGapY({ playerY: 14, safeY: 8, bossZ: 12 })
+    expect(far).toBeGreaterThan(12)
+    expect(near).toBeGreaterThan(10)
+    expect(near).toBeLessThan(far)
   })
 
   test('slows the readable boss approach and clears lethal corridor hazards farther out', () => {
