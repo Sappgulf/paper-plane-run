@@ -1,11 +1,20 @@
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+// Uncompressed JavaScript, which is roughly 3.5x the wire cost after gzip.
+//
+// Composition as of the ground-life work: three ~572KB, flight engine ~140KB,
+// menu/shell entry ~100KB. The three chunk is effectively a floor — it is
+// lazy-loaded, and WebGLRenderer alone reaches most of the library, so named
+// imports and dropping PMREM were both measured at under 5KB of savings.
+//
+// The two limits do different jobs. `initialBytes` guards the critical path:
+// what a player downloads before the menu paints, which must stay small and is
+// the number worth defending. `totalBytes` guards the lazy engine chunk, where
+// gameplay features land, and is sized to leave real room to build.
 export const BUNDLE_BUDGET = Object.freeze({
-  // Keep a small, explicit margin for harmless minifier and hash variation
-  // until Task 2 splits the current production bundle.
-  initialBytes: 800 * 1024,
-  totalBytes: 800 * 1024,
+  initialBytes: 160 * 1024,
+  totalBytes: 900 * 1024,
 })
 
 export function summarizeManifest(manifest, sizes) {

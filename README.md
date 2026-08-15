@@ -19,8 +19,8 @@ npm install && npm run dev
 | 5 | Haptics + generative music |
 | 6 | Tutorial rings |
 | 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora → Midnight Origami) |
-| — | **Ground life** — each zone gets a landmark, a mid-height mover, a dense low scatter, and a flat decal band (traffic, sailboats, scrap fans, reeds, crystals, desk lamps…). Four instanced draw calls per zone regardless of instance count; upright props stay outside the flight corridor, only flat decals pass under the plane, and the whole field is shed first on low-power devices |
-| — | **Ground skim** — the low lane is the dangerous one, so holding it pays. Tiers bank stars and lift the score multiplier, with a short grace so clipping a roofline doesn't void an earned chain |
+| — | **Ground life** — every zone is laid out rather than sprinkled: two roads run down each flank carrying traffic (slower than the ground = pulling away, faster = oncoming), pedestrians walk the pavement beside them, and a landmark, low scatter and flat decal band fill the rest. Six or seven instanced draw calls per zone regardless of instance count; upright props stay outside the flight corridor, only flat decals pass under the plane, and the whole field is shed first on low-power devices |
+| — | **Ground skim** — the low lane is the dangerous one, so holding it pays. Tiers bank stars and lift the score multiplier, a short grace absorbs clipping a roofline, and pulling up under control cashes the chain in for distance |
 | — | **Plane upgrades** (14-upgrade tree incl. Fever Focus, Steady Hands, Gold Rush + synergies) |
 | — | **Expanded skins** (Neon, Rainbow, Storm Foil, Sunset Letter + seasonal + prestige Ink Veil / Starcrest / Paper Legend) |
 | 8 | Daily missions |

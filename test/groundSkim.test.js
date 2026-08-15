@@ -12,6 +12,7 @@ import {
   skimHudTier,
   skimScoreMultiplier,
   skimTierFor,
+  skimReleaseDistance,
   skimTierReward,
 } from '../src/game/ground-skim.js'
 
@@ -94,7 +95,12 @@ describe('ground skim grace', () => {
   test('staying high past the grace window ends the chain', () => {
     const { state } = skimFor(SKIM_TIER_SECONDS * 2)
     const dropped = advanceGroundSkim(state, { low: false, dt: SKIM_GRACE_SECONDS + 0.05 })
-    expect(dropped).toEqual(createGroundSkimState())
+    // The chain is spent, though ending it deliberately still pays out — see
+    // the release payout suite below.
+    expect(dropped.active).toBe(false)
+    expect(dropped.tier).toBe(0)
+    expect(dropped.seconds).toBe(0)
+    expect(dropped.grace).toBe(0)
   })
 
   test('a re-entered chain re-pays its tiers from scratch', () => {
@@ -144,5 +150,44 @@ describe('ground skim HUD copy', () => {
   test('reads MAX at the top tier instead of a countdown', () => {
     const { state } = skimFor(SKIM_TIER_SECONDS * (SKIM_MAX_TIER + 1))
     expect(describeSkimHudValue(state)).toBe('GROUND EFFECT! MAX')
+  })
+})
+
+describe('ground skim release payout', () => {
+  test('pulling up under control banks distance scaled to the tier held', () => {
+    const { state } = skimFor(SKIM_TIER_SECONDS * 3 + 0.05)
+    expect(state.tier).toBe(3)
+    const released = advanceGroundSkim(state, { low: false, dt: SKIM_GRACE_SECONDS + 0.05 })
+    expect(released.releaseTier).toBe(3)
+    expect(released.releaseDistance).toBe(skimReleaseDistance(3))
+    expect(released.releaseDistance).toBeGreaterThan(0)
+    expect(released.banner).toContain('PULL UP!')
+    // The chain itself is spent — the payout is a one-off, not a standing bonus.
+    expect(released.active).toBe(false)
+    expect(released.tier).toBe(0)
+    expect(released.seconds).toBe(0)
+  })
+
+  test('pays nothing for a chain that never reached a tier', () => {
+    const { state } = skimFor(SKIM_TIER_SECONDS * 0.5)
+    expect(state.tier).toBe(0)
+    const released = advanceGroundSkim(state, { low: false, dt: SKIM_GRACE_SECONDS + 0.05 })
+    expect(released.releaseDistance).toBe(0)
+    expect(released.banner).toBeNull()
+  })
+
+  test('pays out once, not every frame the plane stays high', () => {
+    const { state } = skimFor(SKIM_TIER_SECONDS * 2 + 0.05)
+    const released = advanceGroundSkim(state, { low: false, dt: SKIM_GRACE_SECONDS + 0.05 })
+    expect(released.releaseDistance).toBeGreaterThan(0)
+    const stillHigh = advanceGroundSkim(released, { low: false, dt: 0.5 })
+    expect(stillHigh.releaseDistance).toBe(0)
+    expect(stillHigh.banner).toBeNull()
+  })
+
+  test('rewards a longer hold with a bigger pull-up', () => {
+    expect(skimReleaseDistance(0)).toBe(0)
+    expect(skimReleaseDistance(5)).toBeGreaterThan(skimReleaseDistance(2))
+    expect(skimReleaseDistance(99)).toBe(skimReleaseDistance(SKIM_MAX_TIER))
   })
 })

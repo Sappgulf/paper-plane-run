@@ -90,6 +90,7 @@ import {
   groundLifeSlotZ,
   groundLifeTransform,
   resolveGroundLifeBudget,
+  roadSegmentLength,
   wrapGroundLifeZ,
 } from './game/ground-life.js'
 import {
@@ -1043,6 +1044,40 @@ let currentGroundUrl = '/assets/ground-city.jpg'
 // One InstancedMesh per species, so a whole field of traffic or reeds costs a
 // single draw call. Placement and motion rules live in game/ground-life.js.
 // ---------------------------------------------------------------------------
+/**
+ * Merge simple parts into one geometry so a multi-part silhouette — a car with
+ * a cabin, a person with a head — can still be drawn by a single InstancedMesh.
+ * Written out here rather than pulling in BufferGeometryUtils for one call.
+ */
+function mergeParts(parts) {
+  const positions = []
+  const normals = []
+  const indices = []
+  let offset = 0
+  for (const { geometry, at = [0, 0, 0], scale = [1, 1, 1] } of parts) {
+    const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry
+    const position = nonIndexed.getAttribute('position')
+    const normal = nonIndexed.getAttribute('normal')
+    for (let i = 0; i < position.count; i++) {
+      positions.push(
+        position.getX(i) * scale[0] + at[0],
+        position.getY(i) * scale[1] + at[1],
+        position.getZ(i) * scale[2] + at[2],
+      )
+      normals.push(normal.getX(i), normal.getY(i), normal.getZ(i))
+      indices.push(offset + i)
+    }
+    offset += position.count
+    if (nonIndexed !== geometry) nonIndexed.dispose()
+    geometry.dispose()
+  }
+  const merged = new THREE.BufferGeometry()
+  merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
+  merged.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3))
+  merged.setIndex(indices)
+  return merged
+}
+
 const GROUND_LIFE_GEOMETRY = {
   box: () => new THREE.BoxGeometry(1.1, 0.55, 2.2),
   flag: () => new THREE.PlaneGeometry(1.3, 0.95),
@@ -1057,6 +1092,19 @@ const GROUND_LIFE_GEOMETRY = {
   // Ground decal: a flat quad laid on the floor, the only class allowed to
   // cross under the flight path.
   decal: () => new THREE.PlaneGeometry(1, 2.6),
+  // A road segment. Length is set per-field so segments tile without gaps.
+  road: () => new THREE.PlaneGeometry(5.2, 1),
+  // Chassis plus a smaller cabin set back and up — enough silhouette to read
+  // as a car at this distance rather than as a floating brick.
+  car: () => mergeParts([
+    { geometry: new THREE.BoxGeometry(1.5, 0.5, 3.1), at: [0, 0, 0] },
+    { geometry: new THREE.BoxGeometry(1.2, 0.52, 1.4), at: [0, 0.48, -0.15] },
+  ]),
+  // A folded paper figure: body wedge, head, and a hint of shoulders.
+  person: () => mergeParts([
+    { geometry: new THREE.ConeGeometry(0.34, 0.9, 4), at: [0, 0, 0] },
+    { geometry: new THREE.SphereGeometry(0.2, 6, 5), at: [0, 0.62, 0] },
+  ]),
 }
 
 const groundLifeDummy = new THREE.Object3D()
@@ -1087,6 +1135,11 @@ function buildGroundLife(zoneId) {
     const count = groundLifeCount(speciesDef, budget)
     if (count <= 0) continue
     const geometry = (GROUND_LIFE_GEOMETRY[speciesDef.shape] || GROUND_LIFE_GEOMETRY.box)()
+    if (speciesDef.shape === 'road') {
+      // Stretch each segment to exactly the tiling length so the two road
+      // ribbons are continuous rather than a dashed line of quads.
+      geometry.scale(1, roadSegmentLength(count), 1)
+    }
     const glow = speciesDef.motion === 'pulse'
     const material = new THREE.MeshStandardMaterial({
       // White base: the per-instance tint below multiplies into this, so any
@@ -1096,9 +1149,11 @@ function buildGroundLife(zoneId) {
       side: THREE.DoubleSide,
       // Decals sit millimetres above the ground plane; bias them so they do
       // not z-fight with it at distance.
-      transparent: speciesDef.flat,
-      opacity: speciesDef.flat ? 0.55 : 1,
-      depthWrite: !speciesDef.flat,
+      // Roads are a surface, not a wash: fully opaque so they read against a
+      // busy paper ground. The softer decal bands stay translucent texture.
+      transparent: speciesDef.flat && speciesDef.shape !== 'road',
+      opacity: speciesDef.flat && speciesDef.shape !== 'road' ? 0.55 : 1,
+      depthWrite: !speciesDef.flat || speciesDef.shape === 'road',
       polygonOffset: speciesDef.flat,
       polygonOffsetFactor: speciesDef.flat ? -2 : 0,
       polygonOffsetUnits: speciesDef.flat ? -2 : 0,
@@ -1124,12 +1179,16 @@ function buildGroundLife(zoneId) {
     const instances = []
     for (let i = 0; i < count; i++) {
       instances.push({
-        x: groundLifeSlotX(i, rng(), speciesDef.flat),
-        z: groundLifeSlotZ(i, count, rng()),
+        x: groundLifeSlotX(i, rng(), speciesDef),
+        z: groundLifeSlotZ(i, count, rng(), speciesDef),
         phase: rng() * Math.PI * 2,
-        scale: speciesDef.scale * (0.8 + rng() * 0.45),
+        // Roads and traffic keep a uniform size; organic scatter varies.
+        scale: speciesDef.align === 'road'
+          ? speciesDef.scale
+          : speciesDef.scale * (0.8 + rng() * 0.45),
       })
-      tint.copy(primary).lerp(accent, rng() * 0.7)
+      // A road is one continuous surface — per-segment tint would stripe it.
+      tint.copy(primary).lerp(accent, speciesDef.shape === 'road' ? 0 : rng() * 0.7)
       mesh.setColorAt(i, tint)
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -1141,8 +1200,11 @@ function buildGroundLife(zoneId) {
 
 function scrollGroundLife(move) {
   for (const field of groundLifeFields) {
+    // zSpeedMul is what makes traffic read as traffic: scrolling slower than
+    // the ground looks like driving away, faster looks like oncoming.
+    const step = move * (field.speciesDef.zSpeedMul ?? 1)
     for (const instance of field.instances) {
-      instance.z = wrapGroundLifeZ(instance.z, move)
+      instance.z = wrapGroundLifeZ(instance.z, step)
     }
   }
 }
@@ -1157,7 +1219,10 @@ function updateGroundLife(time) {
         speciesDef.y + motion.offsetY,
         instance.z,
       )
-      if (speciesDef.flat) {
+      if (speciesDef.shape === 'road') {
+        // Flat on the ground and running down the field, not fanned out.
+        groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0)
+      } else if (speciesDef.flat) {
         // Rotate onto the ground plane; the motion rotation becomes yaw so
         // decals fan out instead of all pointing down the same axis.
         groundLifeDummy.rotation.set(-Math.PI / 2, motion.rotation + instance.phase, 0)
@@ -4772,6 +4837,15 @@ function updateGroundSkim(dt) {
   })
   const wasActive = groundSkim.active
   groundSkim = next
+
+  if (next.releaseDistance > 0) {
+    // Climbing out under control converts the held chain into distance.
+    distance += next.releaseDistance
+    showFlightFeedback(next.banner, 'route', 1.2)
+    pulseFlightImpact('route')
+    audio.zoneTransition?.()
+    if (settings.haptics) Haptic.collect()
+  }
 
   if (next.bankedStars > 0) {
     stars += next.bankedStars

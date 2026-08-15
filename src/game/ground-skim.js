@@ -30,6 +30,8 @@ export function createGroundSkimState() {
     grace: 0,
     bankedStars: 0,
     tierUp: 0,
+    releaseTier: 0,
+    releaseDistance: 0,
     banner: null,
   })
 }
@@ -110,7 +112,26 @@ export function advanceGroundSkim(state, { low = false, dt = 0, enabled = true }
       banner: null,
     })
   }
+
+  // Pulling up on purpose pays out. Without this the only way a chain ever
+  // ended was by crashing, which made the whole mechanic feel like a dare with
+  // no way to collect — now the exit is the reward.
+  if (previous.active && previous.tier > 0) {
+    const released = createGroundSkimState()
+    return Object.freeze({
+      ...released,
+      releaseTier: previous.tier,
+      releaseDistance: skimReleaseDistance(previous.tier),
+      banner: `PULL UP! +${skimReleaseDistance(previous.tier)}m`,
+    })
+  }
   return createGroundSkimState()
+}
+
+/** Distance banked for climbing out of a chain under your own control. */
+export function skimReleaseDistance(tier) {
+  const level = Math.min(SKIM_MAX_TIER, Math.max(0, Math.floor(Number(tier) || 0)))
+  return level * 12
 }
 
 /** HUD copy: the tier plus how close the next one is. */
