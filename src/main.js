@@ -1588,6 +1588,13 @@ function consumeLaunchMode() {
   return false
 }
 
+// The menu is already visible in the markup at boot, so `showMenu()` — which
+// is what normally syncs the wallet — never runs on a cold load. Without this
+// the Hangar pill kept the literal "0" from index.html, so a returning player
+// with stars banked and upgrades in reach was told they had nothing to spend
+// and never saw the affordability highlight.
+refreshProgression()
+
 const retryRequest = sessionStorage.getItem('paper-plane-engine-retry')
 if (retryRequest) {
   sessionStorage.removeItem('paper-plane-engine-retry')

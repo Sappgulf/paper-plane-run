@@ -111,6 +111,10 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.4,
       palette: { primary: '#e8dccb', accent: '#f6efe2' }, shape: 'decal', flat: true,
     }),
+    species('street-crates', {
+      count: 22, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.1,
+      palette: { primary: '#d8c4a8', accent: '#f6efe2' }, shape: 'stack',
+    }),
   ]),
   harbor: Object.freeze([
     species('docks', {
@@ -139,6 +143,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('tide-marks', {
       count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.6,
       palette: { primary: '#cfe8f6', accent: '#ffffff' }, shape: 'decal', flat: true,
+    }),
+    species('harbor-cranes', {
+      count: 10, motion: 'sway', amplitude: 0.1, speed: 0.7, y: 0.9, scale: 1.5,
+      palette: { primary: '#e8d8b8', accent: '#a8916c' }, shape: 'arch',
+    }),
+    species('cargo-crates', {
+      count: 24, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.15,
+      palette: { primary: '#e0c8a0', accent: '#fff7e8' }, shape: 'stack',
     }),
   ]),
   storm: Object.freeze([
@@ -169,6 +181,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 28, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.2,
       palette: { primary: '#b3a4c8', accent: '#dccfe8' }, shape: 'decal', flat: true,
     }),
+    species('gantries', {
+      count: 12, motion: 'sway', amplitude: 0.12, speed: 1.1, y: 0.9, scale: 1.6,
+      palette: { primary: '#7d6f98', accent: '#b9a6cf' }, shape: 'arch',
+    }),
+    species('scrap-bales', {
+      count: 26, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.2,
+      palette: { primary: '#8e82a8', accent: '#c8b8dc' }, shape: 'stack',
+    }),
   ]),
   sunset: Object.freeze([
     species('farm-tracks', {
@@ -197,6 +217,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('field-rows', {
       count: 32, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.5,
       palette: { primary: '#eab98c', accent: '#fae2c4' }, shape: 'decal', flat: true,
+    }),
+    species('fence-posts', {
+      count: 26, motion: 'none', amplitude: 0, speed: 0, y: 0.5, scale: 0.9,
+      palette: { primary: '#b07c4c', accent: '#e8bd8c' }, shape: 'mast',
+    }),
+    species('hay-stacks', {
+      count: 22, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.25,
+      palette: { primary: '#e8c088', accent: '#fff0d8' }, shape: 'stack',
     }),
   ]),
   aurora: Object.freeze([
@@ -227,6 +255,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.3,
       palette: { primary: '#bfe8f4', accent: '#eefaff' }, shape: 'decal', flat: true,
     }),
+    species('aurora-masts', {
+      count: 18, motion: 'sway', amplitude: 0.14, speed: 0.8, y: 0.6, scale: 1.2,
+      palette: { primary: '#c8b4f0', accent: '#e8f8ff' }, shape: 'mast',
+    }),
+    species('ice-blocks', {
+      count: 22, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.2,
+      palette: { primary: '#9ccbe0', accent: '#e8f8ff' }, shape: 'stack',
+    }),
   ]),
   midnight: Object.freeze([
     species('desk-runners', {
@@ -255,6 +291,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('desk-grain', {
       count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.4,
       palette: { primary: '#2c3a63', accent: '#55689c' }, shape: 'decal', flat: true,
+    }),
+    species('pen-stands', {
+      count: 20, motion: 'sway', amplitude: 0.1, speed: 0.9, y: 0.6, scale: 1.1,
+      palette: { primary: '#55689c', accent: '#f0b429' }, shape: 'mast',
+    }),
+    species('paper-reams', {
+      count: 24, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.2,
+      palette: { primary: '#8fa8d8', accent: '#e8eeff' }, shape: 'stack',
     }),
   ]),
 })

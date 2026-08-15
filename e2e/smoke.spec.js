@@ -39,13 +39,26 @@ async function tap(locator, options = {}) {
   }
 }
 
+// `/api/*` are Vercel serverless functions. The e2e harness serves the app with
+// `vite dev`, which does not host them, so a finished run posting its score
+// 404s here and nowhere else. Filtering it keeps tests that let a run *end*
+// from failing on the harness rather than on the app.
+const ENVIRONMENT_ONLY_ERROR_URLS = [
+  // Nunito is optional presentation with a system-font fallback.
+  'https://fonts.gstatic.com/',
+  '/api/leaderboard',
+  '/api/analytics',
+]
+
 function collectConsoleErrors(page) {
   const errors = []
   page.on('console', (message) => {
     const url = message.location().url || 'inline'
-    // Nunito is optional presentation with a system-font fallback. A blocked
-    // third-party font host must not hide real app/runtime console failures.
-    if (message.type() === 'error' && !url.startsWith('https://fonts.gstatic.com/')) {
+    // A blocked third-party font host or an unserved API route must not hide
+    // real app/runtime console failures.
+    const environmentOnly = ENVIRONMENT_ONLY_ERROR_URLS.some((prefix) =>
+      prefix.startsWith('http') ? url.startsWith(prefix) : url.includes(prefix))
+    if (message.type() === 'error' && !environmentOnly) {
       errors.push(`${message.text()} @ ${url}`)
     }
   })
@@ -122,15 +135,36 @@ test('Journey route cards and the live HUD expose stamps and shortcut risk', asy
   const rewardMultiplier = rewardCopy.match(/(\d+\.\d+)× rewards/)?.[1]
   expect(rewardMultiplier).toBeTruthy()
 
+  // A Journey leg is only ~350m, so an idle plane can finish it in seconds. A
+  // chain of separate awaits lets the leg end mid-chain and then asserts
+  // against the results screen, so capture the whole route HUD in one
+  // evaluation that is only valid while the run is still playing.
   await expect.poll(
-    async () => page.evaluate(getGameState),
+    async () => page.evaluate(() => {
+      const state = JSON.parse(window.render_game_to_text())
+      if (state.mode !== 'journey' || state.state !== 'playing') return { playing: false }
+      const visible = (id) => {
+        const node = document.getElementById(id)
+        return Boolean(node) && !node.classList.contains('hidden')
+      }
+      return {
+        playing: true,
+        routeVisible: visible('flight-route'),
+        risk: document.getElementById('flight-route-risk')?.textContent,
+        stampZone: document.getElementById('flight-route-stamp')?.dataset.zone,
+        objectiveVisible: visible('journey-objective-hud'),
+        objectiveHasText: /\S/.test(document.getElementById('journey-objective-val')?.textContent || ''),
+      }
+    }),
     { timeout: 45_000 },
-  ).toMatchObject({ mode: 'journey', state: 'playing' })
-  await expect(page.locator('#flight-route')).toBeVisible({ timeout: 45_000 })
-  await expect(page.locator('#flight-route-risk')).toHaveText(`SHORTCUT · ${rewardMultiplier}×`)
-  await expect(page.locator('#flight-route-stamp')).toHaveAttribute('data-zone', 'city')
-  await expect(page.locator('#journey-objective-hud')).toBeVisible()
-  await expect(page.locator('#journey-objective-val')).toHaveText(/\S+/)
+  ).toMatchObject({
+    playing: true,
+    routeVisible: true,
+    risk: `SHORTCUT · ${rewardMultiplier}×`,
+    stampZone: 'city',
+    objectiveVisible: true,
+    objectiveHasText: true,
+  })
   expect(errors).toEqual([])
 })
 
@@ -652,7 +686,10 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   expect(baselineSpawn.upgrades.luck.starChance).toBeCloseTo(0.928)
   expect(baselineSpawn.upgrades.fever.threshold).toBe(8)
   expect(baselineSpawn.upgrades.streak.windowSeconds).toBeCloseTo(2.2)
-  expect(baselineSpawn.fairness.airDamageRadius).toBe(2.104)
+  // 1.6 hazard radius + 0.7 plane radius × the 0.52 air-damage weight. The
+  // weight dropped from 0.72 when bird and scissors hitboxes were deliberately
+  // shrunk so only visibly lethal air hazards end a run.
+  expect(baselineSpawn.fairness.airDamageRadius).toBe(1.964)
   expect(baselineSpawn.fairness.visibleHazards.length).toBeGreaterThan(0)
   expect(baselineSpawn.fairness.visibleHazards.every(({ passageLane }) => [-1, 0, 1].includes(passageLane))).toBe(true)
 
@@ -660,7 +697,12 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   await waitForGameText(page)
   const maxSpawn = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(maxSpawn.entities.counts.star).toBeGreaterThan(baselineSpawn.entities.counts.star)
-  expect(maxSpawn.entities.counts.power).toBeGreaterThan(baselineSpawn.entities.counts.power)
+  // Powers roll at most once per chunk, so over 32 chunks the *count* is a
+  // single noisy sample — and the two configs consume different numbers of RNG
+  // draws (max spawns more stars), so their streams diverge and the counts can
+  // tie at the same value while the upgrade is working perfectly. Assert the
+  // spawn rate the upgrade actually controls, which is deterministic.
+  expect(maxSpawn.upgrades.luck.powerChance).toBeGreaterThan(baselineSpawn.upgrades.luck.powerChance)
   expect(maxSpawn.upgrades.fever.threshold).toBe(5)
   // Max fever + streak synergy adds +0.35s duration on top of Fever Focus max.
   expect(maxSpawn.upgrades.fever.duration).toBeCloseTo(6.6)
@@ -902,7 +944,9 @@ test('visibility pause freezes and resumes flight distance', async ({ page }, te
 test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🕹️ Stick' }))
+  // Selected by data-ctrl rather than label: the visible text is just "Stick",
+  // and the emoji this used to match has not been in the markup for a while.
+  await tap(page.locator('.ctrl-btn[data-ctrl="joystick"]'))
   await tap(page.locator('#start-btn'))
 
   await expect(page.locator('#distance')).toBeVisible({ timeout: 15_000 })
@@ -1085,5 +1129,310 @@ test('ground life dresses each zone without entering the flight corridor', async
     expect(shed.draws).toBe(0)
     expect(shed.instances).toBe(0)
   }
+  expect(errors).toEqual([])
+})
+
+/**
+ * Flies a long run using the DEV `advanceTime` stepper plus a potential-field
+ * autopilot steering off the snapshot's own hazard list. A real-time run dies
+ * long before the endless long tail, and the tiers under test only begin at
+ * 1000m.
+ *
+ * Classic seeds from `Math.random`, so a single flight is not deterministic —
+ * a bad roll can bury the autopilot in a gauntlet well short of the target.
+ * Retrying the whole flight is the honest fix: these tests assert on how the
+ * tier and zone systems behave over distance, not on the autopilot surviving
+ * any particular seed.
+ */
+async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempts = 5 }) {
+  return page.evaluate(async ({ untilDistance, maxFrames, attempts }) => {
+    const snapshot = () => JSON.parse(window.render_game_to_text())
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+    const restart = async () => {
+      const button = [...document.querySelectorAll('button')]
+        .find((candidate) => /Fly Again|Retry/i.test(candidate.textContent))
+        || document.getElementById('retry-btn')
+      button?.click()
+      // The restart lands on a later frame, not synchronously on the click.
+      for (let waited = 0; waited < 40; waited += 1) {
+        await nextFrame()
+        if (snapshot().state === 'playing') return true
+      }
+      return snapshot().state === 'playing'
+    }
+    const send = (type, code) =>
+      window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true }))
+    const held = new Set()
+    const hold = (code, want) => {
+      if (want && !held.has(code)) { held.add(code); send('keydown', code) }
+      else if (!want && held.has(code)) { held.delete(code); send('keyup', code) }
+    }
+    // Pick the (x, y) with the most clearance, weighting nearer hazards higher.
+    const aim = (state) => {
+      const hazards = state.fairness.visibleHazards.filter((h) => h.z > 1 && h.z < 75)
+      let best = { x: 0, y: 9, score: -Infinity }
+      for (let x = -6; x <= 6; x += 0.5) {
+        for (let y = 4; y <= 15; y += 0.5) {
+          let score = -Math.abs(y - 9) * 0.05 - Math.abs(x) * 0.02
+          for (const hazard of hazards) {
+            const radius = hazard.radius + state.fairness.airDamageRadius
+            const gap = Math.hypot(hazard.x - x, hazard.y - y)
+            const nearness = 1 + Math.max(0, 75 - hazard.z) / 75 * 3
+            if (gap < radius + 2) score -= (radius + 2 - gap) * nearness * 3
+          }
+          if (score > best.score) best = { x, y, score }
+        }
+      }
+      return best
+    }
+
+    // One flight. Observations are per-attempt: a run that died short tells us
+    // nothing about tiers it never reached.
+    const fly = () => {
+      const tiers = []
+      const laps = []
+      let lastTier = -1
+      let lastLap = 0
+      let peakDistance = 0
+      for (let frame = 0; frame < maxFrames; frame += 1) {
+        const state = snapshot()
+        if (state.state !== 'playing') return { died: true, peakDistance, tiers, laps }
+        peakDistance = state.distance
+        if (state.endless.tier !== lastTier) {
+          lastTier = state.endless.tier
+          tiers.push({
+            tier: state.endless.tier,
+            name: state.endless.name,
+            modifier: state.endless.modifier,
+            distance: state.distance,
+            spacingScale: state.endless.spacingScale,
+            scoreMultiplier: state.endless.scoreMultiplier,
+            capped: state.endless.capped,
+          })
+        }
+        if (state.endless.zoneLap !== lastLap) {
+          lastLap = state.endless.zoneLap
+          laps.push({ lap: state.endless.zoneLap, distance: state.distance, zone: state.groundLife.zone })
+        }
+        if (state.distance >= untilDistance) return { died: false, peakDistance, tiers, laps }
+        const target = aim(state)
+        hold('ArrowLeft', state.player.x < target.x - 0.25)
+        hold('ArrowRight', state.player.x > target.x + 0.25)
+        hold('ArrowUp', state.player.y < target.y - 0.35)
+        hold('ArrowDown', state.player.y > target.y + 0.35)
+        window.advanceTime(1000 / 60)
+      }
+      return { died: false, timedOut: true, peakDistance, tiers, laps }
+    }
+
+    let best = { died: true, peakDistance: -1, tiers: [], laps: [] }
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (snapshot().state !== 'playing' && !(await restart())) break
+      const result = fly()
+      if (result.peakDistance > best.peakDistance) best = result
+      if (!result.died) return { ...result, attempts: attempt + 1 }
+      // Release the keys so a dead run's held input can't leak into the retry.
+      for (const code of [...held]) hold(code, false)
+    }
+    return { ...best, attempts }
+  }, { untilDistance, maxFrames, attempts })
+}
+
+test('endless tiers keep escalating the run past the point every other dial caps', async ({ page }, testInfo) => {
+  test.slow()
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  const opening = await page.evaluate(() => JSON.parse(window.render_game_to_text()).endless)
+  // Everything before 1000m must fly exactly as it shipped.
+  expect(opening).toMatchObject({ tier: 0, name: null, modifier: null, spacingScale: 1, scoreMultiplier: 1, capped: false })
+
+  const run = await flyAutopilot(page, { untilDistance: 7_400 })
+  const flightReport = JSON.stringify({
+    died: run.died,
+    timedOut: run.timedOut,
+    attempts: run.attempts,
+    peakDistance: Math.round(run.peakDistance),
+    tiers: run.tiers.map((entry) => entry.tier),
+  })
+  expect(run.died, flightReport).toBe(false)
+  expect(Math.round(run.peakDistance), flightReport).toBeGreaterThanOrEqual(7_400)
+
+  const climbed = run.tiers.filter((entry) => entry.tier > 0)
+  expect(climbed.length, flightReport).toBeGreaterThanOrEqual(8)
+
+  // Tier 1 begins at 1000m, and every tier after it is 900m further out.
+  expect(climbed[0].tier).toBe(1)
+  expect(climbed[0].distance).toBeGreaterThanOrEqual(1_000)
+  expect(climbed[0].distance).toBeLessThan(1_060)
+
+  for (let index = 1; index < climbed.length; index += 1) {
+    const previous = climbed[index - 1]
+    const current = climbed[index]
+    expect(current.tier).toBe(previous.tier + 1)
+    // Each tier is named, and waves tighten while the payoff grows.
+    expect(current.name).toContain(`Tier ${current.tier}`)
+    expect(current.modifier).toBeTruthy()
+    expect(current.modifier).not.toBe(previous.modifier)
+    expect(current.spacingScale).toBeLessThan(previous.spacingScale)
+    expect(current.scoreMultiplier).toBeGreaterThan(previous.scoreMultiplier)
+    // Waves must never compress past the readable floor.
+    expect(current.spacingScale).toBeGreaterThanOrEqual(0.82)
+  }
+
+  const last = climbed[climbed.length - 1]
+  expect(last.tier).toBe(8)
+  expect(last.capped).toBe(true)
+
+  expect(errors).toEqual([])
+})
+
+test('the endless route cycles zones instead of freezing on the final one', async ({ page }, testInfo) => {
+  test.slow()
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  const run = await flyAutopilot(page, { untilDistance: 5_000 })
+  const flightReport = JSON.stringify({
+    died: run.died,
+    timedOut: run.timedOut,
+    attempts: run.attempts,
+    peakDistance: Math.round(run.peakDistance),
+    laps: run.laps,
+  })
+  expect(run.died, flightReport).toBe(false)
+
+  // Two full laps of the zone table, each folding back to Paper City.
+  expect(run.laps.length, flightReport).toBeGreaterThanOrEqual(2)
+  for (const lap of run.laps) {
+    expect(lap.zone).toBe('city')
+  }
+  expect(run.laps[0].lap).toBe(1)
+  expect(run.laps[1].lap).toBe(2)
+  // Laps are one full zone loop apart.
+  expect(run.laps[1].distance - run.laps[0].distance).toBeGreaterThan(2_200)
+  expect(run.laps[1].distance - run.laps[0].distance).toBeLessThan(2_600)
+
+  expect(errors).toEqual([])
+})
+
+test('an in-flight notification clears the HUD chip row instead of covering it', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+
+  // In the menu the HUD is hidden and the toast keeps its own top row.
+  const menuTop = await page.evaluate(() => {
+    const toast = document.getElementById('challenge-toast')
+    toast.textContent = 'Season event'
+    toast.classList.remove('hidden')
+    return Math.round(toast.getBoundingClientRect().top)
+  })
+  expect(menuTop).toBeLessThan(96)
+
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  // In flight, even a wrapped multi-line toast over a fully expanded HUD row
+  // must sit clear of it — the HUD carries the values the player is reading.
+  const boxes = await page.evaluate(async () => {
+    const hud = document.getElementById('hud')
+    const toast = document.getElementById('challenge-toast')
+    for (const chip of hud.children) chip.classList.remove('hidden')
+    toast.textContent = 'Tier 1 · Headwind — The air pushes back — waves arrive closer together.'
+    toast.classList.remove('hidden')
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    const hudBox = hud.getBoundingClientRect()
+    const toastBox = toast.getBoundingClientRect()
+    return { hudBottom: hudBox.bottom, hudTop: hudBox.top, toastTop: toastBox.top }
+  })
+  expect(boxes.hudBottom).toBeGreaterThan(boxes.hudTop)
+  expect(boxes.toastTop).toBeGreaterThanOrEqual(boxes.hudBottom)
+
+  expect(errors).toEqual([])
+})
+
+test('a cold load shows the banked wallet, not the markup placeholder', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  // Arrive as a returning player with stars banked and upgrades in reach.
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-wallet', '318')
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+    localStorage.setItem('paper-plane-run-lifetime-stars', '318')
+  })
+  await openApp(page)
+
+  // The menu ships visible in the markup, so nothing calls showMenu() on a
+  // cold load — the wallet has to be synced during boot instead.
+  const hangarBtn = page.locator('#hangar-btn')
+  await expect(page.locator('#wallet-stars')).toHaveText('318')
+  // With that much banked, the affordability highlight must be lit.
+  await expect(hangarBtn).toHaveClass(/hangar-can-spend/)
+
+  expect(errors).toEqual([])
+})
+
+test('hazard motion never carries a hazard into the reserved passage lane', async ({ page }, testInfo) => {
+  test.slow()
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  // Step the run deterministically and check every airborne hazard against the
+  // lane it was spawned to keep clear, on every frame. The guarantee has to
+  // hold for a hazard's whole path, not just the frame it spawned on — the
+  // previous integrated motion drifted one way and could close the lane.
+  const report = await page.evaluate(() => {
+    const LANE_X = [-6, 0, 6]
+    const PLANE_RADIUS = 0.7
+    const AIR_DAMAGE_WEIGHT = 0.52
+    const MARGIN = 0.35
+    const snapshot = () => JSON.parse(window.render_game_to_text())
+    let worstSlack = Infinity
+    let worst = null
+    let checks = 0
+    let frames = 0
+    for (let frame = 0; frame < 60 * 200; frame += 1) {
+      const state = snapshot()
+      if (state.state !== 'playing') break
+      for (const hazard of state.fairness.visibleHazards) {
+        if (hazard.type !== 'bird' || hazard.passageLane == null) continue
+        const laneX = LANE_X[hazard.passageLane + 1]
+        if (laneX === undefined) continue
+        // Each hazard's own envelope, not the snapshot's fixed sample radius.
+        const need = hazard.radius + PLANE_RADIUS * AIR_DAMAGE_WEIGHT + MARGIN
+        const slack = Math.abs(hazard.x - laneX) - need
+        checks += 1
+        if (slack < worstSlack) {
+          worstSlack = slack
+          worst = { slack, x: hazard.x, laneX, radius: hazard.radius, distance: state.distance }
+        }
+      }
+      frames += 1
+      window.advanceTime(1000 / 60)
+    }
+    return { worstSlack, worst, checks, frames }
+  })
+
+  const detail = JSON.stringify(report)
+  // The run has to actually have produced hazards for this to mean anything.
+  expect(report.checks, detail).toBeGreaterThan(500)
+  // The snapshot rounds positions to two decimals, so a hazard sitting exactly
+  // on the boundary can read as much as 0.005 inside it. The exact invariant is
+  // proven over the whole time domain in test/hazardPatterns.test.js; this guard
+  // is here to catch the engine wiring drifting, and cannot resolve finer than
+  // its own input.
+  expect(report.worstSlack, detail).toBeGreaterThan(-0.006)
+
   expect(errors).toEqual([])
 })

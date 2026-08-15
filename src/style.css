@@ -558,6 +558,19 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   #challenge-toast:not(.hidden) ~ #hangar-panel .hangar-card,
   #challenge-toast:not(.hidden) ~ #journey-panel .journey-card { padding-top: 96px; }
 }
+/* In flight the toast has to clear the HUD chip row, not sit on top of it.
+   Below 820px the HUD drops to ~58px to clear the icon buttons — exactly the
+   toast's own row — so a multi-line notification landed directly over the live
+   Distance/Stars/Skim values. The HUD is what the player is reading mid-run,
+   so the toast yields to it.
+
+   The offset can't be a constant: the chip row wraps to a different number of
+   lines per mode, viewport and safe-area inset. `--hud-bottom` carries the
+   HUD's measured bottom edge (see publishHudBottom), falling back to the
+   phone-layout top if it hasn't been measured yet. */
+#hud:not(.hidden) ~ #challenge-toast {
+  top: calc(var(--hud-bottom, 58px) + 12px);
+}
 
 /* —— Install prompt (custom, since iOS Safari has no beforeinstallprompt) —— */
 #install-hint {

@@ -84,6 +84,55 @@ export const ZONES = [
   },
 ]
 
+/**
+ * Meters of Midnight Origami before the route folds back to Paper City. The
+ * last zone gets a longer stretch than the others because it is the payoff of
+ * a first full lap, not a waypoint.
+ */
+export const FINAL_ZONE_SPAN = 700
+
+/** Total distance of one full City → Midnight lap. */
+export const ZONE_LOOP_SPAN = ZONES[ZONES.length - 1].from + FINAL_ZONE_SPAN
+
+/**
+ * Endless zone lookup. The authored `from` table only covers the first lap;
+ * past it the route cycles so the sky, ground and music keep turning over
+ * instead of freezing on Midnight Origami forever. `lap` counts completed
+ * cycles, which callers use to tell "same zone again" from "no change" and to
+ * label repeat visits.
+ */
+export function cyclicZoneAt(distance) {
+  const meters = Math.max(0, Number(distance) || 0)
+  const lap = Math.floor(meters / ZONE_LOOP_SPAN)
+  const local = meters - lap * ZONE_LOOP_SPAN
+  return { zone: zoneAt(local), lap, localDistance: local }
+}
+
+/** Zone progress that keeps counting down to the next zone across laps. */
+export function cyclicZoneProgress(distance) {
+  const { zone, lap, localDistance } = cyclicZoneAt(distance)
+  const next = nextZone(localDistance)
+  if (next) {
+    const span = Math.max(1, next.from - zone.from)
+    return {
+      zone,
+      lap,
+      t: Math.min(1, Math.max(0, (localDistance - zone.from) / span)),
+      next,
+      nextAt: lap * ZONE_LOOP_SPAN + next.from,
+    }
+  }
+  // Final zone of the lap — the countdown wraps to Paper City on the next lap.
+  const span = Math.max(1, ZONE_LOOP_SPAN - zone.from)
+  return {
+    zone,
+    lap,
+    t: Math.min(1, Math.max(0, (localDistance - zone.from) / span)),
+    next: ZONES[0],
+    nextAt: (lap + 1) * ZONE_LOOP_SPAN,
+  }
+}
+
 export function zoneAt(distance) {
   let z = ZONES[0]
   for (const zone of ZONES) {

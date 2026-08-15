@@ -45,7 +45,9 @@
 
       <div id="hud" class="hidden">
         <div class="hud-card" data-hud-priority="primary"><span class="label">Distance</span><span id="distance">0m</span></div>
-        <div class="hud-card" data-hud-priority="secondary"><span class="label">Best</span><span id="best">0m</span></div>
+        <!-- Best is the only chip that is not live run state, so it is the one
+             the phone layout drops when the HUD row would otherwise wrap. -->
+        <div class="hud-card" data-hud-priority="tertiary"><span class="label">Best</span><span id="best">0m</span></div>
         <div id="timeattack-hud" class="hud-card timeattack-hud hidden" data-hud-priority="primary"><span class="label">Time</span><span id="timeattack-val">60</span></div>
         <div class="hud-card stars" data-hud-priority="primary"><span class="label">Stars</span><span id="stars">0</span></div>
         <div class="hud-card mode-chip" data-hud-priority="tertiary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>

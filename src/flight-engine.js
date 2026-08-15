@@ -23,7 +23,15 @@ import {
   ghostPoseAt,
   ghostDistanceAtTime,
 } from './ghost.js'
-import { ZONES, zoneAt, nextZone, zoneProgress } from './zones.js'
+import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
+import { resolveTier } from './game/endless-tiers.js'
+import {
+  clampAmplitudeToLane,
+  getTierMotionScale,
+  patternForFlyer,
+  resolveHazardOffset,
+  resolveHazardRoll,
+} from './game/hazard-patterns.js'
 import {
   getUpgradeEffects,
   addWallet,
@@ -231,11 +239,19 @@ const magnetPullTrail = $('magnet-pull-trail')
 // Keep the wind/power/zone banner stack pinned just below the HUD's actual
 // rendered height — the HUD can wrap to 2-3 rows depending on how many
 // chips are active, so a fixed pixel offset would overlap it.
+// The notification toast has the same collision for the same reason, so the
+// one measurement feeds both: `--hud-bottom` on the root element is the HUD's
+// real bottom edge, which the toast's in-flight rule offsets from.
 if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
   const syncBannerTop = () => {
     const rect = hudEl.getBoundingClientRect()
-    const top = hudEl.classList.contains('hidden') ? rect.top : rect.bottom + 10
+    const hidden = hudEl.classList.contains('hidden')
+    const top = hidden ? rect.top : rect.bottom + 10
     bannerStackEl.style.setProperty('--banner-top', `${Math.round(top)}px`)
+    document.documentElement.style.setProperty(
+      '--hud-bottom',
+      `${Math.round(hidden ? 0 : rect.bottom)}px`,
+    )
   }
   new ResizeObserver(syncBannerTop).observe(hudEl)
   window.addEventListener('resize', syncBannerTop)
@@ -632,11 +648,23 @@ let journeyTelemetry = null
 let journeyPreviousDistance = 0
 let journeyVisibilityTimer = 0
 let lastJourneyResult = null
-function activeZoneAt(runDistance = distance) {
+/**
+ * A Journey leg is pinned to its authored destination. Every other mode flies
+ * the endless route, which cycles the zone table rather than parking on
+ * Midnight Origami once past its threshold. `lap` distinguishes a genuine
+ * second visit from no change at all, so the banner still fires on the fold.
+ */
+function activeRouteAt(runDistance = distance) {
   if (runKind === 'journey' && journeyRunConfig?.zone) {
-    return ZONES.find((zone) => zone.id === journeyRunConfig.zone) || zoneAt(runDistance)
+    const pinned = ZONES.find((zone) => zone.id === journeyRunConfig.zone)
+    if (pinned) return { zone: pinned, lap: 0 }
   }
-  return zoneAt(runDistance)
+  const { zone, lap } = cyclicZoneAt(runDistance)
+  return { zone, lap }
+}
+
+function activeZoneAt(runDistance = distance) {
+  return activeRouteAt(runDistance).zone
 }
 const TIME_ATTACK_SECONDS = 60
 let timeAttackLeft = 0
@@ -650,6 +678,12 @@ let ghostData = null
 let ghostMesh = null
 let journeyRivalState = null
 let currentZoneId = 'city'
+/** Lap of the endless zone cycle the banner last announced. */
+let currentZoneLap = 0
+/** The shipped baseline curve — what modes without escalation always fly. */
+const ZERO_TIER = resolveTier(0)
+/** Escalation state for the endless long tail. Recomputed only on tier change. */
+let currentTier = ZERO_TIER
 let combo = 0
 let groundSkim = createGroundSkimState()
 let maxCombo = 0
@@ -1104,6 +1138,24 @@ const GROUND_LIFE_GEOMETRY = {
   person: () => mergeParts([
     { geometry: new THREE.ConeGeometry(0.34, 0.9, 4), at: [0, 0, 0] },
     { geometry: new THREE.SphereGeometry(0.2, 6, 5), at: [0, 0.62, 0] },
+  ]),
+  // Tall, thin marker on a wider foot. Reads as a mast, chimney or standard
+  // at distance and gives each zone a vertical accent above the low scatter.
+  mast: () => mergeParts([
+    { geometry: new THREE.BoxGeometry(0.16, 2.6, 0.16), at: [0, 1.3, 0] },
+    { geometry: new THREE.BoxGeometry(0.62, 0.18, 0.62), at: [0, 0.09, 0] },
+  ]),
+  // A span on two legs — a bridge, gantry or trestle depending on the zone.
+  arch: () => mergeParts([
+    { geometry: new THREE.BoxGeometry(3.4, 0.22, 0.5), at: [0, 1.5, 0] },
+    { geometry: new THREE.BoxGeometry(0.26, 1.5, 0.4), at: [-1.5, 0.75, 0] },
+    { geometry: new THREE.BoxGeometry(0.26, 1.5, 0.4), at: [1.5, 0.75, 0] },
+  ]),
+  // A stack of folded sheets — crates, bales, cargo, paper reams.
+  stack: () => mergeParts([
+    { geometry: new THREE.BoxGeometry(1.05, 0.3, 1.05), at: [0, 0.15, 0] },
+    { geometry: new THREE.BoxGeometry(0.92, 0.28, 0.92), at: [0.05, 0.44, 0.04] },
+    { geometry: new THREE.BoxGeometry(0.78, 0.26, 0.78), at: [-0.04, 0.71, -0.03] },
   ]),
 }
 
@@ -2195,6 +2247,7 @@ function createFlyer(kindId) {
   g.userData.dive = !!def.dive
   g.userData.spin = !!def.spin
   g.userData.barrel = !!def.barrel
+  g.userData.pattern = patternForFlyer(def)
 
   if (def.tex) {
     const bill = createBillboardFlyer(def.tex, def.scale || 1.5, !!def.alpha)
@@ -2698,10 +2751,15 @@ function clearEntities() {
 
 function pickHazardType(zone) {
   const bias = zone.hazardBias
+  // A tier's named modifier leans the mix on top of the zone's own bias — a
+  // Scissor Storm over the Harbor still reads as the Harbor, just bladier.
+  const tierBias = endlessTier().hazardBias
+  const weightOf = (kind, base) =>
+    base * bias[kind] * (tierBias?.[kind] ?? 1) * difficulty.hazardScale
   const weights = [
-    ['building', 0.28 * bias.building * difficulty.hazardScale],
-    ['bird', 0.22 * bias.bird * difficulty.hazardScale],
-    ['scissors', 0.16 * bias.scissors * difficulty.hazardScale],
+    ['building', weightOf('building', 0.28)],
+    ['bird', weightOf('bird', 0.22)],
+    ['scissors', weightOf('scissors', 0.16)],
   ]
   const total = weights.reduce((s, w) => s + w[1], 0)
   let r = rng() * Math.max(total, 0.01)
@@ -2716,11 +2774,16 @@ function spawnChunk(z) {
   if (runKind === 'tutorial') return
   if (runKind === 'layout' && layoutPlay) return
 
-  const ramp = Math.min(1, distance / 700)
+  const tier = endlessTier()
+  // The shipped ramp saturates at 700m; tier headroom keeps flock sizes and
+  // building heights growing past it instead of freezing for the rest of the run.
+  const ramp = Math.min(1, distance / 700) + tier.hazardBonus
   const cfg = difficulty
   const zone = activeZoneAt(distance)
   const recovering = distance < bossRecoveryUntil
-  const waveSpacing = getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) * cfg.gap
+  const waveSpacing =
+    getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) *
+    cfg.gap * tier.spacingScale
   const wave = createPacingWave({
     index: Math.max(0, Math.round((z - 35) / Math.max(1, waveSpacing))),
     difficultyId: difficulty.id,
@@ -2797,8 +2860,31 @@ function spawnChunk(z) {
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      flyer.position.set(safeAirX(6 * cfg.gap, def.radius), 5 + rng() * 8.5, z + i * 2.5)
+      const anchorX = safeAirX(6 * cfg.gap, def.radius)
+      const anchorY = 5 + rng() * 8.5
+      flyer.position.set(anchorX, anchorY, z + i * 2.5)
       scene.add(flyer)
+      // Motion is an offset from this anchor, resolved fresh each frame from
+      // the clock. The lateral amplitude is clamped against the reserved lane
+      // up front so the fairness guarantee covers the hazard's whole path,
+      // not just the frame it spawned on.
+      const pattern = flyer.userData.pattern
+      const motionScale = getTierMotionScale(tier.tier)
+      const amplitudeX = clampAmplitudeToLane({
+        requestedAmplitude: (0.9 + rng() * 0.7) * motionScale,
+        anchorX,
+        safeLaneX: safeLane === null ? null : PASSAGE_LANE_X[safeLane + 1],
+        damageRadius: getObstacleDamageRadius({
+          entityRadius: def.radius,
+          planeRadius: PLANE_COLLISION_RADIUS,
+        }),
+        pattern,
+      })
+      flyer.userData.anchorX = anchorX
+      flyer.userData.anchorY = anchorY
+      flyer.userData.amplitudeX = amplitudeX
+      flyer.userData.amplitudeY = (0.7 + rng() * 0.6) * motionScale
+      flyer.userData.motionSpeed = (6.5 + rng() * 3) * motionScale
       entities.push({
         mesh: flyer,
         type: 'bird',
@@ -3393,6 +3479,39 @@ function applyZone(z, announce) {
   currentZoneId = z.id
 }
 
+/**
+ * Tiers are an endless-mode concept. Journey legs are authored and finite,
+ * and the tutorial and route-editor playbacks are fixed layouts, so all three
+ * stay pinned to the shipped baseline curve.
+ */
+function tiersApply() {
+  return runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'journey'
+}
+
+function endlessTier() {
+  return tiersApply() ? currentTier : ZERO_TIER
+}
+
+/** Recompute escalation only when the tier index actually changes, then announce it. */
+function updateEndlessTier() {
+  if (!tiersApply()) return
+  const next = resolveTier(distance)
+  if (next.tier === currentTier.tier) return
+  const climbed = next.tier > currentTier.tier
+  currentTier = next
+  if (!climbed || !next.name) return
+  // Same courtesy the zone banner gets: a brief grace so a tier change never
+  // lands the player straight into a hazard they could not have read.
+  invuln = Math.max(invuln, 0.55)
+  zoneBanner.textContent = next.name
+  zoneBanner.classList.remove('hidden')
+  zoneBannerTimer = 1.8
+  showFlightFeedback(next.name, 'route', 1.4)
+  pulseFlightImpact('route')
+  notifications.show(`${next.name} — ${next.modifier.blurb}`, { duration: 3600 })
+  audio.zoneTransition()
+}
+
 function updateSkyFade(dt) {
   if (Math.abs(skyFade - skyFadeTarget) < 0.01) {
     skyFade = skyFadeTarget
@@ -3517,6 +3636,8 @@ function resetGame() {
   lastJourneyResult = null
   nextBossAt = 500
   nextGauntletAt = 250
+  currentTier = ZERO_TIER
+  currentZoneLap = 0
   bossActive = false
   bossRecoveryUntil = 0
   activePassageLane = null
@@ -4915,19 +5036,29 @@ function animateHazards(dt) {
       const flap = Math.sin(u.phase) * 0.35
       if (u.wingL) u.wingL.rotation.z = 0.85 + flap
       if (u.wingR) u.wingR.rotation.z = -0.85 - flap
-      // Motion patterns by flyer type
-      if (u.floaty) {
-        e.mesh.position.y += Math.sin(u.phase * 0.5) * dt * 1.8
+      // Motion is an absolute offset from the spawn anchor, recomputed from
+      // the clock every frame rather than accumulated into the position.
+      // Integrating `sin(phase) * dt` does not average out — it built up a
+      // one-sided drift that could carry a hazard into the reserved passage
+      // lane, and its size depended on how the frames happened to land.
+      // A Journey encounter drives its own authored path; that wins.
+      if (u.pattern && u.anchorX !== undefined && !e.journeyMotion) {
+        const offset = resolveHazardOffset({
+          pattern: u.pattern,
+          elapsed,
+          phase: u.phase,
+          speed: u.motionSpeed,
+          amplitudeX: u.amplitudeX,
+          amplitudeY: u.amplitudeY,
+        })
+        e.mesh.position.x = u.anchorX + offset.x
+        e.mesh.position.y = u.anchorY + offset.y
+        const roll = resolveHazardRoll({
+          pattern: u.pattern, elapsed, phase: u.phase, speed: u.motionSpeed,
+        })
+        if (u.pattern === 'tumble') e.mesh.rotation.z = roll
+        else if (u.billboard && u.pattern === 'orbit') u.billboard.rotation.z = roll
       }
-      if (u.weave) {
-        e.mesh.position.x += Math.sin(u.phase * 0.7) * dt * 3.5
-      }
-      if (u.dive && e.mesh.position.z < 40) {
-        e.mesh.position.y += Math.sin(u.phase) * dt * 2.2
-        e.mesh.position.x += Math.cos(u.phase * 0.4) * dt * 1.5
-      }
-      if (u.spin && u.billboard) u.billboard.rotation.z += dt * 4.5
-      if (u.barrel) e.mesh.rotation.z += dt * 2.6
       // Face camera for billboards
       if (u.billboard) u.billboard.rotation.y = Math.PI
       if (e.mesh.userData.billboard && e.mesh.userData.billboard !== u.billboard) {
@@ -5633,7 +5764,10 @@ function update(dt) {
     distance,
     speedMul,
   })
-  speed = cruise.cruiseSpeed + speedBoost
+  // Tier speed rides on top of the difficulty cap, which cruise alone reaches
+  // by ~450m. Applied after speedMul so slow/boost powers still scale the
+  // whole cruise rather than only its pre-tier half.
+  speed = cruise.cruiseSpeed + speedBoost + endlessTier().speedBonus * speedMul
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
@@ -5657,6 +5791,7 @@ function update(dt) {
     (1 + combo * 0.02) *
     (1 + Math.min(0.35, speedBoost * 0.01)) *
     skimScoreMultiplier(groundSkim.tier) *
+    endlessTier().scoreMultiplier *
     (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
 
@@ -5795,9 +5930,16 @@ function update(dt) {
   } else if (ghostDeltaHud) ghostDeltaHud.classList.add('hidden')
 
   // Zone + soft progressive blend hint (banner only on change)
-  const z = activeZoneAt(distance)
-  if (z.id !== currentZoneId) applyZone(z, true)
-  const zp = runKind === 'journey' ? { zone: z, t: 1, next: null } : zoneProgress(distance)
+  const { zone: z, lap: zoneLap } = activeRouteAt(distance)
+  // The lap check is what makes the fold back to Paper City announce itself —
+  // by id alone a new lap's opening zone looks like no change at all.
+  if (z.id !== currentZoneId || zoneLap !== currentZoneLap) {
+    currentZoneLap = zoneLap
+    applyZone(z, true)
+  }
+  const zp = runKind === 'journey'
+    ? { zone: z, t: 1, next: null, nextAt: null }
+    : cyclicZoneProgress(distance)
   if (zp.next && zp.t > 0.92 && zp.t < 0.97) {
     // gentle pre-transition fog lean
     scene.fog.color.lerp(_zoneFogColor.set(zp.next.fog), dt * 0.4)
@@ -5805,8 +5947,9 @@ function update(dt) {
   if (nextZoneHud) {
     const showHint = zp.next && zp.t > 0.7
     nextZoneHud.classList.toggle('hidden', !showHint)
-    if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.next.from - distance))}m`
+    if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.nextAt - distance))}m`
   }
+  updateEndlessTier()
   updateEdgeIndicators()
   checkHazardTelegraph()
   updateWeatherFx(dt)
@@ -6268,6 +6411,17 @@ window.render_game_to_text = () => JSON.stringify({
     visibleTypes: entities
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
+  },
+  endless: {
+    tier: endlessTier().tier,
+    name: endlessTier().name,
+    modifier: endlessTier().modifier?.id || null,
+    speedBonus: endlessTier().speedBonus,
+    spacingScale: endlessTier().spacingScale,
+    scoreMultiplier: endlessTier().scoreMultiplier,
+    capped: endlessTier().capped,
+    zoneLap: currentZoneLap,
+    speed: Math.round(speed * 10) / 10,
   },
   groundSkim: {
     active: groundSkim.active,
