@@ -4,6 +4,7 @@ import { UPGRADES, getUpgradeEffects } from '../src/upgrades.js'
 import {
   getControlResponse,
   getFeverTuning,
+  getMagnetPull,
   getUpgradeRuntimeSnapshot,
   getWeaponState,
 } from '../src/game/upgrade-runtime.js'
@@ -165,5 +166,37 @@ describe('upgrade runtime contracts', () => {
       cooldownRemaining: 0.19,
       cooldownProgress: 0.5,
     })
+  })
+})
+
+describe('magnet reach is what the upgrade buys', () => {
+  test('barely reaches past the plane when the magnet is not upgraded', () => {
+    const pull = getMagnetPull({ magnetBonus: 0 })
+    expect(pull.active).toBe(false)
+    // Lanes are 6 apart. An unupgraded magnet must not reach the next lane, or
+    // stars stop being something you fly to and a parked plane sweeps the field.
+    expect(pull.influenceRadius).toBeLessThan(6)
+  })
+
+  test('reaches into neighbouring lanes once bought', () => {
+    const pull = getMagnetPull({ magnetBonus: 1 })
+    expect(pull.active).toBe(true)
+    expect(pull.influenceRadius).toBeGreaterThan(6)
+  })
+
+  test('grows reach, strength and catch radius with every rank', () => {
+    let previous = getMagnetPull({ magnetBonus: 0 })
+    for (const bonus of [0.5, 1, 2, 3]) {
+      const pull = getMagnetPull({ magnetBonus: bonus })
+      expect(pull.influenceRadius).toBeGreaterThan(previous.influenceRadius)
+      expect(pull.pullStrength).toBeGreaterThan(previous.pullStrength)
+      expect(pull.catchRadius).toBeGreaterThan(previous.catchRadius)
+      previous = pull
+    }
+  })
+
+  test('treats the magnet power-up as an upgrade for reach', () => {
+    expect(getMagnetPull({ activePowerKind: 'magnet', magnetBonus: 0 }).influenceRadius)
+      .toBeGreaterThan(getMagnetPull({ magnetBonus: 0 }).influenceRadius)
   })
 })

@@ -32,6 +32,7 @@ import {
   resolveHazardOffset,
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
+import { chooseStarLane, getStarX } from './game/star-placement.js'
 import {
   getUpgradeEffects,
   addWallet,
@@ -2936,14 +2937,36 @@ function spawnChunk(z) {
     twistStarMul: activeTwist?.starMul || 1,
     doubleStarBonus: ufx.doubleStarBonus,
   }), { distance, midY: 8 })
+  // Airborne hazards sharing this chunk's depth band, widened by how far each
+  // one's pattern can swing. A star must clear a hazard's whole path, not the
+  // spot it happens to occupy at spawn, or it becomes bait.
+  const chunkHazards = entities
+    .filter((entity) => (
+      (entity.type === 'bird' || entity.type === 'scissors') &&
+      Math.abs(entity.mesh.position.z - z) < 14
+    ))
+    .map((entity) => ({
+      x: entity.mesh.position.x,
+      radius: (entity.radius || 0) + (entity.mesh.userData?.amplitudeX || 0),
+    }))
+
   // Stars — often 1–2; Gold Rush raises cluster odds through planStarSpawns
   for (let s = 0; s < starPlan.starCount; s++) {
     const st = createStar()
     const telegraph = starPlan.telegraph && s === 0
     const y = telegraph ? starPlan.telegraphY + (rng() - 0.5) * 0.8 : 5.2 + rng() * 8.4
-    const x = telegraph && safeLane !== null
-      ? PASSAGE_LANE_X[safeLane + 1] + (rng() - 0.5) * 0.45
-      : safePickupX()
+    // Mixing stars across lanes is what makes them a decision rather than a
+    // freebie collected by sitting still on the reserved lane.
+    const starLane = chooseStarLane({
+      random: rng,
+      safeLane,
+      hazards: chunkHazards,
+      telegraph,
+      planeRadius: PLANE_COLLISION_RADIUS,
+    })
+    const x = starLane === null
+      ? (rng() - 0.5) * 11
+      : getStarX({ lane: starLane, random: rng, spread: telegraph ? 0.45 : 1.6 })
     if (telegraph) st.scale.setScalar(starPlan.telegraphScale)
     st.position.set(x, y, z + rng() * 8)
     scene.add(st)
@@ -6456,6 +6479,17 @@ window.render_game_to_text = () => JSON.stringify({
         z: Number(entity.mesh.position.z.toFixed(2)),
         radius: entity.radius,
         passageLane: entity.passageLane ?? null,
+      })),
+    // Star placement is a balance surface, not just decoration: if every star
+    // sits on the reserved lane they cost nothing to collect. Exposed so the
+    // lane mix is assertable.
+    visibleStars: entities
+      .filter((entity) => entity.type === 'star' && entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
+      .map((entity) => ({
+        x: Number(entity.mesh.position.x.toFixed(2)),
+        y: Number(entity.mesh.position.y.toFixed(2)),
+        z: Number(entity.mesh.position.z.toFixed(2)),
+        telegraph: Boolean(entity.telegraph),
       })),
   },
   upgrades: upgradeRuntimeTextState(),

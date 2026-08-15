@@ -20,23 +20,55 @@ const UPGRADE_CARD_CONTRACTS = [
 function openApp(page, path = '/') {
   page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-disable-sw', '1')
+    // The one-time "rotate to landscape" nudge is injected into the menu card's
+    // normal flow at module init, so on touch projects it appears after first
+    // paint and shifts every button below it. `tap` force-clicks, which skips
+    // Playwright's stability wait, so a click resolved before the shift lands
+    // somewhere else — the Hangar tap silently missed and left the menu open.
+    // Mark it seen so mobile layout is settled before any test touches it.
+    localStorage.setItem('paper-plane-run-landscape-hint-seen', '1')
   })
   return page.goto(path, { waitUntil: 'domcontentloaded' })
 }
 
+/**
+ * Click something and actually land on it.
+ *
+ * This used to default to `click({ force: true })`, which skips Playwright's
+ * actionability and stability checks. That does not make a click more
+ * reliable — it makes a *missed* click silent: the click is dispatched at
+ * whatever coordinates the element had, so a menu still settling or a banner
+ * on top swallows it and the test fails much later somewhere unrelated
+ * ("element not found" three steps down). Several mobile flakes traced back
+ * here.
+ *
+ * Now the element must be visible and settled first, and a normal click is
+ * tried before anything forceful. The escalation is kept because some overlays
+ * legitimately sit over their own controls.
+ */
 async function tap(locator, options = {}) {
-  if (!options.fallbackEvaluate) {
-    return locator.click({ force: true })
-  }
-  await locator.scrollIntoViewIfNeeded()
-  await expect(locator).toBeVisible({ timeout: 10_000 })
+  await locator.scrollIntoViewIfNeeded().catch(() => {})
+  await expect(locator).toBeVisible({ timeout: 15_000 })
   try {
     await locator.click({ timeout: 10_000 })
     return
   } catch {
-    const element = await locator.elementHandle({ timeout: 5_000 })
-    await element?.evaluate((node) => node.click())
+    // Covered by an overlay, still moving — or the click landed and the click
+    // itself tore the element down (tapping Hangar hides the menu that holds
+    // the Hangar button), which surfaces as a post-click timeout. Escalating
+    // blindly then fails against an element that is legitimately gone, so
+    // check for that before trying anything else.
   }
+  if (!(await locator.isVisible().catch(() => false))) return
+  try {
+    await locator.click({ force: true, timeout: 5_000 })
+    return
+  } catch {
+    // Fall through to a direct DOM click.
+  }
+  if (!(await locator.isVisible().catch(() => false))) return
+  const element = await locator.elementHandle({ timeout: 5_000 }).catch(() => null)
+  await element?.evaluate((node) => node.click())
 }
 
 // `/api/*` are Vercel serverless functions. The e2e harness serves the app with
@@ -1433,6 +1465,54 @@ test('hazard motion never carries a hazard into the reserved passage lane', asyn
   // is here to catch the engine wiring drifting, and cannot resolve finer than
   // its own input.
   expect(report.worstSlack, detail).toBeGreaterThan(-0.006)
+
+  expect(errors).toEqual([])
+})
+
+test('stars spread across lanes instead of stacking on the guaranteed one', async ({ page }, testInfo) => {
+  test.slow()
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  // Sample stars while they are still far ahead, before the plane's magnet or
+  // its own position can have moved them.
+  const mix = await page.evaluate(() => {
+    const LANE_X = [-6, 0, 6]
+    const snapshot = () => JSON.parse(window.render_game_to_text())
+    const lanes = new Map(LANE_X.map((x) => [x, 0]))
+    let offAxis = 0
+    let total = 0
+    for (let frame = 0; frame < 60 * 90; frame += 1) {
+      window.advanceTime(1000 / 60)
+      if (frame % 10) continue
+      const state = snapshot()
+      if (state.state !== 'playing') break
+      for (const star of state.fairness.visibleStars) {
+        if (star.z < 130) continue
+        const lane = LANE_X.find((x) => Math.abs(star.x - x) <= 0.85)
+        if (lane === undefined) offAxis += 1
+        else lanes.set(lane, lanes.get(lane) + 1)
+        total += 1
+      }
+    }
+    return { lanes: Object.fromEntries(lanes), offAxis, total }
+  })
+
+  const detail = JSON.stringify(mix)
+  // A run that crashes early still samples plenty; keep the floor low enough
+  // that this asserts on the mix rather than on how long the plane survived.
+  expect(mix.total, detail).toBeGreaterThan(30)
+  // Every lane must be used — the point is that the reserved lane is no longer
+  // the only place a star can be.
+  for (const count of Object.values(mix.lanes)) {
+    expect(count, detail).toBeGreaterThan(0)
+  }
+  // And no single lane may hold nearly all of them.
+  const busiest = Math.max(...Object.values(mix.lanes))
+  expect(busiest / mix.total, detail).toBeLessThan(0.8)
 
   expect(errors).toEqual([])
 })

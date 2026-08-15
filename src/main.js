@@ -824,6 +824,14 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
       if (previewInteractionLockPlaneId && now >= previewInteractionBlockUntil) {
         previewInteractionLockPlaneId = null
       }
+      // Moving focus to a card is a deliberate choice; the pointer merely
+      // resting somewhere else is not. Without this, a stationary cursor over
+      // another card fires pointerenter straight after and yanks the preview
+      // back, so keyboard users could not hold a plane on screen.
+      if (event?.type === 'focus') {
+        previewInteractionLockPlaneId = s.id
+        previewInteractionBlockUntil = now + 400
+      }
       void showPlanePreview(preview, previewCanvas, s, previewEpoch)
     }
     card.addEventListener('focus', previewThisPlane)

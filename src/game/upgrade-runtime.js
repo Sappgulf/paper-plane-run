@@ -87,7 +87,15 @@ export function getMagnetPull({
   const active = bonus > 0
   return {
     active,
-    influenceRadius: 12,
+    // Reach is the magnet's real currency, so it has to be what the upgrade
+    // buys. The flat 12-unit reach applied even at level 0: a strength-5 pull
+    // over the ~100 frames a star spends inside 12 units closes most of its
+    // lateral distance, so an unupgraded plane already drew stars out of both
+    // neighbouring lanes (they sit 6 apart) and Star Magnet had little left to
+    // sell. Unupgraded reach now stops just short of one lane gap — it still
+    // forgives a loose line, but crossing for a star is a move you make, and
+    // reaching into the next lane is what the upgrade buys.
+    influenceRadius: active ? 12 + bonus * 1.5 : 5.5,
     pullStrength: active ? 14 + bonus * 12 : 5,
     catchRadius: positiveNumber(starRadius) + positiveNumber(planeRadius, 0.7) + bonus + 0.35,
     visualStrength: clamp(bonus / 3.2, 0, 1),
