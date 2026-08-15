@@ -1264,7 +1264,8 @@ function createParkPatch() {
 
 function maybeSpawnGroundDecor(z) {
   const roll = rng()
-  if (roll < 0.09) {
+  const waterBias = currentZoneId === 'harbor' ? 0.2 : 0
+  if (roll < 0.09 + waterBias) {
     const river = createRiverPatch()
     river.position.z = z
     scene.add(river)
@@ -3014,10 +3015,11 @@ function applyZone(z, announce) {
   hudZoneEl.textContent = z.name
   document.documentElement.dataset.zone = z.id
   if (announce && z.id !== currentZoneId) {
-    zoneBanner.textContent = `✦ ${z.name}`
+    invuln = Math.max(invuln, 0.55)
+    zoneBanner.textContent = z.name
     zoneBanner.classList.remove('hidden')
-    zoneBannerTimer = 2.5
-    showFlightFeedback(`${z.name} · stamp region`, 'route', 1.7)
+    zoneBannerTimer = 1.8
+    showFlightFeedback(z.name, 'route', 1.2)
     pulseFlightImpact('route')
     audio.zoneTransition()
   }
