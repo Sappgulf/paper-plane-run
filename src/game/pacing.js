@@ -2,7 +2,7 @@ const BASE_SPACING = Object.freeze({ easy: 24, normal: 20, hard: 17 })
 export const PASSAGE_LANES = Object.freeze([-1, 0, 1])
 export const PASSAGE_LANE_X = Object.freeze([-6, 0, 6])
 export const PASSAGE_MARGIN = 0.35
-const AIR_DAMAGE_PLANE_WEIGHT = 0.72
+const AIR_DAMAGE_PLANE_WEIGHT = 0.52
 
 function nonNegative(value, fallback = 0) {
   const number = Number(value)
@@ -13,6 +13,11 @@ function nonNegative(value, fallback = 0) {
  * The damaging envelope is intentionally smaller than a sprite's visual or
  * near-miss envelope. Generated billboard art is not a collision boundary.
  */
+/** Only airborne hazards can end a run. Ground and buildings are scenery. */
+export function isLethalObstacle(type) {
+  return type === 'bird' || type === 'scissors' || type === 'boss'
+}
+
 export function getObstacleDamageRadius({
   entityRadius = 0,
   planeRadius = 0.7,

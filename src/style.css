@@ -34,6 +34,7 @@ html, body, #game-root {
 .hidden { display: none !important; }
 
 /* —— Speed streaks (opacity driven by JS from current flight speed) —— */
+html[data-boosting='1'] #speed-fx { opacity: 0.5 !important; }
 #speed-fx {
   position: absolute; inset: 0; pointer-events: none; z-index: 1;
   opacity: 0;

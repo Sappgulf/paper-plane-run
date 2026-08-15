@@ -83,6 +83,7 @@ import {
   getCenterBuildingSafeRange,
   getFlyableBuildingHeight,
   getObstacleDamageRadius,
+  isLethalObstacle,
   getSafeSpawnX,
   getSideBuildingSpread,
   getWaveSpacing,
@@ -1372,6 +1373,64 @@ function installFlightPlane(skin) {
   for (let i = 0; i < TRAIL_N; i++) trailPts.push(new THREE.Vector3())
   scene.add(upgradeTrail)
   scene.add(plane)
+  attachPlaneAccents()
+}
+
+let boostFlame = null
+let magnetHalo = null
+
+function attachPlaneAccents() {
+  if (!plane) return
+  boostFlame = plane.getObjectByName('boostFlame')
+  if (!boostFlame) {
+    boostFlame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.2, 0.85, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff7a3c, transparent: true, opacity: 0.88 }),
+    )
+    boostFlame.name = 'boostFlame'
+    boostFlame.rotation.x = Math.PI
+    boostFlame.position.set(0, -0.04, -0.88)
+    boostFlame.visible = false
+    plane.add(boostFlame)
+  }
+  magnetHalo = plane.getObjectByName('magnetHalo')
+  if (!magnetHalo) {
+    magnetHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(1.12, 0.04, 8, 28),
+      new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.5 }),
+    )
+    magnetHalo.name = 'magnetHalo'
+    magnetHalo.rotation.x = Math.PI / 2
+    magnetHalo.visible = false
+    plane.add(magnetHalo)
+  }
+}
+
+function syncPlanePowerLook(dt = 0.016) {
+  const boosting = activePower?.kind === 'boost'
+  const fx = activeUpgradeEffects
+  document.documentElement.dataset.boosting = boosting ? '1' : '0'
+  planeBodyMat.emissive.setHex(boosting ? 0xff6a2c : 0x000000)
+  planeBodyMat.emissiveIntensity = boosting ? 0.48 : 0
+  if (boostFlame) {
+    boostFlame.visible = boosting
+    if (boosting) boostFlame.scale.setScalar(0.88 + Math.sin(elapsed * 24) * 0.22)
+  }
+  if (magnetHalo) {
+    magnetHalo.visible = (fx.magnetBonus || 0) > 0 && state === 'playing'
+    if (magnetHalo.visible) magnetHalo.rotation.z += dt * 1.6
+  }
+  const stretch = boosting ? 1.1 : 1
+  plane.scale.setScalar((fx.planeScale || 1) * 1.12 * stretch)
+  if (upgradeTrail) {
+    const trailFeedback = getTrailFeedback(fx)
+    upgradeTrail.visible = (trailFeedback.visible || boosting) && state === 'playing'
+    if (boosting) {
+      upgradeTrail.material.color.setHex(0xff8a4c)
+      upgradeTrail.material.opacity = Math.max(trailFeedback.opacity, 0.72)
+      upgradeTrail.material.size = Math.max(trailFeedback.size, 0.28)
+    }
+  }
 }
 
 function applySkin(skinId) {
@@ -4876,9 +4935,9 @@ function update(dt) {
       // Sustain a strong (but not overwhelming) boost for the full duration
       speedBoost = Math.max(speedBoost, 10 + activePower.timeLeft * 1.6)
       fovPunch = THREE.MathUtils.lerp(fovPunch, 9, 1 - Math.pow(0.001, dt))
-      // Boost trail confetti occasionally
       if (Math.random() < dt * 8) spawnConfetti(planeX, planeY - 0.2, -0.5)
     }
+    syncPlanePowerLook(dt)
     if (activePower.timeLeft <= 0) {
       if (activePower.kind === 'boost') {
         speedBoost = Math.max(speedBoost * 0.5, 6)
@@ -4887,6 +4946,7 @@ function update(dt) {
       clearPower()
     }
   }
+  if (!activePower || activePower.kind !== 'boost') syncPlanePowerLook(dt)
 
   // Decay temporary boost (slower while boost power is active)
   if (speedBoost > 0) {
@@ -5162,11 +5222,6 @@ function update(dt) {
   }
   if (planeY < MIN_Y) {
     planeY = MIN_Y
-    // soft floor — only crash if diving hard
-    if (velY < -14 && !isLaunchGraceActive(elapsed, launchGraceSeconds)) {
-      die('Nosed into the paper ground')
-      return
-    }
     velY = Math.max(0, -velY * 0.25)
     mouseTarget.y = Math.max(mouseTarget.y, MIN_Y)
   } else if (planeY > MAX_Y) {
@@ -5527,7 +5582,7 @@ function update(dt) {
         })
         // Only punish a clear miss near the gate plane — grazing the glowing
         // ring edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage.
-        if (!inGap && Math.abs(dz) < 1.05) {
+        if (isLethalObstacle('boss') && !inGap && Math.abs(dz) < 1.05) {
           e.director?.collide()
           die(bossCrashReason(m.userData.kind))
           return
@@ -5591,10 +5646,12 @@ function update(dt) {
         nearMissBonus: ufx.nearMissBonus,
         tighten: nmTighten,
       })
-      const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH + 0.25 && p.y > -0.5
+      const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH - 0.85 && p.y > -0.5
       if (hitsBuilding) {
-        die('Hit a paper skyscraper')
-        return
+        const push = Math.sign(p.x - m.position.x) || (p.x >= 0 ? 1 : -1)
+        planeX = THREE.MathUtils.clamp(planeX + push * 0.55, -MAX_X, MAX_X)
+        velX = push * 12
+        mouseTarget.x = planeX
       }
       if (
         m.position.z > -2 &&
@@ -5625,7 +5682,7 @@ function update(dt) {
         planeRadius: PLANE_COLLISION_RADIUS,
         boostHitboxScale,
       })
-      if (dist2 < hit ** 2) {
+      if (isLethalObstacle(e.type) && dist2 < hit ** 2) {
         const label =
           e.type === 'scissors'
             ? 'Snipped by scissors'

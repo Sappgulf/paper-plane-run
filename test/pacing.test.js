@@ -4,6 +4,7 @@ import {
   createPacingWave,
   getCenterBuildingSafeRange,
   getObstacleDamageRadius,
+  isLethalObstacle,
   getSafeSpawnX,
   getWaveSpacing,
   getFlyableBuildingHeight,
@@ -55,9 +56,13 @@ describe('existing flight pacing', () => {
   })
 
   test('uses a smaller explicit air-damage envelope than the visual near-miss envelope', () => {
-    expect(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: 0.7 })).toBeCloseTo(2.104)
+    expect(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: 0.7 })).toBeCloseTo(1.964)
     expect(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: 0.7, boostHitboxScale: 0.6 }))
-      .toBeCloseTo(1.2624)
+      .toBeCloseTo(1.1784)
+    expect(isLethalObstacle('bird')).toBe(true)
+    expect(isLethalObstacle('scissors')).toBe(true)
+    expect(isLethalObstacle('boss')).toBe(true)
+    expect(isLethalObstacle('building')).toBe(false)
   })
 
   test('chooses a genuinely clear passage lane for an obstacle group', () => {
