@@ -738,11 +738,13 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
   renderer.shadowMap.enabled = renderQuality.shadows
   if (typeof sun !== 'undefined' && sun) sun.castShadow = renderQuality.shadows
   if (typeof dust !== 'undefined' && dust) dust.visible = renderQuality.secondaryEffects
-  if (typeof entities !== 'undefined') {
+  try {
     for (const entity of entities) {
       const outline = entity.mesh?.userData?.lethalOutline
-      if (outline) outline.visible = renderQuality.secondaryEffects && outline.visible
+      if (outline) outline.visible = Boolean(renderQuality.secondaryEffects && outline.visible)
     }
+  } catch {
+    /* entities is declared later in boot; first quality pass runs before that */
   }
   document.documentElement.dataset.renderQuality = renderQuality.level
   if (deskAR.active || settings.arDesk) {
