@@ -19,7 +19,8 @@ npm install && npm run dev
 | 5 | Haptics + generative music |
 | 6 | Tutorial rings |
 | 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora → Midnight Origami) |
-| — | **Ground life** — each zone flanked by animated scenery (traffic, sailboats, scrap fans, reeds, crystals, desk lamps). Two instanced draw calls per zone, kept outside the flight corridor, and dropped first on low-power devices |
+| — | **Ground life** — each zone gets a landmark, a mid-height mover, a dense low scatter, and a flat decal band (traffic, sailboats, scrap fans, reeds, crystals, desk lamps…). Four instanced draw calls per zone regardless of instance count; upright props stay outside the flight corridor, only flat decals pass under the plane, and the whole field is shed first on low-power devices |
+| — | **Ground skim** — the low lane is the dangerous one, so holding it pays. Tiers bank stars and lift the score multiplier, with a short grace so clipping a roofline doesn't void an earned chain |
 | — | **Plane upgrades** (14-upgrade tree incl. Fever Focus, Steady Hands, Gold Rush + synergies) |
 | — | **Expanded skins** (Neon, Rainbow, Storm Foil, Sunset Letter + seasonal + prestige Ink Veil / Starcrest / Paper Legend) |
 | 8 | Daily missions |

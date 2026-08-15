@@ -5,6 +5,7 @@ import {
   CORRIDOR_HALF_X,
   FIELD_HALF_X,
   FIELD_INNER_X,
+  FLAT_MAX_Y,
   FIELD_RECYCLE_Z,
   FIELD_SPAN_Z,
   GROUND_LIFE_ZONES,
@@ -33,13 +34,41 @@ describe('ground life placement', () => {
     expect(getGroundLifeSpecies('harbor')).toBe(GROUND_LIFE_ZONES.harbor)
   })
 
-  test('never places a prop inside the flight corridor', () => {
+  test('never places an upright prop inside the flight corridor', () => {
     for (let index = 0; index < 200; index++) {
       for (const rand of [0, 0.25, 0.5, 0.75, 1]) {
         const x = groundLifeSlotX(index, rand)
         expect(Math.abs(x)).toBeGreaterThanOrEqual(FIELD_INNER_X)
         expect(Math.abs(x)).toBeLessThanOrEqual(FIELD_HALF_X)
       }
+    }
+  })
+
+  test('lets flat decals cross the corridor, and only flat ones', () => {
+    // Decals are the exception that dresses the near ground under the plane.
+    const spans = []
+    for (let index = 0; index < 40; index++) {
+      for (const rand of [0, 0.2, 0.5, 1]) {
+        const x = groundLifeSlotX(index, rand, true)
+        expect(Math.abs(x)).toBeLessThanOrEqual(FIELD_HALF_X)
+        spans.push(Math.abs(x))
+      }
+    }
+    expect(Math.min(...spans)).toBeLessThan(CORRIDOR_HALF_X)
+  })
+
+  test('anything allowed under the flight path lies flat on the ground', () => {
+    // This is the safety argument for the exception above: a decal below the
+    // plane's own floor (MIN_Y 2.2) cannot read as an obstacle.
+    const flat = everySpecies.filter((s) => s.flat)
+    expect(flat.length).toBeGreaterThan(0)
+    for (const speciesDef of flat) {
+      expect(speciesDef.y).toBeLessThanOrEqual(FLAT_MAX_Y)
+      expect(speciesDef.motion).toBe('none')
+    }
+    // Conversely, every upright species must stand clear of the corridor.
+    for (const speciesDef of everySpecies.filter((s) => !s.flat)) {
+      expect(Math.abs(groundLifeSlotX(0, 0, false))).toBeGreaterThanOrEqual(FIELD_INNER_X)
     }
   })
 

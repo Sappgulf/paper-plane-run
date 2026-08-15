@@ -30,17 +30,25 @@ export const FIELD_HALF_X = 32
 export const FIELD_SPAN_Z = 140
 export const FIELD_RECYCLE_Z = -20
 
-function species(id, { count, motion, amplitude, speed, y = 0, scale = 1, palette, shape }) {
+function species(id, { count, motion, amplitude, speed, y = 0, scale = 1, palette, shape, flat = false }) {
   return Object.freeze({
     id, count, motion, amplitude, speed, y, scale,
     palette: Object.freeze(palette),
     shape,
+    // Flat species lie on the ground plane as decals. They are the only kind
+    // allowed under the flight path, because a quad lying flat below the
+    // plane's floor reads as floor, never as something to dodge.
+    flat,
   })
 }
 
+/** A decal must sit below this height to stay unmistakably part of the ground. */
+export const FLAT_MAX_Y = 0.12
+
 /**
- * Per-zone scenery. Two species per zone keeps the draw calls at two while
- * still giving each place a foreground motion and a background one.
+ * Per-zone scenery: a tall landmark, a mid-height mover, and a dense low
+ * scatter that keeps the bottom of the screen busy at speed. Three species is
+ * three draw calls per zone — instancing means the count inside each is free.
  */
 export const GROUND_LIFE_ZONES = Object.freeze({
   city: Object.freeze([
@@ -52,6 +60,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 20, motion: 'sway', amplitude: 0.38, speed: 1.9, y: 3.4, scale: 1.5,
       palette: { primary: '#7eb8e8', accent: '#fff7e8' }, shape: 'flag',
     }),
+    species('park-blocks', {
+      count: 40, motion: 'sway', amplitude: 0.14, speed: 0.9, y: 0.3, scale: 1.2,
+      palette: { primary: '#8fc9a0', accent: '#d8eec4' }, shape: 'tuft',
+    }),
+    species('street-seams', {
+      count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.4,
+      palette: { primary: '#e8dccb', accent: '#f6efe2' }, shape: 'decal', flat: true,
+    }),
   ]),
   harbor: Object.freeze([
     species('sailboats', {
@@ -61,6 +77,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('buoys', {
       count: 22, motion: 'bob', amplitude: 0.3, speed: 1.7, y: 0.5, scale: 1.1,
       palette: { primary: '#f0b429', accent: '#e96957' }, shape: 'buoy',
+    }),
+    species('wave-caps', {
+      count: 44, motion: 'bob', amplitude: 0.22, speed: 2.3, y: 0.15, scale: 1.3,
+      palette: { primary: '#bfe4f4', accent: '#ffffff' }, shape: 'tuft',
+    }),
+    species('tide-marks', {
+      count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.6,
+      palette: { primary: '#cfe8f6', accent: '#ffffff' }, shape: 'decal', flat: true,
     }),
   ]),
   storm: Object.freeze([
@@ -72,6 +96,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 18, motion: 'sway', amplitude: 0.5, speed: 2.6, y: 2.0, scale: 1.6,
       palette: { primary: '#8e7fa8', accent: '#d8c8e8' }, shape: 'flag',
     }),
+    species('scrap-litter', {
+      count: 40, motion: 'sway', amplitude: 0.3, speed: 1.8, y: 0.25, scale: 1.1,
+      palette: { primary: '#a89ac0', accent: '#d8c8e8' }, shape: 'tuft',
+    }),
+    species('oil-slicks', {
+      count: 28, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.2,
+      palette: { primary: '#b3a4c8', accent: '#dccfe8' }, shape: 'decal', flat: true,
+    }),
   ]),
   sunset: Object.freeze([
     species('reeds', {
@@ -81,6 +113,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('windmills', {
       count: 14, motion: 'spin', amplitude: 1, speed: 1.5, y: 3.8, scale: 1.4,
       palette: { primary: '#fff0d8', accent: '#e08b5a' }, shape: 'fan',
+    }),
+    species('hay-bales', {
+      count: 36, motion: 'sway', amplitude: 0.1, speed: 0.7, y: 0.35, scale: 1.2,
+      palette: { primary: '#e0a878', accent: '#f8dcb8' }, shape: 'tuft',
+    }),
+    species('field-rows', {
+      count: 32, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.5,
+      palette: { primary: '#eab98c', accent: '#fae2c4' }, shape: 'decal', flat: true,
     }),
   ]),
   aurora: Object.freeze([
@@ -92,6 +132,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       count: 18, motion: 'sway', amplitude: 0.42, speed: 1.6, y: 3.2, scale: 1.6,
       palette: { primary: '#c8b4f0', accent: '#fff7e8' }, shape: 'flag',
     }),
+    species('ice-flecks', {
+      count: 42, motion: 'pulse', amplitude: 0.28, speed: 1.9, y: 0.3, scale: 1.0,
+      palette: { primary: '#a8e4f0', accent: '#e8f8ff' }, shape: 'tuft',
+    }),
+    species('frost-veins', {
+      count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.3,
+      palette: { primary: '#bfe8f4', accent: '#eefaff' }, shape: 'decal', flat: true,
+    }),
   ]),
   midnight: Object.freeze([
     species('desk-lamps', {
@@ -101,6 +149,14 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     species('pencils', {
       count: 24, motion: 'drift', amplitude: 6, speed: 0.42, y: 0.4, scale: 1.4,
       palette: { primary: '#172b57', accent: '#f0b429' }, shape: 'box',
+    }),
+    species('paper-scraps', {
+      count: 40, motion: 'sway', amplitude: 0.26, speed: 1.4, y: 0.25, scale: 1.1,
+      palette: { primary: '#3a4a78', accent: '#8fa8d8' }, shape: 'tuft',
+    }),
+    species('desk-grain', {
+      count: 30, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.4,
+      palette: { primary: '#2c3a63', accent: '#55689c' }, shape: 'decal', flat: true,
     }),
   ]),
 })
@@ -139,9 +195,12 @@ export function groundLifeCount(speciesDef, budget) {
  * right, so thinning the count by the quality budget keeps both sides dressed
  * instead of emptying one.
  */
-export function groundLifeSlotX(index, rand = 0.5) {
+export function groundLifeSlotX(index, rand = 0.5, flat = false) {
   const side = index % 2 === 0 ? 1 : -1
-  const spread = FIELD_INNER_X + rand * (FIELD_HALF_X - FIELD_INNER_X)
+  // Decals may cross the corridor; upright props never do.
+  const spread = flat
+    ? rand * FIELD_HALF_X
+    : FIELD_INNER_X + rand * (FIELD_HALF_X - FIELD_INNER_X)
   return side * spread
 }
 
@@ -178,6 +237,8 @@ export function groundLifeTransform(speciesDef, phase, time, motionScale = 1) {
       return { ...base, rotation: Math.sin(t) * amp }
     case 'pulse':
       return { ...base, scale: 1 + Math.sin(t) * amp }
+    case 'none':
+      return base
     default:
       return base
   }

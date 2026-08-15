@@ -209,6 +209,20 @@ html[data-night='1'] .hud-card {
   background: linear-gradient(135deg, rgba(255,247,224,.96), rgba(254,243,199,.98));
 }
 .hud-card.combo-hud.combo-tier-legend > span:nth-child(2) { color: #b45309; }
+
+/* Ground skim — a cool, low-to-the-deck counterpart to the warm combo chip. */
+.hud-card.skim-hud > span:nth-child(2) { color: #0e7490; white-space: nowrap; }
+.hud-card.skim-hud.skim-tier-warm { border-color: rgba(14,116,144,.35); }
+.hud-card.skim-hud.skim-tier-hot {
+  border-color: rgba(6,182,212,.6);
+  background: rgba(236,254,255,.95);
+}
+.hud-card.skim-hud.skim-tier-hot > span:nth-child(2) { color: #0369a1; }
+.hud-card.skim-hud.skim-tier-legend {
+  border-color: rgba(34,211,238,.75);
+  background: linear-gradient(135deg, rgba(236,254,255,.96), rgba(207,250,254,.98));
+}
+.hud-card.skim-hud.skim-tier-legend > span:nth-child(2) { color: #155e75; }
 @keyframes comboPulse {
   0% { transform: scale(1); }
   35% { transform: scale(1.28); box-shadow: 0 8px 24px rgba(124,58,237,.45); }

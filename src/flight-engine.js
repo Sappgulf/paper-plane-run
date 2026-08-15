@@ -76,6 +76,14 @@ import {
 import { createNotificationQueue } from './game/notification-queue.js'
 import { createFrameHealthMonitor } from './game/frame-health.js'
 import {
+  SKIM_CEILING,
+  advanceGroundSkim,
+  createGroundSkimState,
+  describeSkimHudValue,
+  skimHudTier,
+  skimScoreMultiplier,
+} from './game/ground-skim.js'
+import {
   getGroundLifeSpecies,
   groundLifeCount,
   groundLifeSlotX,
@@ -241,6 +249,8 @@ const powerLabel = $('power-label')
 const powerFill = $('power-fill')
 const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
+const skimHud = $('skim-hud')
+const skimVal = $('skim-val')
 const streakHud = $('streak-hud')
 const streakVal = $('streak-val')
 const flightRouteEl = $('flight-route')
@@ -640,6 +650,7 @@ let ghostMesh = null
 let journeyRivalState = null
 let currentZoneId = 'city'
 let combo = 0
+let groundSkim = createGroundSkimState()
 let maxCombo = 0
 let comboTimer = 0
 /** Combo Fever: a short score-multiplier burst triggered by a big near-miss streak */
@@ -1041,6 +1052,11 @@ const GROUND_LIFE_GEOMETRY = {
   reed: () => new THREE.PlaneGeometry(0.26, 1.7),
   shard: () => new THREE.ConeGeometry(0.48, 1.6, 4),
   lamp: () => new THREE.ConeGeometry(0.62, 0.85, 8),
+  // Low, dense scatter — a folded paper wedge, cheap enough to run 40 of.
+  tuft: () => new THREE.ConeGeometry(0.55, 0.5, 4),
+  // Ground decal: a flat quad laid on the floor, the only class allowed to
+  // cross under the flight path.
+  decal: () => new THREE.PlaneGeometry(1, 2.6),
 }
 
 const groundLifeDummy = new THREE.Object3D()
@@ -1073,9 +1089,19 @@ function buildGroundLife(zoneId) {
     const geometry = (GROUND_LIFE_GEOMETRY[speciesDef.shape] || GROUND_LIFE_GEOMETRY.box)()
     const glow = speciesDef.motion === 'pulse'
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(speciesDef.palette.primary),
+      // White base: the per-instance tint below multiplies into this, so any
+      // colour here would darken the whole field.
+      color: 0xffffff,
       roughness: 0.92,
       side: THREE.DoubleSide,
+      // Decals sit millimetres above the ground plane; bias them so they do
+      // not z-fight with it at distance.
+      transparent: speciesDef.flat,
+      opacity: speciesDef.flat ? 0.55 : 1,
+      depthWrite: !speciesDef.flat,
+      polygonOffset: speciesDef.flat,
+      polygonOffsetFactor: speciesDef.flat ? -2 : 0,
+      polygonOffsetUnits: speciesDef.flat ? -2 : 0,
       // Aurora crystals and desk lamps read as light sources, not paper.
       emissive: glow ? new THREE.Color(speciesDef.palette.accent) : new THREE.Color(0x000000),
       emissiveIntensity: glow ? 0.55 : 0,
@@ -1089,15 +1115,24 @@ function buildGroundLife(zoneId) {
     // the plane can hit — nothing here is registered as an entity.
     mesh.userData.decorative = true
 
+    // Tint each instance somewhere between the species' primary and accent so
+    // a field of forty reads as handmade paper rather than forty clones.
+    const primary = new THREE.Color(speciesDef.palette.primary)
+    const accent = new THREE.Color(speciesDef.palette.accent)
+    const tint = new THREE.Color()
+
     const instances = []
     for (let i = 0; i < count; i++) {
       instances.push({
-        x: groundLifeSlotX(i, rng()),
+        x: groundLifeSlotX(i, rng(), speciesDef.flat),
         z: groundLifeSlotZ(i, count, rng()),
         phase: rng() * Math.PI * 2,
         scale: speciesDef.scale * (0.8 + rng() * 0.45),
       })
+      tint.copy(primary).lerp(accent, rng() * 0.7)
+      mesh.setColorAt(i, tint)
     }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     groundLifeFields.push({ speciesDef, mesh, instances, motionScale: budget.motionScale })
     scene.add(mesh)
   }
@@ -1122,7 +1157,13 @@ function updateGroundLife(time) {
         speciesDef.y + motion.offsetY,
         instance.z,
       )
-      groundLifeDummy.rotation.set(0, 0, motion.rotation)
+      if (speciesDef.flat) {
+        // Rotate onto the ground plane; the motion rotation becomes yaw so
+        // decals fan out instead of all pointing down the same axis.
+        groundLifeDummy.rotation.set(-Math.PI / 2, motion.rotation + instance.phase, 0)
+      } else {
+        groundLifeDummy.rotation.set(0, 0, motion.rotation)
+      }
       groundLifeDummy.scale.setScalar(instance.scale * motion.scale)
       groundLifeDummy.updateMatrix()
       mesh.setMatrixAt(i, groundLifeDummy.matrix)
@@ -3385,6 +3426,8 @@ function resetGame() {
   combo = 0
   maxCombo = 0
   comboTimer = 0
+  groundSkim = createGroundSkimState()
+  skimHud?.classList.add('hidden')
   starStreak = 0
   starStreakTimer = 0
   starStreakWindow = 0
@@ -4713,6 +4756,44 @@ function finalizeDeathUnsafe() {
 // ---------------------------------------------------------------------------
 // World update
 // ---------------------------------------------------------------------------
+/**
+ * Ground skim — flying the low lane is the risky one (buildings rise from the
+ * ground), so holding it banks stars and lifts the score multiplier.
+ */
+function updateGroundSkim(dt) {
+  const next = advanceGroundSkim(groundSkim, {
+    low: planeY < SKIM_CEILING,
+    dt,
+    // Deliberately not gated on bossActive. Gates arrive every ~500m, and
+    // voiding an earned chain for a scripted event the player did not cause
+    // made long skims impossible to hold. The boss passage already constrains
+    // where you can fly; altitude stays the player's own call.
+    enabled: state === 'playing',
+  })
+  const wasActive = groundSkim.active
+  groundSkim = next
+
+  if (next.bankedStars > 0) {
+    stars += next.bankedStars
+    runStats.stars = stars
+    starsEl.textContent = String(stars)
+    audio.starStreak(Math.min(1, next.tier / 5))
+    if (settings.haptics) Haptic.collect()
+    showFlightFeedback(next.banner, 'star', 1.1)
+    pulseFlightImpact('star')
+    if (!settings.reducedMotion) spawnConfetti(planeX, planeY - 0.3, 0)
+  }
+
+  if (!skimHud || !skimVal) return
+  if (next.active && next.tier > 0) {
+    skimVal.textContent = describeSkimHudValue(next)
+    skimHud.className = `hud-card skim-hud ${skimHudTier(next.tier)}`.trim()
+    skimHud.classList.remove('hidden')
+  } else if (wasActive || !skimHud.classList.contains('hidden')) {
+    skimHud.classList.add('hidden')
+  }
+}
+
 function scrollWorld(move) {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
@@ -5494,12 +5575,14 @@ function update(dt) {
     })
     planeY += (assistY - planeY) * Math.min(1, dt * 2.4)
   }
+  updateGroundSkim(dt)
   const move = speed * dt * getBossApproachSpeedScale({ bossZ })
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
     (1 + combo * 0.02) *
     (1 + Math.min(0.35, speedBoost * 0.01)) *
+    skimScoreMultiplier(groundSkim.tier) *
     (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
 
@@ -6111,6 +6194,13 @@ window.render_game_to_text = () => JSON.stringify({
     visibleTypes: entities
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
+  },
+  groundSkim: {
+    active: groundSkim.active,
+    tier: groundSkim.tier,
+    seconds: Number(groundSkim.seconds.toFixed(2)),
+    ceiling: SKIM_CEILING,
+    scoreMultiplier: skimScoreMultiplier(groundSkim.tier),
   },
   groundLife: {
     zone: groundLifeZoneId,

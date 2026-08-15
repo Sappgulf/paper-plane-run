@@ -980,3 +980,110 @@ test('Aim feel selection survives a Hangar tab round trip', async ({ page }, tes
 
   await expect(page.locator('#set-mouse-sens')).toHaveValue('0.75')
 })
+
+test('ground skim rewards flying the low lane and releases when you climb', async ({ page }, testInfo) => {
+  test.slow()
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({
+      controlMode: 'mouse',
+      mouseSensitivity: 0.75,
+      haptics: false,
+    }))
+  })
+
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  const skimHud = page.locator('#skim-hud')
+  await expect(skimHud).toBeHidden()
+
+  const viewport = page.viewportSize()
+  // Flying at minimum altitude through a city eventually clips a building and
+  // restarts the run, so assert on the best chain seen across the hold rather
+  // than on whatever the final frame happens to hold.
+  const holdLow = async (ms) => {
+    const deadline = Date.now() + ms
+    let peak = { tier: 0, scoreMultiplier: 1, stars: 0, y: Number.POSITIVE_INFINITY }
+    while (Date.now() < deadline) {
+      await page.mouse.move(viewport.width / 2, viewport.height - 4)
+      await page.waitForTimeout(60)
+      const snapshot = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+      if (snapshot.groundSkim.tier >= peak.tier) {
+        peak = {
+          tier: snapshot.groundSkim.tier,
+          scoreMultiplier: snapshot.groundSkim.scoreMultiplier,
+          stars: snapshot.stars,
+          y: Math.min(peak.y, snapshot.player.y),
+          ceiling: snapshot.groundSkim.ceiling,
+        }
+      }
+    }
+    return peak
+  }
+
+  const peak = await holdLow(12_000)
+  expect(peak.y).toBeLessThan(peak.ceiling)
+  // Tiers accrue while low, each paying stars and lifting the score multiplier.
+  expect(peak.tier).toBeGreaterThanOrEqual(2)
+  expect(peak.scoreMultiplier).toBeGreaterThan(1)
+  expect(peak.stars).toBeGreaterThan(0)
+  await expect(skimHud).toBeVisible()
+  await expect(skimHud).toHaveClass(/skim-tier-/)
+
+  // Climbing out past the grace window ends the chain and hides the chip.
+  const deadline = Date.now() + 4_000
+  while (Date.now() < deadline) {
+    await page.mouse.move(viewport.width / 2, 90)
+    await page.waitForTimeout(60)
+  }
+  const climbed = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(climbed.groundSkim.active).toBe(false)
+  expect(climbed.groundSkim.tier).toBe(0)
+  expect(climbed.groundSkim.scoreMultiplier).toBe(1)
+  await expect(skimHud).toBeHidden()
+
+  expect(errors).toEqual([])
+})
+
+test('ground life dresses each zone without entering the flight corridor', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const errors = collectConsoleErrors(page)
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
+  await waitForGameText(page)
+
+  const life = await page.evaluate(() => JSON.parse(window.render_game_to_text()).groundLife)
+  expect(life.zone).toBe('city')
+  // A whole field costs one draw call per species, however many instances.
+  expect(life.draws).toBe(life.species.length)
+  expect(life.species.length).toBeGreaterThanOrEqual(3)
+  expect(life.instances).toBeGreaterThan(80)
+  for (const species of life.species) {
+    expect(species.count).toBeGreaterThan(0)
+    // Hazard lanes top out around x = 7.2. Upright props must clear them; the
+    // flat decal band is the one class allowed to cross under the plane.
+    if (species.motion === 'none') continue
+    expect(species.minAbsX).toBeGreaterThan(11)
+  }
+
+  // Scenery is decoration and must yield to the frame budget. This browser is
+  // headless and software-rendered, so frame health lands on 'critical' and
+  // quality drops to 'low' — exactly the pressure that should shed the field.
+  // (Real GPU numbers are not assertable here; measure those in a real browser.)
+  await expect
+    .poll(
+      () => page.evaluate(() => JSON.parse(window.render_game_to_text()).performance.status),
+      { timeout: 30_000 },
+    )
+    .not.toBe('warming')
+  const performance = await page.evaluate(() => JSON.parse(window.render_game_to_text()).performance)
+  if (performance.quality.level === 'low') {
+    const shed = await page.evaluate(() => JSON.parse(window.render_game_to_text()).groundLife)
+    expect(shed.draws).toBe(0)
+    expect(shed.instances).toBe(0)
+  }
+  expect(errors).toEqual([])
+})
