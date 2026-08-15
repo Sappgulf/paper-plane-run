@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { planStarSpawns } from '../src/game/star-spawn.js'
+import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from '../src/game/star-spawn.js'
 
 function sequence(values) {
   let index = 0
@@ -32,5 +32,26 @@ describe('gold rush star clusters', () => {
     expect(goldRush.cluster).toBe(true)
     expect(goldRush.starCount).toBe(2)
     expect(goldRush.rates.doubleStarChance).toBeGreaterThan(baseline.rates.doubleStarChance)
+  })
+})
+
+describe('opening star-lane telegraph', () => {
+  test('is active only in the first 40 meters', () => {
+    expect(shouldTelegraphStarLane(0)).toBe(true)
+    expect(shouldTelegraphStarLane(39.9)).toBe(true)
+    expect(shouldTelegraphStarLane(40)).toBe(false)
+  })
+
+  test('guarantees a readable mid-lane star when the chunk would otherwise be empty', () => {
+    const empty = planStarSpawns({
+      random: sequence([0.99, 0.99, 0.99]),
+      starChance: 0.01,
+    })
+    expect(empty.starCount).toBe(0)
+    const taught = applyStarLaneTelegraph(empty, { distance: 12, midY: 8 })
+    expect(taught.telegraph).toBe(true)
+    expect(taught.starCount).toBe(1)
+    expect(taught.telegraphY).toBe(8)
+    expect(taught.telegraphScale).toBeGreaterThan(1)
   })
 })

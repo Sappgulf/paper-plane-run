@@ -118,7 +118,7 @@ import {
   createStarStreakState,
   registerStarPickup,
 } from './game/star-streak.js'
-import { planStarSpawns } from './game/star-spawn.js'
+import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from './game/star-spawn.js'
 import {
   describeNearMissFloat,
   feverConfettiOffsets,
@@ -396,11 +396,21 @@ function updateFlightReadability(routeState = null) {
   let cue = 'clear'
   let label = 'FLY'
   let nearestZ = Infinity
+  const teachStars = shouldTelegraphStarLane(distance)
   for (const entity of entities) {
     const type = entity.type
     const isPickup = type === 'star' || type === 'power' || type === 'ring'
     const isHazard = type === 'building' || type === 'bird' || type === 'scissors' || type === 'boss'
-    if ((!isPickup && !isHazard) || entity.mesh.position.z < 3 || entity.mesh.position.z > 46) continue
+    if (entity.mesh.position.z < 3 || entity.mesh.position.z > 46) continue
+    if (teachStars) {
+      if (type !== 'star' && type !== 'ring') continue
+      if (entity.mesh.position.z >= nearestZ) continue
+      nearestZ = entity.mesh.position.z
+      cue = 'star'
+      label = 'STAR LINE'
+      continue
+    }
+    if (!isPickup && !isHazard) continue
     if (entity.mesh.position.z >= nearestZ) continue
     nearestZ = entity.mesh.position.z
     if (isHazard) {
@@ -752,7 +762,7 @@ installNativePerformanceListener({
 })
 
 const scene = new THREE.Scene()
-scene.fog = new THREE.Fog(0xb8d4e8, 42, 220)
+scene.fog = new THREE.Fog(0xc5daf0, 150, 380)
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400)
 
 // Chase-camera framing. The camera rides CAM_HEIGHT above the plane, so the aim
@@ -2065,13 +2075,13 @@ function createScissors() {
 // Stars are by far the most frequently spawned entity in the game (every
 // chunk rolls 1-2), so building fresh geometry + material per spawn was
 // pure per-frame GC churn for an object that never changes shape or color.
-const starCoreGeo = new THREE.PlaneGeometry(1.1, 1.1)
+const starCoreGeo = new THREE.PlaneGeometry(1.55, 1.55)
 const starCoreMat = new THREE.MeshBasicMaterial({
-  map: loadCutoutTex('/assets/pickup-orb.jpg'), transparent: true, alphaTest: 0.12, side: THREE.DoubleSide, depthWrite: false,
+  map: loadCutoutTex('/assets/pickup-orb.png'), transparent: true, alphaTest: 0.18, side: THREE.DoubleSide, depthWrite: false,
 })
-const starGlowGeo = new THREE.SphereGeometry(0.62, 12, 12)
+const starGlowGeo = new THREE.SphereGeometry(0.72, 12, 12)
 const starGlowMat = new THREE.MeshBasicMaterial({
-  color: 0xfbbf24, transparent: true, opacity: 0.18, depthWrite: false,
+  color: 0xfbbf24, transparent: true, opacity: 0.28, depthWrite: false,
 })
 
 function createStar() {
@@ -2141,22 +2151,29 @@ function createPowerUp(kind) {
   ring.rotation.x = Math.PI / 2
   g.add(ring)
 
-  // Icon sprite facing player — boost gets the hero origami-rocket art,
-  // everything else uses its clean flat icon. A few kinds (like phase)
-  // don't have a matching power-${kind}.png yet; skip the icon plane for
-  // those rather than firing a doomed texture load — the crystal color,
-  // glow, and HUD emoji label already make the kind readable.
+  // Icon sprite facing player. Paper-craft cutouts for boost / shield / magnet;
+  // remaining kinds keep the flat icon sheet. Phase has no matching asset.
   const NO_ICON_KINDS = new Set(['phase'])
-  const iconUrl = isBoostHero ? '/assets/pickup-boost.jpg' : `/assets/power-${kind}.png`
+  const PAPER_ICON = {
+    boost: '/assets/pickup-boost.png',
+    shield: '/assets/power-shield.png',
+    magnet: '/assets/power-magnet.png',
+    slow: '/assets/power-slow.png',
+    tear: '/assets/power-tear.png',
+    clip: '/assets/power-clip.png',
+    sling: '/assets/power-sling.png',
+  }
+  const iconUrl = PAPER_ICON[kind] || `/assets/power-${kind}.png`
+  const paperIcon = Boolean(PAPER_ICON[kind])
   try {
     if (NO_ICON_KINDS.has(kind)) throw new Error('no icon asset')
     if (!mats.iconMat) {
-      const tex = isBoostHero ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
+      const tex = paperIcon ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
       mats.iconMat = new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, alphaTest: isBoostHero ? 0.12 : 0, depthWrite: false, side: THREE.DoubleSide,
+        map: tex, transparent: true, alphaTest: paperIcon ? 0.16 : 0, depthWrite: false, side: THREE.DoubleSide,
       })
     }
-    const icon = new THREE.Mesh(isBoostHero ? powerIconGeoBoost : powerIconGeoDefault, mats.iconMat)
+    const icon = new THREE.Mesh(paperIcon ? powerIconGeoBoost : powerIconGeoDefault, mats.iconMat)
     icon.position.z = 0.55
     icon.rotation.y = Math.PI
     g.add(icon)
@@ -2291,8 +2308,8 @@ let zoneBannerTimer = 0
 /** @type {any[]} */
 const entities = []
 const clouds = []
-const MIN_Y = 1.4
-const MAX_Y = 26
+const MIN_Y = 2.2
+const MAX_Y = 16.5
 const MAX_X = 13
 const MAX_VEL = 38
 
@@ -2474,14 +2491,14 @@ function spawnChunk(z) {
     }
   } else if (ht === 'scissors') {
     const sc = createScissors()
-    sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4 + rng() * 16, z)
+    sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z)
     scene.add(sc)
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
     // Scissor squadron — a rarer second blade further down the lane, more
     // likely to appear the deeper into a run you get.
     if (rng() < 0.12 + ramp * 0.22) {
       const sc2 = createScissors()
-      sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4 + rng() * 16, z + 6 + rng() * 4)
+      sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z + 6 + rng() * 4)
       scene.add(sc2)
       entities.push({ mesh: sc2, type: 'scissors', radius: 1.6, passageLane: safeLane })
     }
@@ -2491,7 +2508,7 @@ function spawnChunk(z) {
   if (rng() < 0.18 + ramp * 0.1) {
     const def = pickFlyerKind()
     const flyer = createFlyer(def.id)
-    flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4 + rng() * 16, z + 4 + rng() * 6)
+    flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4.4 + rng() * 10.2, z + 4 + rng() * 6)
     scene.add(flyer)
     entities.push({
       mesh: flyer,
@@ -2504,7 +2521,7 @@ function spawnChunk(z) {
   }
 
   const ufx = activeUpgradeEffects
-  const starPlan = planStarSpawns({
+  const starPlan = applyStarLaneTelegraph(planStarSpawns({
     random: rng,
     starChance: cfg.starChance,
     powerChance: cfg.powerChance,
@@ -2513,13 +2530,19 @@ function spawnChunk(z) {
     powerChanceMul: ufx.powerChanceMul,
     twistStarMul: activeTwist?.starMul || 1,
     doubleStarBonus: ufx.doubleStarBonus,
-  })
+  }), { distance, midY: 8 })
   // Stars — often 1–2; Gold Rush raises cluster odds through planStarSpawns
   for (let s = 0; s < starPlan.starCount; s++) {
     const st = createStar()
-    st.position.set(safePickupX(), 3 + rng() * 17, z + rng() * 8)
+    const telegraph = starPlan.telegraph && s === 0
+    const y = telegraph ? starPlan.telegraphY + (rng() - 0.5) * 0.8 : 5.2 + rng() * 8.4
+    const x = telegraph && safeLane !== null
+      ? PASSAGE_LANE_X[safeLane + 1] + (rng() - 0.5) * 0.45
+      : safePickupX()
+    if (telegraph) st.scale.setScalar(starPlan.telegraphScale)
+    st.position.set(x, y, z + rng() * 8)
     scene.add(st)
-    entities.push({ mesh: st, type: 'star', radius: 0.9, cluster: starPlan.cluster })
+    entities.push({ mesh: st, type: 'star', radius: telegraph ? 1.15 : 0.9, cluster: starPlan.cluster, telegraph })
   }
   if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
     powerBanner.textContent = '💰 Gold Rush cluster!'
@@ -2536,7 +2559,7 @@ function spawnChunk(z) {
     const kind = pool[(rng() * pool.length) | 0]
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
-    pu.position.set(safePickupX(), 5 + rng() * 12, z + 1 + rng() * 5)
+    pu.position.set(safePickupX(), 5.4 + rng() * 8.2, z + 1 + rng() * 5)
     scene.add(pu)
     entities.push({ mesh: pu, type: 'power', radius: 1.35, kind })
   }
@@ -2730,7 +2753,7 @@ function dispatchJourneyEncounter(event) {
     break
   case 'reveal':
     journeyVisibilityTimer = 0
-    scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
+    scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
     break
   case 'rival':
     notifications.show('🔺 Red Dart cuts across the aurora — hold your line!', {
@@ -3079,7 +3102,7 @@ function resetGame() {
   speed = difficulty.speedBase
   // Dead-center spawn every run
   planeX = 0
-  planeY = 10
+  planeY = 8
   velY = 0
   velX = 0
   pitch = 0
@@ -3186,7 +3209,7 @@ function resetGame() {
     rng = Math.random
     activeTwist = null
   }
-  scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
+  scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
@@ -3918,7 +3941,7 @@ async function startGame(kind = 'classic', opts = {}) {
       hudEl?.classList.remove('hidden')
       if (planeX === undefined || Number.isNaN(planeX)) {
         planeX = 0
-        planeY = 10
+        planeY = 8
       }
     } catch {
       /* ignore */
@@ -4808,7 +4831,7 @@ function update(dt) {
   if (journeyVisibilityTimer > 0) {
     journeyVisibilityTimer = Math.max(0, journeyVisibilityTimer - dt)
     if (journeyVisibilityTimer === 0) {
-      scene.fog.far = (settings.reducedMotion ? 200 : 240) * (activeTwist?.fogMul ?? 1)
+      scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
     }
   }
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
@@ -5440,7 +5463,7 @@ function update(dt) {
         magnetBonus: ufx.magnetBonus,
         starRadius: e.radius,
         planeRadius: PLANE_COLLISION_RADIUS,
-      }).catchRadius
+      }).catchRadius * (e.telegraph || shouldTelegraphStarLane(distance) ? 1.18 : 1)
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         stars++
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1

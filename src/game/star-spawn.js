@@ -42,3 +42,29 @@ export function planStarSpawns({
     powerSpawn: sample() < rates.powerChance,
   })
 }
+
+export const STAR_TELEGRAPH_DISTANCE = 40
+
+export function shouldTelegraphStarLane(distance = 0) {
+  return (Number(distance) || 0) < STAR_TELEGRAPH_DISTANCE
+}
+
+/** First 40m: keep a readable star on the reserved lane at mid altitude. */
+export function applyStarLaneTelegraph(plan, { distance = 0, midY = 8 } = {}) {
+  const telegraph = shouldTelegraphStarLane(distance)
+  const source = plan && typeof plan === 'object' ? plan : {}
+  const starCount = telegraph ? Math.max(1, Number(source.starCount) || 0) : Number(source.starCount) || 0
+  const placements = Array.isArray(source.placements) && source.placements.length
+    ? source.placements
+    : starCount > 0
+      ? Object.freeze([0])
+      : Object.freeze([])
+  return Object.freeze({
+    ...source,
+    starCount,
+    placements: Object.freeze(placements.slice(0, Math.max(starCount, placements.length))),
+    telegraph,
+    telegraphY: telegraph ? midY : null,
+    telegraphScale: telegraph ? 1.38 : 1,
+  })
+}
