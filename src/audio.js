@@ -270,6 +270,21 @@ export class GameAudio {
     osc.stop(t + 1)
   }
 
+  boostRoar() {
+    this._tone(180, 0.22, 'sawtooth', 0.1, 90)
+    this._tone(420, 0.18, 'triangle', 0.08, 260)
+  }
+
+  hoopWhoosh() {
+    this._tone(240, 0.12, 'sine', 0.1, 520)
+    this._tone(680, 0.16, 'triangle', 0.08)
+  }
+
+  paperPush() {
+    this._tone(210, 0.1, 'square', 0.09, 140)
+    this._tone(480, 0.12, 'triangle', 0.07)
+  }
+
   crash() {
     if (!this.ctx || this.muted) return
     this.setWind(0)

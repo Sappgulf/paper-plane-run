@@ -33,6 +33,17 @@ export function nextRecommendedUpgrade(levels = {}, catalog = []) {
   return null
 }
 
+export const UPGRADE_TREES = Object.freeze([
+  Object.freeze({ id: 'handle', label: 'Handle', ids: Object.freeze(['handling', 'lift', 'glide']) }),
+  Object.freeze({ id: 'survive', label: 'Survive', ids: Object.freeze(['shield', 'turbo', 'guardian']) }),
+  Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'weapon']) }),
+  Object.freeze({ id: 'style', label: 'Style', ids: Object.freeze(['wingspan', 'trail']) }),
+])
+
+export function treeForUpgrade(upgradeId) {
+  return UPGRADE_TREES.find((tree) => tree.ids.includes(upgradeId)) || null
+}
+
 export function describeEarlyPathBanner(recommendation, catalog = []) {
   if (!recommendation) {
     return Object.freeze({

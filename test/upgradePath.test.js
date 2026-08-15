@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest'
 import { UPGRADES } from '../src/upgrades.js'
 import {
   EARLY_UPGRADE_PATH,
+  UPGRADE_TREES,
   describeEarlyPathBanner,
   nextRecommendedUpgrade,
+  treeForUpgrade,
 } from '../src/game/upgrade-path.js'
 
 describe('upgrade early path', () => {
@@ -21,5 +23,13 @@ describe('upgrade early path', () => {
     const banner = describeEarlyPathBanner(mid, UPGRADES)
     expect(banner.visible).toBe(true)
     expect(banner.title).toMatch(/Lift/)
+  })
+
+  test('groups the 14 upgrades into four spend trees', () => {
+    const ids = UPGRADE_TREES.flatMap((tree) => tree.ids)
+    expect(new Set(ids).size).toBe(UPGRADES.length)
+    expect(treeForUpgrade('handling')?.id).toBe('handle')
+    expect(treeForUpgrade('guardian')?.id).toBe('survive')
+    expect(treeForUpgrade('trail')?.id).toBe('style')
   })
 })

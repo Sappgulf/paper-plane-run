@@ -58,6 +58,8 @@ import { estimateRunsToAfford } from './game/economy.js'
 import {
   describeEarlyPathBanner,
   nextRecommendedUpgrade,
+  treeForUpgrade,
+  UPGRADE_TREES,
 } from './game/upgrade-path.js'
 import {
   hangarGroupForTab,
@@ -918,6 +920,17 @@ function renderUpgrades() {
   pathEl.className = pathBanner.visible ? 'upgrade-path-banner' : 'upgrade-path-banner path-complete'
   pathEl.innerHTML = `<strong>${pathBanner.title}</strong><span>${pathBanner.body}</span>`
   grid.appendChild(pathEl)
+  const treeNav = document.createElement('div')
+  treeNav.className = 'upgrade-tree-row'
+  treeNav.setAttribute('role', 'tablist')
+  treeNav.setAttribute('aria-label', 'Upgrade groups')
+  for (const tree of UPGRADE_TREES) {
+    const chip = document.createElement('span')
+    chip.className = 'upgrade-tree-chip'
+    chip.textContent = tree.label
+    treeNav.appendChild(chip)
+  }
+  grid.appendChild(treeNav)
   const upgrades = [...listUpgrades()].sort((a, b) => {
     if (a.canAfford !== b.canAfford) return a.canAfford ? -1 : 1
     if (a.maxed !== b.maxed) return a.maxed ? 1 : -1
@@ -955,6 +968,8 @@ function renderUpgrades() {
     else card.classList.add('locked-funds')
     if (hangarFocusUpgradeId && hangarFocusUpgradeId === u.id) card.classList.add('upgrade-focus')
     if (pathBanner.visible && pathBanner.upgradeId === u.id) card.classList.add('upgrade-recommended')
+    const tree = treeForUpgrade(u.id)
+    if (tree) card.dataset.tree = tree.id
     const bars = '●'.repeat(u.level) + '○'.repeat(Math.max(0, u.max - u.level))
     const action = document.createElement(u.maxed ? 'span' : 'button')
     if (u.maxed) {

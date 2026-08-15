@@ -773,9 +773,9 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 40
 // point has to sit slightly *below* it: aiming level with the plane at a
 // far-forward z flattens the view angle and drops the plane off the bottom of
 // the frame. These values hold the plane around 68% down the screen.
-const CAM_HEIGHT = 4.2
-const CAM_AIM_LIFT = -0.15
-const CAM_AIM_Z = 16
+const CAM_HEIGHT = 3.05
+const CAM_AIM_LIFT = -0.08
+const CAM_AIM_Z = 11
 // Lateral/depth smoothing stays loose so steering reads as momentum. The
 // vertical axis settles far faster: a lagging camera rides above a sinking
 // plane and pushes it off-screen exactly when the player needs to see it.
@@ -1064,6 +1064,20 @@ applyPerformanceSettings()
 const confetti = []
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
 /** Ink Blast: fires a forward projectile that pops small airborne hazards. */
+function tryPaperPush() {
+  if (state !== 'playing' || paperPushCooldown > 0) return false
+  paperPushCooldown = 3.2
+  speedBoost = Math.max(speedBoost, 14)
+  invuln = Math.max(invuln, 0.28)
+  fovPunch = Math.max(fovPunch, 5)
+  audio.paperPush()
+  if (settings.haptics) Haptic.tap()
+  showFlightFeedback('PAPER PUSH', 'route', 0.7)
+  fireBtn?.classList.add('firing')
+  setTimeout(() => fireBtn?.classList.remove('firing'), 90)
+  return true
+}
+
 function fireWeapon() {
   const fx = activeUpgradeEffects
   const result = resolveWeaponFire({
@@ -1072,7 +1086,10 @@ function fireWeapon() {
     cooldownLeft: fireCooldown,
     playing: state === 'playing',
   })
-  if (!result.fired) return
+  if (!result.fired) {
+    tryPaperPush()
+    return
+  }
   fireCooldown = result.cooldownLeft
   updateWeaponFeedback()
   const m = createShot()
@@ -1263,6 +1280,23 @@ function createParkPatch() {
   return g
 }
 
+function createClothesline() {
+  const g = new THREE.Group()
+  const poleA = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 2.2, 6), treeTrunkMat)
+  const poleB = poleA.clone()
+  poleA.position.set(-2.4, 1.1, 0)
+  poleB.position.set(2.4, 1.1, 0)
+  const line = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.04, 0.04), planeAccentMat)
+  line.position.y = 2.05
+  g.add(poleA, poleB, line)
+  for (let i = 0; i < 3; i++) {
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.85), parkMat)
+    sheet.position.set(-1.5 + i * 1.5, 1.55, 0)
+    g.add(sheet)
+  }
+  return g
+}
+
 function maybeSpawnGroundDecor(z) {
   const roll = rng()
   const waterBias = currentZoneId === 'harbor' ? 0.2 : 0
@@ -1278,6 +1312,12 @@ function maybeSpawnGroundDecor(z) {
     park.position.z = z + (rng() - 0.5) * 8
     scene.add(park)
     entities.push({ mesh: park, type: 'decor' })
+  } else if (roll < 0.34) {
+    const line = createClothesline()
+    const side = rng() < 0.5 ? -1 : 1
+    line.position.set(side * (12 + rng() * 8), 0, z)
+    scene.add(line)
+    entities.push({ mesh: line, type: 'decor' })
   }
 }
 const windowMat = new THREE.MeshStandardMaterial({
@@ -1804,6 +1844,14 @@ function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
   card.rotation.y = Math.PI
   g.add(card)
   g.userData.billboard = card
+  const outline = new THREE.Mesh(
+    new THREE.TorusGeometry(scale * 0.42, 0.05, 8, 22),
+    new THREE.MeshBasicMaterial({ color: 0xff6b4a, transparent: true, opacity: 0.8, depthWrite: false }),
+  )
+  outline.name = 'lethalOutline'
+  outline.rotation.y = Math.PI / 2
+  g.add(outline)
+  g.userData.lethalOutline = outline
   return g
 }
 
@@ -2044,6 +2092,16 @@ function createFlyer(kindId) {
     g.userData.wingL = left
     g.userData.wingR = right
   }
+  if (!g.userData.lethalOutline) {
+    const outline = new THREE.Mesh(
+      new THREE.TorusGeometry(0.85, 0.05, 8, 20),
+      new THREE.MeshBasicMaterial({ color: 0xff6b4a, transparent: true, opacity: 0.75, depthWrite: false }),
+    )
+    outline.name = 'lethalOutline'
+    outline.rotation.y = Math.PI / 2
+    g.add(outline)
+    g.userData.lethalOutline = outline
+  }
   return g
 }
 
@@ -2257,6 +2315,7 @@ const stick = { x: 0, y: 0, active: false, pointerId: null }
 /** Co-op player 2 wind stick */
 const windStick = { x: 0, y: 0, active: false, pointerId: null }
 let slingHold = 0
+let paperPushCooldown = 0
 /** Temporary speed impulse from boost power / sling (decays) */
 let speedBoost = 0
 /** Post-hit invulnerability (shield break, etc.) */
@@ -2952,6 +3011,7 @@ function activatePower(kind) {
   }
 
   if (kind === 'boost') {
+    audio.boostRoar()
     // Strong, readable boost — additive impulse + sustained cruise.
     // Kept modest (not a flat multiplier stack) so the sudden speed jump
     // doesn't outrun the hazard density and cause an unavoidable crash.
@@ -3102,10 +3162,12 @@ function updateWeaponFeedback(playing = state === 'playing', fx = activeUpgradeE
     cooldownSeconds: fx.weaponCooldown,
     cooldownLeft: fireCooldown,
   })
-  fireBtn.classList.toggle('hidden', !playing || !weapon.unlocked)
-  fireBtn.dataset.ready = String(weapon.ready)
-  fireBtn.dataset.cooldown = weapon.cooldownRemaining.toFixed(2)
-  fireBtn.classList.toggle('cooling', weapon.unlocked && !weapon.ready)
+  const touch = settings.controlMode === 'joystick' || 'ontouchstart' in window
+  const showPush = playing && !weapon.unlocked && touch
+  fireBtn.classList.toggle('hidden', !playing || (!weapon.unlocked && !showPush))
+  fireBtn.dataset.ready = String(weapon.ready || (showPush && paperPushCooldown <= 0))
+  fireBtn.dataset.cooldown = weapon.unlocked ? weapon.cooldownRemaining.toFixed(2) : paperPushCooldown.toFixed(2)
+  fireBtn.classList.toggle('cooling', (weapon.unlocked && !weapon.ready) || (showPush && paperPushCooldown > 0))
   const wasReady = fireBtn.classList.contains('weapon-ready')
   fireBtn.classList.toggle('weapon-ready', weapon.unlocked && weapon.ready)
   if (weapon.unlocked && weapon.ready && !wasReady) {
@@ -3113,10 +3175,15 @@ function updateWeaponFeedback(playing = state === 'playing', fx = activeUpgradeE
     void fireBtn.offsetWidth
     fireBtn.classList.add('weapon-ready-pulse')
   }
-  fireBtn.textContent = weapon.ready ? '🖋 Ready' : `🖋 ${weapon.cooldownRemaining.toFixed(1)}s`
-  fireBtn.setAttribute('aria-label', weapon.ready
-    ? 'Ink Blast ready'
-    : `Ink Blast recharging: ${weapon.cooldownRemaining.toFixed(1)} seconds`)
+  if (weapon.unlocked) {
+    fireBtn.textContent = weapon.ready ? '🖋 Ready' : `🖋 ${weapon.cooldownRemaining.toFixed(1)}s`
+    fireBtn.setAttribute('aria-label', weapon.ready
+      ? 'Ink Blast ready'
+      : `Ink Blast recharging: ${weapon.cooldownRemaining.toFixed(1)} seconds`)
+  } else {
+    fireBtn.textContent = paperPushCooldown > 0 ? '💨 …' : '💨 Push'
+    fireBtn.setAttribute('aria-label', 'Paper push burst')
+  }
 }
 
 function updateMagnetPullFeedback(target, magnet) {
@@ -3252,6 +3319,7 @@ function resetGame() {
     if (journeyRunConfig.finale) nextBossAt = 180
     if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
     if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
+    if (journeyRunConfig.risk === 'risky') activeTwist.windMul = (activeTwist.windMul || 1) * 1.2
   } else if (runKind === 'layout') {
     rng = Math.random
     activeTwist = null
@@ -3263,7 +3331,7 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + CAM_HEIGHT, -11)
+  camera.position.set(0, planeY + CAM_HEIGHT, -8.2)
   camera.lookAt(0, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   ground.position.z = 120
   currentSkyUrl = ''
@@ -3283,7 +3351,7 @@ function resetGame() {
       materials: { body: material, accent: material },
       withShield: false,
     })
-    ghostMesh.scale.setScalar(1.05)
+    ghostMesh.scale.setScalar(journeyRivalState ? 1.28 : 1.08)
     scene.add(ghostMesh)
   }
 
@@ -3878,7 +3946,7 @@ function shareText() {
   if (timeAttack) {
     return `I grabbed ${s}★ in 60 seconds of Time Attack on ${DIFFS[m]?.label || m} in Paper Plane Run!`
   }
-  return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ' (Daily)' : ''} in Paper Plane Run!`
+  return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ` · Daily ${dailyKey()}` : ''} in Paper Plane Run!`
 }
 function buildShareUrl() {
   const u = new URL(location.href)
@@ -3970,6 +4038,16 @@ async function startGame(kind = 'classic', opts = {}) {
     const coopHud = $('coop-hud')
     if (coopHud) coopHud.classList.toggle('hidden', kind !== 'coop')
     audio.startFlight()
+    if (kind === 'coop') {
+      showFlightFeedback('P1 FLIES · P2 THROWS WIND', 'route', 2.4)
+      notifications.show('Co-op: arrows / left stick fly · WASD wind', { duration: 3600 })
+    }
+    if (kind === 'hotseat') {
+      showFlightFeedback(`HOT-SEAT · PLAYER ${hotseat.turn + 1}`, 'route', 2.2)
+    }
+    if (kind === 'daily') {
+      showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
+    }
     if (launchGraceSeconds > 0) {
       powerBanner.textContent = '✈️ Get ready — launch protection active'
       powerBanner.classList.remove('hidden')
@@ -4567,6 +4645,12 @@ function animateHazards(dt) {
       e.mesh.rotation.z += dt * 1.2
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
     }
+    const outline = e.mesh.userData.lethalOutline
+    if (outline && (e.type === 'bird' || e.type === 'scissors')) {
+      const near = e.mesh.position.z < 28
+      outline.visible = near
+      outline.material.opacity = near ? 0.55 + Math.sin(elapsed * 10) * 0.25 : 0
+    }
     if (e.type === 'boss') {
       const u = e.mesh.userData
       const encounter = e.director?.step(dt)
@@ -4616,18 +4700,20 @@ function animateHazards(dt) {
         // Mild press animation that never closes the open slot.
         const press = encounter?.motionAllowed === false
           ? 0.15
-          : 0.25 + Math.sin(u.phase * 1.05) * 0.12
+          : 0.45 + Math.sin(u.phase * 2.1) * 0.28
         if (u.topJaw) u.topJaw.position.y = u.gapY + halfH + 0.85 + press
         if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - halfH - 0.85 - press
       } else {
         // Scissors side blades: gentle bob only — never tilt into the portal.
         if (u.left) {
-          u.left.position.y = u.gapY + (encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 1.2) * 0.25)
-          u.left.rotation.z = 0
+          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2) * 0.55
+          u.left.position.y = u.gapY + snap
+          u.left.rotation.z = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 2.4) * 0.18
         }
         if (u.right) {
-          u.right.position.y = u.gapY + (encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 1.2 + 1) * 0.25)
-          u.right.rotation.z = 0
+          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2 + 1.2) * 0.55
+          u.right.position.y = u.gapY + snap
+          u.right.rotation.z = encounter?.motionAllowed === false ? 0 : -Math.sin(u.phase * 2.4) * 0.18
         }
       }
       if (u.leftLip) u.leftLip.position.y = u.gapY
@@ -4887,6 +4973,7 @@ function update(dt) {
     }
   }
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
+  if (paperPushCooldown > 0) paperPushCooldown = Math.max(0, paperPushCooldown - dt)
   updateWeaponFeedback()
   if (keys.has('KeyX')) fireWeapon()
   updateShots(dt)
@@ -5422,7 +5509,7 @@ function update(dt) {
   checkTutorialHints(dt)
 
   // Camera: pull back slightly during boost
-  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -13 : -11
+  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10.2 : -8.2
   const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
@@ -5615,6 +5702,7 @@ function update(dt) {
             showFlightFeedback(`GATE CLEARED · +${reward.stars}★`, 'route', 1.6)
             pulseFlightImpact('route')
             audio.gateClear()
+            audio.hoopWhoosh()
             powerBanner.textContent = `${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`
             powerBanner.classList.remove('hidden')
             bannerTimer = Math.max(bannerTimer, 1.8)

@@ -339,7 +339,7 @@ html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !i
   justify-content: flex-end; padding-bottom: max(28px, env(safe-area-inset-bottom));
 }
 #stick-base, #wind-stick-base {
-  width: min(132px, 34vw); height: min(132px, 34vw); border-radius: 50%;
+  width: min(148px, 38vw); height: min(148px, 38vw); border-radius: 50%;
   background:
     radial-gradient(circle at 50% 42%, rgba(255,255,255,.7), rgba(255,250,242,.4) 60%, rgba(255,250,242,.22) 100%);
   border: 2px dashed rgba(224,107,74,.45);
@@ -842,6 +842,18 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   background: linear-gradient(135deg, rgba(240,253,244,.96), rgba(255,250,242,.96));
 }
 .upgrade-path-banner.path-complete strong { color: #15803d; }
+.upgrade-tree-row {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 4px 0 10px;
+}
+.upgrade-tree-chip {
+  font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 999px; color: #5d4698;
+  background: rgba(237,233,254,.8); border: 1px solid rgba(124,58,237,.18);
+}
+.upgrade-card[data-tree='handle'] { border-left: 3px solid #5a9fd4; }
+.upgrade-card[data-tree='survive'] { border-left: 3px solid #4ade80; }
+.upgrade-card[data-tree='score'] { border-left: 3px solid #f0b429; }
+.upgrade-card[data-tree='style'] { border-left: 3px solid #a78bfa; }
 .upgrade-card.upgrade-recommended {
   border-color: rgba(124,58,237,.55);
   box-shadow: 0 0 0 2px rgba(167,139,250,.35), 0 8px 20px rgba(61,44,41,.08);
