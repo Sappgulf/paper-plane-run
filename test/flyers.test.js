@@ -5,10 +5,10 @@ describe('generated obstacle flyers', () => {
   const byId = Object.fromEntries(FLYER_DEFS.map((flyer) => [flyer.id, flyer]))
 
   test('registers every approved transparent obstacle asset', () => {
-    expect(byId.hawk.tex).toBe('/assets/obstacles/obstacle-origami-hawk.png')
-    expect(byId.pinwheel.tex).toBe('/assets/obstacles/obstacle-paper-pinwheel.png')
-    expect(byId.meteor.tex).toBe('/assets/obstacles/obstacle-paperclip-meteor.png')
-    expect(byId.clothespinDragonfly.tex).toBe('/assets/obstacles/obstacle-clothespin-dragonfly.png')
+    expect(byId.hawk.tex).toBe('/assets/obstacles/obstacle-origami-hawk.webp')
+    expect(byId.pinwheel.tex).toBe('/assets/obstacles/obstacle-paper-pinwheel.webp')
+    expect(byId.meteor.tex).toBe('/assets/obstacles/obstacle-paperclip-meteor.webp')
+    expect(byId.clothespinDragonfly.tex).toBe('/assets/obstacles/obstacle-clothespin-dragonfly.webp')
   })
 
   test('gives each new silhouette a distinct motion personality', () => {

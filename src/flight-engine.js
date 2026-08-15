@@ -76,6 +76,15 @@ import {
 import { createNotificationQueue } from './game/notification-queue.js'
 import { createFrameHealthMonitor } from './game/frame-health.js'
 import {
+  getGroundLifeSpecies,
+  groundLifeCount,
+  groundLifeSlotX,
+  groundLifeSlotZ,
+  groundLifeTransform,
+  resolveGroundLifeBudget,
+  wrapGroundLifeZ,
+} from './game/ground-life.js'
+import {
   PASSAGE_LANE_X,
   PASSAGE_LANES,
   choosePassageLane,
@@ -743,6 +752,9 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
       const outline = entity.mesh?.userData?.lethalOutline
       if (outline) outline.visible = Boolean(renderQuality.secondaryEffects && outline.visible)
     }
+    // Scenery density follows the same signal — it is the cheapest thing to
+    // drop when frames get expensive, and dropping it changes no hitboxes.
+    refreshGroundLife()
   } catch {
     /* entities is declared later in boot; first quality pass runs before that */
   }
@@ -1014,6 +1026,114 @@ ground.position.set(0, 0, 120)
 ground.receiveShadow = true
 scene.add(ground)
 let currentGroundUrl = '/assets/ground-city.jpg'
+
+// ---------------------------------------------------------------------------
+// Ground life — flanking scenery that makes each zone feel inhabited.
+// One InstancedMesh per species, so a whole field of traffic or reeds costs a
+// single draw call. Placement and motion rules live in game/ground-life.js.
+// ---------------------------------------------------------------------------
+const GROUND_LIFE_GEOMETRY = {
+  box: () => new THREE.BoxGeometry(1.1, 0.55, 2.2),
+  flag: () => new THREE.PlaneGeometry(1.3, 0.95),
+  sail: () => new THREE.ConeGeometry(0.85, 1.8, 3),
+  buoy: () => new THREE.SphereGeometry(0.42, 6, 5),
+  fan: () => new THREE.PlaneGeometry(2.3, 0.32),
+  reed: () => new THREE.PlaneGeometry(0.26, 1.7),
+  shard: () => new THREE.ConeGeometry(0.48, 1.6, 4),
+  lamp: () => new THREE.ConeGeometry(0.62, 0.85, 8),
+}
+
+const groundLifeDummy = new THREE.Object3D()
+const groundLifeFields = []
+let groundLifeZoneId = null
+
+function disposeGroundLife() {
+  for (const field of groundLifeFields.splice(0)) {
+    scene.remove(field.mesh)
+    field.mesh.geometry.dispose()
+    field.mesh.material.dispose()
+  }
+  groundLifeZoneId = null
+}
+
+function buildGroundLife(zoneId) {
+  disposeGroundLife()
+  const budget = resolveGroundLifeBudget({
+    level: renderQuality.level,
+    secondaryEffects: renderQuality.secondaryEffects,
+    reducedMotion: settings.reducedMotion,
+    lowPower: settings.lowPower,
+  })
+  groundLifeZoneId = zoneId
+  if (!budget.enabled) return
+
+  for (const speciesDef of getGroundLifeSpecies(zoneId)) {
+    const count = groundLifeCount(speciesDef, budget)
+    if (count <= 0) continue
+    const geometry = (GROUND_LIFE_GEOMETRY[speciesDef.shape] || GROUND_LIFE_GEOMETRY.box)()
+    const glow = speciesDef.motion === 'pulse'
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(speciesDef.palette.primary),
+      roughness: 0.92,
+      side: THREE.DoubleSide,
+      // Aurora crystals and desk lamps read as light sources, not paper.
+      emissive: glow ? new THREE.Color(speciesDef.palette.accent) : new THREE.Color(0x000000),
+      emissiveIntensity: glow ? 0.55 : 0,
+    })
+    const mesh = new THREE.InstancedMesh(geometry, material, count)
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.frustumCulled = false
+    mesh.castShadow = false
+    mesh.receiveShadow = false
+    // Scenery must never be mistaken for something the ink blast can pop or
+    // the plane can hit — nothing here is registered as an entity.
+    mesh.userData.decorative = true
+
+    const instances = []
+    for (let i = 0; i < count; i++) {
+      instances.push({
+        x: groundLifeSlotX(i, rng()),
+        z: groundLifeSlotZ(i, count, rng()),
+        phase: rng() * Math.PI * 2,
+        scale: speciesDef.scale * (0.8 + rng() * 0.45),
+      })
+    }
+    groundLifeFields.push({ speciesDef, mesh, instances, motionScale: budget.motionScale })
+    scene.add(mesh)
+  }
+  updateGroundLife(0)
+}
+
+function scrollGroundLife(move) {
+  for (const field of groundLifeFields) {
+    for (const instance of field.instances) {
+      instance.z = wrapGroundLifeZ(instance.z, move)
+    }
+  }
+}
+
+function updateGroundLife(time) {
+  for (const { speciesDef, mesh, instances, motionScale } of groundLifeFields) {
+    for (let i = 0; i < instances.length; i++) {
+      const instance = instances[i]
+      const motion = groundLifeTransform(speciesDef, instance.phase, time, motionScale)
+      groundLifeDummy.position.set(
+        instance.x + motion.offsetX,
+        speciesDef.y + motion.offsetY,
+        instance.z,
+      )
+      groundLifeDummy.rotation.set(0, 0, motion.rotation)
+      groundLifeDummy.scale.setScalar(instance.scale * motion.scale)
+      groundLifeDummy.updateMatrix()
+      mesh.setMatrixAt(i, groundLifeDummy.matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  }
+}
+
+function refreshGroundLife() {
+  if (groundLifeZoneId) buildGroundLife(groundLifeZoneId)
+}
 
 // Upgrade sparkle trail points stay in world space so the trail follows the
 // plane's path instead of inheriting its current bank and position.
@@ -2150,7 +2270,7 @@ function pickFlyerKind() {
 
 function createScissors() {
   const g = new THREE.Group()
-  const bill = createBillboardFlyer('/assets/obstacles/obstacle-scissors.png', 3.15, true)
+  const bill = createBillboardFlyer('/assets/obstacles/obstacle-scissors.webp', 3.15, true)
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
   return g
@@ -2161,7 +2281,7 @@ function createScissors() {
 // pure per-frame GC churn for an object that never changes shape or color.
 const starCoreGeo = new THREE.PlaneGeometry(1.55, 1.55)
 const starCoreMat = new THREE.MeshBasicMaterial({
-  map: loadCutoutTex('/assets/pickup-orb.png'), transparent: true, alphaTest: 0.18, side: THREE.DoubleSide, depthWrite: false,
+  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18, side: THREE.DoubleSide, depthWrite: false,
 })
 const starGlowGeo = new THREE.SphereGeometry(0.72, 12, 12)
 const starGlowMat = new THREE.MeshBasicMaterial({
@@ -2239,15 +2359,15 @@ function createPowerUp(kind) {
   // remaining kinds keep the flat icon sheet. Phase has no matching asset.
   const NO_ICON_KINDS = new Set(['phase'])
   const PAPER_ICON = {
-    boost: '/assets/pickup-boost.png',
-    shield: '/assets/power-shield.png',
-    magnet: '/assets/power-magnet.png',
-    slow: '/assets/power-slow.png',
-    tear: '/assets/power-tear.png',
-    clip: '/assets/power-clip.png',
-    sling: '/assets/power-sling.png',
+    boost: '/assets/pickup-boost.webp',
+    shield: '/assets/power-shield.webp',
+    magnet: '/assets/power-magnet.webp',
+    slow: '/assets/power-slow.webp',
+    tear: '/assets/power-tear.webp',
+    clip: '/assets/power-clip.webp',
+    sling: '/assets/power-sling.webp',
   }
-  const iconUrl = PAPER_ICON[kind] || `/assets/power-${kind}.png`
+  const iconUrl = PAPER_ICON[kind] || `/assets/power-${kind}.webp`
   const paperIcon = Boolean(PAPER_ICON[kind])
   try {
     if (NO_ICON_KINDS.has(kind)) throw new Error('no icon asset')
@@ -3151,6 +3271,7 @@ function applyZone(z, announce) {
   applyNightReadability(z.nightReadability)
   if (z.sky) setSkyTexture(z.sky, announce)
   if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
+  if (z.id !== groundLifeZoneId) buildGroundLife(z.id)
   audio.setMusicZone(z.id)
   hudZoneEl.textContent = z.name
   document.documentElement.dataset.zone = z.id
@@ -4610,6 +4731,7 @@ function scrollWorld(move) {
   }
   ground.position.z -= move
   if (ground.position.z < -80) ground.position.z += 140
+  scrollGroundLife(move)
   const pos = dust.geometry.attributes.position
   for (let i = 0; i < dustCount; i++) {
     pos.array[i * 3 + 2] -= move * 0.55
@@ -4878,6 +5000,7 @@ function registerStarStreak() {
 
 function update(dt) {
   elapsed += dt
+  updateGroundLife(elapsed)
   if (flightFeedbackTimer > 0) {
     flightFeedbackTimer -= dt
     if (flightFeedbackTimer <= 0) flightFeedbackEl?.classList.add('hidden')
@@ -5988,6 +6111,19 @@ window.render_game_to_text = () => JSON.stringify({
     visibleTypes: entities
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
+  },
+  groundLife: {
+    zone: groundLifeZoneId,
+    // Decorative only — asserted here so a regression that pushes scenery into
+    // the flight corridor fails a test instead of confusing a player.
+    draws: groundLifeFields.length,
+    instances: groundLifeFields.reduce((total, field) => total + field.instances.length, 0),
+    species: groundLifeFields.map(({ speciesDef, instances }) => ({
+      id: speciesDef.id,
+      motion: speciesDef.motion,
+      count: instances.length,
+      minAbsX: Number(Math.min(...instances.map((i) => Math.abs(i.x))).toFixed(2)),
+    })),
   },
   fairness: {
     passageLane: activePassageLane,

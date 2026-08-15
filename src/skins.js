@@ -27,7 +27,7 @@ const LEGACY_LIFETIME_REQUIREMENTS = Object.freeze({
 function planeArt(id, silhouette) {
   return {
     portrait: `/assets/planes/${id}.webp`,
-    texture: `/assets/planes/${id}.png`,
+    texture: `/assets/planes/${id}.webp`,
     silhouette,
   }
 }

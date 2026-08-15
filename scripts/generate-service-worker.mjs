@@ -27,10 +27,36 @@ export function buildPrecacheManifest(directory) {
     hash.update(relative(root, path))
     hash.update(readFileSync(path))
   }
+  const shell = urls.filter(isShellUrl)
   return {
     urls,
+    shell,
+    // Everything else still lands in the same cache, just after activation so a
+    // first visit is not held behind megabytes of zone and skin art.
+    warm: urls.filter((url) => !shell.includes(url)),
     version: `paper-plane-run-${hash.digest('hex').slice(0, 12)}`,
   }
+}
+
+// Art the very first flight needs: the menu backdrop plus the City zone. Later
+// zones, skins, bosses and postcards warm in the background after activation.
+const FIRST_RUN_ART = new Set([
+  '/assets/logo.jpg',
+  '/assets/paper.jpg',
+  '/assets/paper-world-backdrop.webp',
+  '/assets/zone-stamp-sheet.webp',
+  '/assets/buildings.jpg',
+  '/assets/sky-city.jpg',
+  '/assets/ground-city.jpg',
+  '/assets/pickup-orb.webp',
+  '/assets/pickup-boost.webp',
+  '/assets/planes/classic.webp',
+])
+
+function isShellUrl(url) {
+  if (!url.startsWith('/assets/')) return true // '/', index.html, manifest, icons
+  if (url.endsWith('.js') || url.endsWith('.css')) return true
+  return FIRST_RUN_ART.has(url)
 }
 
 export function generateServiceWorker(directory = 'dist') {
@@ -39,7 +65,12 @@ export function generateServiceWorker(directory = 'dist') {
   if (!existsSync(serviceWorkerPath)) throw new Error(`Missing service worker template at ${serviceWorkerPath}`)
   const manifest = buildPrecacheManifest(root)
   const template = readFileSync(serviceWorkerPath, 'utf8')
-  const injected = `self.__PPR_CACHE_VERSION__ = ${JSON.stringify(manifest.version)}\nself.__PPR_PRECACHE__ = ${JSON.stringify(manifest.urls)}\n${template}`
+  const injected = [
+    `self.__PPR_CACHE_VERSION__ = ${JSON.stringify(manifest.version)}`,
+    `self.__PPR_PRECACHE__ = ${JSON.stringify(manifest.shell)}`,
+    `self.__PPR_WARM__ = ${JSON.stringify(manifest.warm)}`,
+    template,
+  ].join('\n')
   writeFileSync(serviceWorkerPath, injected)
   return manifest
 }

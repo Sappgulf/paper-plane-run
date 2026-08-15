@@ -44,4 +44,36 @@ describe('service worker build manifest', () => {
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'changed plane')
     expect(buildPrecacheManifest(directory).version).not.toBe(manifest.version)
   })
+
+  test('blocks install on the shell only and defers the rest of the release art', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'paper-plane-sw-'))
+    directories.push(directory)
+    mkdirSync(join(directory, 'assets', 'bosses'), { recursive: true })
+    mkdirSync(join(directory, 'assets', 'planes'), { recursive: true })
+    writeFileSync(join(directory, 'index.html'), '<html>release</html>')
+    writeFileSync(join(directory, 'icon-192.png'), 'icon')
+    writeFileSync(join(directory, 'sw.js'), 'template')
+    writeFileSync(join(directory, 'assets', 'flight-engine-abc.js'), 'engine')
+    writeFileSync(join(directory, 'assets', 'index-abc.css'), 'css')
+    writeFileSync(join(directory, 'assets', 'sky-city.jpg'), 'first zone')
+    writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'first plane')
+    writeFileSync(join(directory, 'assets', 'sky-aurora.jpg'), 'late zone')
+    writeFileSync(join(directory, 'assets', 'bosses', 'wind.webp'), 'late boss')
+
+    const { urls, shell, warm } = buildPrecacheManifest(directory)
+
+    // Code and first-flight art install eagerly; later zones/bosses do not.
+    expect(shell).toContain('/')
+    expect(shell).toContain('/index.html')
+    expect(shell).toContain('/icon-192.png')
+    expect(shell).toContain('/assets/flight-engine-abc.js')
+    expect(shell).toContain('/assets/index-abc.css')
+    expect(shell).toContain('/assets/sky-city.jpg')
+    expect(shell).toContain('/assets/planes/classic.webp')
+    expect(warm).toEqual(['/assets/bosses/wind.webp', '/assets/sky-aurora.jpg'])
+
+    // The split stays a partition of the full release — nothing lost, nothing double-fetched.
+    expect([...shell, ...warm].sort()).toEqual([...urls].sort())
+    expect(shell.filter((url) => warm.includes(url))).toEqual([])
+  })
 })
