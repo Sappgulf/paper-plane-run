@@ -88,8 +88,10 @@ export function getSafeSpawnX({
 export function getWaveSpacing({ difficultyId = 'normal', distance = 0, recovery = false } = {}) {
   const base = BASE_SPACING[difficultyId] || BASE_SPACING.normal
   if (recovery) return base + 12
-  const compression = Math.min(3, Math.max(0, Number(distance) || 0) / 350)
-  return Math.max(14, base - compression)
+  const meters = Math.max(0, Number(distance) || 0)
+  const opening = Math.max(0, 8 - meters / 16)
+  const compression = Math.min(3, meters / 350)
+  return Math.max(14, base + opening - compression)
 }
 
 export function createPacingWave({ index = 0, difficultyId = 'normal', afterBoss = false } = {}) {

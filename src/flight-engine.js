@@ -359,7 +359,7 @@ function pulseFlightImpact(tone = 'route') {
 
 function updateFlightReadability(routeState = null) {
   const playing = state === 'playing'
-  flightRouteEl?.classList.toggle('hidden', !playing || bossActive)
+  flightRouteEl?.classList.toggle('hidden', !playing || bossActive || distance < 28)
   flightFocusEl?.classList.toggle('hidden', !playing)
   if (!playing) return
 
@@ -2383,8 +2383,9 @@ function spawnChunk(z) {
 
   if (!recovering) maybeSpawnGroundDecor(z)
 
+  const early = distance < 90
   for (const side of recovering ? [] : [-1, 1]) {
-    if (rng() < 0.82) {
+    if (rng() < (early ? 0.52 : 0.82)) {
       const w = 2.5 + rng() * 3.5
       const h = getFlyableBuildingHeight({
         requestedHeight: (5 + rng() * (8 + ramp * 8)) * cfg.buildingH,
@@ -2403,7 +2404,7 @@ function spawnChunk(z) {
     }
   }
 
-  const ht = recovering ? null : pickHazardType(zone)
+  const ht = recovering || early ? null : pickHazardType(zone)
   if (ht === 'building') {
     const w = 2 + rng() * 3
     const h = getFlyableBuildingHeight({

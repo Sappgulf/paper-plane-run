@@ -41,6 +41,11 @@ describe('existing flight pacing', () => {
     expect(recovery.spacing).toBeGreaterThan(normal.spacing)
   })
 
+  test('opens the first stretch with extra room then compresses', () => {
+    expect(getWaveSpacing({ difficultyId: 'normal', distance: 0 }))
+      .toBeGreaterThan(getWaveSpacing({ difficultyId: 'normal', distance: 200 }))
+  })
+
   test('difficulty compresses spacing coherently without unsafe overlap', () => {
     expect(getWaveSpacing({ difficultyId: 'easy' })).toBeGreaterThan(getWaveSpacing({ difficultyId: 'normal' }))
     expect(getWaveSpacing({ difficultyId: 'normal' })).toBeGreaterThan(getWaveSpacing({ difficultyId: 'hard' }))
