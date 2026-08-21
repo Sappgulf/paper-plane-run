@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
-import { dailyKey, dailySeed, mulberry32 } from './rng.js'
+import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
 import { todaysTwist } from './twists.js'
 import {
   getEquippedSkinId,
@@ -33,6 +33,7 @@ import {
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
 import { chooseStarLane, getStarX } from './game/star-placement.js'
+import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
   getUpgradeEffects,
   addWallet,
@@ -674,6 +675,7 @@ let challenge = null
 let lastRun = { d: 0, s: 0, m: 'normal', daily: false, timeAttack: false }
 let layoutPlay = null
 let rng = Math.random
+let activeRunSeed = null
 let ghostRecorder = null
 let ghostData = null
 let ghostMesh = null
@@ -705,6 +707,10 @@ let nearMissCooldown = new WeakMap()
 
 // URL params
 const devTestState = import.meta.env.DEV ? location.hash : ''
+const devSeedLabel = import.meta.env.DEV
+  ? new URLSearchParams(location.search).get('seed')?.trim().slice(0, 64) || null
+  : null
+const devSeed = devSeedLabel ? hashString(devSeedLabel) : null
 const devUpgradeProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('upgrade-proof')
   : null
@@ -3701,10 +3707,12 @@ function resetGame() {
 
   // RNG
   if (runKind === 'daily') {
-    rng = mulberry32(dailySeed(difficulty.id))
+    activeRunSeed = dailySeed(difficulty.id)
+    rng = mulberry32(activeRunSeed)
     activeTwist = todaysTwist()
   } else if (runKind === 'journey' && journeyRunConfig) {
-    rng = mulberry32(journeyRunConfig.seed)
+    activeRunSeed = journeyRunConfig.seed
+    rng = mulberry32(activeRunSeed)
     activeTwist = {
       name: journeyRunConfig.modifierLabel,
       windMul: journeyRunConfig.modifier === 'crosswind' ? 0.45 : 1,
@@ -3715,10 +3723,16 @@ function resetGame() {
     if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
     if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
     if (journeyRunConfig.risk === 'risky') activeTwist.windMul = (activeTwist.windMul || 1) * 1.2
+  } else if (devSeed !== null && runKind === 'classic') {
+    activeRunSeed = devSeed
+    rng = mulberry32(activeRunSeed)
+    activeTwist = null
   } else if (runKind === 'layout') {
+    activeRunSeed = null
     rng = Math.random
     activeTwist = null
   } else {
+    activeRunSeed = null
     rng = Math.random
     activeTwist = null
   }
@@ -4877,7 +4891,7 @@ function finalizeDeathUnsafe() {
   })
   refreshMissionBadge()
 
-  const name = (pilotNameInput.value || 'Pilot').slice(0, 16)
+  const name = normalizeLeaderboardName(pilotNameInput.value)
   if (isDistanceRun) {
     submitLocalScore({
       name, distance: d, stars, mode: difficulty.id,
@@ -6418,6 +6432,8 @@ window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
   mode: runKind,
+  seed: devSeedLabel,
+  runSeed: activeRunSeed,
   distance: Math.floor(distance),
   stars,
   player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },

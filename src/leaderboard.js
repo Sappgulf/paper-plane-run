@@ -1,4 +1,19 @@
 import { safeSetItem } from './game/safe-storage.js'
+import {
+  LEADERBOARD_MODES,
+  isLeaderboardMode,
+  normalizeLeaderboardInteger,
+  normalizeLeaderboardMode,
+  normalizeLeaderboardName,
+} from './game/leaderboard-contract.js'
+
+export {
+  LEADERBOARD_MODES,
+  isLeaderboardMode,
+  normalizeLeaderboardInteger,
+  normalizeLeaderboardMode,
+  normalizeLeaderboardName,
+}
 
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
@@ -23,10 +38,10 @@ function save(key, rows) {
 
 export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey }) {
   const entry = {
-    name: (name || 'Pilot').slice(0, 16),
-    distance: Math.floor(distance),
-    stars: stars | 0,
-    mode,
+    name: normalizeLeaderboardName(name),
+    distance: normalizeLeaderboardInteger(distance),
+    stars: normalizeLeaderboardInteger(stars),
+    mode: normalizeLeaderboardMode(mode),
     at: Date.now(),
   }
   const list = load(LOCAL_KEY)
@@ -50,10 +65,10 @@ export function getLocalTop(limit = 10) {
 /** Time Attack scores on stars-in-60s, not distance — a separate board. */
 export function submitTimeAttackScore({ name, stars, distance, mode }) {
   const entry = {
-    name: (name || 'Pilot').slice(0, 16),
-    stars: stars | 0,
-    distance: Math.floor(distance),
-    mode,
+    name: normalizeLeaderboardName(name),
+    stars: normalizeLeaderboardInteger(stars),
+    distance: normalizeLeaderboardInteger(distance),
+    mode: normalizeLeaderboardMode(mode),
     at: Date.now(),
   }
   const list = load(TIME_ATTACK_KEY)

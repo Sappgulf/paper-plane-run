@@ -66,13 +66,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res.ok) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(request, copy))
-          }
+          if (!res.ok) throw new Error(`Static request failed: ${res.status}`)
+          const copy = res.clone()
+          caches.open(CACHE).then((c) => c.put(request, copy))
           return res
         })
-        .catch(() => caches.match(request).then((r) => r || caches.match('/') || caches.match('/index.html'))),
+        .catch(() => caches.match(request).then((r) => r || caches.match('/') || caches.match('/index.html') || Response.error())),
     )
     return
   }
@@ -83,12 +82,11 @@ self.addEventListener('fetch', (event) => {
       (cached) =>
         cached ||
         fetch(request).then((res) => {
-          if (res.ok) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(request, copy))
-          }
+          if (!res.ok) throw new Error(`Static request failed: ${res.status}`)
+          const copy = res.clone()
+          caches.open(CACHE).then((c) => c.put(request, copy))
           return res
-        }),
+        }).catch(() => Response.error()),
     ),
   )
 })

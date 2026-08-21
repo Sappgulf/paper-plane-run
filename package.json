@@ -13,12 +13,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:prod": "PLAYWRIGHT_PREVIEW=1 playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "vite": "^8.1.1",
-    "vitest": "^4.1.10"
+    "@playwright/test": "^1.62.1",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "three": "^0.185.1"

@@ -67,7 +67,14 @@ import {
   isHangarTabInGroup,
   resolveHangarTabForGroup,
 } from './game/hangar-nav.js'
-import { fetchRemoteTop, getDailyTop, getLocalTop, getTimeAttackTop } from './leaderboard.js'
+import {
+  fetchRemoteTop,
+  getDailyTop,
+  getLocalTop,
+  getTimeAttackTop,
+  normalizeLeaderboardInteger,
+  normalizeLeaderboardName,
+} from './leaderboard.js'
 import { safeSetItem } from './game/safe-storage.js'
 
 const engineLoader = createEngineLoader()
@@ -90,8 +97,11 @@ let postcardFocusReturn = null
 let activePlanePreview = null
 let planePreviewRequest = 0
 let planePreviewEpoch = 0
-let previewInteractionBlockUntil = 0
 let previewInteractionLockPlaneId = null
+let previewFocusedPlaneId = null
+let previewPointerMovedAt = -Infinity
+let previewPointerReady = false
+let planePreviewSelection = 0
 const missionBadge = $('mission-badge')
 const pilotNameInput = $('pilot-name')
 let difficulty = { id: localStorage.getItem('paper-plane-run-diff') || 'normal' }
@@ -141,7 +151,8 @@ applyDocumentA11y(settings)
 if (pilotNameInput) {
   pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
   pilotNameInput.addEventListener('change', () => {
-    safeSetItem('paper-plane-run-name', pilotNameInput.value.slice(0, 16))
+    pilotNameInput.value = normalizeLeaderboardName(pilotNameInput.value)
+    safeSetItem('paper-plane-run-name', pilotNameInput.value)
   })
 }
 
@@ -633,10 +644,15 @@ function planePriceLabel(plane) {
   return plane.price ? `Wallet ${plane.price.value}★` : 'Free claim'
 }
 
-async function showPlanePreview(stage, canvas, planeDefinition, previewEpoch = planePreviewEpoch) {
+async function showPlanePreview(
+  stage,
+  canvas,
+  planeDefinition,
+  previewEpoch = planePreviewEpoch,
+  selection = planePreviewSelection,
+) {
   if (previewEpoch !== planePreviewEpoch) return
-  const now = performance.now?.() ?? Date.now()
-  if (previewInteractionLockPlaneId && now < previewInteractionBlockUntil && planeDefinition.id !== previewInteractionLockPlaneId) return
+  if (selection !== planePreviewSelection) return
   stage.dataset.planeId = planeDefinition.id
   stage.dataset.silhouette = planeDefinition.silhouette
   stage.querySelector('[data-preview-name]').textContent = planeDefinition.name
@@ -661,13 +677,14 @@ async function showPlanePreview(stage, canvas, planeDefinition, previewEpoch = p
     const engine = await engineLoader.preload()
     if (request !== planePreviewRequest || !canvas.isConnected) return
     if (previewEpoch !== planePreviewEpoch) return
+    if (selection !== planePreviewSelection) return
     const preview = engine.createPlanePreview?.({
       canvas,
       skinId: planeDefinition.id,
       reducedMotion: settings.reducedMotion,
     })
     if (!preview) throw new Error('Flight engine did not provide a plane preview')
-    if (request !== planePreviewRequest || !canvas.isConnected) {
+    if (request !== planePreviewRequest || !canvas.isConnected || selection !== planePreviewSelection) {
       preview.dispose?.()
       return
     }
@@ -675,7 +692,7 @@ async function showPlanePreview(stage, canvas, planeDefinition, previewEpoch = p
     stage.dataset.previewStatus = 'ready'
     stage.querySelector('[data-preview-message]').textContent = 'Live flight model'
   } catch (error) {
-    if (request !== planePreviewRequest || !canvas.isConnected) return
+    if (request !== planePreviewRequest || !canvas.isConnected || selection !== planePreviewSelection) return
     stage.dataset.previewStatus = 'unavailable'
     stage.querySelector('[data-preview-message]').textContent = 'Portrait shown · live preview unavailable'
     console.warn('Plane preview unavailable', error)
@@ -691,7 +708,6 @@ function skinSortRank(plane) {
 }
 
 function renderSkins(statusMessage = '', forcedPlaneId = null) {
-  const now = performance.now?.() ?? Date.now()
   refreshUnlocks(season.id)
   refreshHangarWallet()
   const grid = $('skins-grid')
@@ -718,9 +734,7 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
   }
   if (forcedPlaneId) {
     previewInteractionLockPlaneId = forcedPlaneId
-    previewInteractionBlockUntil = now + 1_000
-  } else if (previewInteractionLockPlaneId && now >= previewInteractionBlockUntil) {
-    previewInteractionLockPlaneId = null
+    previewFocusedPlaneId = null
   }
   const equippedPlaneId = forcedPlaneId || getEquippedSkinId()
   const previewPlane = planes.find((planeDefinition) => planeDefinition.id === equippedPlaneId) || planes[0]
@@ -752,12 +766,19 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
     : `${previewPlane.silhouette[0].toUpperCase()}${previewPlane.silhouette.slice(1)}${previewPlane.silhouette === 'classic' ? ' Fold' : ''}`
   if (previewMessage) previewMessage.textContent = 'Updating preview…'
   const previewGeneration = planePreviewRequest
+  const previewSelection = ++planePreviewSelection
   preview.dataset.previewEpoch = String(previewEpoch)
   requestAnimationFrame(() => {
     if (previewEpoch !== planePreviewEpoch) return
     if (previewGeneration !== planePreviewRequest || !previewCanvas.isConnected) return
-    void showPlanePreview(preview, previewCanvas, previewPlane, previewEpoch)
+    void showPlanePreview(preview, previewCanvas, previewPlane, previewEpoch, previewSelection)
   })
+
+  previewPointerReady = false
+  grid.onpointermove = () => {
+    previewPointerReady = true
+    previewPointerMovedAt = performance.now?.() ?? Date.now()
+  }
 
   for (const s of planes) {
     const card = document.createElement('button')
@@ -820,30 +841,34 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
 
     const previewThisPlane = (event) => {
       const now = performance.now?.() ?? Date.now()
-      if (previewInteractionLockPlaneId && now < previewInteractionBlockUntil && s.id !== previewInteractionLockPlaneId) return
-      if (previewInteractionLockPlaneId && now >= previewInteractionBlockUntil) {
-        previewInteractionLockPlaneId = null
-      }
-      // Moving focus to a card is a deliberate choice; the pointer merely
-      // resting somewhere else is not. Without this, a stationary cursor over
-      // another card fires pointerenter straight after and yanks the preview
-      // back, so keyboard users could not hold a plane on screen.
       if (event?.type === 'focus') {
         previewInteractionLockPlaneId = s.id
-        previewInteractionBlockUntil = now + 400
+        previewFocusedPlaneId = s.id
+      } else if (event?.type === 'pointerenter') {
+        const pointerMoved = previewPointerReady && now - previewPointerMovedAt < 500
+        const blockedByFocusedIntent = (previewFocusedPlaneId || previewInteractionLockPlaneId)
+          && s.id !== (previewFocusedPlaneId || previewInteractionLockPlaneId)
+        if (blockedByFocusedIntent && !pointerMoved) return
+        if (pointerMoved) {
+          previewFocusedPlaneId = null
+          previewInteractionLockPlaneId = null
+        }
       }
-      void showPlanePreview(preview, previewCanvas, s, previewEpoch)
+      const selection = ++planePreviewSelection
+      void showPlanePreview(preview, previewCanvas, s, previewEpoch, selection)
     }
     card.addEventListener('focus', previewThisPlane)
     card.addEventListener('pointerenter', previewThisPlane)
+    card.addEventListener('blur', () => {
+      if (previewFocusedPlaneId === s.id) previewFocusedPlaneId = null
+    })
     card.onclick = () => {
       refreshUnlocks(season.id)
       if (previewInteractionLockPlaneId && previewInteractionLockPlaneId !== s.id) {
         previewInteractionLockPlaneId = null
-        previewInteractionBlockUntil = 0
       }
       if (s.state === 'owned') {
-        previewInteractionBlockUntil = (performance.now?.() ?? Date.now()) + 250
+        previewInteractionLockPlaneId = s.id
         equipSkin(s.id)
         shellAudio.uiClick()
         renderSkins(`${s.name} equipped.`, s.id)
@@ -859,7 +884,7 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
           return
         }
         equipSkin(s.id)
-        previewInteractionBlockUntil = (performance.now?.() ?? Date.now()) + 250
+        previewInteractionLockPlaneId = s.id
         shellAudio.uiClick()
         renderSkins(`${s.name} ${s.price ? 'purchased' : 'claimed'} and equipped.`, s.id)
       }
@@ -1159,20 +1184,41 @@ async function renderBoard(tab = 'local') {
     list.innerHTML = '<li>No scores yet — go fly!</li>'
     return
   }
-  const myName = (pilotNameInput?.value || 'Pilot').slice(0, 16)
+  const myName = normalizeLeaderboardName(pilotNameInput?.value)
   rows.forEach((r, i) => {
     const li = document.createElement('li')
     const rank = i + 1
-    const isMe = (r.name || 'Pilot') === myName
+    const safeName = normalizeLeaderboardName(r.name)
+    const isMe = safeName === myName
     li.className = `board-row${rank <= 3 ? ` rank-${rank}` : ''}${isMe ? ' board-me' : ''}`
-    const scoreHtml = tab === 'timeattack'
-      ? `${r.stars || 0}★<small>${r.distance}m</small>`
-      : `${r.distance}m<small>${r.stars || 0}★</small>`
-    li.innerHTML = `
-      <span class="board-rank">${rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank}</span>
-      <span class="board-name">${r.name || 'Pilot'}${isMe ? ' (you)' : ''}<small>${r.mode || ''}</small></span>
-      <span class="board-score">${scoreHtml}</span>
-    `
+    const rankElement = document.createElement('span')
+    rankElement.className = 'board-rank'
+    rankElement.textContent = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : String(rank)
+
+    const nameElement = document.createElement('span')
+    nameElement.className = 'board-name'
+    nameElement.append(document.createTextNode(`${safeName}${isMe ? ' (you)' : ''}`))
+    const modeElement = document.createElement('small')
+    modeElement.textContent = String(r.mode || '')
+    nameElement.append(modeElement)
+
+    const scoreElement = document.createElement('span')
+    scoreElement.className = 'board-score'
+    const stars = normalizeLeaderboardInteger(r.stars)
+    const distance = normalizeLeaderboardInteger(r.distance)
+    if (tab === 'timeattack') {
+      scoreElement.append(document.createTextNode(`${stars}★`))
+      const distanceElement = document.createElement('small')
+      distanceElement.textContent = `${distance}m`
+      scoreElement.append(distanceElement)
+    } else {
+      scoreElement.append(document.createTextNode(`${distance}m`))
+      const starsElement = document.createElement('small')
+      starsElement.textContent = `${stars}★`
+      scoreElement.append(starsElement)
+    }
+
+    li.append(rankElement, nameElement, scoreElement)
     list.appendChild(li)
   })
 }

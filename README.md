@@ -70,6 +70,25 @@ Menu → **⚙️ Settings** for AR, season override, graphics, accessibility.
 - `GET/POST /api/leaderboard`
 - `GET/POST /api/analytics`
 
+Both endpoints are optional best-effort Vercel functions: the browser keeps
+local progress when they are unavailable, and serverless memory is not a
+durable leaderboard database. Writes are bounded and rate-limited, while
+analytics reads return aggregate funnel counts only.
+
+## Verification
+
+```bash
+npm test
+npm run build
+npm run verify:bundle-budget
+npm run verify:ios-parity
+npm run test:e2e:prod
+```
+
+In development, add `?seed=any-readable-label` to a URL to replay a classic
+or endless run with deterministic randomness; the active seed is included in
+`render_game_to_text()` for browser-test diagnostics.
+
 ## iOS
 
 A native Swift/Xcode app shell (`ios/`) embeds this exact web build offline

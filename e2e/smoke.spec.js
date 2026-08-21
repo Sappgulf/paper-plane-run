@@ -1027,6 +1027,27 @@ test('Hangar Progress/Meta filter keeps only the active group tabs visible', asy
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeVisible()
 })
 
+test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-lb-local', JSON.stringify([{
+      name: '<b>pilot</b>',
+      distance: 42,
+      stars: 3,
+      mode: 'normal',
+      at: Date.now(),
+    }]))
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('tab', { name: /Board/ }))
+
+  const row = page.locator('#board-list .board-row').first()
+  await expect(row).toContainText('<b>pilot</b>')
+  await expect(row.locator('b, img, script')).toHaveCount(0)
+})
+
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
@@ -1170,11 +1191,8 @@ test('ground life dresses each zone without entering the flight corridor', async
  * long before the endless long tail, and the tiers under test only begin at
  * 1000m.
  *
- * Classic seeds from `Math.random`, so a single flight is not deterministic —
- * a bad roll can bury the autopilot in a gauntlet well short of the target.
- * Retrying the whole flight is the honest fix: these tests assert on how the
- * tier and zone systems behave over distance, not on the autopilot surviving
- * any particular seed.
+ * The DEV `seed` query parameter pins classic/endless randomness, so failures
+ * can be replayed from the test URL instead of depending on a lucky retry.
  */
 async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempts = 5 }) {
   return page.evaluate(async ({ untilDistance, maxFrames, attempts }) => {
@@ -1274,7 +1292,7 @@ test('endless tiers keep escalating the run past the point every other dial caps
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
-  await openApp(page)
+  await openApp(page, '/?seed=endless-tier-smoke')
   await tap(page.locator('#start-btn'))
   await waitForGameText(page)
 
@@ -1326,7 +1344,7 @@ test('the endless route cycles zones instead of freezing on the final one', asyn
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
-  await openApp(page)
+  await openApp(page, '/?seed=endless-route-smoke')
   await tap(page.locator('#start-btn'))
   await waitForGameText(page)
 
