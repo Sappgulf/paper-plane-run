@@ -4,8 +4,9 @@ import { UPGRADES } from '../src/upgrades.js'
 import { BOSS_ART } from '../src/game/boss-art.js'
 
 /**
- * Scope guard: stars-only economy, no brand-new game modes.
- * Boss roster and Journey chapters may expand when product-approved.
+ * Scope guard: stars-only economy. New endless variants must reuse the
+ * existing star wallet. Boss roster and Journey chapters may expand when
+ * product-approved. Weekly Fold is an approved seeded endless variant.
  */
 describe('product scope guard', () => {
   test('keeps the upgrade catalog closed and the approved boss set exclusive', () => {

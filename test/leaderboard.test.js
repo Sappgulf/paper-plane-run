@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import {
   getLocalTop,
   getTimeAttackTop,
+  getWeeklyTop,
   submitLocalScore,
   submitTimeAttackScore,
 } from '../src/leaderboard.js'
@@ -31,6 +32,19 @@ describe('Time Attack leaderboard', () => {
   test('keeps its own list separate from the distance board', () => {
     submitTimeAttackScore({ name: 'A', stars: 5, distance: 50, mode: 'normal' })
     expect(getTimeAttackTop().length).toBe(1)
+  })
+
+  test('keeps a weekly board separate from the daily list', () => {
+    submitLocalScore({
+      name: 'Fold',
+      distance: 900,
+      stars: 11,
+      mode: 'normal',
+      weekly: true,
+      weeklyKey: '2026-W34',
+    })
+    expect(getWeeklyTop('2026-W34', 'normal').map((row) => row.distance)).toEqual([900])
+    expect(getWeeklyTop('2026-W33', 'normal')).toEqual([])
   })
 
   test('normalizes names and numeric scores at the storage boundary', () => {

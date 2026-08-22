@@ -12,10 +12,11 @@ npm install && npm run dev
 
 | # | Feature |
 |---|---------|
-| 1 | Daily seeded route |
+| 1 | Daily seeded route + **Weekly Fold** (ISO-week seed, rotating opening sky and a light mechanical lean, local weekly board) |
+
 | 2 | Near-miss combos + confetti |
 | 3 | Unlockable skins (+ seasonal free) |
-| 4 | Crash polaroid photo share |
+| 4 | Crash polaroid photo share + packed ghost **challenge links** (`?c=`) so a friend races your actual path |
 | 5 | Haptics + generative music |
 | 6 | Tutorial rings |
 | 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora → Midnight Origami) — and past Midnight the route **folds back to Paper City** on a new lap instead of parking on the last zone forever, so the sky, ground and music keep turning over for as long as you survive |

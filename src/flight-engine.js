@@ -4,6 +4,8 @@ import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
 import { todaysTwist } from './twists.js'
+import { foldById, thisWeeksFold, weeklyKey, weeklySeed } from './game/weekly-fold.js'
+import { decodeChallenge, describeChallenge, encodeChallenge } from './game/challenge-share.js'
 import {
   getEquippedSkinId,
   getSkin,
@@ -631,8 +633,13 @@ function setDifficulty(id, { persist = true } = {}) {
 
 function updateDailyHint() {
   const twist = todaysTwist()
+  const fold = thisWeeksFold()
   if (dailyHint) {
     dailyHint.textContent = `📅 Daily ${dailyKey()} · seed race on ${difficulty.label} · ${twist.icon} ${twist.name}: ${twist.desc}`
+  }
+  const weeklyHint = $('weekly-hint')
+  if (weeklyHint) {
+    weeklyHint.textContent = `📆 Weekly ${weeklyKey()} · ${fold.icon} ${fold.name}: ${fold.desc}`
   }
 }
 updateDailyHint()
@@ -640,7 +647,7 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 // Run modes & challenge
 // ---------------------------------------------------------------------------
-/** @type {'classic'|'daily'|'tutorial'|'hotseat'|'layout'|'journey'} */
+/** @type {'classic'|'daily'|'weekly'|'tutorial'|'hotseat'|'layout'|'journey'|'timeattack'|'coop'} */
 let runKind = 'classic'
 let journey = loadJourney(localStorage).journey
 let journeyRunConfig = null
@@ -661,7 +668,8 @@ function activeRouteAt(runDistance = distance) {
     const pinned = ZONES.find((zone) => zone.id === journeyRunConfig.zone)
     if (pinned) return { zone: pinned, lap: 0 }
   }
-  const { zone, lap } = cyclicZoneAt(runDistance)
+  const visualDistance = runDistance + (activeFold?.zoneOffset || 0)
+  const { zone, lap } = cyclicZoneAt(visualDistance)
   return { zone, lap }
 }
 
@@ -672,10 +680,12 @@ const TIME_ATTACK_SECONDS = 60
 let timeAttackLeft = 0
 let timeAttackLastTickSecond = -1
 let challenge = null
-let lastRun = { d: 0, s: 0, m: 'normal', daily: false, timeAttack: false }
+let launchChallenge = null
+let lastRun = { d: 0, s: 0, m: 'normal', daily: false, weekly: false, timeAttack: false, seed: null, kind: 'classic', foldId: '' }
 let layoutPlay = null
 let rng = Math.random
 let activeRunSeed = null
+let activeFold = null
 let ghostRecorder = null
 let ghostData = null
 let ghostMesh = null
@@ -737,13 +747,21 @@ function configureDevUpgradeProof(proof = devUpgradeProof) {
 }
 {
   const params = new URLSearchParams(location.search)
-  const d = Number(params.get('d') || params.get('score'))
-  const s = Number(params.get('s') || 0)
-  const m = (params.get('m') || 'normal').toLowerCase()
-  if (Number.isFinite(d) && d > 0 && DIFFS[m]) {
-    challenge = { d: Math.floor(d), s: Math.max(0, s | 0), m }
-    setDifficulty(m, { persist: false })
-    notifications.show(`Challenge: beat ${challenge.d}m · ${challenge.s}★ on ${DIFFS[m].label}`, { duration: 6500 })
+  const packed = decodeChallenge(params.get('c') || params.get('challenge') || '')
+  if (packed) {
+    launchChallenge = packed
+    challenge = { d: packed.distance, s: packed.stars, m: packed.mode }
+    if (DIFFS[packed.mode]) setDifficulty(packed.mode, { persist: false })
+    notifications.show(describeChallenge(packed), { duration: 6500 })
+  } else {
+    const d = Number(params.get('d') || params.get('score'))
+    const s = Number(params.get('s') || 0)
+    const m = (params.get('m') || 'normal').toLowerCase()
+    if (Number.isFinite(d) && d > 0 && DIFFS[m]) {
+      challenge = { d: Math.floor(d), s: Math.max(0, s | 0), m }
+      setDifficulty(m, { persist: false })
+      notifications.show(`Challenge: beat ${challenge.d}m · ${challenge.s}★ on ${DIFFS[m].label}`, { duration: 6500 })
+    }
   }
   const layoutCode = params.get('layout') || params.get('L')
   if (layoutCode) {
@@ -754,6 +772,7 @@ function configureDevUpgradeProof(proof = devUpgradeProof) {
     }
   }
   if (params.get('daily') === '1') runKind = 'daily'
+  if (params.get('weekly') === '1') runKind = 'weekly'
   history.replaceState({}, '', location.pathname)
 }
 
@@ -2761,8 +2780,9 @@ function pickHazardType(zone) {
   // A tier's named modifier leans the mix on top of the zone's own bias — a
   // Scissor Storm over the Harbor still reads as the Harbor, just bladier.
   const tierBias = endlessTier().hazardBias
+  const foldBias = activeFold?.hazardBias
   const weightOf = (kind, base) =>
-    base * bias[kind] * (tierBias?.[kind] ?? 1) * difficulty.hazardScale
+    base * bias[kind] * (tierBias?.[kind] ?? 1) * (foldBias?.[kind] ?? 1) * difficulty.hazardScale
   const weights = [
     ['building', weightOf('building', 0.28)],
     ['bird', weightOf('bird', 0.22)],
@@ -3538,6 +3558,7 @@ function updateEndlessTier() {
   showFlightFeedback(next.name, 'route', 1.4)
   pulseFlightImpact('route')
   notifications.show(`${next.name} — ${next.modifier.blurb}`, { duration: 3600 })
+  audio.setAltitudeTier(next.tier)
   audio.zoneTransition()
 }
 
@@ -3706,10 +3727,21 @@ function resetGame() {
   plane.scale.setScalar(upgradeEffects.planeScale * 0.15 * 1.12)
 
   // RNG
+  activeFold = null
   if (runKind === 'daily') {
-    activeRunSeed = dailySeed(difficulty.id)
+    activeRunSeed = launchChallenge?.kind === 'daily' && launchChallenge.seed
+      ? launchChallenge.seed
+      : dailySeed(difficulty.id)
     rng = mulberry32(activeRunSeed)
     activeTwist = todaysTwist()
+  } else if (runKind === 'weekly') {
+    activeFold = (launchChallenge?.kind === 'weekly' && foldById(launchChallenge.foldId))
+      || thisWeeksFold()
+    activeRunSeed = launchChallenge?.kind === 'weekly' && launchChallenge.seed
+      ? launchChallenge.seed
+      : weeklySeed(difficulty.id)
+    rng = mulberry32(activeRunSeed)
+    activeTwist = activeFold
   } else if (runKind === 'journey' && journeyRunConfig) {
     activeRunSeed = journeyRunConfig.seed
     rng = mulberry32(activeRunSeed)
@@ -3723,19 +3755,17 @@ function resetGame() {
     if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
     if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
     if (journeyRunConfig.risk === 'risky') activeTwist.windMul = (activeTwist.windMul || 1) * 1.2
-  } else if (devSeed !== null && runKind === 'classic') {
-    activeRunSeed = devSeed
-    rng = mulberry32(activeRunSeed)
-    activeTwist = null
   } else if (runKind === 'layout') {
     activeRunSeed = null
     rng = Math.random
     activeTwist = null
   } else {
-    activeRunSeed = null
-    rng = Math.random
+    activeRunSeed = launchChallenge?.seed
+      || (devSeed !== null && runKind === 'classic' ? devSeed : ((Math.random() * 0xffffffff) >>> 0) || 1)
+    rng = mulberry32(activeRunSeed)
     activeTwist = null
   }
+  audio.setAltitudeTier(0)
   scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
 
   plane.position.set(0, planeY, 0)
@@ -3751,7 +3781,11 @@ function resetGame() {
   journeyRivalState = runKind === 'journey' && journeyRunConfig?.rival
     ? createRivalState({ seed: journeyRunConfig.seed, targetDistance: 500 })
     : null
-  ghostData = runKind === 'tutorial' || journeyRivalState ? null : loadGhost(difficulty.id + (runKind === 'daily' ? '-daily' : ''))
+  ghostData = runKind === 'tutorial' || journeyRivalState
+    ? null
+    : launchChallenge?.path?.length
+      ? { path: launchChallenge.path, distance: launchChallenge.distance, stars: launchChallenge.stars }
+      : loadGhost(ghostStorageKey())
   if (journeyRivalState || ghostData?.path?.length) {
     const material = journeyRivalState ? rivalMat : ghostMat
     ghostMesh = createPaperPlane({
@@ -3785,7 +3819,13 @@ function resetGame() {
   }
 
   distanceEl.textContent = '0m'
-  if (hudModeEl) hudModeEl.textContent = runKind === 'journey' ? journeyRunConfig.modifierLabel : difficulty.label
+  if (hudModeEl) {
+    hudModeEl.textContent = runKind === 'journey'
+      ? journeyRunConfig.modifierLabel
+      : runKind === 'weekly' && activeFold
+        ? activeFold.name
+        : difficulty.label
+  }
   starsEl.textContent = '0'
   windBanner.classList.add('hidden')
   powerBanner.classList.add('hidden')
@@ -4128,6 +4168,12 @@ if (stickZone && stickBase) {
 }
 
 // Input
+function ghostStorageKey() {
+  if (runKind === 'daily') return `${difficulty.id}-daily`
+  if (runKind === 'weekly') return `${difficulty.id}-weekly-${weeklyKey()}`
+  return difficulty.id
+}
+
 function retryCurrentRun() {
   if (runKind === 'journey') journey = loadJourney(localStorage).journey
   if (runKind === 'journey' && !journey?.selectedRouteId) {
@@ -4249,6 +4295,7 @@ function openJourney() {
 
 function showMenu() {
   state = 'menu'
+  launchChallenge = null
   manualPause = false
   hideAllPanels()
   pauseOverlay?.classList.add('hidden')
@@ -4352,19 +4399,38 @@ $('ar-btn')?.addEventListener('click', async () => {
     : on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off', { duration: 2500 })
 })
 function shareText() {
-  const { d, s, m, daily, timeAttack } = lastRun
+  const { d, s, m, daily, weekly, timeAttack, foldId } = lastRun
   if (timeAttack) {
     return `I grabbed ${s}★ in 60 seconds of Time Attack on ${DIFFS[m]?.label || m} in Paper Plane Run!`
   }
-  return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ` · Daily ${dailyKey()}` : ''} in Paper Plane Run!`
+  if (weekly) {
+    const fold = foldById(foldId)
+    return `I flew ${d}m · ${s}★ on Weekly ${weeklyKey()}${fold ? ` · ${fold.name}` : ''} in Paper Plane Run — race my ghost!`
+  }
+  return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ` · Daily ${dailyKey()}` : ''} in Paper Plane Run — race my ghost!`
 }
 function buildShareUrl() {
   const u = new URL(location.href)
   u.search = ''
+  const code = encodeChallenge({
+    kind: lastRun.kind || (lastRun.weekly ? 'weekly' : lastRun.daily ? 'daily' : lastRun.timeAttack ? 'timeattack' : 'classic'),
+    mode: lastRun.m,
+    seed: lastRun.seed,
+    distance: lastRun.d,
+    stars: lastRun.s,
+    name: normalizeLeaderboardName(pilotNameInput?.value),
+    foldId: lastRun.foldId,
+    path: lastRun.path,
+  })
+  if (code) {
+    u.searchParams.set('c', code)
+    return u.toString()
+  }
   u.searchParams.set('d', String(lastRun.d))
   u.searchParams.set('s', String(lastRun.s))
   u.searchParams.set('m', lastRun.m)
   if (lastRun.daily) u.searchParams.set('daily', '1')
+  if (lastRun.weekly) u.searchParams.set('weekly', '1')
   if (lastRun.timeAttack) u.searchParams.set('ta', '1')
   return u.toString()
 }
@@ -4417,6 +4483,7 @@ async function startGame(kind = 'classic', opts = {}) {
     void audio.unlock()
     audio.uiClick()
     runKind = kind
+    if (opts.challenge) launchChallenge = opts.challenge
     if (kind === 'journey') journey = loadJourney(localStorage).journey
     journeyRunConfig = kind === 'journey' ? resolveJourneyRunConfig(opts.journeyConfig, journey) : null
     if (kind === 'journey' && !journeyRunConfig) {
@@ -4457,6 +4524,13 @@ async function startGame(kind = 'classic', opts = {}) {
     }
     if (kind === 'daily') {
       showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
+    }
+    if (kind === 'weekly') {
+      const fold = activeFold || thisWeeksFold()
+      showFlightFeedback(`${fold.icon} ${fold.name.toUpperCase()}`, 'route', 2.2)
+    }
+    if (launchChallenge?.path?.length) {
+      notifications.show(describeChallenge(launchChallenge), { duration: 3600 })
     }
     if (launchGraceSeconds > 0) {
       powerBanner.textContent = '✈️ Get ready — launch protection active'
@@ -4762,7 +4836,16 @@ function finalizeDeathUnsafe() {
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack' && runKind !== 'journey'
   const d = Math.floor(distance)
   lastRun = {
-    d, s: stars, m: difficulty.id, daily: runKind === 'daily', timeAttack: runKind === 'timeattack',
+    d,
+    s: stars,
+    m: difficulty.id,
+    daily: runKind === 'daily',
+    weekly: runKind === 'weekly',
+    timeAttack: runKind === 'timeattack',
+    seed: activeRunSeed,
+    kind: runKind,
+    foldId: activeFold?.id || '',
+    path: ghostRecorder?.toJSON?.() || [],
   }
 
   const previousBestDistance = bestDistance
@@ -4780,8 +4863,7 @@ function finalizeDeathUnsafe() {
   newBestBadge?.classList.toggle('hidden', !wasNewBest && !wasNewTimeAttackBest)
 
   if (ghostRecorder && isDistanceRun && !isWin) {
-    const key = difficulty.id + (runKind === 'daily' ? '-daily' : '')
-    saveGhostIfBest(key, d, ghostRecorder.toJSON(), stars)
+    saveGhostIfBest(ghostStorageKey(), d, ghostRecorder.toJSON(), stars)
   }
 
   if (stars > 0) {
@@ -4896,6 +4978,7 @@ function finalizeDeathUnsafe() {
     submitLocalScore({
       name, distance: d, stars, mode: difficulty.id,
       daily: runKind === 'daily', dailyKey: dailyKey(),
+      weekly: runKind === 'weekly', weeklyKey: weeklyKey(),
     })
     submitRemoteScore({
       name, distance: d, stars, mode: difficulty.id, daily: runKind === 'daily',
@@ -6434,6 +6517,10 @@ window.render_game_to_text = () => JSON.stringify({
   mode: runKind,
   seed: devSeedLabel,
   runSeed: activeRunSeed,
+  weeklyFold: activeFold?.id || null,
+  challenge: launchChallenge
+    ? { name: launchChallenge.name, distance: launchChallenge.distance, kind: launchChallenge.kind }
+    : null,
   distance: Math.floor(distance),
   stars,
   player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },

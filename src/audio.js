@@ -10,6 +10,7 @@ const ZONE_SCALES = {
   storm: [220, 246.94, 261.63, 329.63, 349.23, 440], // A minor-ish — tense, overcast
   sunset: [207.65, 233.08, 277.18, 311.13, 349.23, 415.3], // Ab major pentatonic — warm, golden
   aurora: [220, 246.94, 277.18, 329.63, 369.99, 440], // wider spacing — shimmering, exotic
+  midnight: [196, 233.08, 261.63, 311.13, 349.23, 392], // G minor-ish — violet night
 }
 
 export class GameAudio {
@@ -28,12 +29,20 @@ export class GameAudio {
     this.intensity = 0
     /** Current zone's musical scale — swapped so each zone has its own motif */
     this.scale = ZONE_SCALES.city
+    /** Endless altitude tier (0–8). Extra voices layer in as the run climbs. */
+    this.altitudeTier = 0
   }
 
   /** Swap the generative bed's scale for the zone we just entered. Takes
    *  effect on the next note, no need to restart the music loop. */
   setMusicZone(zoneId) {
     this.scale = ZONE_SCALES[zoneId] || ZONE_SCALES.city
+  }
+
+  /** Endless altitude tiers add bass, then a pulse, without restarting the bed. */
+  setAltitudeTier(tier = 0) {
+    const next = Math.max(0, Math.min(8, Math.floor(Number(tier) || 0)))
+    this.altitudeTier = next
   }
 
   /** Live-adjust the generative music bed's tempo/brightness/volume. */
@@ -142,6 +151,7 @@ export class GameAudio {
 
   startFlight() {
     this.intensity = 0
+    this.altitudeTier = 0
     this.scale = ZONE_SCALES.city
     this._tone(392, 0.12, 'triangle', 0.15)
     this._tone(523, 0.14, 'triangle', 0.12)
@@ -432,7 +442,37 @@ export class GameAudio {
         osc2.stop(t + 0.55)
         this._musicNodes.push(osc2)
       }
-      const interval = (480 + Math.random() * 220) * (1 - it * 0.35)
+      // Altitude tiers: a low fifth from tier 2, then a pulse from tier 5.
+      const tier = this.altitudeTier || 0
+      if (tier >= 2) {
+        const bass = this.ctx.createOscillator()
+        const bassGain = this.ctx.createGain()
+        bass.type = 'sine'
+        bass.frequency.value = scale[0] / 2
+        bassGain.gain.setValueAtTime(0.0001, t)
+        bassGain.gain.exponentialRampToValueAtTime(0.018 + Math.min(4, tier) * 0.004, t + 0.08)
+        bassGain.gain.exponentialRampToValueAtTime(0.0001, t + 1.4)
+        bass.connect(bassGain)
+        bassGain.connect(this.music)
+        bass.start(t)
+        bass.stop(t + 1.5)
+        this._musicNodes.push(bass)
+      }
+      if (tier >= 5 && Math.random() < 0.45) {
+        const pulse = this.ctx.createOscillator()
+        const pulseGain = this.ctx.createGain()
+        pulse.type = 'triangle'
+        pulse.frequency.value = scale[step % scale.length] * 3
+        pulseGain.gain.setValueAtTime(0.0001, t)
+        pulseGain.gain.exponentialRampToValueAtTime(0.016, t + 0.02)
+        pulseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22)
+        pulse.connect(pulseGain)
+        pulseGain.connect(this.music)
+        pulse.start(t)
+        pulse.stop(t + 0.24)
+        this._musicNodes.push(pulse)
+      }
+      const interval = (480 + Math.random() * 220) * (1 - it * 0.35) * (1 - Math.min(0.18, tier * 0.02))
       this._musicTimer = setTimeout(tick, interval)
     }
     tick()

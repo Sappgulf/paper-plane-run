@@ -149,6 +149,8 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Hangar' })).toBeVisible()
   await tap(page.getByRole('button', { name: '← Main menu' }))
   await expect(page.locator('#start-btn')).toBeVisible()
+  await expect(page.locator('#weekly-btn')).toBeVisible()
+  await expect(page.locator('#weekly-hint')).toContainText('Weekly')
   expect(errors).toEqual([])
 })
 
@@ -1042,6 +1044,7 @@ test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
   await tap(page.getByRole('button', { name: '🏠 Hangar' }))
   await tap(page.getByRole('button', { name: 'Meta' }))
   await tap(page.getByRole('tab', { name: /Board/ }))
+  await expect(page.getByRole('button', { name: 'Weekly' })).toBeVisible()
 
   const row = page.locator('#board-list .board-row').first()
   await expect(row).toContainText('<b>pilot</b>')

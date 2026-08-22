@@ -17,6 +17,7 @@ export {
 
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
+const WEEKLY_KEY = 'paper-plane-run-lb-weekly'
 const TIME_ATTACK_KEY = 'paper-plane-run-lb-timeattack'
 // The iOS app bundles this build offline and loads it via file://, where a
 // relative /api/... fetch has no server to resolve against. Vite bakes this
@@ -36,7 +37,7 @@ function save(key, rows) {
   safeSetItem(key, JSON.stringify(rows.slice(0, 20)))
 }
 
-export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey }) {
+export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey, weekly, weeklyKey }) {
   const entry = {
     name: normalizeLeaderboardName(name),
     distance: normalizeLeaderboardInteger(distance),
@@ -54,6 +55,12 @@ export function submitLocalScore({ name, distance, stars, mode, daily, dailyKey 
     dlist.push(entry)
     dlist.sort((a, b) => b.distance - a.distance || b.stars - a.stars)
     save(DAILY_KEY + dailyKey + mode, dlist.slice(0, 15))
+  }
+  if (weekly && weeklyKey) {
+    const wlist = load(WEEKLY_KEY + weeklyKey + mode)
+    wlist.push(entry)
+    wlist.sort((a, b) => b.distance - a.distance || b.stars - a.stars)
+    save(WEEKLY_KEY + weeklyKey + mode, wlist.slice(0, 15))
   }
   return list.slice(0, 10)
 }
@@ -84,6 +91,10 @@ export function getTimeAttackTop(limit = 10) {
 
 export function getDailyTop(dailyKey, mode, limit = 10) {
   return load(DAILY_KEY + dailyKey + mode).slice(0, limit)
+}
+
+export function getWeeklyTop(weeklyKey, mode, limit = 10) {
+  return load(WEEKLY_KEY + weeklyKey + mode).slice(0, limit)
 }
 
 /** Optional remote — fails soft if API unavailable */

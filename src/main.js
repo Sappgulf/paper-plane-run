@@ -54,6 +54,8 @@ import { applyDocumentA11y, loadSettings, saveSettings } from './settings.js'
 import { seasonInfo } from './seasonal.js'
 import { dailyKey } from './rng.js'
 import { todaysTwist } from './twists.js'
+import { thisWeeksFold, weeklyKey } from './game/weekly-fold.js'
+import { decodeChallenge } from './game/challenge-share.js'
 import { estimateRunsToAfford } from './game/economy.js'
 import {
   describeEarlyPathBanner,
@@ -72,6 +74,7 @@ import {
   getDailyTop,
   getLocalTop,
   getTimeAttackTop,
+  getWeeklyTop,
   normalizeLeaderboardInteger,
   normalizeLeaderboardName,
 } from './leaderboard.js'
@@ -1171,6 +1174,7 @@ async function renderBoard(tab = 'local') {
   let rows = []
   if (tab === 'local') rows = getLocalTop(12)
   else if (tab === 'daily') rows = getDailyTop(dailyKey(), difficulty.id, 12)
+  else if (tab === 'weekly') rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
   else if (tab === 'timeattack') rows = getTimeAttackTop(12)
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
@@ -1402,6 +1406,7 @@ async function startMode(kind, options = {}) {
 const modeByButtonId = {
   'start-btn': 'classic',
   'daily-btn': 'daily',
+  'weekly-btn': 'weekly',
   'timeattack-btn': 'timeattack',
   'tutorial-btn': 'tutorial',
   'hotseat-btn': 'hotseat',
@@ -1507,9 +1512,15 @@ function setShellDifficulty(id, { persist = true } = {}) {
   })
   if ($('diff-blurb')) $('diff-blurb').textContent = copy.blurb
   const twist = todaysTwist()
+  const fold = thisWeeksFold()
   if ($('daily-hint')) {
     $('daily-hint').textContent = `📅 Daily ${dailyKey()} · seed race on ${copy.label} · ${twist.icon} ${twist.name}: ${twist.desc}`
   }
+  if ($('weekly-hint')) {
+    $('weekly-hint').textContent = `📆 Weekly ${weeklyKey()} · ${fold.icon} ${fold.name}: ${fold.desc}`
+  }
+  const weeklyBtn = $('weekly-btn')
+  if (weeklyBtn) weeklyBtn.title = `${fold.name} — ${fold.desc}`
 }
 
 document.querySelectorAll('.diff-btn[data-diff]').forEach((button) => {
@@ -1621,6 +1632,15 @@ if (import.meta.env.DEV && location.hash === '#test-postcard') {
 function consumeLaunchMode() {
   try {
     const params = new URLSearchParams(location.search)
+    const challenge = decodeChallenge(params.get('c') || params.get('challenge') || '')
+    if (challenge) {
+      params.delete('c')
+      params.delete('challenge')
+      const next = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`
+      history.replaceState(null, '', next)
+      queueMicrotask(() => startMode(challenge.kind, { challenge }))
+      return true
+    }
     const mode = (params.get('mode') || '').toLowerCase()
     if (!mode) return false
     params.delete('mode')
@@ -1630,7 +1650,7 @@ function consumeLaunchMode() {
       queueMicrotask(() => openJourney())
       return true
     }
-    if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'timeattack', 'tutorial', 'hotseat', 'coop'].includes(mode)) {
+    if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'weekly', 'timeattack', 'tutorial', 'hotseat', 'coop'].includes(mode)) {
       const kind = mode === 'classic' ? 'classic' : mode
       if (kind === 'coop') maybeShowCoopHint()
       queueMicrotask(() => startMode(kind))
