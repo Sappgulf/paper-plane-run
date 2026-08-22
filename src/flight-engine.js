@@ -153,6 +153,7 @@ import {
   registerStarPickup,
 } from './game/star-streak.js'
 import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from './game/star-spawn.js'
+import { pickFlightFocus, shouldTelegraphHazard } from './game/flight-focus.js'
 import {
   describeNearMissFloat,
   feverConfettiOffsets,
@@ -324,24 +325,23 @@ if (edgeIndicatorEl) {
 }
 // Hazard telegraphing: a one-shot warning ping when a fast/dangerous
 // hazard (scissors, boss gate, dive-bombing flyer) is about to close in.
-const TELEGRAPH_Z = 34
 const warnFlashEl = $('warn-flash')
-function isTelegraphHazard(e) {
-  return e.type === 'scissors' || e.type === 'boss' || (e.type === 'bird' && e.mesh.userData.dive)
-}
 function checkHazardTelegraph() {
   for (const e of entities) {
-    if (e.warned || !isTelegraphHazard(e)) continue
-    const z = e.mesh.position.z
-    if (z <= TELEGRAPH_Z && z > 4) {
-      e.warned = true
-      audio.incoming()
-      Haptic.tap()
-      if (warnFlashEl) {
-        warnFlashEl.classList.remove('warn-pulse')
-        void warnFlashEl.offsetWidth
-        warnFlashEl.classList.add('warn-pulse')
-      }
+    if (!shouldTelegraphHazard({
+      type: e.type,
+      z: e.mesh.position.z,
+      dx: e.mesh.position.x - planeX,
+      dive: Boolean(e.mesh.userData.dive),
+      alreadyWarned: e.warned,
+    })) continue
+    e.warned = true
+    audio.incoming()
+    Haptic.tap()
+    if (warnFlashEl) {
+      warnFlashEl.classList.remove('warn-pulse')
+      void warnFlashEl.offsetWidth
+      warnFlashEl.classList.add('warn-pulse')
     }
   }
 }
@@ -445,39 +445,13 @@ function updateFlightReadability(routeState = null) {
   flightFocusEl.style.left = `${(_focusNdc.x * 0.5 + 0.5) * innerWidth}px`
   flightFocusEl.style.top = `${(1 - (_focusNdc.y * 0.5 + 0.5)) * innerHeight}px`
 
-  let cue = 'clear'
-  let label = 'FLY'
-  let nearestZ = Infinity
-  const teachStars = shouldTelegraphStarLane(distance)
-  for (const entity of entities) {
-    const type = entity.type
-    const isPickup = type === 'star' || type === 'power' || type === 'ring'
-    const isHazard = type === 'building' || type === 'bird' || type === 'scissors' || type === 'boss'
-    if (entity.mesh.position.z < 3 || entity.mesh.position.z > 46) continue
-    if (teachStars) {
-      if (type !== 'star' && type !== 'ring') continue
-      if (entity.mesh.position.z >= nearestZ) continue
-      nearestZ = entity.mesh.position.z
-      cue = 'star'
-      label = 'STAR LINE'
-      continue
-    }
-    if (!isPickup && !isHazard) continue
-    if (entity.mesh.position.z >= nearestZ) continue
-    nearestZ = entity.mesh.position.z
-    if (isHazard) {
-      cue = 'hazard'
-      label = type === 'boss' ? 'GATE AHEAD' : 'DODGE'
-    } else if (type === 'power') {
-      cue = 'power'
-      label = 'POWER'
-    } else {
-      cue = 'star'
-      label = 'STAR LINE'
-    }
-  }
-  flightFocusEl.dataset.cue = cue
-  if (flightFocusCueEl) flightFocusCueEl.textContent = label
+  const focus = pickFlightFocus(entities, {
+    planeX,
+    planeY,
+    teachStars: shouldTelegraphStarLane(distance),
+  })
+  flightFocusEl.dataset.cue = focus.cue
+  if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
@@ -1386,13 +1360,17 @@ const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
 /** Ink Blast: fires a forward projectile that pops small airborne hazards. */
 function tryPaperPush() {
   if (state !== 'playing' || paperPushCooldown > 0) return false
-  paperPushCooldown = 3.2
+  paperPushCooldown = 2.6
+  const trimming = windActive > 0 || Math.abs(velX) > 10
+  velX *= 0.38
+  windForce *= 0.4
+  windActive = Math.min(windActive, 0.12)
   speedBoost = Math.max(speedBoost, 14)
   invuln = Math.max(invuln, 0.28)
   fovPunch = Math.max(fovPunch, 5)
   audio.paperPush()
   if (settings.haptics) Haptic.tap()
-  showFlightFeedback('PAPER PUSH', 'route', 0.7)
+  showFlightFeedback(trimming ? 'TRIM THE GUST' : 'PAPER PUSH', 'route', 0.7)
   fireBtn?.classList.add('firing')
   setTimeout(() => fireBtn?.classList.remove('firing'), 90)
   return true
