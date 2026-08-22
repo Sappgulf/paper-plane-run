@@ -426,9 +426,14 @@ function updateFlightReadability(routeState = null) {
   }
   if (flightRouteNextEl) {
     const next = routeState?.next
+    const remain = Number.isFinite(routeState?.remain)
+      ? routeState.remain
+      : next && Number.isFinite(routeState?.nextAt)
+        ? routeState.nextAt - distance
+        : 0
     flightRouteNextEl.textContent = next
-      ? `${next.name} · ${Math.max(0, Math.ceil(next.from - distance))}m`
-      : 'Final fold'
+      ? `${next.name} · ${Math.max(0, Math.ceil(remain))}m`
+      : runKind === 'journey' ? 'Destination' : 'Open air'
   }
   if (flightRouteFillEl) {
     const routeT = Number.isFinite(routeState?.t) ? routeState.t : 0
@@ -1759,8 +1764,23 @@ function syncPlanePowerLook(dt = 0.016) {
   const boosting = activePower?.kind === 'boost'
   const fx = activeUpgradeEffects
   document.documentElement.dataset.boosting = boosting ? '1' : '0'
-  planeBodyMat.emissive.setHex(boosting ? 0xff6a2c : 0x000000)
-  planeBodyMat.emissiveIntensity = boosting ? 0.48 : 0
+  const night = document.documentElement.dataset.night === '1'
+  if (boosting) {
+    planeBodyMat.emissive.setHex(0xff6a2c)
+    planeBodyMat.emissiveIntensity = 0.48
+    planeAccentMat.emissive.setHex(0x000000)
+    planeAccentMat.emissiveIntensity = 0
+  } else if (night) {
+    planeBodyMat.emissive.setHex(0x4a6080)
+    planeBodyMat.emissiveIntensity = 0.32
+    planeAccentMat.emissive.setHex(0xffb089)
+    planeAccentMat.emissiveIntensity = 0.22
+  } else {
+    planeBodyMat.emissive.setHex(0x000000)
+    planeBodyMat.emissiveIntensity = 0
+    planeAccentMat.emissive.setHex(0x000000)
+    planeAccentMat.emissiveIntensity = 0
+  }
   if (boostFlame) {
     boostFlame.visible = boosting
     if (boosting) boostFlame.scale.setScalar(0.88 + Math.sin(elapsed * 24) * 0.22)
@@ -2662,6 +2682,8 @@ let planeY = 8
 let planeX = 0
 let velY = 0
 let velX = 0
+/** One-frame upward pop for shield/guardian saves in aim mode. */
+let rescueLift = 0
 let pitch = 0
 let roll = 0
 let windTimer = 7
@@ -3681,6 +3703,7 @@ function resetGame() {
   bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
+  rescueLift = 0
   invuln = SPAWN_INVULN_SECONDS
   const guardian = getGuardianState({ charges: upgradeEffects.guardianCharges })
   guardianLeft = guardian.remaining
@@ -4609,6 +4632,16 @@ function capturePhoto() {
   }
 }
 
+function applyRescuePop() {
+  velX *= 0.4
+  speedBoost = Math.max(speedBoost, 6)
+  mouseTarget.y = THREE.MathUtils.clamp(Math.max(mouseTarget.y, planeY) + 3.2, MIN_Y, MAX_Y)
+  const joyMode = wantsJoystick()
+  const aiming = !joyMode && runKind !== 'coop'
+  if (aiming) rescueLift = 18
+  else velY = Math.max(velY, 0) + 12
+}
+
 function die(reason) {
   if (state !== 'playing') return
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
@@ -4633,9 +4666,7 @@ function die(reason) {
     invuln = 1.35
     damageFlash = 1.1
     _damageOrigColor.copy(planeBodyMat.color)
-    velY = Math.max(velY, 0) + 12
-    velX *= 0.4
-    speedBoost = Math.max(speedBoost, 6)
+    applyRescuePop()
     // flash shield pop
     spawnConfetti(planeX, planeY, 1)
     if (shieldBubble) shieldBubble.visible = false
@@ -4661,9 +4692,7 @@ function die(reason) {
     invuln = guardian.invulnSeconds
     damageFlash = 1.1
     _damageOrigColor.copy(planeBodyMat.color)
-    velY = Math.max(velY, 0) + 12
-    velX *= 0.4
-    speedBoost = Math.max(speedBoost, 6)
+    applyRescuePop()
     spawnConfetti(planeX, planeY, 1)
     spawnConfetti(planeX, planeY + 0.5, 0)
     powerBanner.textContent = guardian.banner
@@ -5325,7 +5354,9 @@ function registerNearMiss(kind = null) {
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
   setTimeout(() => comboFloat.classList.add('hidden'), combo >= 6 ? 700 : 500)
-  showFlightFeedback(combo >= 6 ? `FEVER BUILDING · ${combo}x` : `NEAR MISS · ${combo}x`, combo >= 6 ? 'hot' : 'route', combo >= 6 ? 1.0 : 0.7)
+  if (combo === 3 || combo === 6 || combo === 10 || combo % 15 === 0) {
+    showFlightFeedback(combo >= 6 ? `FEVER BUILDING · ${combo}x` : `NEAR MISS · ${combo}x`, combo >= 6 ? 'hot' : 'route', combo >= 6 ? 1.0 : 0.7)
+  }
   audio.nearMiss(combo, kind)
   Haptic.nearMiss()
   const bursts = nearMissConfettiBursts(combo)
@@ -5521,7 +5552,7 @@ function update(dt) {
   if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
   if (paperPushCooldown > 0) paperPushCooldown = Math.max(0, paperPushCooldown - dt)
   updateWeaponFeedback()
-  if (keys.has('KeyX')) fireWeapon()
+  if (keys.has('KeyX')) fireWeapon({ allowPush: true })
   updateShots(dt)
   if (damageFlash > 0) {
     damageFlash = Math.max(0, damageFlash - dt)
@@ -5791,6 +5822,10 @@ function update(dt) {
   let controlAcceleration = controlResponse.acceleration
   let extraForceX = windPushX
   let extraForceY = 0
+  if (rescueLift) {
+    extraForceY += rescueLift / Math.max(dt, 0.001)
+    rescueLift = 0
+  }
   if (activePower?.kind === 'tear') {
     extraForceX += tearSide * 14
     controlAcceleration *= 0.85
@@ -6076,9 +6111,10 @@ function update(dt) {
     currentZoneLap = zoneLap
     applyZone(z, true)
   }
+  const visualDistance = distance + (activeFold?.zoneOffset || 0)
   const zp = runKind === 'journey'
-    ? { zone: z, t: 1, next: null, nextAt: null }
-    : cyclicZoneProgress(distance)
+    ? { zone: z, t: 1, next: null, nextAt: null, remain: 0 }
+    : cyclicZoneProgress(visualDistance)
   if (zp.next && zp.t > 0.92 && zp.t < 0.97) {
     // gentle pre-transition fog lean
     scene.fog.color.lerp(_zoneFogColor.set(zp.next.fog), dt * 0.4)
@@ -6086,7 +6122,7 @@ function update(dt) {
   if (nextZoneHud) {
     const showHint = zp.next && zp.t > 0.7
     nextZoneHud.classList.toggle('hidden', !showHint)
-    if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.nextAt - distance))}m`
+    if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.remain))}m`
   }
   updateEndlessTier()
   updateEdgeIndicators()

@@ -1191,7 +1191,12 @@ async function renderBoard(tab = 'local') {
     }
   }
   if (!rows.length) {
-    list.innerHTML = '<li>No scores yet — go fly!</li>'
+    if (tab === 'weekly') {
+      const fold = thisWeeksFold()
+      list.innerHTML = `<li>No scores for ${weeklyKey()} · ${fold.name} yet — go fly!</li>`
+    } else {
+      list.innerHTML = '<li>No scores yet — go fly!</li>'
+    }
     return
   }
   const myName = normalizeLeaderboardName(pilotNameInput?.value)

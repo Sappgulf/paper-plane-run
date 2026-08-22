@@ -62,6 +62,14 @@ describe('cyclicZoneProgress', () => {
       nextAt: ZONES[1].from,
     })
     expect(cyclicZoneProgress(midCity).t).toBeCloseTo(0.5, 5)
+    expect(cyclicZoneProgress(midCity).remain).toBeCloseTo(ZONES[1].from - midCity)
+  })
+
+  test('remain is measured in the same space as the distance you pass in', () => {
+    const offset = ZONES[1].from
+    const progress = cyclicZoneProgress(offset)
+    expect(progress.zone.id).toBe('harbor')
+    expect(progress.remain).toBe(ZONES[2].from - offset)
   })
 
   test('wraps the countdown to the next lap instead of reporting no next zone', () => {

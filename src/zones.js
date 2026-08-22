@@ -111,25 +111,30 @@ export function cyclicZoneAt(distance) {
 /** Zone progress that keeps counting down to the next zone across laps. */
 export function cyclicZoneProgress(distance) {
   const { zone, lap, localDistance } = cyclicZoneAt(distance)
+  const visual = lap * ZONE_LOOP_SPAN + localDistance
   const next = nextZone(localDistance)
   if (next) {
     const span = Math.max(1, next.from - zone.from)
+    const nextAt = lap * ZONE_LOOP_SPAN + next.from
     return {
       zone,
       lap,
       t: Math.min(1, Math.max(0, (localDistance - zone.from) / span)),
       next,
-      nextAt: lap * ZONE_LOOP_SPAN + next.from,
+      nextAt,
+      remain: Math.max(0, nextAt - visual),
     }
   }
   // Final zone of the lap — the countdown wraps to Paper City on the next lap.
   const span = Math.max(1, ZONE_LOOP_SPAN - zone.from)
+  const nextAt = (lap + 1) * ZONE_LOOP_SPAN
   return {
     zone,
     lap,
     t: Math.min(1, Math.max(0, (localDistance - zone.from) / span)),
     next: ZONES[0],
-    nextAt: (lap + 1) * ZONE_LOOP_SPAN,
+    nextAt,
+    remain: Math.max(0, nextAt - visual),
   }
 }
 
