@@ -163,6 +163,14 @@ import {
 } from './game/near-miss-feedback.js'
 import { consumeGuardianCharge, shouldGuardianSave } from './game/guardian-runtime.js'
 import {
+  SPAWN_INVULN_SECONDS,
+  UNFOLD_SECONDS,
+  applySoftBounds,
+  groundEffectSpeedMul,
+  integrateAimFlight,
+  integrateRelativeFlight,
+} from './game/paper-flight.js'
+import {
   advanceShot,
   inkPopReward,
   resolveWeaponFire,
@@ -3694,7 +3702,7 @@ function resetGame() {
   bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
-  invuln = 0.4 // brief spawn grace
+  invuln = SPAWN_INVULN_SECONDS
   const guardian = getGuardianState({ charges: upgradeEffects.guardianCharges })
   guardianLeft = guardian.remaining
   guardianHud?.classList.toggle('hidden', !guardian.visible)
@@ -5497,7 +5505,7 @@ function update(dt) {
   // Brief unfold flourish right after launch — the plane pops in from a
   // crease instead of just appearing at full size.
   if (spawnUnfold < 1) {
-    spawnUnfold = Math.min(1, spawnUnfold + dt / 0.4)
+    spawnUnfold = Math.min(1, spawnUnfold + dt / UNFOLD_SECONDS)
     const eased = 1 - Math.pow(1 - spawnUnfold, 3)
     plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85) * 1.12)
   }
@@ -5743,6 +5751,7 @@ function update(dt) {
   }
 
   windTimer -= dt
+  let windPushX = 0
   if (windWarningTimer > 0) {
     // A brief telegraph before the push actually starts — matches the boss
     // encounters' warning-before-commit pattern instead of shoving the
@@ -5755,7 +5764,7 @@ function update(dt) {
     }
   } else if (windActive > 0) {
     windActive -= dt
-    velX += windForce * dt * (activePower?.kind === 'slow' ? 0.5 : 1)
+    windPushX = windForce * (activePower?.kind === 'slow' ? 0.5 : 1)
     if (windActive <= 0) windBanner.classList.add('hidden')
   } else if (windTimer <= 0 && runKind !== 'tutorial' && runKind !== 'coop' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
@@ -5796,8 +5805,10 @@ function update(dt) {
   // Physics toys modifiers
   let sinkModifier = activeTwist?.sinkMul ?? 1
   let controlAcceleration = controlResponse.acceleration
+  let extraForceX = windPushX
+  let extraForceY = 0
   if (activePower?.kind === 'tear') {
-    velX += tearSide * 14 * dt
+    extraForceX += tearSide * 14
     controlAcceleration *= 0.85
   }
   if (activePower?.kind === 'clip') {
@@ -5813,7 +5824,8 @@ function update(dt) {
       powerFill.style.width = `${slingHold * 100}%`
     } else if (slingHold > 0.12) {
       const power = slingHold
-      velY += 18 * power
+      if (mouseMode) extraForceY += 18 * power / Math.max(dt, 0.001)
+      else velY += 18 * power
       speedBoost = Math.max(speedBoost, 28 * power)
       fovPunch = 6 + 8 * power
       shake = 0.35
@@ -5826,55 +5838,66 @@ function update(dt) {
     } else slingHold = 0
   }
 
+  const sinkPerSecond = altitudeRecovery.sinkPerSecond * sinkModifier
   if (mouseMode) {
-    // Dead-accurate aim: plane sits on cursor ray hit with near-instant follow
-    const sens = THREE.MathUtils.clamp(Number(settings.mouseSensitivity) || 1, 0.5, 2.2)
-    const follow = controlResponse.follow
-    const prevX = planeX
-    const prevY = planeY
-    planeX = THREE.MathUtils.lerp(planeX, mouseTarget.x, follow)
-    planeY = THREE.MathUtils.lerp(planeY, mouseTarget.y, follow)
-    // If very close, snap for pixel-perfect feel
-    if (Math.hypot(mouseTarget.x - planeX, mouseTarget.y - planeY) < 0.08 * sens) {
-      planeX = mouseTarget.x
-      planeY = mouseTarget.y
-    }
-    const invDt = 1 / Math.max(dt, 0.001)
-    velX = THREE.MathUtils.clamp((planeX - prevX) * invDt, -MAX_VEL, MAX_VEL)
-    velY = THREE.MathUtils.clamp((planeY - prevY) * invDt, -MAX_VEL, MAX_VEL)
+    const aimed = integrateAimFlight({
+      x: planeX,
+      y: planeY,
+      targetX: mouseTarget.x,
+      targetY: mouseTarget.y,
+      dt,
+      follow: controlResponse.follow,
+      sinkPerSecond,
+      extraForceX,
+      extraForceY,
+      maxVel: MAX_VEL,
+    })
+    planeX = aimed.x
+    planeY = aimed.y
+    velX = aimed.velX
+    velY = aimed.velY
+    mouseTarget.y = aimed.targetY
   } else {
-    velX += inputX * controlAcceleration * dt
-    velY += inputY * controlAcceleration * dt
-    velY -= altitudeRecovery.sinkPerSecond * sinkModifier * dt
-    const dragX = activePower?.kind === 'boost' ? 0.12 : 0.06
-    const dragY = activePower?.kind === 'boost' ? 0.15 : 0.1
-    velX *= Math.pow(dragX, dt)
-    velY *= Math.pow(dragY, dt)
-    velX = THREE.MathUtils.clamp(velX, -MAX_VEL, MAX_VEL)
-    velY = THREE.MathUtils.clamp(velY, -MAX_VEL, MAX_VEL)
-    planeX += velX * dt
-    planeY += velY * dt
+    const flown = integrateRelativeFlight({
+      x: planeX,
+      y: planeY,
+      velX,
+      velY,
+      inputX,
+      inputY,
+      dt,
+      acceleration: controlAcceleration,
+      sinkPerSecond,
+      dragX: activePower?.kind === 'boost' ? 0.12 : 0.06,
+      dragY: activePower?.kind === 'boost' ? 0.15 : 0.1,
+      maxVel: MAX_VEL,
+      extraForceX,
+      extraForceY,
+    })
+    planeX = flown.x
+    planeY = flown.y
+    velX = flown.velX
+    velY = flown.velY
   }
 
-  // Soft walls — bounce instead of hard clamp stick
-  if (planeX < -MAX_X) {
-    planeX = -MAX_X
-    velX = Math.abs(velX) * 0.35
-    mouseTarget.x = Math.max(mouseTarget.x, -MAX_X)
-  } else if (planeX > MAX_X) {
-    planeX = MAX_X
-    velX = -Math.abs(velX) * 0.35
-    mouseTarget.x = Math.min(mouseTarget.x, MAX_X)
-  }
-  if (planeY < MIN_Y) {
-    planeY = MIN_Y
-    velY = Math.max(0, -velY * 0.25)
-    mouseTarget.y = Math.max(mouseTarget.y, MIN_Y)
-  } else if (planeY > MAX_Y) {
-    planeY = MAX_Y
-    velY = -Math.abs(velY) * 0.3
-    mouseTarget.y = Math.min(mouseTarget.y, MAX_Y)
-  }
+  const bounded = applySoftBounds({
+    x: planeX,
+    y: planeY,
+    velX,
+    velY,
+    targetX: mouseTarget.x,
+    targetY: mouseTarget.y,
+    minX: -MAX_X,
+    maxX: MAX_X,
+    minY: MIN_Y,
+    maxY: MAX_Y,
+  })
+  planeX = bounded.x
+  planeY = bounded.y
+  velX = bounded.velX
+  velY = bounded.velY
+  mouseTarget.x = bounded.targetX
+  mouseTarget.y = bounded.targetY
 
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
@@ -5894,7 +5917,8 @@ function update(dt) {
   // Tier speed rides on top of the difficulty cap, which cruise alone reaches
   // by ~450m. Applied after speedMul so slow/boost powers still scale the
   // whole cruise rather than only its pre-tier half.
-  speed = cruise.cruiseSpeed + speedBoost + endlessTier().speedBonus * speedMul
+  speed = (cruise.cruiseSpeed + speedBoost + endlessTier().speedBonus * speedMul)
+    * groundEffectSpeedMul(groundSkim.tier)
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
