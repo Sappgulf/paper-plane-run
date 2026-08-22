@@ -2,6 +2,19 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-22 — Verification pass: real crash fixes, corner-button UX, flake-proof boot
+
+- **Crash fix:** `createWindTunnelGate` referenced an undefined `halfHeight` (only `halfWidth` was declared after the boss-fairness rebuild). Every wind-boss spawn killed the engine — in the browser this surfaced as `EngineLifecycleError: halfHeight is not defined` at boot, which broke the wind boss encounter and made the e2e boss lane unreliable. Declared the value from `userData` like its twins.
+- **Plane preview stale-hover fix:** after purchasing/equipping a plane, re-rendered card grid sat under a stationary cursor; browsers re-fire `pointerenter` for those cards and the preview reverted to the card under the pointer (e.g. buy Coral → preview says Classic Cream). Added a short post-render hover lock plus a moving-pointer guard (`lastPointerMoveAt`), so the equipped plane wins after purchase and genuine mouse/touch browsing still previews cards. Focus previews untouched for keyboard accessibility.
+- **Corner-button UI/UX:** Desk AR 📷 was shown on main menus and the install shortcut ⬇️ stayed visible mid-flight, crowding the mobile top row over the logo card. AR is now flight-only; install hides during flight and re-shows on menus only when PWA-eligible (`data-install-eligible`). Matched a boot `syncPauseUi()` so states apply without waiting for an interaction.
+- **Dev-boot race:** the service worker (which claims and reloads the page once on first install, killing the module graph mid-load) now registers only in production builds (`import.meta.env.PROD`); dev/e2e boots are single load, offline/PWA behavior unchanged on the deployed site.
+- **Shell boot marker:** `html[data-shell=ready]` set when the shell finishes top-level wiring — gives tests (and future perf probes) a deterministic boot signal; `openApp` waits for it, retrying across the first-visit SW reload.
+- **E2E suite health:** fixed stale expectations vs. the intentional economy/boss changes (mint 18★/coral 32★, passages 4.0×3.7, warning 1.5s/pressure 1.5s timings), scoped the upgrade-card lookup by `u-title` (Gold Rush's "stacks with Lucky Scrap" text made `hasText` match two cards), made game-over/boss flows engine-aware (`waitForGameText`), moved hangar-nav clicks to the suite's force-tap pattern, and added a corner-button state regression test. Global Playwright timeout 45s → 90s; heavy WebGL tests stay `test.slow()`.
+- Verification: 51 Vitest files / 256 tests passed; full Playwright 47 passed, 15 viewport-gated skips, 0 failed; production build + bundle budget PASS (94,312 initial / 789,954 total bytes vs 819,200 limit); iOS parity 114 files byte-exact.
+- **Rebased onto an upstream main advance** (`160cf19` + the Weekly Fold / aim-mode physics series): kept the wind-boss crash fix, corner-button UX, shell boot marker, and dev-SW gate while adopting upstream's stronger synchronous preview epoch/lock system (their `data-plane-id` sets immediately, focused-intent + pointer-gate locks) and `data-upgrade-id` e2e selectors; reconciled boss passages (now 4.8×4.4 normal) and ghost-share game-over copy. Full re-verification on the merged tree: 64 Vitest files / 406 tests; full Playwright 58 passed, 24 viewport-gated skips, 0 failed; bundle budget PASS (837,279 total / 921,600); iOS parity 86 files byte-exact.
+
+
+
 ## 2026-07-18 — Imagine boss emblems
 
 - Generated paper-diorama scissors / wind / stapler emblems; cut to real alpha webp+png.

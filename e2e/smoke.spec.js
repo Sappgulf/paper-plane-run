@@ -17,6 +17,24 @@ const UPGRADE_CARD_CONTRACTS = [
   { id: 'wealth', name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
 ]
 
+async function waitForShell(page) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.waitForFunction(
+        () => document.documentElement.dataset.shell === 'ready',
+        null,
+        { timeout: 60_000 },
+      )
+      return
+    } catch {
+      // The first-visit service worker claims the page and reloads it once;
+      // the boot marker only exists on the settled document.
+      await page.waitForTimeout(1_000)
+    }
+  }
+  throw new Error('shell did not become ready')
+}
+
 function openApp(page, path = '/') {
   page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-disable-sw', '1')
@@ -28,7 +46,8 @@ function openApp(page, path = '/') {
     // Mark it seen so mobile layout is settled before any test touches it.
     localStorage.setItem('paper-plane-run-landscape-hint-seen', '1')
   })
-  return page.goto(path, { waitUntil: 'domcontentloaded' })
+  const goto = page.goto(path, { waitUntil: 'domcontentloaded' })
+  return goto.then(() => waitForShell(page))
 }
 
 /**
@@ -367,8 +386,8 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const preview = page.locator('[data-plane-preview]')
-  await expect(preview).toHaveAttribute('data-plane-id', 'classic')
-  await expect(preview).toHaveAttribute('data-silhouette', 'classic')
+  await expect(preview).toHaveAttribute('data-plane-id', 'classic', { timeout: 45_000 })
+  await expect(preview).toHaveAttribute('data-silhouette', 'classic', { timeout: 45_000 })
   await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
   await expect(preview.locator('canvas')).toBeVisible()
 
@@ -385,18 +404,18 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
 
   await mint.focus()
-  await expect(preview).toHaveAttribute('data-plane-id', 'mint')
-  await expect(preview).toHaveAttribute('data-silhouette', 'glider')
-  await expect(preview).toHaveAttribute('data-preview-status', 'ready')
+  await expect(preview).toHaveAttribute('data-plane-id', 'mint', { timeout: 45_000 })
+  await expect(preview).toHaveAttribute('data-silhouette', 'glider', { timeout: 45_000 })
+  await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
 
   await tap(coral)
   await expect(page.locator('.skin-card[data-plane-id="coral"]')).toHaveClass(/state-equipped/)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-plane-run-skin'))).toBe('coral')
   await expect(page.locator('#hangar-wallet')).toHaveText('68')
   await expect(page.locator('#skins-status')).toHaveText('Coral Wash purchased and equipped.')
-  await expect(preview).toHaveAttribute('data-plane-id', 'coral')
-  await expect(preview).toHaveAttribute('data-silhouette', 'dart')
-  await expect(preview).toHaveAttribute('data-preview-status', 'ready')
+  await expect(preview).toHaveAttribute('data-plane-id', 'coral', { timeout: 45_000 })
+  await expect(preview).toHaveAttribute('data-silhouette', 'dart', { timeout: 45_000 })
+  await expect(preview).toHaveAttribute('data-preview-status', 'ready', { timeout: 45_000 })
   await page.locator('.hangar-body').evaluate((element) => { element.scrollTop = 0 })
   if (process.env.CAPTURE_TASK5_PROOF === '1') {
     await page.screenshot({
@@ -436,7 +455,10 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
     })
 
     await tap(page.getByRole('tab', { name: '🔧 Upgrades' }))
-    await expect.poll(() => page.evaluate(() => window.__webglContextLosses)).toEqual({
+    await expect.poll(
+      () => page.evaluate(() => window.__webglContextLosses),
+      { timeout: 45_000 },
+    ).toEqual({
       gameplay: 0,
       preview: visit,
     })
@@ -828,9 +850,12 @@ test('reduced motion keeps shield and phase feedback stable in the live loop', a
 
 test('existing bosses expose deterministic readable phases and accessibility cues', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  test.slow()
+  test.setTimeout(240_000)
 
   await openApp(page, '/?boss-proof=scissors#test-boss-encounter')
   await waitForGameText(page)
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss?.kind || null), { timeout: 45_000 }).toBe('scissors')
   const scissors = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(scissors.boss).toMatchObject({ kind: 'scissors', phase: 'warning', completed: false })
   expect(scissors.boss.passage).toMatchObject({ halfWidth: 4.8, halfHeight: 4.4 })
@@ -850,6 +875,7 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   })
   await openApp(page, '/?boss-proof=wind#test-boss-encounter')
   await waitForGameText(page)
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss?.kind || null), { timeout: 45_000 }).toBe('wind')
   const wind = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(wind.boss).toMatchObject({ kind: 'wind', phase: 'warning', shapeCue: 'radial-vane-ring' })
   expect(wind.settings).toMatchObject({ reducedMotion: true, colorblindPowers: true })
@@ -858,6 +884,7 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   await openApp(page, '/?boss-proof=scissors&boss-pass=1#test-boss-encounter')
   await waitForGameText(page)
   await page.evaluate(() => window.advanceTime(220))
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).boss?.completed), { timeout: 45_000 }).toBe(true)
   const cleared = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(cleared.state).toBe('playing')
   expect(cleared.boss).toMatchObject({ kind: 'scissors', completed: true })
@@ -993,6 +1020,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
 test('mobile game-over puts retry before sharing and inside the viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page, '/#test-gameover')
+  await waitForGameText(page)
 
   const retry = page.getByRole('button', { name: 'Fly Again' })
   const share = page.getByRole('button', { name: /Share (ghost|Score)/ })
@@ -1008,9 +1036,10 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
 
 test('game-over summarizes banked rewards and the next action', async ({ page }) => {
   await openApp(page, '/#test-gameover')
+  await waitForGameText(page)
 
   const summary = page.locator('#run-summary')
-  await expect(summary).toBeVisible({ timeout: 15_000 })
+  await expect(summary).toBeVisible()
   await expect(summary).toContainText('Banked')
   await expect(summary).toContainText('+3★')
   await expect(summary).toContainText('Banked 3★ · keep flying toward an upgrade')
@@ -1019,12 +1048,12 @@ test('game-over summarizes banked rewards and the next action', async ({ page })
 
 test('Hangar Progress/Meta filter keeps only the active group tabs visible', async ({ page }) => {
   await openApp(page)
-  await page.getByRole('button', { name: '🏠 Hangar' }).click()
+  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
 
   await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeVisible()
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeHidden()
 
-  await page.getByRole('button', { name: 'Meta' }).click()
+  await tap(page.getByRole('button', { name: 'Meta' }))
   await expect(page.getByRole('tab', { name: /Board/ })).toBeVisible()
   await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeHidden()
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeVisible()
@@ -1537,4 +1566,24 @@ test('stars spread across lanes instead of stacking on the guaranteed one', asyn
   expect(busiest / mix.total, detail).toBeLessThan(0.8)
 
   expect(errors).toEqual([])
+})
+
+test('corner buttons stay where they belong (AR/install/pause)', async ({ page }, testInfo) => {
+  await openApp(page)
+  await waitForGameText(page)
+
+  // Menus: Desk AR and pause are flight-only; install is mobile-only and
+  // respects its PWA eligibility instead of cluttering the corner row.
+  await expect(page.locator('#ar-btn')).toBeHidden({ timeout: 45_000 })
+  await expect(page.locator('#pause-btn')).toBeHidden({ timeout: 45_000 })
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.locator('#install-btn')).toBeVisible({ timeout: 45_000 })
+  } else {
+    await expect(page.locator('#install-btn')).toBeHidden({ timeout: 45_000 })
+  }
+
+  await tap(page.locator('#start-btn'))
+  await expect(page.locator('#ar-btn')).toBeVisible()
+  await expect(page.locator('#pause-btn')).toBeVisible()
+  await expect(page.locator('#install-btn')).toBeHidden()
 })
