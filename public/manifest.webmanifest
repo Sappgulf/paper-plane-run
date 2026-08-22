@@ -56,6 +56,13 @@
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
+      "name": "Weekly Fold",
+      "short_name": "Weekly",
+      "description": "This week's seeded map and opening sky",
+      "url": "/?mode=weekly",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
       "name": "Living Journey",
       "short_name": "Journey",
       "description": "Story routes across the paper skies",

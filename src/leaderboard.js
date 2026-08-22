@@ -98,9 +98,15 @@ export function getWeeklyTop(weeklyKey, mode, limit = 10) {
 }
 
 /** Optional remote — fails soft if API unavailable */
-export async function fetchRemoteTop(mode = 'normal', daily = false) {
+export async function fetchRemoteTop(mode = 'normal', opts = false) {
+  const daily = opts === true || opts?.daily
+  const weekly = !!opts?.weekly
   try {
-    const q = new URLSearchParams({ mode, daily: daily ? '1' : '0' })
+    const q = new URLSearchParams({
+      mode,
+      daily: daily ? '1' : '0',
+      weekly: weekly ? '1' : '0',
+    })
     const res = await fetch(`${API_BASE}/api/leaderboard?${q}`)
     if (!res.ok) return null
     return await res.json()

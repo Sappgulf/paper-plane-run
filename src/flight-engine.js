@@ -4981,7 +4981,9 @@ function finalizeDeathUnsafe() {
       weekly: runKind === 'weekly', weeklyKey: weeklyKey(),
     })
     submitRemoteScore({
-      name, distance: d, stars, mode: difficulty.id, daily: runKind === 'daily',
+      name, distance: d, stars, mode: difficulty.id,
+      daily: runKind === 'daily',
+      weekly: runKind === 'weekly',
     })
   } else if (runKind === 'timeattack') {
     submitTimeAttackScore({ name, stars, distance: d, mode: difficulty.id })
@@ -5041,11 +5043,16 @@ function finalizeDeathUnsafe() {
 
   if (challenge && challenge.m === difficulty.id) {
     challengeResult.classList.remove('hidden')
+    const rival = launchChallenge?.name ? `${launchChallenge.name}'s ` : ''
     challengeResult.textContent =
       d > challenge.d
-        ? `You beat the challenge! (${challenge.d}m → ${d}m)`
-        : `Challenge was ${challenge.d}m · ${challenge.s}★ — you got ${d}m · ${stars}★`
+        ? `You beat ${rival}${challenge.d}m ghost! (${challenge.d}m → ${d}m)`
+        : `${rival || 'Challenge '}ghost was ${challenge.d}m · ${challenge.s}★ — you got ${d}m · ${stars}★`
   } else challengeResult.classList.add('hidden')
+  const shareBtn = $('share-btn')
+  if (shareBtn) {
+    shareBtn.textContent = lastRun.path?.length ? 'Share ghost' : 'Share Score'
+  }
 
   if (streakBadge) {
     streakBadge.textContent = `🔥 ${getPlayStreak()}-day streak${weeklyBonus > 0 ? ` · +${weeklyBonus}★ bonus!` : ''}`

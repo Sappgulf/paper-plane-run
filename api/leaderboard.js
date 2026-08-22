@@ -10,6 +10,7 @@ import {
   normalizeLeaderboardMode,
   normalizeLeaderboardName,
 } from '../src/game/leaderboard-contract.js'
+import { weeklyKey } from '../src/game/weekly-fold.js'
 
 const g = globalThis
 const MAX_BODY_BYTES = 16 * 1024
@@ -19,6 +20,7 @@ if (!g.__pprBoard) {
   g.__pprBoard = {
     all: [],
     daily: {},
+    weekly: {},
   }
 }
 
@@ -40,6 +42,7 @@ function sanitize(entry) {
     stars: Math.min(1e4, normalizeLeaderboardInteger(entry.stars)),
     mode: normalizeLeaderboardMode(entry.mode),
     daily: !!entry.daily,
+    weekly: !!entry.weekly && !entry.daily,
     at: Date.now(),
   }
 }
@@ -110,13 +113,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'invalid mode' })
     }
     const daily = req.query?.daily === '1'
+    const weekly = req.query?.weekly === '1'
     if (daily) {
       const key = `${dayKey()}|${mode}`
       const list = board.daily[key] || []
-      return res.status(200).json({ source: 'remote', daily: true, mode, day: dayKey(), scores: list })
+      return res.status(200).json({ source: 'remote', daily: true, weekly: false, mode, day: dayKey(), scores: list })
+    }
+    if (weekly) {
+      const week = weeklyKey()
+      const key = `${week}|${mode}`
+      const list = (board.weekly || {})[key] || []
+      return res.status(200).json({ source: 'remote', daily: false, weekly: true, mode, week, scores: list })
     }
     const scores = board.all.filter((s) => s.mode === mode).slice(0, 15)
-    return res.status(200).json({ source: 'remote', daily: false, mode, scores })
+    return res.status(200).json({ source: 'remote', daily: false, weekly: false, mode, scores })
   }
 
   if (req.method === 'POST') {
@@ -134,6 +144,13 @@ export default async function handler(req, res) {
       if (!board.daily[key]) board.daily[key] = []
       board.daily[key].push(entry)
       board.daily[key] = sortTrim(board.daily[key], 30)
+    }
+    if (entry.weekly) {
+      if (!board.weekly) board.weekly = {}
+      const key = `${weeklyKey()}|${entry.mode}`
+      if (!board.weekly[key]) board.weekly[key] = []
+      board.weekly[key].push(entry)
+      board.weekly[key] = sortTrim(board.weekly[key], 30)
     }
 
     return res.status(200).json({

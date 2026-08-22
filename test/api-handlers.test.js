@@ -27,7 +27,7 @@ function responseDouble() {
 }
 
 beforeEach(() => {
-  globalThis.__pprBoard = { all: [], daily: {} }
+  globalThis.__pprBoard = { all: [], daily: {}, weekly: {} }
   globalThis.__pprLeaderboardRate = new Map()
   globalThis.__pprAnalytics = { events: [], funnel: {} }
   globalThis.__pprAnalyticsRate = new Map()
@@ -65,6 +65,26 @@ describe('leaderboard API boundary', () => {
     const result = responseDouble()
     await leaderboardHandler({ method: 'POST', body: 'x'.repeat(16 * 1024 + 1) }, result)
     expect(result.statusCode).toBe(413)
+  })
+
+  test('keeps a weekly bucket separate from daily and all-time', async () => {
+    const posted = responseDouble()
+    await leaderboardHandler({
+      method: 'POST',
+      headers: { 'x-forwarded-for': 'test-weekly' },
+      body: { name: 'Fold', distance: 880, stars: 9, mode: 'normal', weekly: true },
+    }, posted)
+    expect(posted.statusCode).toBe(200)
+
+    const weekly = responseDouble()
+    await leaderboardHandler({ method: 'GET', query: { mode: 'normal', weekly: '1' } }, weekly)
+    expect(weekly.payload.weekly).toBe(true)
+    expect(weekly.payload.week).toMatch(/^\d{4}-W\d{2}$/)
+    expect(weekly.payload.scores.map((row) => row.distance)).toEqual([880])
+
+    const daily = responseDouble()
+    await leaderboardHandler({ method: 'GET', query: { mode: 'normal', daily: '1' } }, daily)
+    expect(daily.payload.scores).toEqual([])
   })
 })
 

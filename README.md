@@ -74,7 +74,9 @@ Menu → **⚙️ Settings** for AR, season override, graphics, accessibility.
 Both endpoints are optional best-effort Vercel functions: the browser keeps
 local progress when they are unavailable, and serverless memory is not a
 durable leaderboard database. Writes are bounded and rate-limited, while
-analytics reads return aggregate funnel counts only.
+analytics reads return aggregate funnel counts only. Weekly Fold scores
+land in a server-computed ISO-week bucket (`?weekly=1`) in addition to the
+device board.
 
 ## Verification
 

@@ -757,6 +757,16 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   border-color: rgba(124,58,237,.2);
   color: #5b21b6;
 }
+#weekly-btn {
+  background: linear-gradient(180deg, #e0f2fe, #bae6fd);
+  border-color: rgba(14,116,144,.18);
+  color: #155e75;
+}
+.route-hints {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 6px;
+}
+.route-hints .mini-hint { margin: 0; min-height: 0; }
 
 .mini-hint { font-size: 12px; font-weight: 700; color: #6b554f; margin: 4px 0 8px; min-height: 1.1em; }
 .landscape-hint {
@@ -1300,6 +1310,7 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
   .menu-panel .engine-status,
   .menu-panel .engine-retry,
   .menu-panel .mini-hint,
+  .menu-panel .route-hints,
   .menu-panel .landscape-hint,
   .menu-panel .name-row { grid-column: 1 / -1; }
   .menu-panel .menu-hero { margin-bottom: 8px; }

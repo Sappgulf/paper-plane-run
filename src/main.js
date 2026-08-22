@@ -1174,7 +1174,13 @@ async function renderBoard(tab = 'local') {
   let rows = []
   if (tab === 'local') rows = getLocalTop(12)
   else if (tab === 'daily') rows = getDailyTop(dailyKey(), difficulty.id, 12)
-  else if (tab === 'weekly') rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
+  else if (tab === 'weekly') {
+    rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
+    if (!rows.length) {
+      const remote = await fetchRemoteTop(difficulty.id, { weekly: true })
+      rows = remote?.scores || []
+    }
+  }
   else if (tab === 'timeattack') rows = getTimeAttackTop(12)
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)

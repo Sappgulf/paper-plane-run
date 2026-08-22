@@ -151,6 +151,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
   await expect(page.locator('#start-btn')).toBeVisible()
   await expect(page.locator('#weekly-btn')).toBeVisible()
   await expect(page.locator('#weekly-hint')).toContainText('Weekly')
+  await expect(page.locator('.route-hints')).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -994,7 +995,7 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
   await openApp(page, '/#test-gameover')
 
   const retry = page.getByRole('button', { name: 'Fly Again' })
-  const share = page.getByRole('button', { name: 'Share Score' })
+  const share = page.getByRole('button', { name: /Share (ghost|Score)/ })
   await expect(page.getByRole('heading', { name: 'Crashed!' })).toBeVisible({ timeout: 15_000 })
   await expect(retry).toBeVisible()
   await expect(retry).toBeInViewport()
