@@ -33,19 +33,21 @@ html, body, #game-root {
 #c { display: block; width: 100%; height: 100%; touch-action: none; }
 .hidden { display: none !important; }
 
-/* —— Speed streaks (opacity driven by JS from current flight speed) —— */
-html[data-boosting='1'] #speed-fx { opacity: 0.5 !important; }
+/* —— Speed streaks (opacity driven by JS from current flight speed) ——
+   Thin, faint rays that live only near the frame edge; earlier art ran
+   near-opaque white to the mid-screen and read as a rendering artifact. */
+html[data-boosting='1'] #speed-fx { opacity: 0.34 !important; }
 html[data-render-quality='low'] #speed-fx { display: none; }
 #speed-fx {
   position: absolute; inset: 0; pointer-events: none; z-index: 1;
   opacity: 0;
   background: repeating-conic-gradient(
     from 0deg,
-    rgba(255, 255, 255, 0.85) 0deg 1.1deg,
-    transparent 1.1deg 9deg
+    rgba(255, 252, 244, 0.4) 0deg 0.55deg,
+    transparent 0.55deg 6.5deg
   );
-  -webkit-mask-image: radial-gradient(circle at 50% 52%, transparent 32%, black 78%);
-  mask-image: radial-gradient(circle at 50% 52%, transparent 32%, black 78%);
+  -webkit-mask-image: radial-gradient(circle at 50% 52%, transparent 46%, rgba(0, 0, 0, 0.8) 92%);
+  mask-image: radial-gradient(circle at 50% 52%, transparent 46%, rgba(0, 0, 0, 0.8) 92%);
   transition: opacity 0.18s ease-out;
 }
 
@@ -139,20 +141,40 @@ html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; op
 #flight-route[data-zone="sunset"] { --route-accent: #d45a3c; }
 #flight-route[data-zone="midnight"] { --route-accent: #5d4698; }
 
+/* Flight target marker — rides the object it names (star line, hazard,
+   power-up), never the plane. Four corner brackets drawn with layered
+   gradients read as "this thing, right here" without wrapping the scene
+   in a hoop; --fc swaps the whole reticle color per cue state. */
 #flight-focus {
-  position: absolute; left: 0; top: 0; z-index: 4; width: 88px; height: 88px;
-  transform: translate(-50%, -50%); pointer-events: none; opacity: .84;
-  transition: left .12s linear, top .12s linear, opacity .2s ease;
+  position: absolute; left: 0; top: 0; z-index: 4; width: 46px; height: 46px;
+  transform: translate(-50%, -50%); pointer-events: none;
+  transition: left .08s linear, top .08s linear, opacity .18s ease;
 }
-.flight-focus-ring { position: absolute; inset: 7px; border: 1px solid rgba(255,250,242,.82); border-radius: 50%; box-shadow: 0 0 0 1px rgba(36,59,83,.22), 0 0 22px rgba(255,250,242,.32); }
-.flight-focus-ring::before, .flight-focus-ring::after { content: ''; position: absolute; background: rgba(255,250,242,.86); box-shadow: 0 0 4px rgba(36,59,83,.25); }
-.flight-focus-ring::before { width: 1px; height: 18px; left: 50%; top: -9px; }
-.flight-focus-ring::after { width: 18px; height: 1px; left: -9px; top: 50%; }
-.flight-focus-cue { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); color: rgba(255,250,242,.9); font-size: 8px; font-weight: 1000; letter-spacing: .16em; text-shadow: 0 1px 4px rgba(36,59,83,.55); white-space: nowrap; }
-#flight-focus[data-cue="hazard"] .flight-focus-ring { border-color: rgba(255,124,95,.96); box-shadow: 0 0 0 1px rgba(134,35,25,.28), 0 0 25px rgba(231,111,81,.45); }
-#flight-focus[data-cue="hazard"] .flight-focus-cue { color: #ffd5c6; }
-#flight-focus[data-cue="star"] .flight-focus-ring { border-color: rgba(255,217,92,.95); box-shadow: 0 0 0 1px rgba(134,96,25,.24), 0 0 24px rgba(240,180,41,.5); }
-#flight-focus[data-cue="power"] .flight-focus-ring { border-color: rgba(143,234,207,.95); box-shadow: 0 0 0 1px rgba(25,92,75,.24), 0 0 24px rgba(105,184,154,.45); }
+.flight-focus-ring {
+  position: absolute; inset: 0;
+  --fc: rgba(255,250,242,.92);
+  filter: drop-shadow(0 1px 3px rgba(36,59,83,.45));
+  background:
+    linear-gradient(var(--fc), var(--fc)) left top / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) left top / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) right top / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) right top / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) left bottom / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) left bottom / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) right bottom / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) right bottom / 2px 13px;
+  background-repeat: no-repeat;
+}
+.flight-focus-cue {
+  position: absolute; left: 50%; top: 100%; transform: translate(-50%, 5px);
+  color: #fffaf2; font-size: 9px; font-weight: 1000; letter-spacing: .16em;
+  text-shadow: 0 1px 4px rgba(36,59,83,.65); white-space: nowrap;
+}
+#flight-focus[data-cue="hazard"] { --cue-text: #ffd9cc; }
+#flight-focus[data-cue="hazard"] .flight-focus-ring { --fc: rgba(255,138,110,.98); }
+#flight-focus[data-cue="hazard"] .flight-focus-cue { color: var(--cue-text, #ffd9cc); }
+#flight-focus[data-cue="star"] .flight-focus-ring { --fc: rgba(255,214,92,.95); }
+#flight-focus[data-cue="power"] .flight-focus-ring { --fc: rgba(143,234,207,.95); }
 html.a11y-reduced-motion #flight-focus { transition: none; }
 html.a11y-reduced-motion .flight-route-track span { transition: none; }
 

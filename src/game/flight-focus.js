@@ -58,11 +58,11 @@ export function pickFlightFocus(candidates, { planeX = 0, planeY = 10, teachStar
     })
     if (score < bestScore) {
       bestScore = score
-      best = { type, score }
+      best = { type, score, x: finite(x), y: finite(y), z: finite(z) }
     }
   }
-  if (!best) return { cue: 'clear', label: 'FLY', type: null, score: Infinity }
-  return { ...describeFocusCue(best.type), type: best.type, score: best.score }
+  if (!best) return { cue: 'clear', label: 'FLY', type: null, score: Infinity, target: null }
+  return { ...describeFocusCue(best.type), type: best.type, score: best.score, target: { x: best.x, y: best.y, z: best.z } }
 }
 
 export function isTelegraphHazardType(type, { dive = false } = {}) {

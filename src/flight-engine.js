@@ -441,7 +441,22 @@ function updateFlightReadability(routeState = null) {
   }
 
   if (!flightFocusEl) return
-  _focusNdc.copy(plane.position).project(camera)
+  // The marker names what's ahead — a star line, a hazard, a power-up — so it
+  // rides the *target*, never the plane. An always-on ring around your own
+  // plane read as a rendering artifact and buried the plane silhouette under
+  // HUD clutter; an empty corridor now simply shows nothing.
+  const focus = pickFlightFocus(entities, {
+    planeX,
+    planeY,
+    teachStars: shouldTelegraphStarLane(distance),
+  })
+  flightFocusEl.dataset.cue = focus.cue
+  if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
+  if (!focus.target) {
+    flightFocusEl.classList.add('hidden')
+    return
+  }
+  _focusNdc.set(focus.target.x, focus.target.y, focus.target.z).project(camera)
   const focusOnScreen = _focusNdc.z <= 1 && Math.abs(_focusNdc.x) < 1.15 && Math.abs(_focusNdc.y) < 1.15
   if (!focusOnScreen) {
     flightFocusEl.classList.add('hidden')
@@ -450,14 +465,6 @@ function updateFlightReadability(routeState = null) {
   flightFocusEl.classList.remove('hidden')
   flightFocusEl.style.left = `${(_focusNdc.x * 0.5 + 0.5) * innerWidth}px`
   flightFocusEl.style.top = `${(1 - (_focusNdc.y * 0.5 + 0.5)) * innerHeight}px`
-
-  const focus = pickFlightFocus(entities, {
-    planeX,
-    planeY,
-    teachStars: shouldTelegraphStarLane(distance),
-  })
-  flightFocusEl.dataset.cue = focus.cue
-  if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
@@ -853,7 +860,7 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 40
 // point has to sit slightly *below* it: aiming level with the plane at a
 // far-forward z flattens the view angle and drops the plane off the bottom of
 // the frame. These values hold the plane around 68% down the screen.
-const CAM_HEIGHT = 3.35
+const CAM_HEIGHT = 3.05
 const CAM_AIM_LIFT = -0.1
 const CAM_AIM_Z = 13
 // Lateral/depth smoothing stays loose so steering reads as momentum. The
@@ -893,6 +900,9 @@ function loadTex(rawUrl) {
     const t = loader.load(url)
     t.colorSpace = THREE.SRGBColorSpace
     t.wrapS = t.wrapT = THREE.RepeatWrapping
+    // The floor is seen at a very grazing angle; without anisotropic filtering
+    // its painted detail collapses into mush a few meters out.
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4
     texCache[url] = t
   }
   return texCache[url]
@@ -1059,11 +1069,14 @@ const skyTex = loadTex('/assets/sky-city.jpg')
 
 // Dual sky spheres for crossfade between zones
 const skyGeo = new THREE.SphereGeometry(300, 32, 16)
+// fog:false — scene fog is tuned for depth-cueing buildings and ground, but
+// blanketing the sky dome in it bleached the whole upper half of the frame
+// into milk. The painted skies carry the zone mood; let them show it.
 const skyMatA = new THREE.MeshBasicMaterial({
-  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 1,
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 1, fog: false,
 })
 const skyMatB = new THREE.MeshBasicMaterial({
-  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0,
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0, fog: false,
 })
 const skyA = new THREE.Mesh(skyGeo, skyMatA)
 const skyB = new THREE.Mesh(new THREE.SphereGeometry(298, 32, 16), skyMatB)
@@ -1076,16 +1089,32 @@ let activeSkyIsA = true
 let currentSkyUrl = '/assets/sky-city.jpg'
 
 const groundMap = loadTex('/assets/ground-city.jpg')
-if (groundMap.repeat) groundMap.repeat.set(4, 30)
+// ~15m square tiles: dense enough that the painted detail stays crisp under
+// the camera instead of smearing into a pastel blur, and the repeat keeps the
+// texture's aspect ratio square so nothing stretches.
+if (groundMap.repeat) groundMap.repeat.set(6, 46)
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(90, 700),
-  new THREE.MeshStandardMaterial({ map: groundMap, color: 0xf2e6d8, roughness: 0.95 }),
+  // A warm mid tone — near-white tints pushed the fogged floor into a wash.
+  new THREE.MeshStandardMaterial({ map: groundMap, color: 0xcbb79c, roughness: 0.95 }),
 )
 ground.rotation.x = -Math.PI / 2
 ground.position.set(0, 0, 120)
 ground.receiveShadow = true
 scene.add(ground)
 let currentGroundUrl = '/assets/ground-city.jpg'
+
+// Contact shadow — the pale fuselage dissolves into bright paper streets at
+// distance, so an altitude-scaled blob keeps it anchored to the world.
+const planeShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(0.85, 22),
+  new THREE.MeshBasicMaterial({ color: 0x2b2015, transparent: true, opacity: 0.3, depthWrite: false }),
+)
+planeShadow.rotation.x = -Math.PI / 2
+planeShadow.position.y = 0.06
+planeShadow.renderOrder = 1
+planeShadow.visible = false
+scene.add(planeShadow)
 
 // ---------------------------------------------------------------------------
 // Ground life — flanking scenery that makes each zone feel inhabited.
@@ -1312,9 +1341,10 @@ function refreshGroundLife() {
 const trailPts = []
 const TRAIL_N = 24
 
-// Ambient wisp trail — always present at speed, independent of upgrades
+// Ambient wisp trail — wingtip streamers that make the plane readable in motion
 const wispPts = []
 const WISP_N = 14
+let wispSide = 1
 {
   const g = new THREE.BufferGeometry()
   const arr = new Float32Array(WISP_N * 3)
@@ -1322,7 +1352,7 @@ const WISP_N = 14
   const wisp = new THREE.Points(
     g,
     new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
+      color: 0xff8a5e, size: 0.17, transparent: true, opacity: 0.3, depthWrite: false,
     }),
   )
   wisp.name = 'ambientWisp'
@@ -1331,9 +1361,9 @@ const WISP_N = 14
   for (let i = 0; i < WISP_N; i++) wispPts.push(new THREE.Vector3())
 }
 
-const hemi = new THREE.HemisphereLight(0xffe8d6, 0x8fb8d8, 1.15)
+const hemi = new THREE.HemisphereLight(0xffe8d6, 0x7ba3c4, 0.92)
 scene.add(hemi)
-const sun = new THREE.DirectionalLight(0xfff0e0, 1.35)
+const sun = new THREE.DirectionalLight(0xfff0e0, 1.25)
 sun.position.set(30, 50, 20)
 sun.castShadow = true
 sun.shadow.mapSize.set(1024, 1024)
@@ -1776,8 +1806,10 @@ function syncPlanePowerLook(dt = 0.016) {
     planeAccentMat.emissive.setHex(0xffb089)
     planeAccentMat.emissiveIntensity = 0.22
   } else {
-    planeBodyMat.emissive.setHex(0x000000)
-    planeBodyMat.emissiveIntensity = 0
+    // A whisper of warm lift keeps the white fuselage from dissolving into
+    // the bright paper ground when the sun is high.
+    planeBodyMat.emissive.setHex(0x584434)
+    planeBodyMat.emissiveIntensity = 0.16
     planeAccentMat.emissive.setHex(0x000000)
     planeAccentMat.emissiveIntensity = 0
   }
@@ -3780,7 +3812,7 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + CAM_HEIGHT, -9)
+  camera.position.set(0, planeY + CAM_HEIGHT, -8)
   camera.lookAt(0, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   ground.position.z = 120
   currentSkyUrl = ''
@@ -5951,7 +5983,9 @@ function update(dt) {
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
-    speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.55))
+    // The streak art is deliberately faint; the old 0.55 ceiling stacked with
+    // it into solid white beams across the play field.
+    speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.3))
   }
   const approachingBoss = entities.find((entity) => entity.type === 'boss' && !entity.cleared)
   const bossZ = approachingBoss?.mesh.position.z
@@ -5995,16 +6029,19 @@ function update(dt) {
     pos.needsUpdate = true
   } else if (trail) trail.visible = false
 
-  // Ambient wisp trail — subtle always-on speed cue, skipped in low-power mode
+  // Ambient wisp trail — wingtip streamers, skipped in low-power mode
   const wisp = scene.getObjectByName('ambientWisp')
   if (wisp && renderQuality.secondaryEffects && speed > cfg.speedBase * 1.15) {
     wisp.visible = true
     for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])
-    wispPts[0].set(planeX + (Math.random() - 0.5) * 0.5, planeY - 0.15 + (Math.random() - 0.5) * 0.2, -0.8 - Math.random() * 0.6)
+    // Streamers peel off alternating wingtips so both sides read at speed.
+    wispSide *= -1
+    const span = (activeUpgradeEffects.planeScale || 1) * 1.12
+    wispPts[0].set(planeX + wispSide * 0.95 * span, planeY - 0.05 - Math.random() * 0.15, -0.7 - Math.random() * 0.5)
     const wpos = wisp.geometry.attributes.position
     for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
     wpos.needsUpdate = true
-    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.3)
+    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
   } else if (wisp) wisp.visible = false
 
   // Funnel milestones
@@ -6137,7 +6174,7 @@ function update(dt) {
   checkTutorialHints(dt)
 
   // Camera: pull back slightly during boost
-  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -11 : -9
+  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10 : -8
   const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
@@ -6151,6 +6188,15 @@ function update(dt) {
     camera.position.x += (Math.random() - 0.5) * shake * 0.45
     camera.position.y += (Math.random() - 0.5) * shake * 0.25
   }
+  // Contact shadow tracks the plane's lane; it tightens and fades with
+  // altitude so height stays readable against the patterned ground.
+  const shadowUp = THREE.MathUtils.clamp(planeY / MAX_Y, 0, 1)
+  planeShadow.visible = state === 'playing'
+  planeShadow.position.x = planeX
+  planeShadow.position.z = 0
+  const shadowScale = 1.15 - shadowUp * 0.6
+  planeShadow.scale.setScalar(shadowScale)
+  planeShadow.material.opacity = 0.34 - shadowUp * 0.2
   audio.setFlightWind(Math.min(1, speed / 70))
 
   scrollWorld(move)
@@ -6934,6 +6980,27 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
 })
+
+if (import.meta.env.DEV) {
+  // Deterministic visual debugging: mirrors the live pose of the SAME
+  // instance that owns window.advanceTime, so probes can never race or
+  // double-boot the engine. Freeze holds the sim while a frame renders,
+  // so captures can't race the invuln blink.
+  window.__paperPose = () => ({
+    planePos: plane?.position.toArray(),
+    planeScale: plane?.scale.x,
+    planeVisible: plane?.visible,
+    camPos: camera.position.toArray(),
+    shadowVisible: planeShadow.visible,
+    shadowScale: planeShadow.scale.x,
+    unfold: spawnUnfold,
+    state,
+  })
+  window.__paperFreeze = (frozen) => {
+    simulationPaused = Boolean(frozen)
+    return window.__paperPose()
+  }
+}
 
 engineInstance = {
   startMode: startGame,
