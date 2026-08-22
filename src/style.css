@@ -970,7 +970,8 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   border-color: rgba(245, 158, 11, 0.55);
   box-shadow: 0 6px 16px rgba(245, 158, 11, 0.22);
 }
-.streak-bar { margin-top: 4px; }
+.streak-bar,
+.combo-bar { margin-top: 4px; }
 .streak-bar #streak-fill,
 #streak-fill {
   height: 100%; width: 0%;
@@ -978,7 +979,15 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   background: linear-gradient(90deg, #fbbf24, #f59e0b);
   transition: width 0.08s linear;
 }
-html.a11y-reduced-motion #streak-fill { transition: none; }
+.combo-bar #combo-fill,
+#combo-fill {
+  height: 100%; width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #fb7185, #e76f51);
+  transition: width 0.08s linear;
+}
+html.a11y-reduced-motion #streak-fill,
+html.a11y-reduced-motion #combo-fill { transition: none; }
 
 .skins-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;

@@ -160,6 +160,8 @@ export function getWeaponState({ weaponLevel = 0, cooldownSeconds = 0, cooldownL
 export const FEVER_BASE_THRESHOLD = 8
 export const FEVER_BASE_DURATION = 4
 export const STREAK_BASE_WINDOW = 2.2
+/** Near-miss combo hold before the chain resets. Faster waves need this room. */
+export const COMBO_BASE_WINDOW = 2.05
 
 /** Fever Focus: an earlier, longer Combo Fever window. Threshold never drops below 4. */
 export function getFeverTuning({ feverThresholdBonus = 0, feverDurationBonus = 0 } = {}) {
@@ -173,6 +175,16 @@ export function getFeverTuning({ feverThresholdBonus = 0, feverDurationBonus = 0
 export function getStreakTuning({ streakWindowBonus = 0 } = {}) {
   return {
     windowSeconds: STREAK_BASE_WINDOW + positiveNumber(streakWindowBonus),
+  }
+}
+
+/**
+ * Fever Focus also lengthens the near-miss chain used to *enter* fever.
+ * The old 1.6s hold was shorter than a single compressed wave at cruise cap.
+ */
+export function getComboHold({ feverDurationBonus = 0 } = {}) {
+  return {
+    windowSeconds: COMBO_BASE_WINDOW + positiveNumber(feverDurationBonus) * 0.22,
   }
 }
 
@@ -245,6 +257,7 @@ export function getUpgradeRuntimeSnapshot({
   const trail = getTrailFeedback(effects)
   const fever = getFeverTuning(effects)
   const streak = getStreakTuning(effects)
+  const comboHold = getComboHold(effects)
 
   return {
     effects,
@@ -263,7 +276,7 @@ export function getUpgradeRuntimeSnapshot({
     turbo,
     guardian,
     weapon,
-    fever,
+    fever: { ...fever, comboHold: comboHold.windowSeconds },
     streak,
   }
 }

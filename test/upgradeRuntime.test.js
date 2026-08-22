@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 
 import { UPGRADES, getUpgradeEffects } from '../src/upgrades.js'
 import {
+  COMBO_BASE_WINDOW,
+  getComboHold,
   getControlResponse,
   getFeverTuning,
   getMagnetPull,
@@ -70,6 +72,13 @@ describe('upgrade runtime contracts', () => {
       if (assertion.direction === 'up') expect(maxValue).toBeGreaterThan(baseValue)
       else expect(maxValue).toBeLessThan(baseValue)
     }
+  })
+
+  test('Fever Focus lengthens the near-miss combo hold used to enter fever', () => {
+    expect(getComboHold().windowSeconds).toBe(COMBO_BASE_WINDOW)
+    const maxed = runtimeAt({ fever: 3 })
+    expect(maxed.fever.comboHold).toBeGreaterThan(COMBO_BASE_WINDOW)
+    expect(maxed.fever.comboHold).toBeCloseTo(getComboHold({ feverDurationBonus: 2.25 }).windowSeconds)
   })
 
   test('applies Fold Handling to keyboard, stick, pointer/touch, tilt, and custom control response paths', () => {

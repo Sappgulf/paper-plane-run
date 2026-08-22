@@ -181,6 +181,7 @@ import {
   getAltitudeRecovery,
   getBoostSafety,
   getCollisionRadius,
+  getComboHold,
   getControlResponse,
   getCruiseSpeed,
   getFeverTuning,
@@ -5307,7 +5308,7 @@ function registerNearMiss(kind = null) {
   combo++
   maxCombo = Math.max(maxCombo, combo)
   runStats.maxCombo = maxCombo
-  comboTimer = 1.6
+  comboTimer = getComboHold(activeUpgradeEffects).windowSeconds
   comboVal.textContent = describeComboHudValue({
     combo,
     feverActive,
@@ -5597,6 +5598,11 @@ function update(dt) {
 
   if (comboTimer > 0) {
     comboTimer -= dt
+    const comboWindow = Math.max(0.01, getComboHold(activeUpgradeEffects).windowSeconds)
+    const comboFill = $('combo-fill')
+    if (comboFill) {
+      comboFill.style.width = `${THREE.MathUtils.clamp(comboTimer / comboWindow, 0, 1) * 100}%`
+    }
     if (comboTimer <= 0) {
       combo = 0
       comboHud.classList.add('hidden')
@@ -5793,6 +5799,10 @@ function update(dt) {
     sinkModifier *= 1.65
     velX *= Math.pow(0.03, dt) // more stable
     controlAcceleration *= 0.75
+  }
+  if (activePower?.kind === 'boost') {
+    // Boost is a dart, not a sink: the sheet holds altitude while it punches.
+    sinkModifier *= 0.7
   }
   // Rubber-band slingshot: hold Space to charge, release to launch
   if (activePower?.kind === 'sling') {
@@ -6492,6 +6502,7 @@ function upgradeRuntimeTextState() {
       active: feverActive,
       timer: Number(feverTimer.toFixed(2)),
       scoreMul: FEVER_SCORE_MUL,
+      comboHold: runtime.fever.comboHold,
       hud: describeFeverHudValue({ active: feverActive, timer: feverTimer }),
     },
     streak: {
