@@ -452,6 +452,14 @@ function updateFlightReadability(routeState = null) {
   })
   flightFocusEl.dataset.cue = focus.cue
   if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
+  // A swift pop when the named thing changes keeps the marker from looking
+  // like a permanent fixture — it should feel like it just found something.
+  if (flightFocusEl.dataset.type !== focus.type) {
+    flightFocusEl.dataset.type = focus.type || 'none'
+    flightFocusEl.classList.remove('focus-pop')
+    void flightFocusEl.offsetWidth
+    flightFocusEl.classList.add('focus-pop')
+  }
   if (!focus.target) {
     flightFocusEl.classList.add('hidden')
     return
@@ -2190,9 +2198,15 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.05, 6, 16)
+// Lethal hazard read: a crisp inner ring plus a soft outer glow, so the
+// danger claims space instead of a thin hairline that vanishes into the sky.
+const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.12, 6, 20)
+const lethalGlowGeo = new THREE.TorusGeometry(1.16, 0.05, 6, 20)
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.75, depthWrite: false,
+  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false,
+})
+const lethalGlowMat = new THREE.MeshBasicMaterial({
+  color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false,
 })
 function attachLethalOutline(group, radius = 0.85) {
   if (!group || group.userData.lethalOutline) return group
@@ -2203,7 +2217,14 @@ function attachLethalOutline(group, radius = 0.85) {
   outline.scale.setScalar(radius)
   outline.visible = false
   group.add(outline)
+  const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
+  glow.name = 'lethalGlow'
+  glow.rotation.y = Math.PI / 2
+  glow.scale.setScalar(radius)
+  glow.visible = false
+  group.add(glow)
   group.userData.lethalOutline = outline
+  group.userData.lethalGlow = glow
   return group
 }
 
@@ -5259,9 +5280,17 @@ function animateHazards(dt) {
     }
     const outline = e.mesh.userData.lethalOutline
     if (outline && (e.type === 'bird' || e.type === 'scissors')) {
-      const near = e.mesh.position.z < 28
+      // Start ringing earlier (z<36) so the approach reads as pressure; the
+      // shared glow mesh mirrors the pulse without a second draw call.
+      const near = e.mesh.position.z < 36
+      const pulse = near ? 0.62 + Math.sin(elapsed * 10) * 0.24 : 0
       outline.visible = near
-      outline.material.opacity = near ? 0.55 + Math.sin(elapsed * 10) * 0.25 : 0
+      outline.material.opacity = pulse
+      const glow = e.mesh.userData.lethalGlow
+      if (glow) {
+        glow.visible = near
+        glow.material.opacity = pulse * 0.38
+      }
     }
     if (e.type === 'boss') {
       const u = e.mesh.userData
