@@ -3530,7 +3530,9 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
   currentGroundUrl = url
   const tex = loadTex(url)
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-  tex.repeat.set(4, 30)
+  // Keep the density set on the tiles so zone crossfades don't snap back to
+  // the old coarse repeat and blur the painted detail.
+  tex.repeat.set(6, 46)
   ground.material.map = tex
   ground.material.color.setHex(tint)
   ground.material.needsUpdate = true
@@ -3539,8 +3541,10 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
 function applyNightReadability(enabled) {
   const night = Boolean(enabled)
   document.documentElement.dataset.night = night ? '1' : '0'
-  hemi.intensity = night ? 1.55 : 1.15
-  sun.intensity = night ? 1.7 : 1.35
+  // Day base matches the tuned hemi/sun constants; night lifts them for
+  // readable silhouettes against the darker zones.
+  hemi.intensity = night ? 1.55 : 0.92
+  sun.intensity = night ? 1.7 : 1.25
   sun.color.setHex(night ? 0xffe9b8 : 0xfff0e0)
   for (const mat of buildingMats) {
     mat.emissive.setHex(night ? 0x3a3358 : 0x000000)
@@ -7024,6 +7028,11 @@ if (import.meta.env.DEV) {
     shadowScale: planeShadow.scale.x,
     unfold: spawnUnfold,
     state,
+    groundUrl: currentGroundUrl,
+    groundMapLoaded: ground?.material?.map?.image ? true : false,
+    groundMapWidth: ground?.material?.map?.image?.width ?? null,
+    groundColor: ground?.material?.color?.getHex?.() ?? null,
+    skyUrl: currentSkyUrl,
   })
   window.__paperFreeze = (frozen) => {
     simulationPaused = Boolean(frozen)
