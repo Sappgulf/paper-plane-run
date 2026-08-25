@@ -2,6 +2,14 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 2: thread-the-gap, Golden Hour twist, music + milestone juice
+
+- **Thread-the-gap bonus:** when both side towers rise close enough that their inner faces leave a tight slot (≤5 units), spawnChunk marks the pair with the corridor bounds (capped at the shorter rooftop). A clean pass between them pays +20m with a whoosh and route confetti — wall clearance is honored so scraping doesn't pay (`game/thread-gap.js`, pure + tested).
+- **Golden Hour daily twist:** new deterministic daily modifier — stars pay double meters (spawn counts untouched), joining the rotation alongside Tailwind/Star Rush/etc.
+- **Fever music lift:** the adaptive music bed now pins to full intensity while Fever is active, so the score burst sounds like one; boss-free otherwise unchanged.
+- **Milestone celebrations:** 500m/1000m crossings pop gold confetti and an in-world `${m}m!` callout instead of silently advancing analytics.
+- Verification: 68 Vitest files / 423 tests passed; boot + silhouette e2e pass on desktop/mobile; bundle budget PASS (107,184 initial / 844,407 total); iOS parity 86 files byte-exact.
+
 ## 2026-08-25 — Gameplay + juice upgrade pass
 
 - **Gauntlet payoff:** mini-gauntlets announced "lane open" but surviving paid nothing. An invisible tripwire marker now resolves behind the last hazard: holding the advertised lane banks +3★ / +50m with hit-stop, gold confetti, and a banner (pure rules in `game/gauntlet-reward.js`). Passing wide stays free — the lane promise is honest, only in-lane pays.

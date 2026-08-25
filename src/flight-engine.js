@@ -35,9 +35,10 @@ import {
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
 import { confettiColors } from './game/confetti-palette.js'
-import { GOLDEN_STAR_VALUE, resolveStarPickup } from './game/star-value.js'
+import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/star-value.js'
 import { resolvePowerPickup } from './game/power-pickup.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
+import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
 import { chooseStarLane, getStarX } from './game/star-placement.js'
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
@@ -2980,6 +2981,7 @@ function spawnChunk(z) {
   if (!recovering) maybeSpawnGroundDecor(z)
 
   const early = distance < 90
+  const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
     if (rng() < (early ? 0.52 : 0.82)) {
       const w = 2.5 + rng() * 3.5
@@ -2994,9 +2996,24 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
+      const buildingEntity = { mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane }
+      entities.push(buildingEntity)
+      sideBuildings.push(buildingEntity)
       if (side === -1) leftInnerEdge = -laneSpread + radius
       else rightInnerEdge = laneSpread - radius
+    }
+  }
+  // Thread-the-gap: when both towers rose and their inner faces leave a tight
+  // slot, mark the pair so a clean pass through it pays (see collision loop).
+  if (leftInnerEdge !== null && rightInnerEdge !== null && sideBuildings.length === 2) {
+    const gapWidth = rightInnerEdge - leftInnerEdge
+    if (isThreadGapWidth(gapWidth)) {
+      // The corridor is only "inside" below the shorter rooftop.
+      const corridorTop = Math.min(sideBuildings[0].halfH, sideBuildings[1].halfH)
+      for (const e of sideBuildings) {
+        e.thread = { minX: leftInnerEdge, maxX: rightInnerEdge, maxY: corridorTop }
+        e.threadPaid = false
+      }
     }
   }
 
@@ -5890,11 +5907,12 @@ function update(dt) {
   }
 
   // Adaptive music: brighter/quicker as speed climbs and near-miss combo builds.
+  // Fever pins the bed wide open — the score burst should sound like one too.
   const speedFactor = THREE.MathUtils.clamp(
     (speed - difficulty.speedBase) / Math.max(1, difficulty.speedCap - difficulty.speedBase), 0, 1,
   )
   const comboFactor = Math.min(1, combo / 6)
-  audio.setIntensity(speedFactor * 0.55 + comboFactor * 0.55)
+  audio.setIntensity(feverActive ? 1 : Math.min(1, speedFactor * 0.55 + comboFactor * 0.55))
 
   let inputX = 0
   let inputY = 0
@@ -6224,11 +6242,17 @@ function update(dt) {
     wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
   } else if (wisp) wisp.visible = false
 
-  // Funnel milestones
+  // Funnel milestones — the big ones get a small in-world celebration so the
+  // odometer crossing reads as an event, not just analytics.
   for (const m of [50, 100, 200, 500, 1000]) {
     if (distance >= m && !distanceMilestones.has(m)) {
       distanceMilestones.add(m)
       track(`distance_${m}`, { mode: difficulty.id, kind: runKind })
+      if (m >= 500) {
+        spawnConfetti(planeX, planeY + 0.4, 1, 'gold')
+        showFlightFeedback(`${m}m!`, 'route', 0.9)
+        pulseFlightImpact('route')
+      }
     }
   }
 
@@ -6470,6 +6494,7 @@ function update(dt) {
           golden: Boolean(e.golden),
           feverActive,
           skimTier: groundSkim.tier,
+          baseMeters: STAR_BASE_METERS * (activeTwist?.starMeterMul ?? 1),
         })
         stars += pickup.stars
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
@@ -6650,6 +6675,26 @@ function update(dt) {
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
           registerNearMiss()
+        }
+      }
+      // Thread-the-gap: the first of a marked tight pair to pass behind the
+      // plane resolves the corridor test once — a clean pass pays a route bonus.
+      if (e.thread && !e.threadPaid && m.position.z < -1.2) {
+        e.threadPaid = true
+        const threaded = isInsideThreadGap({
+          playerX: p.x,
+          playerY: p.y,
+          minX: e.thread.minX,
+          maxX: e.thread.maxX,
+          maxY: e.thread.maxY,
+        })
+        if (threaded) {
+          distance += THREAD_REWARD_METERS
+          audio.hoopWhoosh()
+          spawnConfetti(p.x, planeY, 0.5, 'route')
+          showFlightFeedback(`THREADED THE GAP · +${THREAD_REWARD_METERS}m`, 'route', 1.1)
+          pulseFlightImpact('route')
+          track('thread_gap', { distance: Math.floor(distance) })
         }
       }
       continue
