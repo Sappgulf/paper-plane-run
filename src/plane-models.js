@@ -14,6 +14,7 @@ const PLANE_GEOMETRY = Object.freeze({
     body: Object.freeze({ size: [0.12, 0.08, 1.6], position: [0, 0.04, -0.1] }),
     nose: Object.freeze({ radius: 0.08, length: 0.35, position: [0, 0.02, 0.85] }),
     tail: Object.freeze({ size: [0.06, 0.28, 0.28], position: [0, 0.16, -0.7] }),
+    keel: Object.freeze({ size: [0.04, 0.34, 0.55], position: [0, -0.13, -0.42] }),
   }),
   dart: Object.freeze({
     id: 'dart',
@@ -27,6 +28,7 @@ const PLANE_GEOMETRY = Object.freeze({
     body: Object.freeze({ size: [0.1, 0.07, 2.05], position: [0, 0.035, -0.02] }),
     nose: Object.freeze({ radius: 0.07, length: 0.42, position: [0, 0.015, 1.18] }),
     tail: Object.freeze({ size: [0.05, 0.22, 0.38], position: [0, 0.13, -0.92] }),
+    keel: Object.freeze({ size: [0.04, 0.26, 0.72], position: [0, -0.11, -0.3] }),
   }),
   glider: Object.freeze({
     id: 'glider',
@@ -40,6 +42,7 @@ const PLANE_GEOMETRY = Object.freeze({
     body: Object.freeze({ size: [0.14, 0.07, 1.45], position: [0, 0.035, -0.08] }),
     nose: Object.freeze({ radius: 0.09, length: 0.3, position: [0, 0.02, 0.78] }),
     tail: Object.freeze({ size: [0.08, 0.23, 0.34], position: [0, 0.14, -0.62] }),
+    keel: Object.freeze({ size: [0.04, 0.24, 0.46], position: [0, -0.11, -0.38] }),
   }),
   stunt: Object.freeze({
     id: 'stunt',
@@ -53,6 +56,7 @@ const PLANE_GEOMETRY = Object.freeze({
     body: Object.freeze({ size: [0.13, 0.1, 1.55], position: [0, 0.05, -0.05] }),
     nose: Object.freeze({ radius: 0.09, length: 0.34, position: [0, 0.025, 0.86] }),
     tail: Object.freeze({ size: [0.08, 0.4, 0.32], position: [0, 0.22, -0.66] }),
+    keel: Object.freeze({ size: [0.05, 0.3, 0.5], position: [0, -0.14, -0.4] }),
   }),
 })
 
@@ -117,9 +121,9 @@ function makeUpgradeTrail(THREE, material) {
     geometry,
     material || new THREE.PointsMaterial({
       color: 0xfff0c0,
-      size: 0.22,
+      size: 0.27,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.75,
       depthWrite: false,
     }),
   )
@@ -175,6 +179,14 @@ export function createPaperPlane({
   tail.position.set(...spec.tail.position)
   tail.name = 'tail'
   plane.add(tail)
+
+  // Keel fold — the underside crease every real paper dart shows. Purely
+  // cosmetic (collision stays PLANE_COLLISION_RADIUS), but it gives the
+  // model a readable third face in banked turns instead of a flat card.
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(...spec.keel.size), accentMaterial)
+  keel.position.set(...spec.keel.position)
+  keel.name = 'keel'
+  plane.add(keel)
 
   if (withShield) {
     const shield = new THREE.Mesh(

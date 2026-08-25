@@ -2,6 +2,18 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Gameplay + juice upgrade pass
+
+- **Gauntlet payoff:** mini-gauntlets announced "lane open" but surviving paid nothing. An invisible tripwire marker now resolves behind the last hazard: holding the advertised lane banks +3★ / +50m with hit-stop, gold confetti, and a banner (pure rules in `game/gauntlet-reward.js`). Passing wide stays free — the lane promise is honest, only in-lane pays.
+- **Power refresh economy:** catching a duplicate orb used to wipe the active power's remaining timer via `clearPower()`. Same-kind pickups now top the timer back to full and pay +25m; switching kinds still replaces (one slot keeps HUD/physics toys sane) but refunds +12m (`game/power-pickup.js`).
+- **True bullet-time:** slow-mo was four disconnected number tweaks on cruise speed. It now dilates world scroll and the hazard motion clock (`hazardClock`, ×0.62) so hazards genuinely hang while controls stay full-rate, plus a cool `#slow-fx` vignette (reduced-motion aware). Boss directors step on scaled dt, so phases read in slow motion too.
+- **Star value rides risk:** star pickup paid flat +18m regardless of fever/skim. The meter bonus now multiplies by fever (×1.5) and skim tier (+8%/tier) — same risk systems the score factor uses (`game/star-value.js`).
+- **Golden tier stars:** every altitude-tier climb drops a 3-star golden arc along the reserved lane (5★ each, double meters, bigger self-lit art, star-streak chime, hit-stop) so deep runs get a visible payday. Scissor-squadron chance also scales +2%/tier.
+- **Wind made visible:** gusts were an invisible HUD shove. Pooled streak motes now stream across the field in the push direction, ambient dust leans with the gust, both gated off for reduced-motion/low-power.
+- **Confetti pool + palettes:** bursts allocated 10 fresh meshes+materials each and fired constantly. Now a persistent 96-piece ring buffer with per-event palettes — classic near-miss, gold currency (stars/streaks/gauntlet), rainbow fever, blue-violet route saves/boss clears/crash-wins.
+- **Plane model polish:** authored keel fold (underside crease, accent color) per silhouette — cosmetic only, collision radius unchanged — plus slightly richer upgrade-trail points.
+- Verification: 68 Vitest files / 418 tests passed; boot/silhouette/engine e2e specs pass (desktop+mobile); production build PASS, bundle budget 107,088 initial / 843,433 total vs 921,600 limit; iOS parity 86 files byte-exact after `build:ios` re-sync.
+
 ## 2026-08-22 — Verification pass: real crash fixes, corner-button UX, flake-proof boot
 
 - **Crash fix:** `createWindTunnelGate` referenced an undefined `halfHeight` (only `halfWidth` was declared after the boss-fairness rebuild). Every wind-boss spawn killed the engine — in the browser this surfaced as `EngineLifecycleError: halfHeight is not defined` at boot, which broke the wind boss encounter and made the e2e boss lane unreliable. Declared the value from `userData` like its twins.

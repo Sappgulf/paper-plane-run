@@ -34,6 +34,10 @@ import {
   resolveHazardOffset,
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
+import { confettiColors } from './game/confetti-palette.js'
+import { GOLDEN_STAR_VALUE, resolveStarPickup } from './game/star-value.js'
+import { resolvePowerPickup } from './game/power-pickup.js'
+import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { chooseStarLane, getStarX } from './game/star-placement.js'
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
@@ -1396,11 +1400,64 @@ const dust = new THREE.Points(
 )
 scene.add(dust)
 dust.visible = !settings.lowPower
+
+// Wind streaks — gust forces used to be invisible (HUD banner only). A small
+// pooled set of stretched motes streams across the field in the push
+// direction so a gust reads as weather, not as an unexplained shove.
+const WIND_STREAK_COUNT = 16
+const windStreakGeo = new THREE.BoxGeometry(2.4, 0.05, 0.05)
+const windStreakMat = new THREE.MeshBasicMaterial({
+  color: 0xe8f6ff, transparent: true, opacity: 0.42, depthWrite: false,
+})
+const windStreaks = []
+for (let i = 0; i < WIND_STREAK_COUNT; i++) {
+  const s = new THREE.Mesh(windStreakGeo, windStreakMat)
+  s.visible = false
+  s.userData.jitter = Math.random()
+  scene.add(s)
+  windStreaks.push(s)
+}
+function resetWindStreak(s, dir) {
+  // Spawn on the upwind side so streaks fly with the push, past the plane.
+  s.position.set(
+    -dir * (12 + Math.random() * 14),
+    2.5 + Math.random() * 14,
+    18 + Math.random() * 55,
+  )
+}
+function updateWindStreaks(dt, pushX, worldSpeed) {
+  const active = Math.abs(pushX) > 0.01 && !settings.reducedMotion && !settings.lowPower
+  const dir = Math.sign(pushX)
+  for (const s of windStreaks) {
+    s.visible = active
+    if (!active) continue
+    s.position.x += dir * (9 + s.userData.jitter * 7) * dt
+    s.position.z -= worldSpeed * 0.45 * dt
+    if (Math.abs(s.position.x) > 30 || s.position.z < -12) resetWindStreak(s, dir)
+  }
+}
+
 applyPerformanceSettings()
 
-// Confetti pool for near-miss
-const confetti = []
+// Confetti — a persistent pooled ring buffer instead of allocating 10 fresh
+// meshes + materials per burst (bursts fire constantly: near-miss chains,
+// stars, boss clears). Colors come from per-event palettes so gold reads as
+// currency, rainbow as fever, blue/violet as route progress.
+const CONFETTI_POOL_SIZE = 96
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
+const confetti = []
+let confettiCursor = 0
+for (let i = 0; i < CONFETTI_POOL_SIZE; i++) {
+  const m = new THREE.Mesh(
+    confettiGeo,
+    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true }),
+  )
+  m.visible = false
+  m.userData.v = new THREE.Vector3()
+  m.userData.life = 0
+  scene.add(m)
+  confetti.push(m)
+}
 /** Ink Blast: fires a forward projectile that pops small airborne hazards. */
 function tryPaperPush() {
   if (state !== 'playing' || paperPushCooldown > 0) return false
@@ -1501,20 +1558,18 @@ function updateShots(dt) {
   }
 }
 
-function spawnConfetti(x, y, z) {
+function spawnConfetti(x, y, z, palette = 'classic') {
+  const colors = confettiColors(palette)
   for (let i = 0; i < 10; i++) {
-    const m = new THREE.Mesh(
-      confettiGeo,
-      new THREE.MeshBasicMaterial({
-        color: [0xfbbf24, 0xf0956a, 0x60a5fa, 0xa78bfa, 0x34d399][i % 5],
-        side: THREE.DoubleSide,
-      }),
-    )
+    const m = confetti[confettiCursor]
+    confettiCursor = (confettiCursor + 1) % CONFETTI_POOL_SIZE
+    m.visible = true
+    m.material.color.setHex(colors[i % colors.length])
+    m.material.opacity = 1
+    m.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI)
     m.position.set(x, y, z)
-    m.userData.v = new THREE.Vector3((rng() - 0.5) * 6, rng() * 4 + 1, (rng() - 0.5) * 4)
+    m.userData.v.set((rng() - 0.5) * 6, rng() * 4 + 1, (rng() - 0.5) * 4)
     m.userData.life = 0.6 + rng() * 0.4
-    scene.add(m)
-    confetti.push(m)
   }
 }
 
@@ -1526,7 +1581,7 @@ const planeAccentMat = new THREE.MeshStandardMaterial({
   color: 0xf0956a, roughness: 0.7, side: THREE.DoubleSide,
 })
 const planeTrailMat = new THREE.PointsMaterial({
-  color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
+  color: 0xfff0c0, size: 0.27, transparent: true, opacity: 0.75, depthWrite: false,
 })
 const buildingMats = [
   new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffc9b8, roughness: 0.9 }),
@@ -2532,14 +2587,27 @@ const starGlowGeo = new THREE.SphereGeometry(0.72, 12, 12)
 const starGlowMat = new THREE.MeshBasicMaterial({
   color: 0xfbbf24, transparent: true, opacity: 0.28, depthWrite: false,
 })
+// Golden variant — a rare tier-transition drop worth 5★. Bigger, hotter,
+// and self-lit so it reads as an event, not another pickup.
+const starCoreMatGold = new THREE.MeshBasicMaterial({
+  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18,
+  side: THREE.DoubleSide, depthWrite: false, color: 0xffd54a,
+})
+const starGlowMatGold = new THREE.MeshBasicMaterial({
+  color: 0xfde68a, transparent: true, opacity: 0.5, depthWrite: false,
+})
+const starGlowGeoGold = new THREE.SphereGeometry(1.15, 14, 14)
 
-function createStar() {
+function createStar({ golden = false } = {}) {
   const g = new THREE.Group()
-  const core = new THREE.Mesh(starCoreGeo, starCoreMat)
+  const core = new THREE.Mesh(starCoreGeo, golden ? starCoreMatGold : starCoreMat)
   core.rotation.y = Math.PI
+  core.scale.setScalar(golden ? 1.35 : 1)
   g.add(core)
   // Soft glow shell for readability
-  const glow = new THREE.Mesh(starGlowGeo, starGlowMat)
+  const glow = golden
+    ? new THREE.Mesh(starGlowGeoGold, starGlowMatGold)
+    : new THREE.Mesh(starGlowGeo, starGlowMat)
   g.add(glow)
   g.userData.core = core
   g.userData.billboard = core
@@ -2753,6 +2821,13 @@ let hitStopTimer = 0
 let spawnUnfold = 1
 let fireCooldown = 0
 let elapsed = 0
+// Slow-mo is a real time-dilation power, not just a cruise-speed tweak: the
+// world scroll and the hazard motion clock both run through this factor so
+// hazards genuinely hang in the air while you line up.
+const SLOWMO_WORLD_SCALE = 0.62
+/** Hazard/pattern clock — advances slower than `elapsed` during slow-mo. */
+let hazardClock = 0
+let slowmoActive = false
 let launchGraceSeconds = 0
 let activePower = null
 let bannerTimer = 0
@@ -2833,8 +2908,11 @@ function clearEntities() {
     scene.remove(ghostMesh)
     ghostMesh = null
   }
-  for (const c of confetti) scene.remove(c)
-  confetti.length = 0
+  for (const s of windStreaks) s.visible = false
+  for (const c of confetti) {
+    c.visible = false
+    c.userData.life = 0
+  }
 }
 
 function pickHazardType(zone) {
@@ -2989,8 +3067,8 @@ function spawnChunk(z) {
     scene.add(sc)
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
     // Scissor squadron — a rarer second blade further down the lane, more
-    // likely to appear the deeper into a run you get.
-    if (rng() < 0.12 + ramp * 0.22) {
+    // likely to appear the deeper into a run you get (altitude tiers lean in).
+    if (rng() < 0.12 + ramp * 0.22 + tier.tier * 0.02) {
       const sc2 = createScissors()
       sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z + 6 + rng() * 4)
       scene.add(sc2)
@@ -3199,6 +3277,14 @@ function spawnMiniGauntlet(z = 60) {
   }
   const passage = choosePassageLane({ hazards: placements, preferredLane: safeLane })
   const laneLabel = safeLane < 0 ? 'LEFT' : safeLane > 0 ? 'RIGHT' : 'CENTER'
+  // Lane-payoff marker: an invisible tripwire behind the last hazard. Passing
+  // it while holding the advertised lane banks a gauntlet reward — the same
+  // promise-for-payout contract boss gates already honor.
+  const gauntletLaneX = PASSAGE_LANE_X[safeLane + 1]
+  const marker = new THREE.Object3D()
+  marker.position.set(gauntletLaneX, 9, z - 2)
+  scene.add(marker)
+  entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX, cleared: false })
   zoneBanner.textContent = passage.guaranteed
     ? `⚡ Hazard Gauntlet · ${laneLabel} lane open`
     : '⚡ Hazard Gauntlet · find the widest gap'
@@ -3425,17 +3511,44 @@ function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
 
-  // Always clear previous power visuals cleanly
-  clearPower()
-  // clearPower nulls activePower — restore wings/shield already handled
-
   const fx = activeUpgradeEffects
   const duration = getPowerDuration({
     kind,
     baseDuration: meta.duration,
     shieldDurationMul: fx.shieldDurationMul,
   }).duration
+  // Catching the same power again used to wipe its remaining timer through
+  // clearPower() — a strictly worse outcome for a lucky grab. Same-kind now
+  // tops the timer back to full; switching kinds still replaces (one power
+  // slot keeps HUD + physics toys sane) but refunds meters for lost time.
+  const pickup = resolvePowerPickup({ currentKind: activePower?.kind ?? null, nextKind: kind })
+  if (pickup.mode === 'refresh' && activePower) {
+    activePower.timeLeft = duration
+    activePower.duration = Math.max(activePower.duration, duration)
+    distance += pickup.refundMeters
+    audio.powerUp(kind)
+    if (settings.haptics) Haptic.collect()
+    powerFill.style.width = '100%'
+    powerBanner.textContent = `${meta.label} refreshed · +${pickup.refundMeters}m`
+    powerBanner.classList.remove('hidden')
+    bannerTimer = 1.6
+    showFlightFeedback('POWER REFRESHED', 'power', 1.0)
+    spawnConfetti(planeX, planeY, 0, 'fever')
+    runStats.powers++
+    track('power_refresh', { kind })
+    return
+  }
+
+  // Always clear previous power visuals cleanly
+  clearPower()
+  // clearPower nulls activePower — restore wings/shield already handled
+
   activePower = { kind, timeLeft: duration, duration, slingCharged: false }
+  if (pickup.mode === 'replace') {
+    // Small consolation for the timer the swapped-out power had left.
+    distance += pickup.refundMeters
+    showFlightFeedback(`SWAP · +${pickup.refundMeters}m`, 'power', 0.9)
+  }
   audio.powerUp(kind)
   if (settings.haptics) Haptic.power()
   powerLabel.textContent = meta.label
@@ -3626,6 +3739,21 @@ function updateEndlessTier() {
   notifications.show(`${next.name} — ${next.modifier.blurb}`, { duration: 3600 })
   audio.setAltitudeTier(next.tier)
   audio.zoneTransition()
+  // A tier climb now drops a short arc of golden stars (5★ each) along the
+  // reserved lane — deep runs get a visible payday instead of only numbers.
+  const laneX = PASSAGE_LANE_X[(activePassageLane ?? 0) + 1]
+  for (let i = 0; i < 3; i++) {
+    const g = createStar({ golden: true })
+    g.position.set(
+      THREE.MathUtils.clamp(laneX + (i - 1) * 1.1, -MAX_X, MAX_X),
+      7.5 + ((i * 2.7) % 7.5),
+      58 + i * 10,
+    )
+    scene.add(g)
+    entities.push({
+      mesh: g, type: 'star', radius: 1.2, golden: true, value: GOLDEN_STAR_VALUE, telegraph: true,
+    })
+  }
 }
 
 function updateSkyFade(dt) {
@@ -3694,6 +3822,9 @@ function resetGame() {
   const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
   clearPower()
+  hazardClock = 0
+  slowmoActive = false
+  document.getElementById('slow-fx')?.classList.remove('slowmo-active')
   flightFeedbackTimer = 0
   flightFeedbackEl?.classList.add('hidden')
   updateMagnetPullFeedback(null, { active: false })
@@ -4731,7 +4862,7 @@ function die(reason) {
     _damageOrigColor.copy(planeBodyMat.color)
     applyRescuePop()
     // flash shield pop
-    spawnConfetti(planeX, planeY, 1)
+    spawnConfetti(planeX, planeY, 1, 'route')
     if (shieldBubble) shieldBubble.visible = false
     return
   }
@@ -4777,6 +4908,8 @@ function die(reason) {
   fovPunch = isWin ? 0 : -6
   showStick(false)
   clearPower()
+  // Freeze the weather with the world: no streaks hanging mid-gust.
+  for (const s of windStreaks) s.visible = false
   showFlightFeedback(isWin ? 'ROUTE COMPLETE' : 'PAPER CRASH', isWin ? 'route' : 'hazard', isWin ? 1.5 : 1.1)
   pulseFlightImpact(isWin ? 'route' : 'hazard')
 
@@ -4785,8 +4918,8 @@ function die(reason) {
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
-    spawnConfetti(planeX, planeY, 0)
-    spawnConfetti(planeX, planeY + 0.5, 1)
+    spawnConfetti(planeX, planeY, 0, isWin ? 'route' : 'classic')
+    spawnConfetti(planeX, planeY + 0.5, 1, isWin ? 'route' : 'classic')
     // paper burst velocity
     velX = (rng() - 0.5) * 20
     velY = 6 + rng() * 4
@@ -5195,7 +5328,7 @@ function updateGroundSkim(dt) {
   }
 }
 
-function scrollWorld(move) {
+function scrollWorld(move, lateralDrift = 0) {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
     e.mesh.position.z -= move
@@ -5217,6 +5350,9 @@ function scrollWorld(move) {
   const pos = dust.geometry.attributes.position
   for (let i = 0; i < dustCount; i++) {
     pos.array[i * 3 + 2] -= move * 0.55
+    // A blowing gust leans the ambient dust with it — cheap but convincing
+    // weather cue that rides the same field instead of new geometry.
+    if (lateralDrift) pos.array[i * 3] = THREE.MathUtils.clamp(pos.array[i * 3] + lateralDrift, -22.5, 22.5)
     if (pos.array[i * 3 + 2] < -10) {
       pos.array[i * 3 + 2] = 200
       pos.array[i * 3] = (Math.random() - 0.5) * 45
@@ -5230,7 +5366,7 @@ function animateHazards(dt) {
   for (const e of entities) {
     if (e.journeyMotion) {
       const motion = e.journeyMotion
-      e.mesh.position.x = motion.originX + Math.sin(elapsed * motion.speed) * motion.amplitude * motion.direction
+      e.mesh.position.x = motion.originX + Math.sin(hazardClock * motion.speed) * motion.amplitude * motion.direction
     }
     if (e.type === 'bird') {
       const u = e.mesh.userData
@@ -5251,7 +5387,7 @@ function animateHazards(dt) {
       if (u.pattern && u.anchorX !== undefined && !e.journeyMotion) {
         const offset = resolveHazardOffset({
           pattern: u.pattern,
-          elapsed,
+          hazardClock,
           phase: u.phase,
           speed: u.motionSpeed,
           amplitudeX: u.amplitudeX,
@@ -5260,7 +5396,7 @@ function animateHazards(dt) {
         e.mesh.position.x = u.anchorX + offset.x
         e.mesh.position.y = u.anchorY + offset.y
         const roll = resolveHazardRoll({
-          pattern: u.pattern, elapsed, phase: u.phase, speed: u.motionSpeed,
+          pattern: u.pattern, hazardClock, phase: u.phase, speed: u.motionSpeed,
         })
         if (u.pattern === 'tumble') e.mesh.rotation.z = roll
         else if (u.billboard && u.pattern === 'orbit') u.billboard.rotation.z = roll
@@ -5274,7 +5410,7 @@ function animateHazards(dt) {
     if (e.type === 'power') {
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
       if (e.mesh.userData.glow) {
-        e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(elapsed * 5 + e.mesh.position.z) * 0.06
+        e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(hazardClock * 5 + e.mesh.position.z) * 0.06
       }
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
@@ -5287,7 +5423,7 @@ function animateHazards(dt) {
       // Start ringing earlier (z<36) so the approach reads as pressure; the
       // shared glow mesh mirrors the pulse without a second draw call.
       const near = e.mesh.position.z < 36
-      const pulse = near ? 0.62 + Math.sin(elapsed * 10) * 0.24 : 0
+      const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
       outline.visible = near
       outline.material.opacity = pulse
       const glow = e.mesh.userData.lethalGlow
@@ -5378,7 +5514,7 @@ function animateHazards(dt) {
       if (safeRing) {
         safeRing.position.y = u.gapY
         // Soft pulse on the portal fill / frame without rescaling collision size.
-        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(elapsed * 7) * 0.02
+        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(hazardClock * 7) * 0.02
         safeRing.scale.set(pulse, pulse, 1)
       }
     }
@@ -5392,13 +5528,13 @@ function animateHazards(dt) {
   }
   for (let i = confetti.length - 1; i >= 0; i--) {
     const c = confetti[i]
+    if (!c.visible) continue
     c.userData.life -= dt
     c.position.addScaledVector(c.userData.v, dt)
     c.userData.v.y -= 8 * dt
     c.rotation.x += dt * 5
     if (c.userData.life <= 0) {
-      scene.remove(c)
-      confetti.splice(i, 1)
+      c.visible = false
     }
   }
 }
@@ -5461,7 +5597,7 @@ function triggerFever() {
   audio.fever()
   Haptic.power()
   for (const offset of feverConfettiOffsets()) {
-    spawnConfetti(planeX, planeY + offset.y, offset.z)
+    spawnConfetti(planeX, planeY + offset.y, offset.z, 'fever')
   }
   runStats.fevers = (runStats.fevers || 0) + 1
   addLifetimeFever(1)
@@ -5491,7 +5627,7 @@ function registerStarStreak() {
     starsEl.textContent = String(stars)
     audio.starStreak(pickup.count / 5)
     if (settings.haptics) Haptic.collect()
-    spawnConfetti(planeX, planeY, 1)
+    spawnConfetti(planeX, planeY, 1, 'gold')
     powerBanner.textContent = pickup.banner
     powerBanner.classList.remove('hidden')
     bannerTimer = 2.0
@@ -5502,6 +5638,12 @@ function registerStarStreak() {
 
 function update(dt) {
   elapsed += dt
+  const slowmo = activePower?.kind === 'slow'
+  if (slowmo !== slowmoActive) {
+    slowmoActive = slowmo
+    document.getElementById('slow-fx')?.classList.toggle('slowmo-active', slowmo)
+  }
+  hazardClock += slowmo ? dt * SLOWMO_WORLD_SCALE : dt
   updateGroundLife(elapsed)
   if (flightFeedbackTimer > 0) {
     flightFeedbackTimer -= dt
@@ -5875,6 +6017,8 @@ function update(dt) {
       windBanner.classList.remove('hidden')
     }
   }
+  // Gust weather: streaks stream with the push while it blows.
+  updateWindStreaks(dt, windPushX, speed)
 
   const ufx = activeUpgradeEffects
   const activeControlMode = mouseMode
@@ -6031,7 +6175,10 @@ function update(dt) {
     planeY += (assistY - planeY) * Math.min(1, dt * 2.4)
   }
   updateGroundSkim(dt)
-  const move = speed * dt * getBossApproachSpeedScale({ bossZ })
+  // Bullet-time: slow-mo dilates how fast the world streams past and how
+  // hazards move (via hazardClock), while plane controls stay at full rate —
+  // you think faster than the world for six seconds.
+  const move = speed * dt * getBossApproachSpeedScale({ bossZ }) * (slowmo ? SLOWMO_WORLD_SCALE : 1)
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
@@ -6232,8 +6379,8 @@ function update(dt) {
   planeShadow.material.opacity = 0.34 - shadowUp * 0.2
   audio.setFlightWind(Math.min(1, speed / 70))
 
-  scrollWorld(move)
-  animateHazards(dt)
+  scrollWorld(move, windPushX * dt * 0.5)
+  animateHazards(slowmo ? dt * SLOWMO_WORLD_SCALE : dt)
   updateFlightReadability(zp)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
@@ -6317,15 +6464,29 @@ function update(dt) {
         planeRadius: PLANE_COLLISION_RADIUS,
       }).catchRadius * (e.telegraph || shouldTelegraphStarLane(distance) ? 1.18 : 1)
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
-        stars++
+        // Star value rides the run's own risk systems: fever and ground-skim
+        // tiers multiply the meter bonus, golden drops pay 5★.
+        const pickup = resolveStarPickup({
+          golden: Boolean(e.golden),
+          feverActive,
+          skimTier: groundSkim.tier,
+        })
+        stars += pickup.stars
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
         runStats.stars = stars
         starsEl.textContent = String(stars)
-        distance += 18
-        audio.collectStar()
-        if (settings.haptics) Haptic.collect()
-        showFlightFeedback('STAR +1 · +18m', 'star', 0.72)
-        spawnConfetti(m.position.x, m.position.y, m.position.z)
+        distance += pickup.meters
+        if (pickup.golden) {
+          audio.starStreak(1)
+          if (settings.haptics) Haptic.power()
+          hitStopTimer = Math.max(hitStopTimer, 0.05)
+          pulseFlightImpact('star')
+        } else {
+          audio.collectStar()
+          if (settings.haptics) Haptic.collect()
+        }
+        showFlightFeedback(pickup.label, 'star', pickup.golden ? 1.15 : 0.72)
+        spawnConfetti(m.position.x, m.position.y, m.position.z, pickup.golden ? 'gold' : 'classic')
         registerStarStreak()
         scene.remove(m)
         entities.splice(i, 1)
@@ -6354,6 +6515,34 @@ function update(dt) {
         spawnConfetti(m.position.x, m.position.y, m.position.z)
         scene.remove(m)
         entities.splice(i, 1)
+      }
+      continue
+    }
+
+    // Gauntlet tripwire — resolves even during invuln so a grace window
+    // can't eat the payoff for a clean run through the promised lane.
+    if (e.type === 'gauntlet') {
+      if (!e.cleared && m.position.z < -1.2) {
+        e.cleared = true
+        const reward = resolveGauntletReward({
+          inLane: isInsideGauntletLane({ playerX: p.x, laneX: e.gauntletLaneX }),
+        })
+        if (reward) {
+          stars += reward.stars
+          runStats.stars = stars
+          starsEl.textContent = String(stars)
+          distance += reward.bonusMeters
+          hitStopTimer = Math.max(hitStopTimer, 0.06)
+          audio.gateClear()
+          if (settings.haptics) Haptic.collect()
+          spawnConfetti(p.x, planeY, 1, 'gold')
+          showFlightFeedback(reward.label, 'star', 1.3)
+          pulseFlightImpact('star')
+          powerBanner.textContent = `⚡ Gauntlet cleared · +${reward.stars}★`
+          powerBanner.classList.remove('hidden')
+          bannerTimer = Math.max(bannerTimer, 1.6)
+          track('gauntlet_clear', { distance: Math.floor(distance) })
+        }
       }
       continue
     }
@@ -6405,7 +6594,7 @@ function update(dt) {
             audio.missionComplete()
             if (settings.haptics) Haptic.collect()
             invuln = Math.max(invuln, reward.invulnSeconds)
-            spawnConfetti(planeX, planeY, 2)
+            spawnConfetti(planeX, planeY, 2, 'route')
             showFlightFeedback(`GATE CLEARED · +${reward.stars}★`, 'route', 1.6)
             pulseFlightImpact('route')
             audio.gateClear()
