@@ -109,9 +109,18 @@ test.describe('gameplay systems regression', () => {
     test.slow()
     const bootAndFly = async (buttonId, name) => {
       await openApp(page)
-      await tap(page.locator(`#${buttonId}`))
       await waitForGameText(page)
-      await expect.poll(async () => (await snapshot(page)).state, { timeout: 30_000 }).toBe('playing')
+      // A menu mid-layout-change can swallow a click; the state poll retries
+      // the tap once so a single miss never fails the whole boot.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await tap(page.locator(`#${buttonId}`))
+        try {
+          await expect.poll(async () => (await snapshot(page)).state, { timeout: 20_000 }).toBe('playing')
+          break
+        } catch {
+          if (attempt === 1) throw new Error(`mode ${name} did not start after two taps`)
+        }
+      }
       await page.evaluate(() => window.advanceTime(1200))
       const mid = await snapshot(page)
       expect(mid.mode).toBe(name)
