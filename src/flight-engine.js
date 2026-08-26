@@ -738,6 +738,11 @@ const devCollisionProof = import.meta.env.DEV
 const devBossProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-proof')
   : null
+// Thread-gap proof's untagged control run (?nothread=1#test-thread-gap) — read
+// up here because the boot deep-link cleanup wipes location.search later.
+const devThreadControl = import.meta.env.DEV
+  ? new URLSearchParams(location.search).has('nothread')
+  : false
 const devBossPass = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-pass') === '1'
   : false
@@ -2829,6 +2834,8 @@ const SLOWMO_WORLD_SCALE = 0.62
 /** Hazard/pattern clock — advances slower than `elapsed` during slow-mo. */
 let hazardClock = 0
 let slowmoActive = false
+/** Debug/test tag of the most recent skill-reward payout (thread/gauntlet). */
+let lastRewardTag = null
 let launchGraceSeconds = 0
 let activePower = null
 let bannerTimer = 0
@@ -3008,12 +3015,11 @@ function spawnChunk(z) {
   if (leftInnerEdge !== null && rightInnerEdge !== null && sideBuildings.length === 2) {
     const gapWidth = rightInnerEdge - leftInnerEdge
     if (isThreadGapWidth(gapWidth)) {
-      // The corridor is only "inside" below the shorter rooftop.
+      // One shared corridor object per gap — the collision loop flips its
+      // `paid` flag so a pass can never cash in twice (once per tower).
       const corridorTop = Math.min(sideBuildings[0].halfH, sideBuildings[1].halfH)
-      for (const e of sideBuildings) {
-        e.thread = { minX: leftInnerEdge, maxX: rightInnerEdge, maxY: corridorTop }
-        e.threadPaid = false
-      }
+      const corridor = { minX: leftInnerEdge, maxX: rightInnerEdge, maxY: corridorTop, paid: false }
+      for (const e of sideBuildings) e.thread = corridor
     }
   }
 
@@ -3841,6 +3847,7 @@ function resetGame() {
   clearPower()
   hazardClock = 0
   slowmoActive = false
+  lastRewardTag = null
   document.getElementById('slow-fx')?.classList.remove('slowmo-active')
   flightFeedbackTimer = 0
   flightFeedbackEl?.classList.add('hidden')
@@ -4518,6 +4525,10 @@ function showMenu() {
   state = 'menu'
   launchChallenge = null
   manualPause = false
+  // Quitting mid-gust/mid-bullet-time must not freeze weather artifacts
+  // behind the menu — update() no longer drives these once state leaves play.
+  for (const s of windStreaks) s.visible = false
+  document.getElementById('slow-fx')?.classList.remove('slowmo-active')
   hideAllPanels()
   pauseOverlay?.classList.add('hidden')
   pauseBtn?.classList.add('hidden')
@@ -6557,6 +6568,7 @@ function update(dt) {
           runStats.stars = stars
           starsEl.textContent = String(stars)
           distance += reward.bonusMeters
+          lastRewardTag = 'gauntlet'
           hitStopTimer = Math.max(hitStopTimer, 0.06)
           audio.gateClear()
           if (settings.haptics) Haptic.collect()
@@ -6678,9 +6690,10 @@ function update(dt) {
         }
       }
       // Thread-the-gap: the first of a marked tight pair to pass behind the
-      // plane resolves the corridor test once — a clean pass pays a route bonus.
-      if (e.thread && !e.threadPaid && m.position.z < -1.2) {
-        e.threadPaid = true
+      // plane resolves the corridor ONCE (both towers share one corridor
+      // object whose `paid` flag guards the payout).
+      if (e.thread && !e.thread.paid && m.position.z < -1.2) {
+        e.thread.paid = true
         const threaded = isInsideThreadGap({
           playerX: p.x,
           playerY: p.y,
@@ -6690,6 +6703,7 @@ function update(dt) {
         })
         if (threaded) {
           distance += THREAD_REWARD_METERS
+          lastRewardTag = 'thread'
           audio.hoopWhoosh()
           spawnConfetti(p.x, planeY, 0.5, 'route')
           showFlightFeedback(`THREADED THE GAP · +${THREAD_REWARD_METERS}m`, 'route', 1.1)
@@ -6899,7 +6913,15 @@ window.render_game_to_text = () => JSON.stringify({
     : null,
   distance: Math.floor(distance),
   stars,
+  lastReward: lastRewardTag,
   player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  power: activePower
+    ? { kind: activePower.kind, timeLeft: Math.round(activePower.timeLeft * 10) / 10 }
+    : null,
+  banners: {
+    zone: zoneBannerTimer > 0 ? zoneBanner.textContent : null,
+    action: bannerTimer > 0 ? powerBanner.textContent : null,
+  },
   plane: {
     skinId: activePlaneSkinId,
     silhouette: activePlaneSilhouette,
@@ -6969,6 +6991,7 @@ window.render_game_to_text = () => JSON.stringify({
         y: Number(entity.mesh.position.y.toFixed(2)),
         z: Number(entity.mesh.position.z.toFixed(2)),
         telegraph: Boolean(entity.telegraph),
+        golden: Boolean(entity.golden),
       })),
   },
   upgrades: upgradeRuntimeTextState(),
@@ -7221,6 +7244,115 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
     launchGraceSeconds = 0
   }
   hudEl?.classList.remove('hidden')
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-tier-climb') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  distance = 985
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-gauntlet-payoff') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  spawnMiniGauntlet(45)
+  // Commit to the advertised lane so the tripwire pays when it passes.
+  const laneX = PASSAGE_LANE_X[activePassageLane + 1]
+  planeX = laneX
+  planeY = 9
+  mouseTarget.x = laneX
+  mouseTarget.y = 9
+  plane.position.set(planeX, planeY, 0)
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
+  // Control variant rides the real query string (?nothread=1#test-thread-gap)
+  const control = devThreadControl
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  // No invuln here on purpose: the payoff lives inside the collideable
+  // building branch, and with spawns parked this scene has zero lethal hazards.
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  // Park the lane promise far from the corridor so a tier-climb golden drop
+  // can never drift into the plane and inject seed-dependent pickups.
+  activePassageLane = null
+  // Twin towers with a 5-unit inner-face slot — the widest gap that still
+  // counts as a thread. Control run (?nothread) skips the tag only, keeping
+  // the RNG stream identical so totals differ by exactly the reward.
+  const makeTower = (x) => {
+    const b = createBuilding(3, 10, 3, buildingMats[0])
+    b.position.set(x, 0, 30)
+    scene.add(b)
+    return b
+  }
+  makeTower(-4)
+  makeTower(4)
+  const corridor = control ? null : { minX: -2.5, maxX: 2.5, maxY: 10, paid: false }
+  const towerEntity = (mesh) => ({
+    mesh,
+    type: 'building',
+    radius: 1.5,
+    halfH: 10,
+    passageLane: null,
+    ...(corridor ? { thread: corridor } : {}),
+  })
+  entities.push(towerEntity(scene.children.at(-2)))
+  entities.push(towerEntity(scene.children.at(-1)))
+  // y=9 keeps the whole flight above the skim ceiling so ground-skim banking
+  // can't inject variable distance bonuses between the two variants.
+  planeX = 0
+  planeY = 9
+  mouseTarget.x = 0
+  mouseTarget.y = 9
+  plane.position.set(planeX, planeY, 0)
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-power-refresh') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  hudEl?.classList.remove('hidden')
+  activatePower('magnet')
+  advanceTime(1500)
+  // Drain ~1.5s off the timer, then catch the same kind again: the refresh
+  // path must top the timer back to full instead of restarting through
+  // clearPower(). render_game_to_text().power exposes the proof.
+  activatePower('magnet')
   simulationPaused = true
 }
 

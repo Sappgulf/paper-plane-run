@@ -2,6 +2,15 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 3: real gameplay test pass, thread double-pay fix, new gameplay e2e suite
+
+- **Actually played every mode headlessly.** New `e2e/gameplay.spec.js` (6 desktop tests) drives the live engine through: an altitude-tier climb with golden-star verification, a gauntlet tripwire payout (+banner +monotonic wallet), a tagged-vs-control thread-gap proof, duplicate-orb refresh, boot-and-fly for daily / weekly / time attack / co-op / hot-seat (including pause→menu exit), and sustained-steering classic + tutorial completion. Shared helpers extracted to `e2e/smoke-helpers.js` so both suites drive identically.
+- **Real bug found & fixed — thread-the-gap paid twice per gap:** each of the two tagged towers resolved its own payout, cashing +40 instead of +20. Both towers now share one corridor object whose `paid` flag guards the reward (spawnChunk builds it once per gap).
+- **Testability contract extended:** `render_game_to_text` now exposes `lastReward` ('thread'/'gauntlet'), `power {kind,timeLeft}`, `banners {zone,action}`, and a `golden` flag on visible stars. Four deterministic DEV fixtures added (`#test-tier-climb`, `#test-gauntlet-payoff`, `#test-thread-gap?nothread`, `#test-power-refresh`), all with the spawn pump fully parked (`nextSpawnZ=1e9` — the old `220` still spawned because the pump decrements below its threshold on frame one).
+- **Menu-exit polish:** quitting mid-gust or mid-bullet-time no longer strands wind streaks or the slow-mo vignette behind the menu (`showMenu` clears both).
+- **e2e lessons baked into the spec:** hash-only navigations reuse the running engine (distinct queries force reloads); the boot deep-link cleanup wipes `location.search` before fixtures run, so the thread control flag is read at module top beside the other dev params; endless gauntlets legitimately recur every 250m, so assertions check payouts and monotonic stars rather than vanishing entities.
+- Verification: 69 Vitest files / 423 tests passed; FULL Playwright matrix on a quiet tree — 94 specs, **64 passed / 30 viewport-gated skips / 0 failed**; production build PASS; bundle budget 107,184 initial / 844,713 total vs 921,600; iOS parity re-synced byte-exact.
+
 ## 2026-08-25 — Round 2: thread-the-gap, Golden Hour twist, music + milestone juice
 
 - **Thread-the-gap bonus:** when both side towers rise close enough that their inner faces leave a tight slot (≤5 units), spawnChunk marks the pair with the corridor bounds (capped at the shorter rooftop). A clean pass between them pays +20m with a whoosh and route confetti — wall clearance is honored so scraping doesn't pay (`game/thread-gap.js`, pure + tested).
