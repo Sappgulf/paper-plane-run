@@ -5589,7 +5589,8 @@ function registerNearMiss(kind = null) {
   if (tier) comboHud.classList.add(tier)
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
   comboHud.classList.add('combo-pulse')
-  comboFloat.textContent = describeNearMissFloat(combo)
+  const nearMissPay = 5 * combo * 0.25 * (feverActive ? 2 : 1)
+  comboFloat.textContent = `${describeNearMissFloat(combo)} · +${nearMissPay}m`
   comboFloat.classList.remove('fever-float')
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
@@ -5601,7 +5602,7 @@ function registerNearMiss(kind = null) {
   Haptic.nearMiss()
   const bursts = nearMissConfettiBursts(combo)
   for (let i = 0; i < bursts; i += 1) spawnConfetti(planeX, planeY + i * 0.25, 2 - i)
-  distance += 5 * combo * 0.25
+  distance += nearMissPay
   // Small camera punch that grows with the streak — bigger chains feel bigger.
   if (!settings.reducedMotion) shake = Math.max(shake, nearMissShakeAmount(combo))
   if (shouldTriggerFever({
@@ -5921,6 +5922,19 @@ function update(dt) {
       feverHud?.classList.add('hidden')
     }
   }
+  // Golden paper: the plane glows while Fever burns — reset the instant it ends.
+  if (feverActive) {
+    const feverPulse = 0.3 + (Math.sin(elapsed * 9) + 1) * 0.18
+    planeBodyMat.emissive.setHex(0x8a4d00)
+    planeBodyMat.emissiveIntensity = feverPulse
+    planeAccentMat.emissive.setHex(0xff8c00)
+    planeAccentMat.emissiveIntensity = feverPulse * 0.9
+  } else if (planeBodyMat.emissiveIntensity !== 0) {
+    planeBodyMat.emissive.setHex(0x000000)
+    planeBodyMat.emissiveIntensity = 0
+    planeAccentMat.emissive.setHex(0x3d1a10)
+    planeAccentMat.emissiveIntensity = 0.18
+  }
 
   // Adaptive music: brighter/quicker as speed climbs and near-miss combo builds.
   // Fever pins the bed wide open — the score burst should sound like one too.
@@ -5928,7 +5942,12 @@ function update(dt) {
     (speed - difficulty.speedBase) / Math.max(1, difficulty.speedCap - difficulty.speedBase), 0, 1,
   )
   const comboFactor = Math.min(1, combo / 6)
-  audio.setIntensity(feverActive ? 1 : Math.min(1, speedFactor * 0.55 + comboFactor * 0.55))
+  const bossPressure = entities.some(
+    (e) => e.type === 'boss' && !e.cleared && e.mesh.position.z > -2 && e.mesh.position.z < 40,
+  )
+  audio.setIntensity(feverActive || bossPressure
+    ? 1
+    : Math.min(1, speedFactor * 0.55 + comboFactor * 0.55))
 
   let inputX = 0
   let inputY = 0

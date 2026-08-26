@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 6: fever identity, boss-pressure music, near-miss badges
+
+- **Fever identity:** while a fever burst runs, the paper plane itself burns gold — pulsing warm emissive on the body plus orange accent glow that resets cleanly when it ends. Combo float text now includes the paid meters (`NEAR MISS x3 · +3.75m`), and near-miss distance pays **double during fever** so the burst economy matches its visuals.
+- **Boss pressure music:** any active, un-cleared gate within 40m pins the adaptive music bed wide open next to fever — approaches audibly escalate.
+- Verified: fever fixture screenshot confirms golden plane + 1.5× chip + rainbow burst; Vitest suite green; full desktop gameplay e2e green.
+
 ## 2026-08-25 — Round 5: flight dynamics, torn-paper crash burst, skill missions
 
 - **Flight — camera carving:** the chase camera now leans subtly into bank and pitch (`velX/velY → lookAt offsets`, clamped) so turns and dives read as carving air instead of a fixed rig — zero gameplay impact, pure feel.
