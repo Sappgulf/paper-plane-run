@@ -2,6 +2,14 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 5: flight dynamics, torn-paper crash burst, skill missions
+
+- **Flight — camera carving:** the chase camera now leans subtly into bank and pitch (`velX/velY → lookAt offsets`, clamped) so turns and dives read as carving air instead of a fixed rig — zero gameplay impact, pure feel.
+- **Crash — torn-paper burst:** the old two-burst crash pop becomes a staggered 30-shard torn-paper cloud in a new `aero` palette (paper creams + one ink fleck), layering the tumble, hit-stop and camera punch into a proper paper explosion. Win finishes keep their chime.
+- **Gameplay — missions for the new mechanics:** two new daily mission templates — "Clear N hazard gauntlets" and "Thread N tower gaps" — fed by `runStats.gauntlets/threads` counters wired into both reward paths and the run-summary stats.
+- **Crash-card layout fix:** game-over action buttons shared a grid row with the polaroid and column-stretched into giant buttons; both action rows now `align-self: start`.
+- Verification: 70 Vitest files / 425 tests (new `missionSkills` coverage); full desktop gameplay e2e passes; build PASS, bundle 107,184 initial / 845,342 total.
+
 ## 2026-08-25 — Round 4: visual audit via SuperDesign + art rebalance
 
 - **Visual audit with the design skill:** ran SuperDesign init (repo → `.superdesign/init/` + `design-system.md`), created the menu project, produced a pixel-perfect reproduction draft plus two named direction drafts (Tidy Menu / Hero Edition) — all three live on superdesign.dev. Screenshot-audited every surface headlessly (desktop + mobile menu, hangar, flight, boss, game-over, journey).

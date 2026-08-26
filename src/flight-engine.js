@@ -717,7 +717,7 @@ let feverFloatTimeout = null
 let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
 let lastPhotoDataUrl = null
@@ -3891,7 +3891,7 @@ function resetGame() {
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
   journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
@@ -4948,8 +4948,9 @@ function die(reason) {
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
-    spawnConfetti(planeX, planeY, 0, isWin ? 'route' : 'classic')
-    spawnConfetti(planeX, planeY + 0.5, 1, isWin ? 'route' : 'classic')
+    spawnConfetti(planeX, planeY, 0, 'aero')
+    spawnConfetti(planeX, planeY + 0.6, 0.4, 'aero')
+    spawnConfetti(planeX, planeY + 1.1, 0.9, 'aero')
     // paper burst velocity
     velX = (rng() - 0.5) * 20
     velY = 6 + rng() * 4
@@ -5210,6 +5211,8 @@ function finalizeDeathUnsafe() {
     powers: runStats.powers,
     winds: runStats.winds,
     popped: runStats.popped,
+    gauntlets: runStats.gauntlets ?? 0,
+    threads: runStats.threads ?? 0,
     mode: difficulty.id,
     daily: runKind === 'daily',
   })
@@ -6399,7 +6402,9 @@ function update(dt) {
   camera.position.x += (_camTarget.x - camera.position.x) * lateralEase
   camera.position.z += (_camTarget.z - camera.position.z) * lateralEase
   camera.position.y += (_camTarget.y - camera.position.y) * verticalEase
-  camera.lookAt(planeX * 0.2, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
+  const leanX = THREE.MathUtils.clamp(velX * 0.38, -4.2, 4.2)
+  const leanY = THREE.MathUtils.clamp(velY * 0.3, -3.2, 3.2)
+  camera.lookAt(planeX * 0.2 + leanX, planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
     camera.position.x += (Math.random() - 0.5) * shake * 0.45
@@ -6570,6 +6575,7 @@ function update(dt) {
           runStats.stars = stars
           starsEl.textContent = String(stars)
           distance += reward.bonusMeters
+          runStats.gauntlets = (runStats.gauntlets || 0) + 1
           lastRewardTag = 'gauntlet'
           hitStopTimer = Math.max(hitStopTimer, 0.06)
           audio.gateClear()
@@ -6705,6 +6711,7 @@ function update(dt) {
         })
         if (threaded) {
           distance += THREAD_REWARD_METERS
+          runStats.threads = (runStats.threads || 0) + 1
           lastRewardTag = 'thread'
           audio.hoopWhoosh()
           spawnConfetti(p.x, planeY, 0.5, 'route')
