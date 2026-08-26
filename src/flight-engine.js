@@ -1584,16 +1584,16 @@ const planeBodyMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: 0xfff6ec, roughness: 0.82, side: THREE.DoubleSide,
 })
 const planeAccentMat = new THREE.MeshStandardMaterial({
-  color: 0xf0956a, roughness: 0.7, side: THREE.DoubleSide,
+  color: 0xd96f4e, roughness: 0.7, side: THREE.DoubleSide, emissive: 0x3d1a10, emissiveIntensity: 0.18,
 })
 const planeTrailMat = new THREE.PointsMaterial({
   color: 0xfff0c0, size: 0.27, transparent: true, opacity: 0.75, depthWrite: false,
 })
 const buildingMats = [
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffc9b8, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xb8e0d2, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffe6a8, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xd4c4f0, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5ab93, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0x96c4b0, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5d489, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xbfaae0, roughness: 0.9 }),
 ]
 const birdMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
@@ -4031,11 +4031,13 @@ function resetGame() {
     }
   }
 
-  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 4 : 8
+  // Bigger, spread cushions give the open sky depth without a fog cost —
+  // they parallax at 0.35x world speed so altitude still reads.
+  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 8 : 16
   for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
-    cl.position.set((rng() - 0.5) * 55, 12 + rng() * 18, 20 + rng() * 180)
-    cl.scale.setScalar(1.2 + rng() * 1.8)
+    cl.position.set((rng() - 0.5) * 85, 9 + rng() * 22, 45 + rng() * 185)
+    cl.scale.setScalar(3.4 + rng() * 4.6)
     scene.add(cl)
     clouds.push(cl)
   }

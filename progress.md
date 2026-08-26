@@ -2,6 +2,16 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 4: visual audit via SuperDesign + art rebalance
+
+- **Visual audit with the design skill:** ran SuperDesign init (repo → `.superdesign/init/` + `design-system.md`), created the menu project, produced a pixel-perfect reproduction draft plus two named direction drafts (Tidy Menu / Hero Edition) — all three live on superdesign.dev. Screenshot-audited every surface headlessly (desktop + mobile menu, hangar, flight, boss, game-over, journey).
+- **The loud-ground fix:** zone ground art was a saturated multicolor quilt that fought hazards. All six `ground-*.jpg` retoned with PIL (desaturate ~50% toward paper cream, warm channel shift, gentle contrast) — the paper-city layout stays, the saturation drops. Building texture deepened (autocontrast + window contrast) and building tints richened so towers read as cut paper instead of white ghosts.
+- **Plane readability:** deeper fold accents (`0xd96f4e` + slight warm emissive) so the plane silhouette holds against pale skies.
+- **Sky depth:** bigger, more numerous cushion clouds (12 / 16 low-power) parallaxing at 0.35×.
+- **Menu tidy (superdesign direction A):** the orphaned Pilot name field moved INTO the settings grid as a full-width third field (soft inset, evenly matched Difficulty/Controls columns), hints tightened, card translucency nudged so the paper-craft backdrop glows through.
+- **Audit tooling notes:** the old `#test-*` flight fixtures call `clearEntities()`, which deletes clouds — fixture screenshots were misleading; a no-fixture real-flight probe now drives the true view.
+- Verification: 69 Vitest / 423 tests; menu-boot + full gameplay e2e pass; build PASS; bundle 107,184 initial / 844,751 total.
+
 ## 2026-08-25 — Round 3: real gameplay test pass, thread double-pay fix, new gameplay e2e suite
 
 - **Actually played every mode headlessly.** New `e2e/gameplay.spec.js` (6 desktop tests) drives the live engine through: an altitude-tier climb with golden-star verification, a gauntlet tripwire payout (+banner +monotonic wallet), a tagged-vs-control thread-gap proof, duplicate-orb refresh, boot-and-fly for daily / weekly / time attack / co-op / hot-seat (including pause→menu exit), and sustained-steering classic + tutorial completion. Shared helpers extracted to `e2e/smoke-helpers.js` so both suites drive identically.

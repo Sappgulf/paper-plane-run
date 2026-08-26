@@ -758,6 +758,16 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px;
   font-size: 12px; font-weight: 800; color: #5c4540;
 }
+.menu-setup .name-row {
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  margin-top: 2px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,.55);
+  border: 1px solid rgba(61,44,41,.08);
+  border-radius: var(--radius-sm);
+}
+.menu-setup .name-row input { flex: 1; max-width: 220px; text-align: left; }
 
 .cta-main {
   width: 100%; font-family: inherit; font-weight: 900; font-size: 18px;
