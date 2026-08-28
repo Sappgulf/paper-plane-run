@@ -273,7 +273,7 @@ function stopPlanePreview() {
 
 function hideAllPanels() {
   stopPlanePreview()
-  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
+  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel']) {
     $(id)?.classList.add('hidden')
   }
 }
@@ -1360,18 +1360,6 @@ const modeByButtonId = {
   'daily-btn': 'daily',
   'weekly-btn': 'weekly',
   'tutorial-btn': 'tutorial',
-  'hotseat-btn': 'hotseat',
-  'coop-btn': 'coop',
-}
-
-const COOP_HINT_KEY = 'paper-plane-run-coop-hint'
-function maybeShowCoopHint() {
-  if (localStorage.getItem(COOP_HINT_KEY) === '1') return
-  safeSetItem(COOP_HINT_KEY, '1')
-  const hint = $('daily-hint')
-  if (hint) {
-    hint.textContent = 'Co-op: P1 steers · P2 wind with WASD / IJKL or the purple stick'
-  }
 }
 
 document.addEventListener('click', (event) => {
@@ -1380,7 +1368,6 @@ document.addEventListener('click', (event) => {
   if (kind) {
     event.preventDefault()
     event.stopImmediatePropagation()
-    if (kind === 'coop') maybeShowCoopHint()
     void startMode(kind)
     return
   }
@@ -1603,7 +1590,6 @@ function consumeLaunchMode() {
     }
     if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'weekly', 'tutorial'].includes(mode)) {
       const kind = mode === 'classic' ? 'classic' : mode
-      if (kind === 'coop') maybeShowCoopHint()
       queueMicrotask(() => startMode(kind))
       return true
     }

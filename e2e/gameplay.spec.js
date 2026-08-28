@@ -104,7 +104,7 @@ test.describe('gameplay systems regression', () => {
     expect(errors).toEqual([])
   })
 
-  test('every mode boots and flies: daily, weekly, time attack, co-op, hot-seat', async ({ page }, testInfo) => {
+  test('every mode boots and flies: daily, weekly, tutorial, classic', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
     test.slow()
     const bootAndFly = async (buttonId, name) => {
@@ -133,18 +133,14 @@ test.describe('gameplay systems regression', () => {
       return mid
     }
 
+    // Time Attack, co-op and hot-seat were removed: each was a separate verb
+    // competing with the core loop for tuning attention. The modes that remain
+    // are the ones the game is actually about, and every one of them still has
+    // to boot, fly and return to the menu cleanly.
     await bootAndFly('daily-btn', 'daily')
     const weekly = await bootAndFly('weekly-btn', 'weekly')
     expect(weekly.weeklyFold).toBeTruthy()
-    await bootAndFly('timeattack-btn', 'timeattack')
-    await bootAndFly('coop-btn', 'coop')
-
-    await openApp(page)
-    await tap(page.locator('#hotseat-btn'))
-    await waitForGameText(page)
-    await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
-    await page.evaluate(() => window.advanceTime(800))
-    expect((await snapshot(page)).mode).toBe('hotseat')
+    await bootAndFly('start-btn', 'classic')
   })
 
   test('tutorial completes without hazards and classic survives sustained steering', async ({ page }, testInfo) => {

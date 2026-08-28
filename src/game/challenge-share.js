@@ -11,9 +11,6 @@ export const CHALLENGE_KINDS = Object.freeze([
   'classic',
   'daily',
   'weekly',
-  'timeattack',
-  'coop',
-  'hotseat',
 ])
 export const CHALLENGE_MODES = Object.freeze(['easy', 'normal', 'hard'])
 

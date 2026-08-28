@@ -19,7 +19,7 @@ describe('first-flight launch grace', () => {
   })
 
   test('does not protect competitive or shared modes', () => {
-    for (const runKind of ['daily', 'weekly', 'layout', 'coop', 'hotseat']) {
+    for (const runKind of ['daily', 'weekly', 'layout', 'journey']) {
       expect(shouldGrantLaunchGrace({ runKind, tutorialDone: false, completedRuns: 0 })).toBe(false)
     }
   })

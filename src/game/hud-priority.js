@@ -37,7 +37,6 @@ export const HUD_CHIP_RANK = Object.freeze({
   fever: 60,
   combo: 50,
   streak: 40,
-  timeattack: 35,
   'journey-objective': 30,
   'ghost-delta': 20,
   zone: 10,
