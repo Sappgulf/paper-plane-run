@@ -133,8 +133,11 @@ import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-sta
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
+import { createBannerState, resolveBanner } from './game/flight-banners.js'
+import { selectHudChips } from './game/hud-priority.js'
 import {
   createPaperGroundCanvas,
+  createHazardCanvas,
   createPaperSheetCanvas,
   createPaperSkyCanvas,
   getPaperPalette,
@@ -913,13 +916,15 @@ const texCache = {}
  * loader, so there is no way to sneak a photograph back in later.
  */
 function createPaperTexture(spec) {
-  const [, kind, zoneId] = spec.split(':')
+  const [, kind, zoneId, variant] = spec.split(':')
   const palette = getPaperPalette(zoneId)
   const canvas = kind === 'ground'
     ? createPaperGroundCanvas({ palette })
     : kind === 'sheet'
       ? createPaperSheetCanvas({ palette })
-      : createPaperSkyCanvas({ palette })
+      : kind === 'hazard'
+        ? createHazardCanvas({ kind: variant, palette })
+        : createPaperSkyCanvas({ palette })
   if (!canvas) return new THREE.Texture()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -1099,7 +1104,6 @@ function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
   return tex
 }
 const paperTex = loadTex('paper:sheet:city')
-const buildingTex = loadTex('paper:ground:city')
 const skyTex = loadTex('paper:sky:city')
 
 // Dual sky spheres for crossfade between zones
@@ -1405,6 +1409,85 @@ scene.add(dust)
 dust.visible = !settings.lowPower
 applyPerformanceSettings()
 
+/**
+ * A dark shell just behind the plane's own surfaces.
+ *
+ * A cream paper plane flying over a cream paper city is the least visible thing
+ * on screen — which is unacceptable for the one object the player must track
+ * every frame. The fix is the standard one for a light object on a light
+ * background: a slightly inflated copy of the same geometry, rendered
+ * back-faces-only in ink, so a hard outline shows around the silhouette from
+ * every angle and against every zone. It costs one extra draw of geometry the
+ * plane already has, and unlike a colour change it does not fight the skins —
+ * every plane keeps its own palette and simply gains an edge.
+ */
+const planeOutlineMat = new THREE.MeshBasicMaterial({
+  color: 0x2f2430, side: THREE.BackSide, transparent: true, opacity: 0.82, depthWrite: false,
+})
+
+function attachPlaneOutline(model) {
+  if (!model || model.userData.outlineShell) return model
+  const shell = new THREE.Group()
+  shell.name = 'planeOutline'
+  model.traverse((child) => {
+    if (!child.isMesh || child.name === 'shieldBubble') return
+    const copy = new THREE.Mesh(child.geometry, planeOutlineMat)
+    copy.position.copy(child.position)
+    copy.rotation.copy(child.rotation)
+    // Inflated about its own centre so the outline reads as an even edge
+    // rather than an offset drop shadow.
+    copy.scale.copy(child.scale).multiplyScalar(1.085)
+    copy.renderOrder = -1
+    shell.add(copy)
+  })
+  if (shell.children.length === 0) return model
+  model.add(shell)
+  model.userData.outlineShell = shell
+  return model
+}
+
+/**
+ * The plane's ground marker.
+ *
+ * A cream paper plane over a cream paper city is nearly invisible — the one
+ * object the player must track at all times was the hardest thing on screen to
+ * find, and at low altitude it disappeared into the ground entirely. A shadow
+ * directly beneath it fixes both halves of that: it says where the plane is
+ * laterally, and how far it is from the floor that now ends the run. It tightens
+ * and darkens as the plane descends, so "about to touch down" is legible
+ * peripherally, without reading the altimeter.
+ *
+ * Drawn as an unlit disc rather than a real shadow so it costs nothing and
+ * cannot be switched off with the shadow map on low-power devices — the one
+ * place it matters most.
+ */
+const planeMarkerMat = new THREE.MeshBasicMaterial({
+  color: 0x2f2430, transparent: true, opacity: 0.22, depthWrite: false,
+})
+const planeMarker = new THREE.Mesh(new THREE.CircleGeometry(1, 20), planeMarkerMat)
+planeMarker.rotation.x = -Math.PI / 2
+planeMarker.position.y = 0.06
+planeMarker.renderOrder = 1
+planeMarker.visible = false
+scene.add(planeMarker)
+
+function updatePlaneMarker() {
+  if (!planeMarker) return
+  if (state !== 'playing') { planeMarker.visible = false; return }
+  planeMarker.visible = true
+  planeMarker.position.x = planeX
+  // Pushed a little down-track rather than sitting exactly under the plane: the
+  // chase camera is behind and above, so the point directly below the plane
+  // projects to the very bottom edge of the frame, half of it off screen. A few
+  // metres ahead puts the marker where the player is already looking.
+  planeMarker.position.z = 7
+  // Near the deck the marker is small, dark and tight to the plane; high up it
+  // spreads and fades, exactly as a real shadow would.
+  const height = THREE.MathUtils.clamp((planeY - GROUND_HEIGHT) / (MAX_Y - GROUND_HEIGHT), 0, 1)
+  planeMarker.scale.setScalar(0.62 + height * 1.5)
+  planeMarkerMat.opacity = 0.34 - height * 0.2
+}
+
 // Confetti pool for near-miss
 const confetti = []
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
@@ -1435,11 +1518,19 @@ const planeAccentMat = new THREE.MeshStandardMaterial({
 const planeTrailMat = new THREE.PointsMaterial({
   color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
 })
+/**
+ * Buildings are scenery, and scenery's job is to be somewhere the gameplay
+ * happens rather than something to look at. They were carrying the striped
+ * ground texture, which at building scale read as corrugated cardboard and gave
+ * the heaviest, busiest surface on screen to the objects that matter least.
+ * Flat pale sheets instead: they still say "paper city", and they let the plane
+ * and the accent-coloured hazards sit in front of them.
+ */
 const buildingMats = [
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffc9b8, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xb8e0d2, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xffe6a8, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xd4c4f0, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xf3ddd2, roughness: 0.95 }),
+  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xdcebe2, roughness: 0.95 }),
+  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xf6ecd4, roughness: 0.95 }),
+  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xe4dcf2, roughness: 0.95 }),
 ]
 const birdMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
@@ -1641,6 +1732,7 @@ function installFlightPlane(skin) {
   })
   const nextTrail = nextPlane.getObjectByName('upgradeTrail')
   nextPlane.remove(nextTrail)
+  attachPlaneOutline(nextPlane)
 
   if (plane) {
     nextPlane.position.copy(plane.position)
@@ -2116,17 +2208,29 @@ function attachLethalOutline(group, radius = 0.85) {
   return group
 }
 
-function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false) {
+/**
+ * Which zone's accent hazards are currently cut from. Tracked separately from
+ * the render zone so a hazard spawned before a zone change keeps the colour it
+ * was born with rather than restyling mid-approach.
+ */
+let hazardPaletteZone = 'city'
+
+function hazardTexture(kind) {
+  return loadTex(`paper:hazard:${hazardPaletteZone}:${kind === 'scissors' ? 'scissors' : 'flyer'}`)
+}
+
+function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false, kind = 'flyer') {
   const g = new THREE.Group()
-  const tex = hasAlpha ? loadTex(texUrl) : loadCutoutTex(texUrl)
-  if (hasAlpha) tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
+  // Hazards are cut paper in the zone accent, not photographs. Everything that
+  // can end a run shares one colour and one ink outline so it is identifiable
+  // as danger before it is identifiable as a scissors or a bird.
+  const tex = hazardTexture(kind)
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
-    transparent: !hasAlpha,
-    alphaTest: hasAlpha ? 0.03 : 0.12,
-    alphaToCoverage: hasAlpha,
+    transparent: true,
+    alphaTest: 0.18,
     side: THREE.DoubleSide,
-    depthWrite: hasAlpha,
+    depthWrite: false,
   })
   const card = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale), mat)
   // Face the player (camera comes from -Z looking +Z)
@@ -2403,7 +2507,7 @@ function pickFlyerKind() {
 
 function createScissors() {
   const g = new THREE.Group()
-  const bill = createBillboardFlyer('/assets/obstacles/obstacle-scissors.webp', 3.15, true)
+  const bill = createBillboardFlyer('', 3.15, true, 'scissors')
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
   return g
@@ -2611,6 +2715,11 @@ let pitch = 0
 let roll = 0
 /** Roll axis — lateral input commands a bank, the bank turns the plane. */
 let bankState = createBankState()
+/** Which flight banner currently owns the single on-screen slot. */
+let bannerSlot = createBannerState()
+/** What the zone/power banner is currently saying, for banner priority. */
+let zoneBannerKind = 'zone'
+let powerBannerKind = 'power'
 /** Pointer/touch hold for the Tuck, mirroring the Space key. */
 let tuckPointerHeld = false
 /** This frame's resolved tuck modifiers, shared with the camera/pose pass. */
@@ -2983,6 +3092,7 @@ function spawnChunk(z) {
   }
   if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
     powerBanner.textContent = '💰 Gold Rush cluster!'
+    powerBannerKind = 'power'
     powerBanner.classList.remove('hidden')
     bannerTimer = Math.max(bannerTimer, 1.4)
   }
@@ -3091,6 +3201,7 @@ function spawnBoss(z = 70, forcedKind = null) {
   // Brief approach invuln so a late hazard can't snipe the commit.
   invuln = Math.max(invuln, 0.35)
   zoneBanner.textContent = `${bossBannerEmoji(kind)} BOSS · ${opening.headline}`
+  zoneBannerKind = 'boss'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 3.6
   track('boss_start', { distance: Math.floor(distance), kind })
@@ -3169,6 +3280,7 @@ function spawnMiniGauntlet(z = 60) {
     })),
   })
   const side = gapCenter < -1.5 ? 'LEFT' : gapCenter > 1.5 ? 'RIGHT' : 'CENTRE'
+  zoneBannerKind = 'gauntlet'
   zoneBanner.textContent = room > 0
     ? `⚡ Hazard Gauntlet · gap ${side}`
     : '⚡ Hazard Gauntlet · find the widest gap'
@@ -3264,6 +3376,7 @@ function dispatchJourneyEncounter(event) {
   journeyTelemetry.completedEventIds.push(event.id)
   for (const entity of entities.slice(eventStart)) entity.journeyEventId = event.id
   zoneBanner.textContent = event.type.replaceAll('-', ' ')
+  zoneBannerKind = 'zone'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 1.6
   track('journey_encounter_started', { routeId: journeyRunConfig.routeId, eventId: event.id, type: event.type })
@@ -3411,6 +3524,7 @@ function activatePower(kind) {
   powerFill.style.width = '100%'
   powerHud.classList.remove('hidden')
   powerBanner.textContent = meta.banner
+  powerBannerKind = 'power'
   powerBanner.classList.remove('hidden')
   bannerTimer = 2.4
   showFlightFeedback(`POWER · ${meta.label}`, 'power', 1.2)
@@ -3517,6 +3631,7 @@ function applyFlarePayout(payout) {
   }
   bannerTimer = Math.max(bannerTimer, 0.9)
   powerBanner.textContent = payout.banner
+  powerBannerKind = 'flare'
   powerBanner.classList.remove('hidden')
 }
 
@@ -3593,6 +3708,7 @@ function applyZone(z, announce) {
     renderer.toneMappingExposure = z.exposure
   }
   applyNightReadability(z.nightReadability)
+  hazardPaletteZone = z.id
   if (z.sky) setSkyTexture(z.sky, announce)
   if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
   if (z.id !== groundLifeZoneId) buildGroundLife(z.id)
@@ -3602,6 +3718,7 @@ function applyZone(z, announce) {
   if (announce && z.id !== currentZoneId) {
     invuln = Math.max(invuln, 0.55)
     zoneBanner.textContent = z.name
+    zoneBannerKind = 'zone'
     zoneBanner.classList.remove('hidden')
     zoneBannerTimer = 1.8
     showFlightFeedback(z.name, 'route', 1.2)
@@ -3636,6 +3753,7 @@ function updateEndlessTier() {
   // lands the player straight into a hazard they could not have read.
   invuln = Math.max(invuln, 0.55)
   zoneBanner.textContent = next.name
+  zoneBannerKind = 'zone'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 1.8
   showFlightFeedback(next.name, 'route', 1.4)
@@ -4208,6 +4326,7 @@ function applyPauseState({ banner = true } = {}) {
       invuln = Math.max(invuln, transition.graceSeconds || 0)
       if (banner) {
         powerBanner.textContent = '▶ Resumed'
+        powerBannerKind = 'status'
         powerBanner.classList.remove('hidden')
         bannerTimer = 1.5
       }
@@ -4502,6 +4621,7 @@ async function startGame(kind = 'classic', opts = {}) {
     }
     if (launchGraceSeconds > 0) {
       powerBanner.textContent = '✈️ Get ready — launch protection active'
+      powerBannerKind = 'status'
       powerBanner.classList.remove('hidden')
       bannerTimer = launchGraceSeconds
     }
@@ -4652,6 +4772,7 @@ function die(reason) {
     spawnConfetti(planeX, planeY, 1)
     spawnConfetti(planeX, planeY + 0.5, 0)
     powerBanner.textContent = guardian.banner
+    powerBannerKind = 'guardian'
     powerBanner.classList.remove('hidden')
     bannerTimer = guardian.bannerSeconds
     document.getElementById('warn-flash')?.classList.remove('guardian-flash')
@@ -5029,6 +5150,76 @@ function finalizeDeathUnsafe() {
  * and "you are about to hit the ground" has to survive being seen out of the
  * corner of an eye.
  */
+/**
+ * Keep exactly one flight banner on screen.
+ *
+ * Each banner element still writes its own text and clears itself on its own
+ * timer, exactly as before — the arbiter only decides which of the ones asking
+ * to be seen is actually shown. Doing it here rather than at ~30 call sites
+ * means no future banner can forget to coordinate: if it is in this list, it
+ * takes part.
+ */
+const BANNER_SOURCES = [
+  { id: 'zone', element: () => zoneBanner, kind: () => zoneBannerKind },
+  { id: 'wind', element: () => windBanner, kind: () => 'wind' },
+  { id: 'power', element: () => powerBanner, kind: () => powerBannerKind },
+]
+
+/**
+ * Chip id -> element. Each system still shows and hides its own chip exactly as
+ * before; this only decides which of the ones asking for space actually get it,
+ * so no future chip can forget to take part in the budget.
+ */
+const HUD_CHIP_ELEMENTS = [
+  ['distance', () => distanceEl?.closest('.hud-card')],
+  ['stars', () => starsEl?.closest('.hud-card')],
+  ['altitude', () => altitudeHud],
+  ['tuck', () => tuckHud],
+  ['guardian', () => $('guardian-hud')],
+  ['power', () => $('power-hud')],
+  ['skim', () => skimHud],
+  ['fever', () => $('fever-hud')],
+  ['combo', () => comboHud],
+  ['streak', () => streakHud],
+  ['journey-objective', () => $('journey-objective-hud')],
+  ['ghost-delta', () => $('ghost-delta-hud')],
+  ['zone', () => $('hud-zone')?.closest('.hud-card')],
+  ['next-zone', () => $('next-zone-hud')],
+  ['best', () => $('best')?.closest('.hud-card')],
+  ['mode', () => $('hud-mode')?.closest('.hud-card')],
+  ['control', () => $('ctrl-hud')],
+]
+
+function updateHudBudget() {
+  const wanted = []
+  const elements = new Map()
+  for (const [id, get] of HUD_CHIP_ELEMENTS) {
+    const element = get()
+    if (!element) continue
+    elements.set(id, element)
+    if (!element.classList.contains('hidden')) wanted.push(id)
+  }
+  const shown = new Set(selectHudChips(wanted, { inFlight: state === 'playing' }))
+  for (const [id, element] of elements) {
+    element.classList.toggle('hud-crowded-out', !shown.has(id) && wanted.includes(id))
+  }
+}
+
+function updateBannerSlot() {
+  const requests = []
+  for (const source of BANNER_SOURCES) {
+    const element = source.element()
+    if (!element || element.classList.contains('hidden')) continue
+    requests.push({ id: source.id, kind: source.kind(), text: element.textContent.trim() })
+  }
+  bannerSlot = resolveBanner(bannerSlot, { requests })
+  for (const source of BANNER_SOURCES) {
+    const element = source.element()
+    if (!element) continue
+    element.classList.toggle('banner-suppressed', source.id !== bannerSlot.id)
+  }
+}
+
 function updateAltitudeHud() {
   if (!altitudeHud) return
   const fraction = THREE.MathUtils.clamp((planeY - MIN_Y) / (MAX_Y - MIN_Y), 0, 1)
@@ -5202,6 +5393,7 @@ function animateHazards(dt) {
         const presentation = describeBossPhase(encounter)
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
+        zoneBannerKind = 'boss'
         zoneBanner.textContent = `${bossBannerEmoji(u.kind)} Fly the glowing hoop`
         zoneBanner.classList.remove('hidden')
         zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.7
@@ -5381,6 +5573,7 @@ function registerStarStreak() {
     audio.starStreak(pickup.count / 5)
     if (settings.haptics) Haptic.collect()
     spawnConfetti(planeX, planeY, 1)
+    powerBannerKind = 'power'
     powerBanner.textContent = pickup.banner
     powerBanner.classList.remove('hidden')
     bannerTimer = 2.0
@@ -5592,6 +5785,7 @@ function update(dt) {
     }
     if (prevCount >= 2 && !nextStreak.visible) {
       streakHud?.classList.add('hidden')
+      powerBannerKind = 'status'
       powerBanner.textContent = '⭐ Star streak broken'
       powerBanner.classList.remove('hidden')
       bannerTimer = Math.max(bannerTimer, 1.1)
@@ -5823,6 +6017,9 @@ function update(dt) {
   updateAltitudeHud()
   updateTuckHud()
   updateTuckButton(true)
+  updateBannerSlot()
+  updateHudBudget()
+  updatePlaneMarker()
 
   const bounded = applySoftBounds({
     x: planeX,
@@ -6271,6 +6468,7 @@ function update(dt) {
             pulseFlightImpact('route')
             audio.gateClear()
             audio.hoopWhoosh()
+            powerBannerKind = 'boss'
             powerBanner.textContent = `${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`
             powerBanner.classList.remove('hidden')
             bannerTimer = Math.max(bannerTimer, 1.8)

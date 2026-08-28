@@ -192,6 +192,99 @@ export function createPaperSheetCanvas({ palette = DEFAULT_PALETTE, size = 128, 
 }
 
 /**
+ * The one colour every zone reserves for danger.
+ *
+ * Hazards used to be cut-out product photographs, so a pair of scissors was a
+ * mid-grey photographic object against a mid-tone paper city — the single most
+ * important thing on screen and the hardest to pick out. Under the art rule
+ * they are flat shapes in the zone's accent, which is reserved for exactly
+ * this: nothing else in a zone is allowed to use it. Learn the colour once and
+ * every zone tells you what will kill you.
+ */
+export const HAZARD_INK = '#221a1c'
+/** Outline weight as a fraction of sprite size — hairlines vanish at distance. */
+export const HAZARD_OUTLINE = 0.055
+
+function outlinedPath(ctx, size, fill, draw) {
+  const line = Math.max(2, size * HAZARD_OUTLINE)
+  ctx.save()
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  // Ink first and fat, then the fill on top: one path drawn twice gives a hard
+  // even outline without needing a second, offset silhouette.
+  ctx.strokeStyle = HAZARD_INK
+  ctx.lineWidth = line * 2.2
+  draw(ctx)
+  ctx.stroke()
+  ctx.fillStyle = fill
+  ctx.strokeStyle = fill
+  ctx.lineWidth = line * 0.6
+  draw(ctx)
+  ctx.fill()
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** Crossed blades and two finger rings — read as scissors at any distance. */
+function drawScissors(ctx, size, fill) {
+  const c = size / 2
+  const s = size / 100
+  outlinedPath(ctx, size, fill, (context) => {
+    context.beginPath()
+    context.moveTo(c - 26 * s, c + 34 * s)
+    context.lineTo(c + 22 * s, c - 38 * s)
+    context.moveTo(c + 26 * s, c + 34 * s)
+    context.lineTo(c - 22 * s, c - 38 * s)
+  })
+  for (const side of [-1, 1]) {
+    outlinedPath(ctx, size, fill, (context) => {
+      context.beginPath()
+      context.arc(c + side * 20 * s, c + 40 * s, 13 * s, 0, Math.PI * 2)
+    })
+  }
+}
+
+/** A hard-angled paper dart silhouette: two swept wings and a tail. */
+function drawFlyer(ctx, size, fill) {
+  const c = size / 2
+  const s = size / 100
+  outlinedPath(ctx, size, fill, (context) => {
+    context.beginPath()
+    context.moveTo(c, c - 34 * s)
+    context.lineTo(c + 42 * s, c + 26 * s)
+    context.lineTo(c + 12 * s, c + 16 * s)
+    context.lineTo(c, c + 36 * s)
+    context.lineTo(c - 12 * s, c + 16 * s)
+    context.lineTo(c - 42 * s, c + 26 * s)
+    context.closePath()
+  })
+}
+
+/**
+ * A hazard sprite, cut from paper rather than photographed.
+ *
+ * `kind` picks the silhouette; everything else is the zone accent plus ink, so
+ * a new hazard type cannot accidentally arrive in a colour that means
+ * something else.
+ */
+export function createHazardCanvas({
+  kind = 'flyer',
+  palette = DEFAULT_PALETTE,
+  size = 128,
+  canvasFactory,
+} = {}) {
+  const width = Math.max(16, Math.floor(size))
+  const canvas = makeCanvas(canvasFactory, width, width)
+  if (!canvas) return null
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  const fill = palette.accent || DEFAULT_PALETTE.accent
+  if (kind === 'scissors') drawScissors(ctx, width, fill)
+  else drawFlyer(ctx, width, fill)
+  return canvas
+}
+
+/**
  * Hard offset shadow spec. Layers are separated by an offset silhouette in a
  * darker tone, never by a blur — a blurred shadow is the single fastest way to
  * stop looking like cut paper.

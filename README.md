@@ -49,6 +49,38 @@ reservation, which guaranteed the same thing but taught players to solve each
 wave as a three-way multiple choice. Asserted as a property over many seeds in
 [`test/gap-weave.test.js`](test/gap-weave.test.js).
 
+## Reading the screen
+
+A game you cannot read is a game you cannot play, and this one had grown a
+HUD chip per system and a banner per event with nothing arbitrating between
+them. Mid-run that meant nine chips and three stacked banners over the plane;
+on a phone in landscape the chrome covered three quarters of the frame. Three
+rules now hold the screen together:
+
+**One banner at a time.** Wind, power and zone banners are sources that request
+the single on-screen slot; the most important request wins and ties go to
+whatever is already showing, so nothing flickers
+([`game/flight-banners.js`](src/game/flight-banners.js)).
+
+**The HUD has a budget.** Distance, stars and altitude are always shown because
+they are the run. Everything else competes for two more slots, ranked by how
+much it changes what you do in the next second — an active Tuck outranks a
+combo total outranks the zone name. Context chips are not ranked at all while
+flying; they are simply not on screen
+([`game/hud-priority.js`](src/game/hud-priority.js)).
+
+**Chrome is sized in viewport units, not pixels.** Every size in the flight UI
+is a `clamp()` against viewport height, because the short edge is what runs out
+first. The menu collapses to two columns below 760px tall and drops its logo and
+tagline below 470px — a phone held sideways gets the buttons, not the poster.
+
+The plane and the hazards are the other half of legibility. A cream plane over
+a cream paper city was the least visible thing on screen, so it carries an
+inflated back-face shell that outlines it in ink against any zone, plus a ground
+marker that tightens and darkens as it descends — lateral position and altitude,
+readable without looking at the altimeter. Hazards are cut from each zone's
+reserved accent, the one colour nothing else in a zone may use.
+
 ## Art direction
 
 One rule, applied without exception, and enforced at the loader rather than by
@@ -59,11 +91,12 @@ convention:
 3. Every plane of colour carries fibre grain and at least one fold crease.
 4. Depth is a hard offset shadow between layers, never a blur.
 
-Skies and grounds are cut at runtime from each zone's palette
+Skies, grounds and hazard sprites are cut at runtime from each zone's palette
 ([`src/game/paper-art.js`](src/game/paper-art.js)) rather than shipped as
 images, so they cannot drift out of the rule, and every plane skin flies on the
-same generated sheet tinted by its own colours. This replaced twelve unrelated
-photographic JPEGs.
+same generated sheet tinted by its own colours. This replaced twenty-two
+unrelated photographic JPEGs and the cut-out product photos that used to stand
+in for birds and scissors.
 
 ## Features
 
