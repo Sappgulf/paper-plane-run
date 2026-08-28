@@ -21,42 +21,19 @@ describe('flight engine runtime synchronization', () => {
     const applyPerformance = vi.fn((settings) => applied.push(['performance', settings.lowPower]))
 
     const result = await synchronizeRuntimeSettings(
-      { lowPower: true, colorblindPowers: true, arDesk: false },
-      { deskAR: { active: false }, applyPerformance, rebuildPowerPalette },
+      { lowPower: true, colorblindPowers: true },
+      { applyPerformance, rebuildPowerPalette },
     )
 
     expect(result.settings).toMatchObject({ lowPower: true, colorblindPowers: true })
     expect(applied).toEqual([['performance', true], ['palette', true]])
   })
 
-  test('stops active AR when the shell turns it off', async () => {
-    const stop = vi.fn()
-
-    const result = await synchronizeRuntimeSettings(
-      { arDesk: false },
-      { deskAR: { active: true, stop } },
-    )
-
-    expect(stop).toHaveBeenCalledOnce()
-    expect(result).toEqual({ settings: { arDesk: false }, arPermissionDenied: false })
-  })
-
-  test('rolls AR back to false when camera permission is unavailable', async () => {
-    const persist = vi.fn((partial) => ({ lowPower: true, colorblindPowers: true, ...partial }))
-    const applyPerformance = vi.fn()
-
-    const result = await synchronizeRuntimeSettings(
-      { lowPower: true, colorblindPowers: true, arDesk: true },
-      {
-        deskAR: { active: false, start: vi.fn().mockResolvedValue(false) },
-        persist,
-        applyPerformance,
-      },
-    )
-
-    expect(persist).toHaveBeenCalledWith({ arDesk: false })
-    expect(result.settings.arDesk).toBe(false)
-    expect(result.arPermissionDenied).toBe(true)
-    expect(applyPerformance).toHaveBeenCalledWith(expect.objectContaining({ arDesk: false }))
+  // AR is gone, but the result shape is part of the contract the iOS shell and
+  // the settings panel read, so the flag has to keep existing and keep being false.
+  test('always reports no AR permission problem now that AR is gone', async () => {
+    const result = await synchronizeRuntimeSettings({ lowPower: false })
+    expect(result.arPermissionDenied).toBe(false)
+    expect(result.settings).toEqual({ lowPower: false })
   })
 })

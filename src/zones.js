@@ -1,5 +1,10 @@
 /**
  * Progressive endless zones — sky + ground art change as distance grows.
+ *
+ * Sky and ground are `paper:` URLs, not files. They are cut at runtime from
+ * the zone's three-tone palette in `game/paper-art.js` so every zone is
+ * guaranteed to obey the same art rule (flat cut paper, grain, hard creases)
+ * instead of being six unrelated photographs that happened to ship together.
  */
 export const ZONES = [
   {
@@ -10,8 +15,8 @@ export const ZONES = [
     hemiSky: 0xffefe0,
     hemiGround: 0x7aa8c8,
     exposure: 1.05,
-    sky: '/assets/sky-city.jpg',
-    ground: '/assets/ground-city.jpg',
+    sky: 'paper:sky:city',
+    ground: 'paper:ground:city',
     groundTint: 0xe9ddcf,
     hazardBias: { building: 1, bird: 1, scissors: 1 },
   },
@@ -23,8 +28,8 @@ export const ZONES = [
     hemiSky: 0xf2fbff,
     hemiGround: 0x7eb8d4,
     exposure: 1.16,
-    sky: '/assets/sky-harbor.jpg',
-    ground: '/assets/ground-harbor.jpg',
+    sky: 'paper:sky:harbor',
+    ground: 'paper:ground:harbor',
     groundTint: 0xd8eef6,
     hazardBias: { building: 0.7, bird: 1.4, scissors: 0.9 },
   },
@@ -36,8 +41,8 @@ export const ZONES = [
     hemiSky: 0xe4d8f0,
     hemiGround: 0x7a7088,
     exposure: 1.06,
-    sky: '/assets/sky-storm.jpg',
-    ground: '/assets/ground-storm.jpg',
+    sky: 'paper:sky:storm',
+    ground: 'paper:ground:storm',
     groundTint: 0xc4b4c8,
     nightReadability: true,
     hazardBias: { building: 1.2, bird: 1.1, scissors: 1.5 },
@@ -50,8 +55,8 @@ export const ZONES = [
     hemiSky: 0xffd4b8,
     hemiGround: 0xc4846a,
     exposure: 1.08,
-    sky: '/assets/sky-sunset.jpg',
-    ground: '/assets/ground-sunset.jpg',
+    sky: 'paper:sky:sunset',
+    ground: 'paper:ground:sunset',
     groundTint: 0xf3c8a4,
     hazardBias: { building: 1.1, bird: 1.2, scissors: 1.2 },
   },
@@ -63,8 +68,8 @@ export const ZONES = [
     hemiSky: 0xc8d4ff,
     hemiGround: 0x4a5568,
     exposure: 1.0,
-    sky: '/assets/sky-aurora.jpg',
-    ground: '/assets/ground-aurora.jpg',
+    sky: 'paper:sky:aurora',
+    ground: 'paper:ground:aurora',
     groundTint: 0xb8c8c4,
     hazardBias: { building: 1.3, bird: 1.3, scissors: 1.4 },
   },
@@ -76,8 +81,8 @@ export const ZONES = [
     hemiSky: 0xd4c8ff,
     hemiGround: 0x4a4570,
     exposure: 1.18,
-    sky: '/assets/sky-midnight.jpg',
-    ground: '/assets/ground-midnight.jpg',
+    sky: 'paper:sky:midnight',
+    ground: 'paper:ground:midnight',
     groundTint: 0x9a90c4,
     nightReadability: true,
     hazardBias: { building: 1.35, bird: 1.45, scissors: 1.35 },

@@ -1,16 +1,18 @@
 /**
  * Ground skim — a risk/reward reason to fly the bottom of the screen.
  *
- * The plane's vertical range is MIN_Y 2.2 to MAX_Y 16.5, and buildings rise
- * from the ground, so the low lane is the dangerous one. Holding it now pays:
- * skim time accrues into tiers that bank stars and lift the score multiplier,
- * and climbing out banks whatever the run earned rather than voiding it.
+ * Since `glide.js` made ground contact the run's fail state, the bottom of the
+ * corridor is no longer merely where the buildings are — it is where the run
+ * ends. That makes this the sharpest risk in the game rather than a bonus
+ * system bolted onto a safe floor: skim time accrues into tiers that bank
+ * stars and lift the score multiplier, and climbing out under your own control
+ * banks whatever the chain earned rather than voiding it.
  *
  * Pure so the tier curve can be tested without a flight; `flight-engine.js`
  * owns the HUD and the star wallet.
  */
 
-/** Below this height the plane counts as skimming. Comfortably clear of MAX_Y. */
+/** Below this height the plane counts as skimming — well inside the danger band. */
 export const SKIM_CEILING = 4.6
 /** A short grace so a single bump over the ceiling does not drop the chain. */
 export const SKIM_GRACE_SECONDS = 0.45

@@ -55,9 +55,8 @@ describe('service worker build manifest', () => {
     writeFileSync(join(directory, 'sw.js'), 'template')
     writeFileSync(join(directory, 'assets', 'flight-engine-abc.js'), 'engine')
     writeFileSync(join(directory, 'assets', 'index-abc.css'), 'css')
-    writeFileSync(join(directory, 'assets', 'sky-city.jpg'), 'first zone')
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'first plane')
-    writeFileSync(join(directory, 'assets', 'sky-aurora.jpg'), 'late zone')
+    writeFileSync(join(directory, 'assets', 'zone-stamp-sheet.webp'), 'stamps')
     writeFileSync(join(directory, 'assets', 'bosses', 'wind.webp'), 'late boss')
 
     const { urls, shell, warm } = buildPrecacheManifest(directory)
@@ -68,9 +67,10 @@ describe('service worker build manifest', () => {
     expect(shell).toContain('/icon-192.png')
     expect(shell).toContain('/assets/flight-engine-abc.js')
     expect(shell).toContain('/assets/index-abc.css')
-    expect(shell).toContain('/assets/sky-city.jpg')
     expect(shell).toContain('/assets/planes/classic.webp')
-    expect(warm).toEqual(['/assets/bosses/wind.webp', '/assets/sky-aurora.jpg'])
+    // Skies and grounds are cut at runtime from the zone palettes now, so the
+    // shell has no zone art to precache — only the plane, and the release code.
+    expect(warm).toEqual(['/assets/bosses/wind.webp'])
 
     // The split stays a partition of the full release — nothing lost, nothing double-fetched.
     expect([...shell, ...warm].sort()).toEqual([...urls].sort())

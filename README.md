@@ -8,42 +8,96 @@ Full-featured Three.js endless flyer.
 npm install && npm run dev
 ```
 
-## Features 1–20
+## The core loop
 
-| # | Feature |
-|---|---------|
-| 1 | Daily seeded route + **Weekly Fold** (ISO-week seed, rotating opening sky and a light mechanical lean, local weekly board) |
+Three systems make up the whole of the moment-to-moment game. Everything else
+in the project exists to give them somewhere to happen.
 
-| 2 | Near-miss combos + confetti |
-| 3 | Unlockable skins (+ seasonal free) |
-| 4 | Crash polaroid photo share + packed ghost **challenge links** (`?c=`) so a friend races your actual path |
-| 5 | Haptics + generative music |
-| 6 | Tutorial rings |
-| 7 | Zones with progressive Imagine skies/grounds (City → Harbor → Storm → Sunset → Aurora → Midnight Origami) — and past Midnight the route **folds back to Paper City** on a new lap instead of parking on the last zone forever, so the sky, ground and music keep turning over for as long as you survive |
-| — | **Altitude Tiers** — the endless long tail. Cruise speed hits its difficulty cap by ~450m, the hazard ramp tops out at 700m and wave spacing stops compressing at ~1050m, so past that a run used to be mechanically identical forever. Tiers pick the curve back up at 1000m and step every 900m: a little more speed, tighter waves, a richer hazard mix, and a **named modifier** (Headwind · Flocking Hour · Scissor Storm · Rising Skyline) that leans the spawn mix on top of the zone's own bias. Each tier also pays a permanent score multiplier for the rest of the run, and every dial caps at tier 8 — a tuned ceiling, not an asymptote. Journey legs, the tutorial and route-editor playback stay on the shipped baseline |
-| — | **Ground life** — every zone is laid out rather than sprinkled: two roads run down each flank carrying traffic (slower than the ground = pulling away, faster = oncoming), pedestrians walk the pavement beside them, and a landmark, low scatter, flat decal band, a vertical accent (masts, cranes, gantries) and stacked cargo fill the rest. Eight instanced draw calls per zone regardless of instance count; upright props stay outside the flight corridor, only flat decals pass under the plane, and the whole field is shed first on low-power devices |
-| — | **Stars are a decision** — every star used to spawn within ±0.8 of the reserved passage lane, the one lane hazards are guaranteed to avoid, so the safest line was also the paying line and there was never a reason to be anywhere else. Stars now mix across lanes, and an off-lane star is only placed where that lane's damage envelopes are currently clear — so it adds the risk of *moving*, never an unavoidable hit. Paired with this, **Star Magnet** actually sells something: unupgraded reach stops just short of one lane gap (lanes sit 6 apart) instead of a flat 12 that already drew stars out of both neighbours |
-| — | **Hazard patterns** — the twelve airborne obstacles move on named patterns (hold · bob · weave · dive · orbit · tumble) resolved as an absolute offset from their spawn anchor every frame. The old motion *integrated* `sin(phase) × dt` into the position, which does not average out — it built a one-sided drift that depended on how frames landed and could carry a hazard into the passage lane the run had guaranteed was flyable. Lateral amplitude is now clamped against that lane up front, so the fairness guarantee covers a hazard's whole path rather than its first frame, and deeper tiers move hazards harder without ever closing the lane |
-| — | **Ground skim** — the low lane is the dangerous one, so holding it pays. Tiers bank stars and lift the score multiplier, a short grace absorbs clipping a roofline, and pulling up under control cashes the chain in for distance |
-| — | **Plane upgrades** (14-upgrade tree incl. Fever Focus, Steady Hands, Gold Rush + synergies) |
-| — | **Expanded skins** (Neon, Rainbow, Storm Foil, Sunset Letter + seasonal + prestige Ink Veil / Starcrest / Paper Legend) |
-| 8 | Daily missions |
-| 9 | Ghost best-run race |
-| 10 | Hot-seat multiplayer |
-| 11 | Device / daily / global leaderboard |
-| 12 | Route editor + share codes |
-| 13 | **Co-op wind** — P1 flies, P2 throws wind |
-| 14 | **Physics toys** — torn wing, paperclip, rubber-band sling |
-| 15 | **Boss gates** every 500m (scissors · wind tunnel · stapler jaws) |
-| 16 | **Desk AR** — camera background runway |
-| 17 | **Seasonal themes** + free seasonal skins |
-| 18 | **Low-power mode** — DPR/shadows/dust |
-| 19 | **A11y** — reduced motion, large sticks, auto-level, colorblind powers |
-| 20 | **Analytics** — local funnel + `/api/analytics` |
-| — | **Time Attack** — 60s, most stars wins |
-| — | **Ink Blast weapon** — pop birds/scissors for bonus stars |
-| — | **Prestige** — max the upgrade tree, reset for a permanent bonus + cosmetic |
-| — | **Living Journey** — Chapter 1 (City→Aurora) + Chapter 2 Desk After Dark, stamps, postcards, Red Dart / stapler finales |
+**Altitude is the resource.** A paper plane only ever falls. You always sink;
+banking hard and holding the nose up both make you sink faster; diving trades
+height for forward speed and climbing spends that speed back out of the same
+pool. Updrafts are the only free height in a run, which is what makes their
+placement a route rather than decoration. Touching the ground ends the run — the
+floor is the fail state, not a wall you bounce off. See
+[`src/game/glide.js`](src/game/glide.js).
+
+**Steering is a bank, not a nudge.** The stick commands a roll angle, and the
+roll angle is what produces lateral acceleration. Reversing means rolling back
+through wings-level first, so every lateral decision is one you are still paying
+for a moment later, and committing early to a gap beats reacting late to it. A
+hard bank also spills lift, so you turn by spending height. Mouse and stick both
+drive this same model — there is no longer a separate, easier aim-mode plane.
+See [`src/game/banking.js`](src/game/banking.js).
+
+**The Tuck is the one deep move.** Hold to tuck: the nose drops, drag falls
+away, and you trade height for speed far faster than an ordinary dive. Release
+to flare: the charge comes back at once as a climb, a speed burst, and a
+distance payout. Charge grows superlinearly, so the last quarter-second of a
+deep tuck is worth more than its first second — and the whole time you are
+falling toward the ground that now ends the run. A flare below the floor is a
+*save*: you get the climb, but none of the distance. See
+[`src/game/tuck-flare.js`](src/game/tuck-flare.js).
+
+### Fairness
+
+Every wave contains at least one continuous horizontal gap wide enough for the
+plane plus a margin, and a moving hazard's motion is clamped so it can never
+swing into that gap. The gap can be anywhere in the corridor and moves by a
+bounded amount from wave to wave — enough that you cannot hold one line forever,
+never more than the roll rate can cover. This replaces the old three-fixed-lane
+reservation, which guaranteed the same thing but taught players to solve each
+wave as a three-way multiple choice. Asserted as a property over many seeds in
+[`test/gap-weave.test.js`](test/gap-weave.test.js).
+
+## Art direction
+
+One rule, applied without exception, and enforced at the loader rather than by
+convention:
+
+1. Cut paper only. Flat fills, hard edges, no photographic texture.
+2. Three tones per zone plus one accent, for the things you must read fast.
+3. Every plane of colour carries fibre grain and at least one fold crease.
+4. Depth is a hard offset shadow between layers, never a blur.
+
+Skies and grounds are cut at runtime from each zone's palette
+([`src/game/paper-art.js`](src/game/paper-art.js)) rather than shipped as
+images, so they cannot drift out of the rule, and every plane skin flies on the
+same generated sheet tinted by its own colours. This replaced twelve unrelated
+photographic JPEGs.
+
+## Features
+
+| Feature |
+|---|
+| Daily seeded route + **Weekly Fold** (ISO-week seed, rotating opening sky, local + remote weekly board) |
+| Near-miss combos, Combo Fever, star streaks |
+| **Ground skim** — the low lane is the dangerous one, so holding it pays; pulling up under control cashes the chain in |
+| **Zones** (City → Harbor → Storm → Sunset → Aurora → Midnight Origami), looping to a fresh lap rather than parking on the last one |
+| **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
+| **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
+| **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
+| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws) |
+| **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
+| **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
+| Daily missions, achievements |
+| Ghost best-run race + packed **challenge links** (`?c=`) so a friend races your actual path |
+| Device / daily / weekly / global leaderboard |
+| **Route editor** + share codes |
+| Crash polaroid photo share |
+| Tutorial rings, haptics, generative music |
+| **Low-power mode**, adaptive quality |
+| **A11y** — reduced motion, large sticks, auto-level, colorblind powers |
+| **Analytics** — local funnel + `/api/analytics` |
+| **Living Journey** — Chapter 1 (City→Aurora) + Chapter 2 Desk After Dark, stamps, postcards, Red Dart / stapler finales |
+
+### Removed
+
+Co-op wind, hot-seat, Desk AR, Time Attack, the Ink Blast weapon, the physics
+toys (torn wing, paperclip, rubber-band sling) and prestige were cut. Each was a
+separate verb competing with the core loop for tuning attention, and none was a
+reason to open the game twice. The prestige cosmetics survived the cut — they
+are now the far end of the same lifetime-star ladder every other plane sits on.
+The route editor stayed.
 
 ## Living Journey
 
@@ -55,16 +109,18 @@ Milo and Pip each have three cosmetic-only mastery levels covering routes, short
 
 Completing a chapter unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. Destination paper-diorama images ship in both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 
-## Co-op controls
+## Controls
 
-| Player | Input |
+| Input | Action |
 |--------|--------|
-| P1 fly | Arrows or left stick |
-| P2 wind | WASD / IJKL or purple right stick |
+| Mouse / touch drag | Steer — the cursor commands a bank, same as the stick |
+| Arrows / WASD / left stick | Steer |
+| **Space**, or the 🪁 button | **Tuck** — hold to dive, release to flare |
+| Esc | Pause |
 
 ## Settings
 
-Menu → **⚙️ Settings** for AR, season override, graphics, accessibility.
+Menu → **⚙️ Settings** for season override, graphics, accessibility.
 
 ## APIs
 

@@ -3,8 +3,14 @@ export function selectLayoutForStart(currentLayout, kind, options = {}) {
   return currentLayout
 }
 
+/**
+ * Apply a settings change to the live runtime.
+ *
+ * `arPermissionDenied` is retained in the shape rather than dropped: the iOS
+ * shell and the settings panel both read the result, and a field that silently
+ * disappears is a worse break than one that is always false.
+ */
 export async function synchronizeRuntimeSettings(nextSettings, {
-  deskAR,
   persist = (partial) => ({ ...nextSettings, ...partial }),
   applyDocumentA11y = () => {},
   applyPerformance = () => {},
@@ -12,25 +18,7 @@ export async function synchronizeRuntimeSettings(nextSettings, {
   applySeason = () => {},
   updateControls = () => {},
 } = {}) {
-  let settings = { ...nextSettings }
-  let arPermissionDenied = false
-
-  if (settings.arDesk) {
-    let enabled = Boolean(deskAR?.active)
-    if (!enabled) {
-      try {
-        enabled = Boolean(await deskAR?.start?.())
-      } catch {
-        enabled = false
-      }
-    }
-    if (!enabled) {
-      arPermissionDenied = true
-      settings = { ...settings, ...(persist({ arDesk: false }) || {}), arDesk: false }
-    }
-  } else if (deskAR?.active) {
-    deskAR.stop?.()
-  }
+  const settings = { ...nextSettings }
 
   applyDocumentA11y(settings)
   applyPerformance(settings)
@@ -38,5 +26,5 @@ export async function synchronizeRuntimeSettings(nextSettings, {
   applySeason(settings)
   updateControls(settings)
 
-  return { settings, arPermissionDenied }
+  return { settings, arPermissionDenied: false }
 }

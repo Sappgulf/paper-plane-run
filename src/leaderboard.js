@@ -18,7 +18,6 @@ export {
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
 const WEEKLY_KEY = 'paper-plane-run-lb-weekly'
-const TIME_ATTACK_KEY = 'paper-plane-run-lb-timeattack'
 // The iOS app bundles this build offline and loads it via file://, where a
 // relative /api/... fetch has no server to resolve against. Vite bakes this
 // in at build time — see package.json's build:ios script — so the web build
@@ -70,24 +69,6 @@ export function getLocalTop(limit = 10) {
 }
 
 /** Time Attack scores on stars-in-60s, not distance — a separate board. */
-export function submitTimeAttackScore({ name, stars, distance, mode }) {
-  const entry = {
-    name: normalizeLeaderboardName(name),
-    stars: normalizeLeaderboardInteger(stars),
-    distance: normalizeLeaderboardInteger(distance),
-    mode: normalizeLeaderboardMode(mode),
-    at: Date.now(),
-  }
-  const list = load(TIME_ATTACK_KEY)
-  list.push(entry)
-  list.sort((a, b) => b.stars - a.stars || b.distance - a.distance)
-  save(TIME_ATTACK_KEY, list)
-  return list.slice(0, 10)
-}
-
-export function getTimeAttackTop(limit = 10) {
-  return load(TIME_ATTACK_KEY).slice(0, limit)
-}
 
 export function getDailyTop(dailyKey, mode, limit = 10) {
   return load(DAILY_KEY + dailyKey + mode).slice(0, limit)

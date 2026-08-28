@@ -144,16 +144,14 @@ export function getGuardianState({ charges = 0, remaining = charges } = {}) {
   return { charges: initial, remaining: left, visible: left > 0 }
 }
 
-export function getWeaponState({ weaponLevel = 0, cooldownSeconds = 0, cooldownLeft = 0 } = {}) {
-  const unlocked = positiveNumber(weaponLevel) > 0
-  const duration = positiveNumber(cooldownSeconds)
-  const remaining = unlocked ? clamp(positiveNumber(cooldownLeft), 0, duration) : 0
+/**
+ * What Deep Flare is currently worth. Both multipliers are floored at 1 so an
+ * unpurchased tree is exactly the shipped baseline rather than a penalty.
+ */
+export function getFlareTuning({ flareChargeRate = 1, flarePayoutMul = 1 } = {}) {
   return {
-    unlocked,
-    ready: unlocked && remaining === 0,
-    cooldownSeconds: duration,
-    cooldownRemaining: remaining,
-    cooldownProgress: unlocked && duration > 0 ? clamp(1 - remaining / duration, 0, 1) : 0,
+    chargeRate: Math.max(1, positiveNumber(flareChargeRate, 1)),
+    payoutMul: Math.max(1, positiveNumber(flarePayoutMul, 1)),
   }
 }
 
@@ -209,7 +207,6 @@ export function getUpgradeRuntimeSnapshot({
   distance = 0,
   difficulty = {},
   activePowerKind = null,
-  fireCooldown = 0,
   guardianLeft = effects.guardianCharges,
   planeRadius = 0.7,
   nearMissTighten = 1,
@@ -249,11 +246,7 @@ export function getUpgradeRuntimeSnapshot({
   })
   const turbo = getBoostSafety(effects)
   const guardian = getGuardianState({ charges: effects.guardianCharges, remaining: guardianLeft })
-  const weapon = getWeaponState({
-    weaponLevel: effects.weaponLevel,
-    cooldownSeconds: effects.weaponCooldown,
-    cooldownLeft: fireCooldown,
-  })
+  const flare = getFlareTuning(effects)
   const trail = getTrailFeedback(effects)
   const fever = getFeverTuning(effects)
   const streak = getStreakTuning(effects)
@@ -275,7 +268,7 @@ export function getUpgradeRuntimeSnapshot({
     trail,
     turbo,
     guardian,
-    weapon,
+    flare,
     fever: { ...fever, comboHold: comboHold.windowSeconds },
     streak,
   }

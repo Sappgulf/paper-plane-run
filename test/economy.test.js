@@ -73,7 +73,7 @@ describe('economy progression model', () => {
   test('has one monotonic future-price table for every paid upgrade rank and plane', () => {
     expect(Object.keys(FUTURE_PRICE_TABLE.upgrades)).toEqual(UPGRADES.map(({ id }) => id))
     expect(Object.keys(FUTURE_PRICE_TABLE.planes)).toEqual(
-      SKINS.filter((skin) => skin.id !== 'classic' && !skin.seasonal && skin.prestigeReq == null).map(({ id }) => id),
+      SKINS.filter((skin) => skin.id !== 'classic' && !skin.seasonal).map(({ id }) => id),
     )
 
     for (const upgrade of UPGRADES) {
@@ -81,11 +81,11 @@ describe('economy progression model', () => {
       expect(FUTURE_PRICE_TABLE.upgrades[upgrade.id]).toEqual([...upgrade.costs])
       expect(FUTURE_PRICE_TABLE.upgrades[upgrade.id].every((cost, index, prices) => index === 0 || cost > prices[index - 1])).toBe(true)
     }
-    for (const skin of SKINS.filter((skin) => skin.id !== 'classic' && !skin.seasonal && skin.prestigeReq == null)) {
+    for (const skin of SKINS.filter((skin) => skin.id !== 'classic' && !skin.seasonal)) {
       expect(FUTURE_PRICE_TABLE.planes[skin.id]).toBe(skin.cost)
     }
     const paidPlanePrices = SKINS
-      .filter((skin) => skin.id !== 'classic' && !skin.seasonal && skin.prestigeReq == null)
+      .filter((skin) => skin.id !== 'classic' && !skin.seasonal)
       .map((skin) => skin.cost)
     expect(paidPlanePrices.every((cost, index) => index === 0 || cost > paidPlanePrices[index - 1])).toBe(true)
   })
@@ -106,7 +106,7 @@ describe('economy progression model', () => {
   test('keeps every non-premium first rank inside five normal runs after the late-tree additions', () => {
     const earlyIds = UPGRADES
       .map(({ id }) => id)
-      .filter((id) => id !== 'guardian' && id !== 'weapon')
+      .filter((id) => id !== 'guardian' && id !== 'flare')
     for (const id of earlyIds) {
       const firstRank = FUTURE_PRICE_TABLE.upgrades[id][0]
       expect(firstRank).toBeLessThanOrEqual(21)

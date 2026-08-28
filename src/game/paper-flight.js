@@ -60,6 +60,44 @@ export function integrateRelativeFlight({
   }
 }
 
+/**
+ * Turn "where the cursor is" into a stick deflection.
+ *
+ * Aim mode used to lerp the plane's *position* onto the cursor, which could
+ * never overshoot but also ignored wind, sink and the tuck. Both control
+ * schemes now drive the same force-based plane, so the cursor has to become an
+ * input instead — and how that conversion is written decides whether the game
+ * is playable at all, because the ground ends the run.
+ *
+ * This is velocity matching, not a position error with a damping term. It asks
+ * "how fast should I be closing on the cursor right now?", caps that, and
+ * deflects by how far the current speed is from it. The distinction matters
+ * because of frame rate: a proportional-derivative command tuned at 60Hz is
+ * under-damped at the 20Hz the engine's dt cap allows, and it overshoots by
+ * more the longer the frame — which on a slow or stuttering device drove the
+ * plane straight through the floor while the player was aiming at a perfectly
+ * legal altitude. Velocity matching has no such term to mistune: the commanded
+ * approach speed falls to zero as the plane arrives, at any frame rate.
+ */
+/** Fastest approach the aim will ask for, units/second. */
+export const AIM_MAX_APPROACH = 17
+/** Approach speed requested per unit of distance to the cursor. */
+export const AIM_APPROACH_GAIN = 3.4
+/** How hard a mismatch between actual and wanted closing speed deflects. */
+export const AIM_VELOCITY_GAIN = 0.2
+
+export function aimCommand({
+  delta = 0,
+  velocity = 0,
+  maxApproach = AIM_MAX_APPROACH,
+  approachGain = AIM_APPROACH_GAIN,
+  velocityGain = AIM_VELOCITY_GAIN,
+} = {}) {
+  const cap = Math.max(0, finite(maxApproach, AIM_MAX_APPROACH))
+  const wanted = clamp(finite(delta) * finite(approachGain, AIM_APPROACH_GAIN), -cap, cap)
+  return clamp((wanted - finite(velocity)) * finite(velocityGain, AIM_VELOCITY_GAIN), -1, 1)
+}
+
 export function integrateAimFlight({
   x = 0,
   y = 0,

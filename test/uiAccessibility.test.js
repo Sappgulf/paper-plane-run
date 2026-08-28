@@ -8,7 +8,6 @@ const engine = readFileSync('src/flight-engine.js', 'utf8')
 describe('shell accessibility contracts', () => {
   test('names every utility icon button', () => {
     expect(markup).toMatch(/id="install-btn"[^>]*aria-label="Install Paper Plane Run"/)
-    expect(markup).toMatch(/id="ar-btn"[^>]*aria-label="Desk AR camera"/)
   })
 
   test('exposes Hangar tabs and selected panels as a real tab interface', () => {

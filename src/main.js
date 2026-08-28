@@ -21,12 +21,8 @@ import {
 import {
   addWallet,
   buyUpgrade,
-  canPrestige,
   describeUpgradeEffect,
-  doPrestige,
   getAllUpgradeLevels,
-  getPrestigeBonusPercent,
-  getPrestigeLevel,
   getWallet,
   listUpgrades,
   UPGRADES,
@@ -73,7 +69,6 @@ import {
   fetchRemoteTop,
   getDailyTop,
   getLocalTop,
-  getTimeAttackTop,
   getWeeklyTop,
   normalizeLeaderboardInteger,
   normalizeLeaderboardName,
@@ -639,7 +634,6 @@ function renderAchievements() {
 
 function planeRequirementLabel(plane) {
   if (plane.requirement.type === 'season') return `Season ${plane.requirement.value}`
-  if (plane.requirement.type === 'prestige') return `Prestige ${plane.requirement.value}`
   return `Lifetime ${plane.requirement.value}★`
 }
 
@@ -896,58 +890,11 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
   }
 }
 
-function renderPrestige() {
-  const panel = $('prestige-panel')
-  if (!panel) return
-  const level = getPrestigeLevel()
-  const ready = canPrestige()
-  const bonusPercent = getPrestigeBonusPercent(level)
-  const nextBonusPercent = getPrestigeBonusPercent(level + 1)
-  const capped = nextBonusPercent === bonusPercent
-  if (level === 0 && !ready) {
-    panel.classList.add('hidden')
-    return
-  }
-  panel.classList.remove('hidden')
-  panel.innerHTML = ''
-  const info = document.createElement('div')
-  info.className = 'prestige-info'
-  const milestoneHint =
-    level < 3 ? 'Next cosmetic: Ink Veil at Prestige 3'
-    : level < 5 ? 'Next cosmetic: Starcrest at Prestige 5'
-    : level < 10 ? 'Next cosmetic: Paper Legend at Prestige 10'
-    : level >= 50 ? 'Paper Legend title unlocked'
-    : 'All prestige planes available to claim'
-  info.innerHTML = capped
-    ? `<strong>✦ Paper Legend ${level} · MAX</strong><span>Maximum prestige · +${bonusPercent}% score & star luck · ${milestoneHint}</span>`
-    : level > 0
-    ? `<strong>✦ Golden Fold ${level}</strong><span>+${bonusPercent}% score & star luck · ${milestoneHint}</span>`
-    : `<strong>✦ Golden Fold ready</strong><span>Reset every tree for a permanent bonus · claim prestige planes at 1 / 3 / 5 / 10</span>`
-  panel.appendChild(info)
-  if (ready) {
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'prestige-btn'
-    btn.textContent = level > 0 ? 'Prestige again' : 'Prestige'
-    btn.onclick = () => {
-      if (!confirm(`Reset all upgrade levels for a permanent +${nextBonusPercent - bonusPercent}% score & star luck bonus?`)) return
-      const res = doPrestige()
-      if (res.ok) {
-        shellAudio.uiClick()
-        if (settings.haptics) Haptic.collect()
-        renderUpgrades()
-      }
-    }
-    panel.appendChild(btn)
-  }
-}
-
 let hangarFocusUpgradeId = null
 let hangarUpgradeTree = null
 
 function renderUpgrades() {
   refreshHangarWallet()
-  renderPrestige()
   const grid = $('upgrades-grid')
   if (!grid) return
   grid.innerHTML = ''
@@ -1019,7 +966,7 @@ function renderUpgrades() {
     } else if (wallet >= 10 && allFresh) {
       intro.textContent = 'Tip: Fold Handling or Lift Crease first — sharper control makes longer runs.'
     } else if (upgrades.every((u) => u.maxed)) {
-      intro.textContent = 'Every fold maxed. Prestige when you are ready for a fresh climb.'
+      intro.textContent = 'Every fold maxed. The rest of the ladder is cosmetic now.'
     } else {
       intro.textContent = 'Spend flight stars. Each rank sharpens the plane.'
     }
@@ -1137,7 +1084,6 @@ function renderSettings() {
   bind('set-colorblind', 'colorblindPowers')
   bind('set-low-power', 'lowPower')
   bind('set-haptics', 'haptics')
-  bind('set-ar', 'arDesk')
   bind('set-season', 'forceSeason')
   const activeSeason = seasonInfo(settings.forceSeason)
   if ($('season-now')) $('season-now').textContent = `${activeSeason.name} (${activeSeason.id})`
@@ -1181,7 +1127,6 @@ async function renderBoard(tab = 'local') {
       rows = remote?.scores || []
     }
   }
-  else if (tab === 'timeattack') rows = getTimeAttackTop(12)
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
     rows = remote?.scores || []
@@ -1221,17 +1166,10 @@ async function renderBoard(tab = 'local') {
     scoreElement.className = 'board-score'
     const stars = normalizeLeaderboardInteger(r.stars)
     const distance = normalizeLeaderboardInteger(r.distance)
-    if (tab === 'timeattack') {
-      scoreElement.append(document.createTextNode(`${stars}★`))
-      const distanceElement = document.createElement('small')
-      distanceElement.textContent = `${distance}m`
-      scoreElement.append(distanceElement)
-    } else {
-      scoreElement.append(document.createTextNode(`${distance}m`))
-      const starsElement = document.createElement('small')
-      starsElement.textContent = `${stars}★`
-      scoreElement.append(starsElement)
-    }
+    scoreElement.append(document.createTextNode(`${distance}m`))
+    const starsElement = document.createElement('small')
+    starsElement.textContent = `${stars}★`
+    scoreElement.append(starsElement)
 
     li.append(rankElement, nameElement, scoreElement)
     list.appendChild(li)
@@ -1346,11 +1284,8 @@ function applyEngineSettingsResult(result) {
   settings = result.settings
   season = seasonInfo(settings.forceSeason)
   applyDocumentA11y(settings)
-  const arSetting = $('set-ar')
-  if (arSetting) arSetting.checked = Boolean(settings.arDesk)
   syncShellControlUi()
   if ($('season-now')) $('season-now').textContent = `${season.name} (${season.id})`
-  if (result.arPermissionDenied) showSettingsToast('Camera permission needed for Desk AR')
 }
 
 async function syncSettingsWithEngine(nextSettings) {
@@ -1418,7 +1353,6 @@ const modeByButtonId = {
   'start-btn': 'classic',
   'daily-btn': 'daily',
   'weekly-btn': 'weekly',
-  'timeattack-btn': 'timeattack',
   'tutorial-btn': 'tutorial',
   'hotseat-btn': 'hotseat',
   'coop-btn': 'coop',
@@ -1661,7 +1595,7 @@ function consumeLaunchMode() {
       queueMicrotask(() => openJourney())
       return true
     }
-    if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'weekly', 'timeattack', 'tutorial', 'hotseat', 'coop'].includes(mode)) {
+    if (modeByButtonId['start-btn'] === mode || ['classic', 'daily', 'weekly', 'tutorial'].includes(mode)) {
       const kind = mode === 'classic' ? 'classic' : mode
       if (kind === 'coop') maybeShowCoopHint()
       queueMicrotask(() => startMode(kind))

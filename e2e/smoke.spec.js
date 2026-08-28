@@ -11,7 +11,7 @@ const UPGRADE_CARD_CONTRACTS = [
   { id: 'trail', name: 'Paper Trail', current: 'Score aura +4%', next: 'Score aura +6%' },
   { id: 'turbo', name: 'Turbo Fold', current: 'Boost grace +0.30s · hitbox 0.66×', next: 'Boost grace +0.45s · hitbox 0.60×' },
   { id: 'guardian', name: 'Guardian Crease', current: 'Crash saves 1 per run', next: 'Crash saves 2 per run' },
-  { id: 'weapon', name: 'Ink Blast', current: 'Ink cooldown 0.56s', next: 'Ink cooldown 0.38s' },
+  { id: 'flare', name: 'Deep Flare', current: 'Charge 1.48x · flare 1.54x', next: 'Charge 1.64x · flare 1.72x' },
   { id: 'fever', name: 'Fever Focus', current: 'Fever at 6 near-misses · 5.50s', next: 'Fever at 5 near-misses · 6.25s' },
   { id: 'streak', name: 'Steady Hands', current: 'Star streak window 3.00s', next: 'Star streak window 3.40s' },
   { id: 'wealth', name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
@@ -221,7 +221,7 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       trail: 2,
       turbo: 2,
       guardian: 1,
-      weapon: 3,
+      flare: 3,
       fever: 2,
       streak: 2,
       wealth: 2,
@@ -244,39 +244,6 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
     await expect(card.locator('.u-effect-next')).toHaveText('Next: MAX — all ranks purchased')
     await expect(card.locator('.u-max')).toHaveText('MAX')
   }
-  expect(errors).toEqual([])
-})
-
-test('Hangar exposes prestige cap without offering a rewardless reset', async ({ page }) => {
-  const errors = collectConsoleErrors(page)
-  await page.addInitScript(() => {
-    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
-    localStorage.setItem('paper-plane-run-prestige', '50')
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({
-      handling: 5,
-      lift: 5,
-      glide: 5,
-      magnet: 4,
-      shield: 4,
-      luck: 4,
-      wingspan: 3,
-      trail: 3,
-      turbo: 3,
-      guardian: 2,
-      weapon: 4,
-      fever: 3,
-      streak: 3,
-      wealth: 3,
-    }))
-  })
-  await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-
-  const panel = page.locator('#prestige-panel')
-  await expect(panel.locator('strong')).toHaveText('✦ Paper Legend 50 · MAX')
-  await expect(panel.locator('span')).toContainText('+150% score & star luck')
-  await expect(panel.getByRole('button', { name: /Prestige/ })).toHaveCount(0)
-  await expect(panel).not.toContainText('+3%')
   expect(errors).toEqual([])
 })
 
@@ -509,37 +476,9 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
   expect(engineWarnings.some((message) => message.includes('Flight engine unavailable'))).toBe(false)
 })
 
-test('a preloaded engine applies shell graphics settings and rolls denied AR back', async ({ page }, testInfo) => {
+test('a preloaded engine applies shell graphics settings to the live runtime', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
-  const arWarnings = []
-  let arPermissionDialogs = 0
-  const arToast = page.locator('#challenge-toast')
-  page.on('console', (message) => {
-    if (message.type() === 'warning' && message.text().includes('AR desk mode unavailable')) {
-      arWarnings.push(message.text())
-    }
-  })
-  await page.addInitScript(() => {
-    window.__denyCamera = false
-    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
-      configurable: true,
-      value: async () => {},
-    })
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: {
-        getUserMedia: async () => {
-          if (!window.__denyCamera) return new MediaStream()
-          throw new DOMException('Camera permission denied', 'NotAllowedError')
-        },
-      },
-    })
-  })
-  page.on('dialog', (dialog) => {
-    arPermissionDialogs += 1
-    dialog.dismiss()
-  })
 
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
@@ -557,40 +496,13 @@ test('a preloaded engine applies shell graphics settings and rolls denied AR bac
     shieldPowerColor: 0x0077bb,
   })
 
-  await page.locator('#set-ar').click({ force: true })
-  await expect(page.locator('#set-ar')).toBeChecked()
+  // Settings must survive a reload, since the shell reapplies them on boot.
+  await page.reload()
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).settings)).toMatchObject({
-    arDesk: true,
-    arActive: true,
+    lowPower: true,
+    colorblindPowers: true,
   })
-
-  await page.locator('#set-ar').click({ force: true })
-  await expect(page.locator('#set-ar')).not.toBeChecked()
-  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).settings)).toMatchObject({
-    arDesk: false,
-    arActive: false,
-  })
-
-  await page.evaluate(() => { window.__denyCamera = true })
-  await page.locator('#set-ar').click({ force: true })
-  await expect(page.locator('#set-ar')).not.toBeChecked()
-  await expect(arToast).toHaveText('Camera permission needed for Desk AR')
-  await page.waitForTimeout(2200)
-  await page.locator('#set-ar').click({ force: true })
-  await expect(page.locator('#set-ar')).not.toBeChecked()
-  await expect.poll(() => page.evaluate(() => ({
-    runtime: JSON.parse(window.render_game_to_text()).settings,
-    saved: JSON.parse(localStorage.getItem('paper-plane-run-settings-v1')),
-  }))).toMatchObject({
-    runtime: { arDesk: false, arActive: false },
-    saved: { arDesk: false },
-  })
-  await expect(arToast).toBeVisible()
-  await expect(arToast).toHaveText('Camera permission needed for Desk AR')
-  await page.waitForTimeout(2600)
-  await expect(arToast).toBeHidden()
-  expect(arWarnings).toHaveLength(0)
-  expect(arPermissionDialogs).toBe(0)
 })
 
 test('replaying custom routes uses the latest editor layout', async ({ page }, testInfo) => {
@@ -655,6 +567,9 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
   await expect(page.locator('#power-label')).toContainText('Shield')
   await expect(page.locator('#guardian-hud')).toBeVisible()
   await expect(page.locator('#guardian-hud-val')).toHaveText('2')
+  // The Tuck button is a core control, not an unlock: it must be present and
+  // armed for the whole run regardless of what the upgrade tree looks like.
+  await expect(page.locator('#fire-btn')).toBeVisible()
   await expect(page.locator('#fire-btn')).toHaveAttribute('data-ready', 'true')
   await expect(page.locator('#magnet-pull-trail')).toHaveAttribute('data-active', 'true')
   await expect(page.locator('#magnet-pull-trail')).not.toHaveAttribute('aria-live', /.+/)
@@ -670,7 +585,7 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
     trail: { visible: true },
     turbo: { graceSeconds: 1.35, collisionScale: 0.6 },
     guardian: { charges: 2, remaining: 2 },
-    weapon: { unlocked: true, ready: true, cooldownSeconds: 0.38 },
+    flare: { chargeRate: 1.64, payoutMul: 1.72 },
     fever: { threshold: 5, duration: 6.6, active: false },
     streak: { count: 0 },
   })
@@ -701,7 +616,7 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
   expect(errors).toEqual([])
 })
 
-test('live flight loop wires seeded upgrade spawning, collision fairness, and ink cooldown', async ({ page }, testInfo) => {
+test('live flight loop wires seeded upgrade spawning and gap fairness', async ({ page }, testInfo) => {
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -726,7 +641,16 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   // shrunk so only visibly lethal air hazards end a run.
   expect(baselineSpawn.fairness.airDamageRadius).toBe(1.964)
   expect(baselineSpawn.fairness.visibleHazards.length).toBeGreaterThan(0)
-  expect(baselineSpawn.fairness.visibleHazards.every(({ passageLane }) => [-1, 0, 1].includes(passageLane))).toBe(true)
+  // The fairness guarantee, checked against the live spawner rather than only
+  // the pure planner: every hazard must clear the gap its own wave promised.
+  // Grouping by the hazard's own `passageGapX` matters — hazards on screen span
+  // several waves, and each wave has its own gap.
+  const airDamageRadius = baselineSpawn.fairness.airDamageRadius
+  const gapIntrusions = baselineSpawn.fairness.visibleHazards.filter(
+    ({ x, passageGapX }) => passageGapX != null && Math.abs(x - passageGapX) < airDamageRadius,
+  )
+  expect(gapIntrusions).toEqual([])
+  expect(baselineSpawn.fairness.passageGapWidth).toBeGreaterThan(0)
 
   await openApp(page, '/?upgrade-proof=max&twist-star-mul=1.6#test-upgrade-live-spawn')
   await waitForGameText(page)
@@ -776,16 +700,23 @@ test('live flight loop wires seeded upgrade spawning, collision fairness, and in
   await page.evaluate(() => window.advanceTime(1000 / 60))
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).state)).toBe('dead')
 
-  await openApp(page, '/?upgrade-proof=weapon-max#test-upgrade-live-cooldown')
+  // The Tuck: holding must trade height for distance, and releasing must pay
+  // both back. This is the one move with a real skill ceiling, so its wiring is
+  // worth an end-to-end check rather than only unit coverage.
+  await openApp(page, '/?upgrade-proof=flare-max#test-upgrade-live-cooldown')
   await waitForGameText(page)
-  await page.keyboard.down('x')
-  await page.evaluate(() => window.advanceTime(1000 / 60))
-  await page.keyboard.up('x')
-  const fired = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
-  expect(fired.entities.counts.shot).toBe(1)
-  expect(fired.upgrades.weapon).toMatchObject({ ready: false, cooldownSeconds: 0.38 })
   await page.evaluate(() => window.advanceTime(400))
-  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).upgrades.weapon.ready)).toBe(true)
+  const beforeTuck = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  await page.keyboard.down('Space')
+  await page.evaluate(() => window.advanceTime(1200))
+  const tucked = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  expect(tucked.player.y).toBeLessThan(beforeTuck.player.y)
+  await page.keyboard.up('Space')
+  await page.evaluate(() => window.advanceTime(300))
+  const flared = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+  // The flare pays in distance and buys height back.
+  expect(flared.distance - tucked.distance).toBeGreaterThan(30)
+  expect(flared.player.y).toBeGreaterThan(tucked.player.y)
 
   expect(errors).toEqual([])
 })
@@ -800,7 +731,7 @@ test('flight ticks reuse cached upgrade effects instead of reading storage every
       return originalGetItem.call(this, key)
     }
   })
-  await openApp(page, '/?upgrade-proof=weapon-max#test-upgrade-live-cooldown')
+  await openApp(page, '/?upgrade-proof=flare-max#test-upgrade-live-cooldown')
   await waitForGameText(page)
   const before = await page.evaluate(() => window.__upgradeStorageReads)
   await page.evaluate(() => window.advanceTime(1000))
@@ -1101,17 +1032,22 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
   const skimHud = page.locator('#skim-hud')
   await expect(skimHud).toBeHidden()
 
+  let climbedSnapshot = null
   const viewport = page.viewportSize()
   // Flying at minimum altitude through a city eventually clips a building and
   // restarts the run, so assert on the best chain seen across the hold rather
   // than on whatever the final frame happens to hold.
+  // Only frames from a live run count. The ground ends the run now, so a hold
+  // at the deck can end mid-window — and a dead frame reports tier 0, which
+  // would otherwise overwrite the peak this helper exists to remember.
   const holdLow = async (ms) => {
     const deadline = Date.now() + ms
-    let peak = { tier: 0, scoreMultiplier: 1, stars: 0, y: Number.POSITIVE_INFINITY }
+    let peak = { tier: 0, scoreMultiplier: 1, stars: 0, y: Number.POSITIVE_INFINITY, ceiling: 0 }
     while (Date.now() < deadline) {
       await page.mouse.move(viewport.width / 2, viewport.height - 4)
       await page.waitForTimeout(60)
       const snapshot = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+      if (snapshot.state !== 'playing') break
       if (snapshot.groundSkim.tier >= peak.tier) {
         peak = {
           tier: snapshot.groundSkim.tier,
@@ -1135,12 +1071,18 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
   await expect(skimHud).toHaveClass(/skim-tier-/)
 
   // Climbing out past the grace window ends the chain and hides the chip.
-  const deadline = Date.now() + 4_000
-  while (Date.now() < deadline) {
+  //
+  // Poll for the release rather than assuming a fixed window is enough: the
+  // plane now climbs under real aerodynamics instead of lerping to the cursor,
+  // so getting clear of the skim ceiling takes a physical amount of time, and
+  // only then does the grace window start. Asserting on a stopwatch made this
+  // a race against how fast the plane happened to climb.
+  const climbed = await expect.poll(async () => {
     await page.mouse.move(viewport.width / 2, 90)
-    await page.waitForTimeout(60)
-  }
-  const climbed = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    const snapshot = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    climbedSnapshot = snapshot
+    return snapshot.state === 'playing' ? snapshot.groundSkim.active : false
+  }, { timeout: 15_000, intervals: [80] }).toBe(false).then(() => climbedSnapshot)
   expect(climbed.groundSkim.active).toBe(false)
   expect(climbed.groundSkim.tier).toBe(0)
   expect(climbed.groundSkim.scoreMultiplier).toBe(1)
@@ -1222,11 +1164,14 @@ async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempt
       else if (!want && held.has(code)) { held.delete(code); send('keyup', code) }
     }
     // Pick the (x, y) with the most clearance, weighting nearer hazards higher.
+    // The vertical floor is well clear of the deck: altitude is a resource now,
+    // and an autopilot that hugs the ground is testing the skim mechanic rather
+    // than the tier escalation this harness exists to reach.
     const aim = (state) => {
       const hazards = state.fairness.visibleHazards.filter((h) => h.z > 1 && h.z < 75)
       let best = { x: 0, y: 9, score: -Infinity }
       for (let x = -6; x <= 6; x += 0.5) {
-        for (let y = 4; y <= 15; y += 0.5) {
+        for (let y = 6; y <= 15; y += 0.5) {
           let score = -Math.abs(y - 9) * 0.05 - Math.abs(x) * 0.02
           for (const hazard of hazards) {
             const radius = hazard.radius + state.fairness.airDamageRadius
@@ -1270,10 +1215,15 @@ async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempt
         }
         if (state.distance >= untilDistance) return { died: false, peakDistance, tiers, laps }
         const target = aim(state)
-        hold('ArrowLeft', state.player.x < target.x - 0.25)
-        hold('ArrowRight', state.player.x > target.x + 0.25)
-        hold('ArrowUp', state.player.y < target.y - 0.35)
-        hold('ArrowDown', state.player.y > target.y + 0.35)
+        // Steer on where the plane will be, not where it is. Lateral input
+        // commands a bank angle now, so the plane keeps turning after the key
+        // is released — bang-bang control on raw position just oscillates.
+        const leadX = state.player.x + (state.player.velX || 0) * 0.42
+        const leadY = state.player.y + (state.player.velY || 0) * 0.28
+        hold('ArrowLeft', leadX < target.x - 0.25)
+        hold('ArrowRight', leadX > target.x + 0.25)
+        hold('ArrowUp', leadY < target.y - 0.35)
+        hold('ArrowDown', leadY > target.y + 0.35)
         window.advanceTime(1000 / 60)
       }
       return { died: false, timedOut: true, peakDistance, tiers, laps }
@@ -1434,7 +1384,7 @@ test('a cold load shows the banked wallet, not the markup placeholder', async ({
   expect(errors).toEqual([])
 })
 
-test('hazard motion never carries a hazard into the reserved passage lane', async ({ page }, testInfo) => {
+test('hazard motion never carries a hazard into the guaranteed passage gap', async ({ page }, testInfo) => {
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1443,11 +1393,11 @@ test('hazard motion never carries a hazard into the reserved passage lane', asyn
   await waitForGameText(page)
 
   // Step the run deterministically and check every airborne hazard against the
-  // lane it was spawned to keep clear, on every frame. The guarantee has to
-  // hold for a hazard's whole path, not just the frame it spawned on — the
-  // previous integrated motion drifted one way and could close the lane.
+  // gap its own wave promised, on every frame. The guarantee has to hold for a
+  // hazard's whole path, not just the frame it spawned on — the old integrated
+  // motion drifted one way and could close the passage. Each hazard carries its
+  // own wave's gap centre, because hazards on screen span several waves.
   const report = await page.evaluate(() => {
-    const LANE_X = [-6, 0, 6]
     const PLANE_RADIUS = 0.7
     const AIR_DAMAGE_WEIGHT = 0.52
     const MARGIN = 0.35
@@ -1460,16 +1410,14 @@ test('hazard motion never carries a hazard into the reserved passage lane', asyn
       const state = snapshot()
       if (state.state !== 'playing') break
       for (const hazard of state.fairness.visibleHazards) {
-        if (hazard.type !== 'bird' || hazard.passageLane == null) continue
-        const laneX = LANE_X[hazard.passageLane + 1]
-        if (laneX === undefined) continue
+        if (hazard.type !== 'bird' || hazard.passageGapX == null) continue
         // Each hazard's own envelope, not the snapshot's fixed sample radius.
         const need = hazard.radius + PLANE_RADIUS * AIR_DAMAGE_WEIGHT + MARGIN
-        const slack = Math.abs(hazard.x - laneX) - need
+        const slack = Math.abs(hazard.x - hazard.passageGapX) - need
         checks += 1
         if (slack < worstSlack) {
           worstSlack = slack
-          worst = { slack, x: hazard.x, laneX, radius: hazard.radius, distance: state.distance }
+          worst = { slack, x: hazard.x, gapX: hazard.passageGapX, radius: hazard.radius, distance: state.distance }
         }
       }
       frames += 1
@@ -1483,7 +1431,7 @@ test('hazard motion never carries a hazard into the reserved passage lane', asyn
   expect(report.checks, detail).toBeGreaterThan(500)
   // The snapshot rounds positions to two decimals, so a hazard sitting exactly
   // on the boundary can read as much as 0.005 inside it. The exact invariant is
-  // proven over the whole time domain in test/hazardPatterns.test.js; this guard
+  // proven over the whole time domain in test/gap-weave.test.js; this guard
   // is here to catch the engine wiring drifting, and cannot resolve finer than
   // its own input.
   expect(report.worstSlack, detail).toBeGreaterThan(-0.006)
@@ -1491,7 +1439,7 @@ test('hazard motion never carries a hazard into the reserved passage lane', asyn
   expect(errors).toEqual([])
 })
 
-test('stars spread across lanes instead of stacking on the guaranteed one', async ({ page }, testInfo) => {
+test('stars spread across the corridor instead of stacking in the guaranteed gap', async ({ page }, testInfo) => {
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1502,11 +1450,8 @@ test('stars spread across lanes instead of stacking on the guaranteed one', asyn
   // Sample stars while they are still far ahead, before the plane's magnet or
   // its own position can have moved them.
   const mix = await page.evaluate(() => {
-    const LANE_X = [-6, 0, 6]
     const snapshot = () => JSON.parse(window.render_game_to_text())
-    const lanes = new Map(LANE_X.map((x) => [x, 0]))
-    let offAxis = 0
-    let total = 0
+    const xs = []
     for (let frame = 0; frame < 60 * 90; frame += 1) {
       window.advanceTime(1000 / 60)
       if (frame % 10) continue
@@ -1514,27 +1459,29 @@ test('stars spread across lanes instead of stacking on the guaranteed one', asyn
       if (state.state !== 'playing') break
       for (const star of state.fairness.visibleStars) {
         if (star.z < 130) continue
-        const lane = LANE_X.find((x) => Math.abs(star.x - x) <= 0.85)
-        if (lane === undefined) offAxis += 1
-        else lanes.set(lane, lanes.get(lane) + 1)
-        total += 1
+        xs.push(star.x)
       }
     }
-    return { lanes: Object.fromEntries(lanes), offAxis, total }
+    return { xs }
   })
 
-  const detail = JSON.stringify(mix)
   // A run that crashes early still samples plenty; keep the floor low enough
-  // that this asserts on the mix rather than on how long the plane survived.
-  expect(mix.total, detail).toBeGreaterThan(30)
-  // Every lane must be used — the point is that the reserved lane is no longer
-  // the only place a star can be.
-  for (const count of Object.values(mix.lanes)) {
-    expect(count, detail).toBeGreaterThan(0)
+  // that this asserts on the spread rather than on how long the plane survived.
+  expect(mix.xs.length, JSON.stringify({ total: mix.xs.length })).toBeGreaterThan(30)
+
+  // The point of continuous placement: stars must occupy a real spread of the
+  // corridor rather than clustering on a few fixed positions the way the old
+  // three-lane placement forced them to. Bucketed into 2-unit bins, several
+  // bins must be used and none may hold nearly all of them.
+  const bins = new Map()
+  for (const x of mix.xs) {
+    const bin = Math.round(x / 2)
+    bins.set(bin, (bins.get(bin) || 0) + 1)
   }
-  // And no single lane may hold nearly all of them.
-  const busiest = Math.max(...Object.values(mix.lanes))
-  expect(busiest / mix.total, detail).toBeLessThan(0.8)
+  const counts = [...bins.values()]
+  const spread = JSON.stringify({ bins: counts.length, busiest: Math.max(...counts), total: mix.xs.length })
+  expect(bins.size, spread).toBeGreaterThan(3)
+  expect(Math.max(...counts) / mix.xs.length, spread).toBeLessThan(0.8)
 
   expect(errors).toEqual([])
 })

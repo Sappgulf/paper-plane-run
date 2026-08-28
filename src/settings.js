@@ -9,7 +9,6 @@ const DEFAULTS = {
   colorblindPowers: false,
   lowPower: false, // lower DPR, fewer shadows, fewer dust
   haptics: true,
-  arDesk: false,
   forceSeason: 'auto', // auto | default | halloween | winter | valentine | spring
   /** @type {'mouse'|'joystick'} */
   controlMode: 'mouse',
@@ -51,9 +50,6 @@ export function powerColors(colorblind) {
       slow: 0xa78bfa,
       magnet: 0x34d399,
       boost: 0xfb7185,
-      tear: 0xfbbf24,
-      clip: 0x94a3b8,
-      sling: 0xf97316,
       phase: 0xe9d5ff,
     }
   }
@@ -63,9 +59,6 @@ export function powerColors(colorblind) {
     slow: 0xee7733, // orange
     magnet: 0x009988, // teal
     boost: 0xcc3311, // red
-    tear: 0xee3377, // magenta
-    clip: 0x33bbee, // cyan
-    sling: 0xbbbb00, // yellow
     phase: 0xaa4499, // purple
   }
 }

@@ -10,7 +10,7 @@ import {
   listSkins,
   purchasePlane,
 } from '../src/skins.js'
-import { UPGRADES, addWallet, doPrestige, getWallet } from '../src/upgrades.js'
+import { addWallet, getWallet } from '../src/upgrades.js'
 
 describe('plane collection art manifest', () => {
   test('maps every existing plane to valid generated art assets', () => {
@@ -43,25 +43,6 @@ describe('plane collection art manifest', () => {
       expect(existsSync(new URL(`../public${plane.portrait}`, import.meta.url))).toBe(true)
       expect(existsSync(new URL(`../public${plane.texture}`, import.meta.url))).toBe(true)
     }
-  })
-})
-
-describe('prestige-gated skin', () => {
-  beforeEach(() => {
-    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
-  })
-
-  test('Golden Fold is available, but not owned, after prestige', () => {
-    const before = listSkins().find((s) => s.id === 'goldenfold')
-    expect(before.unlocked).toBe(false)
-
-    const maxed = {}
-    for (const u of UPGRADES) maxed[u.id] = u.max
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(maxed))
-    expect(doPrestige().ok).toBe(true)
-
-    const after = listSkins().find((s) => s.id === 'goldenfold')
-    expect(after).toMatchObject({ state: 'available', unlocked: false })
   })
 })
 
@@ -102,10 +83,10 @@ describe('plane collection purchases', () => {
       { id: 'winter', requirement: { type: 'season', value: 'winter' }, price: null },
       { id: 'valentine', requirement: { type: 'season', value: 'valentine' }, price: null },
       { id: 'spring', requirement: { type: 'season', value: 'spring' }, price: null },
-      { id: 'goldenfold', requirement: { type: 'prestige', value: 1 }, price: null },
-      { id: 'inkveil', requirement: { type: 'prestige', value: 3 }, price: null },
-      { id: 'starcrest', requirement: { type: 'prestige', value: 5 }, price: null },
-      { id: 'paperlegend', requirement: { type: 'prestige', value: 10 }, price: null },
+      { id: 'goldenfold', requirement: { type: 'lifetime-stars', value: 300 }, price: { currency: 'wallet-stars', value: 150 } },
+      { id: 'inkveil', requirement: { type: 'lifetime-stars', value: 450 }, price: { currency: 'wallet-stars', value: 185 } },
+      { id: 'starcrest', requirement: { type: 'lifetime-stars', value: 650 }, price: { currency: 'wallet-stars', value: 225 } },
+      { id: 'paperlegend', requirement: { type: 'lifetime-stars', value: 1000 }, price: { currency: 'wallet-stars', value: 280 } },
     ])
   })
 
@@ -175,13 +156,17 @@ describe('plane collection purchases', () => {
     expect(getWallet()).toBe(20)
   })
 
-  test('claims prestige planes only after their prestige requirement is met', () => {
-    expect(claimPlane('goldenfold')).toEqual({ ok: false, reason: 'locked' })
-    localStorage.setItem('paper-plane-run-prestige', '1')
+  // The former prestige planes are ordinary purchases now, just at the far end
+  // of the lifetime ladder — so they must refuse a free claim like any other
+  // paid plane, and stay locked until their lifetime gate is met.
+  test('the endgame planes are bought, not claimed, and stay lifetime-gated', () => {
+    expect(claimPlane('goldenfold')).toEqual({ ok: false, reason: 'purchase-required' })
+    expect(purchasePlane('goldenfold')).toEqual({ ok: false, reason: 'locked' })
 
-    expect(claimPlane('goldenfold')).toEqual({ ok: true })
+    localStorage.setItem('paper-plane-run-lifetime-stars', '300')
+    addWallet(150)
+    expect(purchasePlane('goldenfold')).toEqual({ ok: true, cost: 150 })
     expect(listSkins().find((plane) => plane.id === 'goldenfold')).toMatchObject({ state: 'owned' })
-    expect(claimPlane('goldenfold')).toEqual({ ok: true, already: true })
   })
 
   test('recovers from corrupt legacy ownership JSON and retains the equipped plane', () => {

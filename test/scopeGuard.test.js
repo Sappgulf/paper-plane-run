@@ -12,7 +12,7 @@ describe('product scope guard', () => {
   test('keeps the upgrade catalog closed and the approved boss set exclusive', () => {
     expect(UPGRADES.map(({ id }) => id)).toEqual([
       'handling', 'lift', 'glide', 'magnet', 'shield', 'luck', 'wingspan',
-      'trail', 'turbo', 'guardian', 'weapon', 'fever', 'streak', 'wealth',
+      'trail', 'turbo', 'guardian', 'flare', 'fever', 'streak', 'wealth',
     ])
     expect(Object.keys(BOSS_ART).sort()).toEqual(['scissors', 'stapler', 'wind'])
   })

@@ -42,12 +42,8 @@ export function buildPrecacheManifest(directory) {
 // zones, skins, bosses and postcards warm in the background after activation.
 const FIRST_RUN_ART = new Set([
   '/assets/logo.jpg',
-  '/assets/paper.jpg',
   '/assets/paper-world-backdrop.webp',
   '/assets/zone-stamp-sheet.webp',
-  '/assets/buildings.jpg',
-  '/assets/sky-city.jpg',
-  '/assets/ground-city.jpg',
   '/assets/pickup-orb.webp',
   '/assets/pickup-boost.webp',
   '/assets/planes/classic.webp',

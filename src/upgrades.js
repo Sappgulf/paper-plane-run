@@ -7,8 +7,6 @@ import { safeSetItem } from './game/safe-storage.js'
 const LEVELS_KEY = 'paper-plane-run-upgrades'
 const WALLET_KEY = 'paper-plane-run-wallet'
 const MIGRATED = 'paper-plane-run-wallet-migrated'
-const PRESTIGE_KEY = 'paper-plane-run-prestige'
-const PRESTIGE_MAX = 50
 
 function parseStarCount(value) {
   const number = Number(value)
@@ -97,12 +95,12 @@ export const UPGRADES = [
     costs: FUTURE_PRICE_TABLE.upgrades.guardian,
   },
   {
-    id: 'weapon',
-    name: 'Ink Blast',
-    icon: '🖋️',
-    blurb: 'Fire ink blots to pop birds & scissors for bonus stars',
+    id: 'flare',
+    name: 'Deep Flare',
+    icon: '🪁',
+    blurb: 'Charge the Tuck faster and cash a bigger flare out of it',
     max: 4,
-    costs: FUTURE_PRICE_TABLE.upgrades.weapon,
+    costs: FUTURE_PRICE_TABLE.upgrades.flare,
   },
   {
     id: 'fever',
@@ -224,12 +222,19 @@ const UPGRADE_FORMULAS = {
       guardianCharges: charges,
     })
   },
-  weapon(level) {
-    const cooldownSeconds = roundedEffectValue(Math.max(0.35, 1.1 - level * 0.18))
-    const label = level === 0 ? 'Ink Blast locked' : `Ink cooldown ${cooldownSeconds.toFixed(2)}s`
-    return effect(label, { cooldownSeconds }, {
-      weaponLevel: level,
-      weaponCooldown: cooldownSeconds,
+  // The Tuck is the run's one deep move, so the tree's fourth-tier slot buys
+  // into it rather than into a second, unrelated verb. Charge rate and payout
+  // scale together: a shorter hold for the same flare, which is a real change
+  // in how close to the ground you are willing to take it.
+  flare(level) {
+    const chargeRate = roundedEffectValue(1 + level * 0.16)
+    const payoutMul = roundedEffectValue(1 + level * 0.18)
+    const label = level === 0
+      ? 'Flare pays base'
+      : `Charge ${chargeRate.toFixed(2)}x · flare ${payoutMul.toFixed(2)}x`
+    return effect(label, { chargeRate, payoutMul }, {
+      flareChargeRate: chargeRate,
+      flarePayoutMul: payoutMul,
     })
   },
   fever(level) {
@@ -269,17 +274,6 @@ function getUpgradeFormula(id, level) {
   const upgrade = findUpgrade(id)
   if (!upgrade) return null
   return UPGRADE_FORMULAS[id](normalizeUpgradeLevel(id, level))
-}
-
-function getPrestigeFormula(level) {
-  const bonusPercent = level * 3
-  return { bonusPercent, multiplier: 1 + bonusPercent / 100 }
-}
-
-function normalizePrestigeLevel(level) {
-  const value = Number(level)
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(PRESTIGE_MAX, Math.floor(value)))
 }
 
 function loadLevels() {
@@ -338,40 +332,6 @@ function migrateWalletOnce() {
   safeSetItem(MIGRATED, '1')
 }
 
-/** Prestige: once every upgrade is maxed, reset the tree for a permanent global bonus. */
-export function getPrestigeLevel() {
-  return normalizePrestigeLevel(localStorage.getItem(PRESTIGE_KEY) || 0)
-}
-
-export function getPrestigeBonusPercent(level = getPrestigeLevel()) {
-  return getPrestigeFormula(normalizePrestigeLevel(level)).bonusPercent
-}
-
-function getPrestigeState() {
-  const level = getPrestigeLevel()
-  const capped = level >= PRESTIGE_MAX
-  const upgradesMaxed = UPGRADES.every((upgrade) => getUpgradeLevel(upgrade.id) >= upgrade.max)
-  return {
-    level,
-    capped,
-    ready: !capped && upgradesMaxed,
-  }
-}
-
-export function canPrestige() {
-  return getPrestigeState().ready
-}
-
-export function doPrestige() {
-  const state = getPrestigeState()
-  if (state.capped) return { ok: false, reason: 'max-prestige', level: state.level }
-  if (!state.ready) return { ok: false, reason: 'not-maxed' }
-  const level = state.level + 1
-  safeSetItem(PRESTIGE_KEY, String(level))
-  saveLevels({})
-  return { ok: true, level }
-}
-
 export function nextCost(id) {
   const u = UPGRADES.find((x) => x.id === id)
   if (!u) return null
@@ -420,8 +380,6 @@ export function getUpgradeEffects() {
     upgrade.id,
     getUpgradeFormula(upgrade.id, getUpgradeLevel(upgrade.id)),
   ]))
-  const prestigeLevel = getPrestigeLevel()
-  const prestige = getPrestigeFormula(prestigeLevel)
   const handling = formulas.handling
   const lift = formulas.lift
   const glide = formulas.glide
@@ -432,7 +390,7 @@ export function getUpgradeEffects() {
   const trail = formulas.trail
   const turbo = formulas.turbo
   const guardian = formulas.guardian
-  const weapon = formulas.weapon
+  const flare = formulas.flare
   const fever = formulas.fever
   const streak = formulas.streak
   const wealth = formulas.wealth
@@ -442,21 +400,19 @@ export function getUpgradeEffects() {
     ...handling.runtime,
     ...lift.runtime,
     ...glide.runtime,
-    scoreMul: (1 + glide.values.scorePercent / 100 + trail.values.scoreAuraPercent / 100) * prestige.multiplier,
+    scoreMul: 1 + glide.values.scorePercent / 100 + trail.values.scoreAuraPercent / 100,
     ...magnet.runtime,
     ...shield.runtime,
     ...luck.runtime,
-    starChanceMul: luck.runtime.starChanceMul * prestige.multiplier,
+    starChanceMul: luck.runtime.starChanceMul,
     ...wingspan.runtime,
     ...trail.runtime,
     ...turbo.runtime,
     ...guardian.runtime,
-    ...weapon.runtime,
+    ...flare.runtime,
     ...fever.runtime,
     ...streak.runtime,
     ...wealth.runtime,
-    prestigeLevel,
-    prestigeBonusPercent: prestige.bonusPercent,
     synergyGold,
     synergyFever,
     // Max fever + streak: a tiny extra fever duration (feel, not a new system).

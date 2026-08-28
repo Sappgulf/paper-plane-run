@@ -5,11 +5,7 @@ import {
   getUpgradeLevel,
   getWallet,
   UPGRADES,
-  canPrestige,
   describeUpgradeEffect,
-  doPrestige,
-  getPrestigeBonusPercent,
-  getPrestigeLevel,
   getUpgradeEffects,
   spendWallet,
 } from '../src/upgrades.js'
@@ -99,10 +95,19 @@ const UPGRADE_CONTRACTS = [
     directions: { charges: 'up' },
   },
   {
-    id: 'weapon',
-    labels: ['Ink Blast locked', 'Ink cooldown 0.92s', 'Ink cooldown 0.74s', 'Ink cooldown 0.56s', 'Ink cooldown 0.38s'],
-    values: [1.1, 0.92, 0.74, 0.56, 0.38].map((cooldownSeconds) => ({ cooldownSeconds })),
-    directions: { cooldownSeconds: 'down' },
+    id: 'flare',
+    labels: [
+      'Flare pays base',
+      'Charge 1.16x · flare 1.18x',
+      'Charge 1.32x · flare 1.36x',
+      'Charge 1.48x · flare 1.54x',
+      'Charge 1.64x · flare 1.72x',
+    ],
+    values: [0, 1, 2, 3, 4].map((level) => ({
+      chargeRate: Number((1 + level * 0.16).toFixed(2)),
+      payoutMul: Number((1 + level * 0.18).toFixed(2)),
+    })),
+    directions: { chargeRate: 'up', payoutMul: 'up' },
   },
   {
     id: 'fever',
@@ -201,86 +206,27 @@ describe('upgrade purchases', () => {
   })
 })
 
-describe('prestige', () => {
+describe('deep flare', () => {
   beforeEach(() => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
   })
 
-  test.each([
-    {
-      name: 'not maxed',
-      prestige: 0,
-      levels: {},
-      state: { level: 0, max: 50, capped: false, ready: false, bonusPercent: 0, nextBonusPercent: 3 },
-      result: { ok: false, reason: 'not-maxed' },
-      expectedLevels: {},
-    },
-    {
-      name: 'first prestige',
-      prestige: 0,
-      levels: MAXED_LEVELS,
-      state: { level: 0, max: 50, capped: false, ready: true, bonusPercent: 0, nextBonusPercent: 3 },
-      result: { ok: true, level: 1 },
-      expectedLevels: {},
-    },
-    {
-      name: 'final rewarded prestige',
-      prestige: 49,
-      levels: MAXED_LEVELS,
-      state: { level: 49, max: 50, capped: false, ready: true, bonusPercent: 147, nextBonusPercent: 150 },
-      result: { ok: true, level: 50 },
-      expectedLevels: {},
-    },
-    {
-      name: 'prestige cap',
-      prestige: 50,
-      levels: MAXED_LEVELS,
-      state: { level: 50, max: 50, capped: true, ready: false, bonusPercent: 150, nextBonusPercent: null },
-      result: { ok: false, reason: 'max-prestige', level: 50 },
-      expectedLevels: MAXED_LEVELS,
-    },
-  ])('$name exposes one consistent state and mutation result', ({ prestige, levels, state, result, expectedLevels }) => {
-    localStorage.setItem('paper-plane-run-prestige', String(prestige))
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify(levels))
+  // An unpurchased tree has to be exactly the shipped baseline, not a penalty:
+  // the Tuck is the core move and must feel identical on a fresh save.
+  test('is exactly neutral until purchased, then scales charge and payout', () => {
+    const base = getUpgradeEffects()
+    expect(base.flareChargeRate).toBe(1)
+    expect(base.flarePayoutMul).toBe(1)
 
-    expect(getPrestigeLevel()).toBe(state.level)
-    expect(getPrestigeBonusPercent()).toBe(state.bonusPercent)
-    const nextBonusPercent = getPrestigeBonusPercent(state.level + 1)
-    expect(nextBonusPercent > state.bonusPercent ? nextBonusPercent : null).toBe(state.nextBonusPercent)
-    expect(canPrestige()).toBe(state.ready)
-    expect(doPrestige()).toEqual(result)
-    expect(getPrestigeLevel()).toBe(result.ok ? result.level : state.level)
-    expect(JSON.parse(localStorage.getItem('paper-plane-run-upgrades'))).toEqual(expectedLevels)
-
-    if (result.ok) {
-      const fx = getUpgradeEffects()
-      expect(fx.scoreMul).toBeCloseTo(1 + result.level * 0.03)
-      expect(fx.starChanceMul).toBeCloseTo(1 + result.level * 0.03)
-    }
-  })
-
-  test('caps explicit bonus queries at the existing prestige maximum', () => {
-    expect(getPrestigeBonusPercent(49)).toBe(147)
-    expect(getPrestigeBonusPercent(50)).toBe(150)
-    expect(getPrestigeBonusPercent(51)).toBe(150)
-  })
-})
-
-describe('ink blast weapon', () => {
-  beforeEach(() => {
-    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
-  })
-
-  test('is inert until purchased, then fires faster per level', () => {
-    expect(getUpgradeEffects().weaponLevel).toBe(0)
-
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 1 }))
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ flare: 1 }))
     const lvl1 = getUpgradeEffects()
-    expect(lvl1.weaponLevel).toBe(1)
-    expect(lvl1.weaponCooldown).toBeCloseTo(0.92)
+    expect(lvl1.flareChargeRate).toBeCloseTo(1.16)
+    expect(lvl1.flarePayoutMul).toBeCloseTo(1.18)
 
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 4 }))
-    expect(getUpgradeEffects().weaponCooldown).toBeCloseTo(0.38)
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ flare: 4 }))
+    const maxed = getUpgradeEffects()
+    expect(maxed.flareChargeRate).toBeCloseTo(1.64)
+    expect(maxed.flarePayoutMul).toBeCloseTo(1.72)
   })
 })
 
@@ -375,7 +321,10 @@ describe('exact upgrade contracts', () => {
           expect(effects.boostHitboxScale).toBe(values.boostHitboxScale)
         }
         if (contract.id === 'guardian') expect(effects.guardianCharges).toBe(values.charges)
-        if (contract.id === 'weapon') expect(effects.weaponCooldown).toBeCloseTo(values.cooldownSeconds)
+        if (contract.id === 'flare') {
+          expect(effects.flareChargeRate).toBeCloseTo(values.chargeRate)
+          expect(effects.flarePayoutMul).toBeCloseTo(values.payoutMul)
+        }
         if (contract.id === 'fever') {
           expect(effects.feverThresholdBonus).toBe(values.thresholdReduction)
           expect(effects.feverDurationBonus).toBeCloseTo(values.durationBonusSeconds)
@@ -387,10 +336,10 @@ describe('exact upgrade contracts', () => {
   })
 
   test('normalizes malformed persisted levels to known upgrade caps', () => {
-    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ handling: '2.9', guardian: 99, weapon: -4 }))
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ handling: '2.9', guardian: 99, flare: -4 }))
     expect(getUpgradeLevel('handling')).toBe(2)
     expect(getUpgradeLevel('guardian')).toBe(2)
-    expect(getUpgradeLevel('weapon')).toBe(0)
+    expect(getUpgradeLevel('flare')).toBe(0)
 
     localStorage.setItem('paper-plane-run-upgrades', 'null')
     expect(getUpgradeLevel('handling')).toBe(0)

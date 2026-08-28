@@ -8,7 +8,7 @@ import {
   getFeverTuning,
   getMagnetPull,
   getUpgradeRuntimeSnapshot,
-  getWeaponState,
+  getFlareTuning,
 } from '../src/game/upgrade-runtime.js'
 
 const NORMAL_FLIGHT = {
@@ -52,7 +52,7 @@ const RUNTIME_ASSERTIONS = [
   { id: 'trail', value: (runtime) => runtime.trail.opacity, direction: 'up' },
   { id: 'turbo', value: (runtime) => runtime.turbo.graceSeconds, direction: 'up' },
   { id: 'guardian', value: (runtime) => runtime.guardian.charges, direction: 'up' },
-  { id: 'weapon', value: (runtime) => Number(runtime.weapon.ready), direction: 'up' },
+  { id: 'flare', value: (runtime) => runtime.flare.payoutMul, direction: 'up' },
   { id: 'fever', value: (runtime) => runtime.fever.duration, direction: 'up' },
   { id: 'streak', value: (runtime) => runtime.streak.windowSeconds, direction: 'up' },
   { id: 'wealth', value: (runtime) => runtime.luck.doubleStarChance, direction: 'up' },
@@ -158,23 +158,15 @@ describe('upgrade runtime contracts', () => {
     expect(both.luck.doubleStarChance).toBeGreaterThan(wealthOnly.luck.doubleStarChance)
   })
 
-  test('reports ink readiness and deterministic cooldown recovery without exposing a weapon before purchase', () => {
-    expect(getWeaponState({ weaponLevel: 0, cooldownSeconds: 1.1, cooldownLeft: 0 })).toMatchObject({
-      unlocked: false,
-      ready: false,
-      cooldownRemaining: 0,
-    })
-    expect(getWeaponState({ weaponLevel: 4, cooldownSeconds: 0.38, cooldownLeft: 0 })).toMatchObject({
-      unlocked: true,
-      ready: true,
-      cooldownRemaining: 0,
-    })
-    expect(getWeaponState({ weaponLevel: 4, cooldownSeconds: 0.38, cooldownLeft: 0.19 })).toMatchObject({
-      unlocked: true,
-      ready: false,
-      cooldownRemaining: 0.19,
-      cooldownProgress: 0.5,
-    })
+  // Both multipliers floor at 1 rather than at whatever was passed in, so a
+  // missing or garbage effects bag can never make the Tuck worse than baseline.
+  test('flare tuning is neutral at baseline and never drops below it', () => {
+    expect(getFlareTuning({})).toEqual({ chargeRate: 1, payoutMul: 1 })
+    expect(getFlareTuning({ flareChargeRate: 1.64, flarePayoutMul: 1.72 }))
+      .toEqual({ chargeRate: 1.64, payoutMul: 1.72 })
+    expect(getFlareTuning({ flareChargeRate: 0.2, flarePayoutMul: -3 }))
+      .toEqual({ chargeRate: 1, payoutMul: 1 })
+    expect(getFlareTuning({ flareChargeRate: NaN })).toEqual({ chargeRate: 1, payoutMul: 1 })
   })
 })
 

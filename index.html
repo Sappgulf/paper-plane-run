@@ -48,7 +48,6 @@
         <!-- Best is the only chip that is not live run state, so it is the one
              the phone layout drops when the HUD row would otherwise wrap. -->
         <div class="hud-card" data-hud-priority="tertiary"><span class="label">Best</span><span id="best">0m</span></div>
-        <div id="timeattack-hud" class="hud-card timeattack-hud hidden" data-hud-priority="primary"><span class="label">Time</span><span id="timeattack-val">60</span></div>
         <div class="hud-card stars" data-hud-priority="primary"><span class="label">Stars</span><span id="stars">0</span></div>
         <div class="hud-card mode-chip" data-hud-priority="tertiary"><span class="label">Mode</span><span id="hud-mode">Normal</span></div>
         <div class="hud-card zone-chip" data-hud-priority="secondary"><span class="label">Zone</span><span id="hud-zone">Paper City</span></div>
@@ -60,6 +59,19 @@
           <span class="label">Combo</span>
           <span id="combo-val">1x</span>
           <div class="power-bar combo-bar"><div id="combo-fill"></div></div>
+        </div>
+        <!-- Altitude is the run's resource now, so it is a primary chip: the
+             bar is the only place the player can see the thing they are
+             spending on every bank, climb and tuck. -->
+        <div id="altitude-hud" class="hud-card altitude-hud" data-hud-priority="primary">
+          <span class="label">Altitude</span>
+          <span id="altitude-val">8.0</span>
+          <div class="power-bar altitude-bar"><div id="altitude-fill"></div></div>
+        </div>
+        <div id="tuck-hud" class="hud-card tuck-hud hidden" data-hud-priority="primary">
+          <span class="label">Tuck</span>
+          <span id="tuck-val">Hold</span>
+          <div class="power-bar tuck-bar"><div id="tuck-fill"></div></div>
         </div>
         <div id="skim-hud" class="hud-card skim-hud hidden" data-hud-priority="primary"><span class="label">Skim</span><span id="skim-val">Skim</span></div>
         <div id="streak-hud" class="hud-card streak-hud hidden" data-hud-priority="primary">
@@ -73,8 +85,6 @@
           <span id="power-label">—</span>
           <div class="power-bar"><div id="power-fill"></div></div>
         </div>
-        <div id="hotseat-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">Player</span><span id="hotseat-player">1</span></div>
-        <div id="coop-hud" class="hud-card hidden" data-hud-priority="primary"><span class="label">P2 Wind</span><span id="coop-wind-val">0,0</span></div>
         <div id="ctrl-hud" class="hud-card mode-chip" data-hud-priority="tertiary"><span class="label">Control</span><span id="hud-ctrl">Mouse</span></div>
       </div>
 
@@ -94,7 +104,6 @@
         <span>New version ready</span>
         <button id="sw-update-btn" type="button">Restart</button>
       </div>
-      <button id="ar-btn" type="button" class="icon-btn ar-btn" title="Desk AR" aria-label="Desk AR camera">📷</button>
 
       <div id="banner-stack">
         <div id="wind-banner" class="hidden">💨 Wind gust!</div>
@@ -112,11 +121,7 @@
         <div id="stick-base"><div id="stick-knob"></div></div>
         <p class="stick-hint">Fly</p>
       </div>
-      <div id="wind-stick-zone" class="hidden" aria-hidden="true">
-        <div id="wind-stick-base"><div id="wind-stick-knob"></div></div>
-        <p class="stick-hint">Wind</p>
-      </div>
-      <button id="fire-btn" type="button" class="hidden" title="Ink Blast (X)">🖋️</button>
+      <button id="fire-btn" type="button" class="hidden" title="Tuck — hold to dive, release to flare (Space)">🪁</button>
 
       <!-- MAIN MENU -->
       <div id="menu" class="panel menu-panel">
@@ -156,9 +161,6 @@
             <button id="weekly-btn" type="button" class="action-pill" title="This week's folded map — same seed, rotating sky">📆&nbsp;Weekly</button>
             <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓&nbsp;Tutorial</button>
             <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</button>
-            <button id="timeattack-btn" type="button" class="action-pill" title="60 seconds — grab as many stars as you can">⏱&nbsp;Time Attack</button>
-            <button id="coop-btn" type="button" class="action-pill" title="Two players, one plane — P2 throws wind gusts to help or hinder">🌬&nbsp;Co-op</button>
-            <button id="hotseat-btn" type="button" class="action-pill" title="Take turns — highest distance wins">👥&nbsp;Hot-seat</button>
           </div>
 
           <div id="engine-status" class="engine-status hidden" role="status" aria-live="polite">
@@ -224,11 +226,10 @@
           <div class="hangar-body">
             <section id="tab-upgrades" class="hangar-page" role="tabpanel" aria-labelledby="hangar-tab-upgrades">
               <p id="upgrades-intro" class="page-intro">Spend flight stars. Each rank sharpens the plane.</p>
-              <div id="prestige-panel" class="prestige-panel hidden"></div>
               <div id="upgrades-grid" class="upgrade-grid"></div>
             </section>
             <section id="tab-skins" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-skins">
-              <p class="page-intro">Meet lifetime milestones, then purchase with wallet stars. Seasonal and prestige planes are free claims.</p>
+              <p class="page-intro">Meet lifetime milestones, then purchase with wallet stars. Seasonal planes are free claims.</p>
               <p id="skins-status" class="share-status" role="status" aria-live="polite"></p>
               <div id="skins-grid" class="skins-grid"></div>
             </section>
@@ -246,7 +247,6 @@
                 <button type="button" class="tab" data-board="daily">Daily</button>
                 <button type="button" class="tab" data-board="weekly">Weekly</button>
                 <button type="button" class="tab" data-board="remote">Global</button>
-                <button type="button" class="tab" data-board="timeattack">⏱&nbsp;Time Attack</button>
               </div>
               <ol id="board-list" class="list-card board-list"></ol>
             </section>
@@ -275,7 +275,6 @@
                 <label class="set-row"><input type="checkbox" id="set-colorblind" /> Colorblind powers</label>
                 <label class="set-row"><input type="checkbox" id="set-low-power" /> Low-power graphics</label>
                 <label class="set-row"><input type="checkbox" id="set-haptics" /> Haptics</label>
-                <label class="set-row"><input type="checkbox" id="set-ar" /> Desk AR camera</label>
                 <label class="set-row">Season
                   <select id="set-season">
                     <option value="auto">Auto</option>
@@ -361,14 +360,6 @@
 
       <div id="postcard-reveal" class="postcard-overlay hidden" role="dialog" aria-modal="true" aria-label="Journey postcard reveal"></div>
       <div id="postcard-detail" class="postcard-overlay hidden" role="dialog" aria-modal="true" aria-label="Journey postcard details"></div>
-
-      <div id="hotseat-intermission" class="panel menu-panel hidden">
-        <div class="menu-card">
-          <h2 id="hotseat-title">Player 2</h2>
-          <p id="hotseat-scores" class="detail"></p>
-          <button id="hotseat-go" type="button" class="cta-main">Start turn</button>
-        </div>
-      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

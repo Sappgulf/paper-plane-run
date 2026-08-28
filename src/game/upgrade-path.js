@@ -36,7 +36,7 @@ export function nextRecommendedUpgrade(levels = {}, catalog = []) {
 export const UPGRADE_TREES = Object.freeze([
   Object.freeze({ id: 'handle', label: 'Handle', ids: Object.freeze(['handling', 'lift', 'glide']) }),
   Object.freeze({ id: 'survive', label: 'Survive', ids: Object.freeze(['shield', 'turbo', 'guardian']) }),
-  Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'weapon']) }),
+  Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'flare']) }),
   Object.freeze({ id: 'style', label: 'Style', ids: Object.freeze(['wingspan', 'trail']) }),
 ])
 
@@ -56,7 +56,7 @@ export function describeEarlyPathBanner(recommendation, catalog = []) {
     return Object.freeze({
       visible: false,
       title: 'Early path complete',
-      body: 'Every starter upgrade is maxed — chase prestige or late-tree juice.',
+      body: 'Every starter upgrade is maxed — chase the late-tree juice.',
     })
   }
   const entry = catalog.find((item) => item.id === recommendation.id)

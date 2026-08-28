@@ -20,9 +20,9 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     trail: Object.freeze([10, 22, 40]),
     turbo: Object.freeze([14, 28, 48]),
     guardian: Object.freeze([30, 60]),
-    weapon: Object.freeze([22, 40, 65, 95]),
+    flare: Object.freeze([22, 40, 65, 95]),
     // First ranks of the late tree stay inside a short normal-run save so the
-    // three newest upgrades never feel gated behind prestige play.
+    // three newest upgrades never feel gated behind a long grind.
     fever: Object.freeze([15, 28, 48]),
     streak: Object.freeze([12, 22, 38]),
     wealth: Object.freeze([14, 26, 44]),
@@ -36,6 +36,12 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     stormfoil: 92,
     neon: 105,
     rainbow: 125,
+    // The endgame cosmetics that used to be prestige claims. Priced to stay on
+    // the same curve as the rest of the ladder rather than behind a reset loop.
+    goldenfold: 150,
+    inkveil: 185,
+    starcrest: 225,
+    paperlegend: 280,
   }),
 })
 

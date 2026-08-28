@@ -28,13 +28,12 @@ import {
 import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
 import { resolveTier } from './game/endless-tiers.js'
 import {
-  clampAmplitudeToLane,
+  getPatternReach,
   getTierMotionScale,
   patternForFlyer,
   resolveHazardOffset,
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
-import { chooseStarLane, getStarX } from './game/star-placement.js'
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
   getUpgradeEffects,
@@ -46,13 +45,11 @@ import {
 import {
   submitLocalScore,
   submitRemoteScore,
-  submitTimeAttackScore,
 } from './leaderboard.js'
 import { parseCompact } from './editor.js'
 import { loadSettings, saveSettings, applyDocumentA11y, powerColors } from './settings.js'
 import { seasonInfo } from './seasonal.js'
 import { track } from './analytics.js'
-import { DeskAR } from './ar.js'
 import {
   addLifetimeDistance,
   addLifetimeFever,
@@ -107,14 +104,11 @@ import {
 } from './game/ground-life.js'
 import {
   PASSAGE_LANE_X,
-  PASSAGE_LANES,
-  choosePassageLane,
   createPacingWave,
   getCenterBuildingSafeRange,
   getFlyableBuildingHeight,
   getObstacleDamageRadius,
   isLethalObstacle,
-  getSafeSpawnX,
   getSideBuildingSpread,
   getWaveSpacing,
   normalizeControlAxes,
@@ -139,6 +133,44 @@ import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-sta
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
+import {
+  createPaperGroundCanvas,
+  createPaperSheetCanvas,
+  createPaperSkyCanvas,
+  getPaperPalette,
+} from './game/paper-art.js'
+import {
+  advanceBank,
+  bankSinkPerSecond,
+  bankTurnAcceleration,
+  bankVisualRoll,
+  createBankState,
+  LATERAL_DRAG,
+} from './game/banking.js'
+import {
+  advanceDiveSpeed,
+  cushionDescent,
+  diveSpeedMultiplier,
+  evaluateAltitude,
+  groundEffectLift,
+  resolveSinkPerSecond,
+  updraftLift,
+  GROUND_HEIGHT,
+} from './game/glide.js'
+import {
+  advanceTuck,
+  createTuckState,
+  tuckFlightModifiers,
+} from './game/tuck-flare.js'
+import {
+  chooseGapCenter,
+  chooseStarX,
+  gapClearanceAt,
+  clampAmplitudeToGap,
+  planWaveGaps,
+  requiredGapWidth,
+  CORRIDOR_HALF_WIDTH,
+} from './game/gap-weave.js'
 import {
   advanceFeverState,
   createFeverState,
@@ -166,17 +198,11 @@ import { consumeGuardianCharge, shouldGuardianSave } from './game/guardian-runti
 import {
   SPAWN_INVULN_SECONDS,
   UNFOLD_SECONDS,
+  aimCommand,
   applySoftBounds,
   groundEffectSpeedMul,
-  integrateAimFlight,
   integrateRelativeFlight,
 } from './game/paper-flight.js'
-import {
-  advanceShot,
-  inkPopReward,
-  resolveWeaponFire,
-  shotHitsTarget,
-} from './game/weapon-runtime.js'
 import {
   getAltitudeRecovery,
   getBoostSafety,
@@ -193,7 +219,6 @@ import {
   getStreakTuning,
   getTrailFeedback,
   getUpgradeRuntimeSnapshot,
-  getWeaponState,
   SHIELD_BASE_DURATION,
 } from './game/upgrade-runtime.js'
 // createPool available for future mesh reuse; low-power path already cuts DPR/shadows
@@ -280,6 +305,12 @@ const powerLabel = $('power-label')
 const powerFill = $('power-fill')
 const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
+const altitudeHud = $('altitude-hud')
+const altitudeVal = $('altitude-val')
+const altitudeFill = $('altitude-fill')
+const tuckHud = $('tuck-hud')
+const tuckVal = $('tuck-val')
+const tuckFill = $('tuck-fill')
 const skimHud = $('skim-hud')
 const skimVal = $('skim-val')
 const streakHud = $('streak-hud')
@@ -468,8 +499,6 @@ const postcardDetailEl = $('postcard-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
-const timeAttackHud = $('timeattack-hud')
-const timeAttackValEl = $('timeattack-val')
 
 function animateCountUp(el, target, suffix, ms = 700) {
   const start = performance.now()
@@ -501,11 +530,6 @@ const stickKnob = $('stick-knob')
 const photoWrap = $('photo-wrap')
 const photoImg = $('photo-img')
 const photoCaption = $('photo-caption')
-const hotseatHud = $('hotseat-hud')
-const hotseatPlayerEl = $('hotseat-player')
-const hotseatInter = $('hotseat-intermission')
-const hotseatTitle = $('hotseat-title')
-const hotseatScores = $('hotseat-scores')
 const diffBlurb = $('diff-blurb')
 const dailyHint = $('daily-hint')
 const pilotNameInput = $('pilot-name')
@@ -535,7 +559,6 @@ function refreshUpgradeEffects() {
   return activeUpgradeEffects
 }
 applyDocumentA11y(settings)
-const deskAR = new DeskAR()
 let season = seasonInfo(settings.forceSeason)
 track('session_start', { season: season.id, dpr: devicePixelRatio })
 
@@ -546,9 +569,12 @@ let nextGauntletAt = 250
 let bossActive = false
 let bossRecoveryUntil = 0
 let activePassageLane = null
+/** The guaranteed gap for the wave being spawned: continuous, not a lane. */
+let activePassageGap = { center: 0, width: 3 }
+/** Last wave's gap centre, so consecutive gaps drift instead of teleporting. */
+let lastGapCenter = 0
 let planeWingL = null
 let planeWingR = null
-let tearSide = 0
 let autoLevelHold = false
 
 // ---------------------------------------------------------------------------
@@ -597,7 +623,6 @@ function saveBest(id, v) {
 
 let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
 let bestDistance = loadBest(difficulty.id)
-let bestTimeAttackStars = loadBest('timeattack-stars')
 if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
 if (hudModeEl) hudModeEl.textContent = difficulty.label
 if (diffBlurb) diffBlurb.textContent = difficulty.blurb
@@ -635,7 +660,7 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 // Run modes & challenge
 // ---------------------------------------------------------------------------
-/** @type {'classic'|'daily'|'weekly'|'tutorial'|'hotseat'|'layout'|'journey'|'timeattack'|'coop'} */
+/** @type {'classic'|'daily'|'weekly'|'tutorial'|'layout'|'journey'} */
 let runKind = 'classic'
 let journey = loadJourney(localStorage).journey
 let journeyRunConfig = null
@@ -664,12 +689,9 @@ function activeRouteAt(runDistance = distance) {
 function activeZoneAt(runDistance = distance) {
   return activeRouteAt(runDistance).zone
 }
-const TIME_ATTACK_SECONDS = 60
-let timeAttackLeft = 0
-let timeAttackLastTickSecond = -1
 let challenge = null
 let launchChallenge = null
-let lastRun = { d: 0, s: 0, m: 'normal', daily: false, weekly: false, timeAttack: false, seed: null, kind: 'classic', foldId: '' }
+let lastRun = { d: 0, s: 0, m: 'normal', daily: false, weekly: false, seed: null, kind: 'classic', foldId: '' }
 let layoutPlay = null
 let rng = Math.random
 let activeRunSeed = null
@@ -699,7 +721,6 @@ let starStreakTimer = 0
 let starStreakWindow = 0
 let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
-let hotseat = { players: 2, turn: 0, scores: [0, 0], active: false }
 let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
 
@@ -819,11 +840,7 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
     /* entities is declared later in boot; first quality pass runs before that */
   }
   document.documentElement.dataset.renderQuality = renderQuality.level
-  if (deskAR.active || settings.arDesk) {
-    renderer.setClearColor(0x000000, 0)
-  } else {
-    renderer.setClearColor(0xc8dff5, 1)
-  }
+  renderer.setClearColor(0xc8dff5, 1)
 }
 renderer.setPixelRatio(renderQuality.pixelRatio)
 renderer.setSize(innerWidth, innerHeight)
@@ -887,7 +904,35 @@ function resolveAssetUrl(url) {
 
 const loader = new THREE.TextureLoader()
 const texCache = {}
+
+/**
+ * `paper:<kind>:<zone>` textures are cut at runtime from the zone palette in
+ * game/paper-art.js rather than loaded from disk. Routing them through the
+ * same cache as file textures means zone crossfade, ground tinting and the
+ * low-power path all work on them unchanged — the art rule is enforced at the
+ * loader, so there is no way to sneak a photograph back in later.
+ */
+function createPaperTexture(spec) {
+  const [, kind, zoneId] = spec.split(':')
+  const palette = getPaperPalette(zoneId)
+  const canvas = kind === 'ground'
+    ? createPaperGroundCanvas({ palette })
+    : kind === 'sheet'
+      ? createPaperSheetCanvas({ palette })
+      : createPaperSkyCanvas({ palette })
+  if (!canvas) return new THREE.Texture()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+  texture.needsUpdate = true
+  return texture
+}
+
 function loadTex(rawUrl) {
+  if (typeof rawUrl === 'string' && rawUrl.startsWith('paper:')) {
+    if (!texCache[rawUrl]) texCache[rawUrl] = createPaperTexture(rawUrl)
+    return texCache[rawUrl]
+  }
   const url = resolveAssetUrl(rawUrl)
   if (!texCache[url]) {
     const t = loader.load(url)
@@ -1053,9 +1098,9 @@ function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
   cutoutTexCache[url] = tex
   return tex
 }
-const paperTex = loadTex('/assets/paper.jpg')
-const buildingTex = loadTex('/assets/buildings.jpg')
-const skyTex = loadTex('/assets/sky-city.jpg')
+const paperTex = loadTex('paper:sheet:city')
+const buildingTex = loadTex('paper:ground:city')
+const skyTex = loadTex('paper:sky:city')
 
 // Dual sky spheres for crossfade between zones
 const skyGeo = new THREE.SphereGeometry(300, 32, 16)
@@ -1073,9 +1118,9 @@ scene.add(skyA, skyB)
 let skyFade = 1 // 1 = show A, 0 = show B
 let skyFadeTarget = 1
 let activeSkyIsA = true
-let currentSkyUrl = '/assets/sky-city.jpg'
+let currentSkyUrl = 'paper:sky:city'
 
-const groundMap = loadTex('/assets/ground-city.jpg')
+const groundMap = loadTex('paper:ground:city')
 if (groundMap.repeat) groundMap.repeat.set(4, 30)
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(90, 700),
@@ -1085,7 +1130,7 @@ ground.rotation.x = -Math.PI / 2
 ground.position.set(0, 0, 120)
 ground.receiveShadow = true
 scene.add(ground)
-let currentGroundUrl = '/assets/ground-city.jpg'
+let currentGroundUrl = 'paper:ground:city'
 
 // ---------------------------------------------------------------------------
 // Ground life — flanking scenery that makes each zone feel inhabited.
@@ -1363,106 +1408,6 @@ applyPerformanceSettings()
 // Confetti pool for near-miss
 const confetti = []
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
-/** Ink Blast: fires a forward projectile that pops small airborne hazards. */
-function tryPaperPush() {
-  if (state !== 'playing' || paperPushCooldown > 0) return false
-  paperPushCooldown = 2.6
-  const trimming = windActive > 0 || Math.abs(velX) > 10
-  velX *= 0.38
-  windForce *= 0.4
-  windActive = Math.min(windActive, 0.12)
-  speedBoost = Math.max(speedBoost, 14)
-  invuln = Math.max(invuln, 0.28)
-  fovPunch = Math.max(fovPunch, 5)
-  audio.paperPush()
-  if (settings.haptics) Haptic.tap()
-  showFlightFeedback(trimming ? 'TRIM THE GUST' : 'PAPER PUSH', 'route', 0.7)
-  fireBtn?.classList.add('firing')
-  setTimeout(() => fireBtn?.classList.remove('firing'), 90)
-  return true
-}
-
-function fireWeapon({ allowPush = false } = {}) {
-  const fx = activeUpgradeEffects
-  const result = resolveWeaponFire({
-    weaponLevel: fx.weaponLevel,
-    cooldownSeconds: fx.weaponCooldown,
-    cooldownLeft: fireCooldown,
-    playing: state === 'playing',
-  })
-  if (!result.fired) {
-    if (allowPush) tryPaperPush()
-    return
-  }
-  fireCooldown = result.cooldownLeft
-  updateWeaponFeedback()
-  const m = createShot()
-  m.position.set(planeX, planeY, 4)
-  scene.add(m)
-  entities.push({
-    mesh: m,
-    type: 'shot',
-    radius: result.shot.radius,
-    ttl: result.shot.ttl,
-    speed: result.shot.speed,
-  })
-  audio.shoot()
-  if (settings.haptics) Haptic.nearMiss()
-  fireBtn?.classList.add('firing')
-  fireBtn?.classList.remove('weapon-ready')
-  setTimeout(() => fireBtn?.classList.remove('firing'), 90)
-}
-
-/** Advance in-flight ink shots and pop any bird/scissors hazard they touch. */
-function updateShots(dt) {
-  const toRemove = new Set()
-  for (const e of entities) {
-    if (e.type !== 'shot' || toRemove.has(e)) continue
-    const next = advanceShot({
-      z: e.mesh.position.z,
-      ttl: e.ttl,
-      dt,
-      speed: e.speed || 46,
-    })
-    e.mesh.position.z = next.z
-    e.ttl = next.ttl
-    if (next.expired) {
-      toRemove.add(e)
-      continue
-    }
-    for (const target of entities) {
-      if (toRemove.has(target) || (target.type !== 'bird' && target.type !== 'scissors')) continue
-      if (shotHitsTarget({
-        shotX: e.mesh.position.x,
-        shotY: e.mesh.position.y,
-        shotZ: e.mesh.position.z,
-        shotRadius: e.radius,
-        targetX: target.mesh.position.x,
-        targetY: target.mesh.position.y,
-        targetZ: target.mesh.position.z,
-        targetRadius: target.radius || 0.7,
-      })) {
-        toRemove.add(target)
-        toRemove.add(e)
-        stars += inkPopReward()
-        starsEl.textContent = String(stars)
-        runStats.popped++
-        audio.popTarget()
-        if (settings.haptics) Haptic.collect()
-        spawnConfetti(target.mesh.position.x, target.mesh.position.y, target.mesh.position.z)
-        break
-      }
-    }
-  }
-  if (!toRemove.size) return
-  for (let i = entities.length - 1; i >= 0; i--) {
-    if (toRemove.has(entities[i])) {
-      scene.remove(entities[i].mesh)
-      entities.splice(i, 1)
-    }
-  }
-}
-
 function spawnConfetti(x, y, z) {
   for (let i = 0; i < 10; i++) {
     const m = new THREE.Mesh(
@@ -1650,15 +1595,11 @@ function buildPowerMeta() {
     slow: { label: '⏱ Slow-mo', color: c.slow, banner: '⏱ Slow Motion!', duration: 6 },
     magnet: { label: '🧲 Magnet', color: c.magnet, banner: '🧲 Star Magnet!', duration: 9 },
     boost: { label: '🚀 Boost', color: c.boost, banner: '🚀 Speed Boost!', duration: 5 },
-    tear: { label: '📄 Torn Wing', color: c.tear, banner: '📄 Torn wing — lopsided!', duration: 7 },
-    clip: { label: '📎 Paperclip', color: c.clip, banner: '📎 Weighted — stable dive!', duration: 8 },
-    sling: { label: '🪢 Rubber Band', color: c.sling, banner: '🪢 Slingshot ready — hold Space!', duration: 10 },
     phase: { label: '👻 Phase', color: c.phase, banner: '👻 Phasing through hazards!', duration: 4 },
   }
 }
 let POWER_META = buildPowerMeta()
 let POWER_KINDS = Object.keys(POWER_META)
-const TOY_KINDS = ['tear', 'clip', 'sling']
 
 function rebuildPowerPalette() {
   POWER_META = buildPowerMeta()
@@ -1807,7 +1748,7 @@ function syncPlanePowerLook(dt = 0.016) {
 function applySkin(skinId) {
   const skin = getSkin(skinId)
   if (!plane || activePlaneSilhouette !== skin.silhouette) installFlightPlane(skin)
-  const map = loadTex(skin.map || '/assets/paper.jpg')
+  const map = loadTex(skin.map || 'paper:sheet:city')
   planeBodyMat.map = map
   planeBodyMat.color.setHex(skin.body)
   planeBodyMat.needsUpdate = true
@@ -1854,7 +1795,7 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
     skin = getSkin(nextSkinId)
     previewMaterials = {
       body: new THREE.MeshStandardMaterial({
-        map: loadTex(skin.map || '/assets/paper.jpg'),
+        map: loadTex(skin.map || 'paper:sheet:city'),
         color: skin.body,
         roughness: 0.82,
         side: THREE.DoubleSide,
@@ -2555,9 +2496,6 @@ function createPowerUp(kind) {
     shield: '/assets/power-shield.webp',
     magnet: '/assets/power-magnet.webp',
     slow: '/assets/power-slow.webp',
-    tear: '/assets/power-tear.webp',
-    clip: '/assets/power-clip.webp',
-    sling: '/assets/power-sling.webp',
   }
   const iconUrl = PAPER_ICON[kind] || `/assets/power-${kind}.webp`
   const paperIcon = Boolean(PAPER_ICON[kind])
@@ -2583,18 +2521,6 @@ function createPowerUp(kind) {
   g.userData.glow = glow
   g.scale.setScalar(1.2)
   return g
-}
-
-// Ink Blast projectile — shared geometry/material like every other spawned
-// entity here, since a run can fire dozens of these.
-const shotGeo = new THREE.ConeGeometry(0.22, 0.6, 8)
-const shotMat = new THREE.MeshStandardMaterial({
-  color: 0x2b2540, emissive: 0x4c3d80, emissiveIntensity: 0.9, roughness: 0.35, metalness: 0.2,
-})
-function createShot() {
-  const m = new THREE.Mesh(shotGeo, shotMat)
-  m.rotation.x = Math.PI / 2
-  return m
 }
 
 function createCloud() {
@@ -2646,10 +2572,7 @@ const keys = new Set()
 const mouse = { nx: 0, ny: 0 }
 const stick = { x: 0, y: 0, active: false, pointerId: null }
 /** Co-op player 2 wind stick */
-const windStick = { x: 0, y: 0, active: false, pointerId: null }
-let slingHold = 0
-let paperPushCooldown = 0
-/** Temporary speed impulse from boost power / sling (decays) */
+/** Temporary speed impulse from boost, the flare and skim release (decays) */
 let speedBoost = 0
 /** Post-hit invulnerability (shield break, etc.) */
 let invuln = 0
@@ -2686,6 +2609,18 @@ let velX = 0
 let rescueLift = 0
 let pitch = 0
 let roll = 0
+/** Roll axis — lateral input commands a bank, the bank turns the plane. */
+let bankState = createBankState()
+/** Pointer/touch hold for the Tuck, mirroring the Space key. */
+let tuckPointerHeld = false
+/** This frame's resolved tuck modifiers, shared with the camera/pose pass. */
+let tuckFxForFrame = tuckFlightModifiers(null)
+/** The Tuck: hold to trade height for speed, release to flare. */
+let tuckState = createTuckState()
+/** Forward speed currently borrowed from height. Repaid by climbing. */
+let diveSpeed = 0
+/** Latest altitude read, so the HUD and the ground check share one source. */
+let altitudeStatus = evaluateAltitude(8)
 let windTimer = 7
 let windActive = 0
 let windForce = 0
@@ -2698,7 +2633,6 @@ let nextSpawnZ = 40
 let shake = 0
 let hitStopTimer = 0
 let spawnUnfold = 1
-let fireCooldown = 0
 let elapsed = 0
 let launchGraceSeconds = 0
 let activePower = null
@@ -2707,7 +2641,21 @@ let zoneBannerTimer = 0
 /** @type {any[]} */
 const entities = []
 const clouds = []
-const MIN_Y = 2.2
+// The floor is the fail state now, not a soft wall: `glide.js` owns the
+// height at which a run ends, and the soft bound sits just above it so the
+// bounce can never rescue a plane that has already touched down.
+const MIN_Y = GROUND_HEIGHT
+/**
+ * The lowest altitude the player can *ask* for.
+ *
+ * Deliberately above MIN_Y, which is the height that ends the run. Aiming at
+ * the very bottom of the screen should put the plane in the skim band — low,
+ * dangerous, and paying — not drive it into the ground. Losing the run to the
+ * floor has to be something that happens when you lose altitude you meant to
+ * keep (a blown tuck, a gust, the lift a hard bank spilled), never the direct
+ * result of holding the stick where the game asks you to hold it for reward.
+ */
+const AIM_FLOOR_Y = GROUND_HEIGHT + 1.35
 const MAX_Y = 16.5
 const MAX_X = 13
 const MAX_VEL = 38
@@ -2825,26 +2773,46 @@ function spawnChunk(z) {
     difficultyId: difficulty.id,
     afterBoss: recovering,
   })
-  const safeLane = recovering ? null : wave.starLane
-  if (safeLane !== null) activePassageLane = safeLane
+  // The wave's guaranteed passage is a continuous gap, not one of three fixed
+  // lanes. Same fairness strength — there is always a hole wide enough to fly
+  // — but its position moves by a bounded amount each wave, so threading it is
+  // a line rather than a three-way multiple choice. See game/gap-weave.js.
+  const gapWidthForChunk = requiredGapWidth({
+    planeRadius: PLANE_COLLISION_RADIUS,
+    tier: tier.tier,
+  }) * cfg.gap
+  const gapCenterForChunk = recovering
+    ? lastGapCenter
+    : chooseGapCenter({
+        random: rng,
+        previousCenter: lastGapCenter,
+        halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
+        gapWidth: gapWidthForChunk,
+      })
+  lastGapCenter = gapCenterForChunk
+  activePassageGap = { center: gapCenterForChunk, width: gapWidthForChunk }
   const laneSpread = getSideBuildingSpread({ gap: cfg.gap, random: rng })
   let leftInnerEdge = null
   let rightInnerEdge = null
 
-  const safeAirX = (maxAbs, entityRadius) => getSafeSpawnX({
-    random: rng,
-    safeLane: safeLane ?? 0,
-    maxAbs,
-    damageRadius: getObstacleDamageRadius({
-      entityRadius,
-      planeRadius: PLANE_COLLISION_RADIUS,
-    }),
-  })
-  const safePickupX = () => {
-    if (safeLane === null) return (rng() - 0.5) * 11
-    const center = PASSAGE_LANE_X[safeLane + 1]
-    return center + (rng() - 0.5) * 1.6
+  /** One hazard x, anywhere in the corridor except the guaranteed gap. */
+  const safeAirX = (maxAbs, entityRadius) => {
+    const plan = planWaveGaps({
+      random: rng,
+      count: 1,
+      halfWidth: Math.min(maxAbs + 5, MAX_X - 0.5),
+      gapCenter: gapCenterForChunk,
+      gapWidth: gapWidthForChunk,
+      damageRadius: getObstacleDamageRadius({
+        entityRadius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+      }),
+    })
+    // No room outside the gap this chunk — push the hazard to the corridor
+    // edge rather than dropping it into the passage.
+    return plan.xs[0] ?? (gapCenterForChunk > 0 ? -MAX_X + 1 : MAX_X - 1)
   }
+  const safePickupX = () => gapCenterForChunk + (rng() - 0.5) * gapWidthForChunk * 0.7
 
   if (!recovering) maybeSpawnGroundDecor(z)
 
@@ -2863,7 +2831,7 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk })
       if (side === -1) leftInnerEdge = -laneSpread + radius
       else rightInnerEdge = laneSpread - radius
     }
@@ -2887,7 +2855,7 @@ function spawnChunk(z) {
       b.position.x = safeRange.minX + rng() * (safeRange.maxX - safeRange.minX)
       b.position.z = z
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageLane: safeLane })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk })
     }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
@@ -2906,15 +2874,19 @@ function spawnChunk(z) {
       // not just the frame it spawned on.
       const pattern = flyer.userData.pattern
       const motionScale = getTierMotionScale(tier.tier)
-      const amplitudeX = clampAmplitudeToLane({
+      // The clamp is against the gap, not a lane: the fairness guarantee has to
+      // cover a hazard's whole path, and now the thing it must never enter is
+      // a moving band rather than a fixed centre line.
+      const amplitudeX = clampAmplitudeToGap({
         requestedAmplitude: (0.9 + rng() * 0.7) * motionScale,
         anchorX,
-        safeLaneX: safeLane === null ? null : PASSAGE_LANE_X[safeLane + 1],
+        gapCenter: gapCenterForChunk,
+        gapWidth: gapWidthForChunk,
         damageRadius: getObstacleDamageRadius({
           entityRadius: def.radius,
           planeRadius: PLANE_COLLISION_RADIUS,
         }),
-        pattern,
+        reach: getPatternReach(pattern).x,
       })
       flyer.userData.anchorX = anchorX
       flyer.userData.anchorY = anchorY
@@ -2927,21 +2899,21 @@ function spawnChunk(z) {
         flyerId: def.id,
         label: def.label,
         radius: def.radius,
-        passageLane: safeLane,
+        passageGapX: gapCenterForChunk,
       })
     }
   } else if (ht === 'scissors') {
     const sc = createScissors()
     sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z)
     scene.add(sc)
-    entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
+    entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenterForChunk })
     // Scissor squadron — a rarer second blade further down the lane, more
     // likely to appear the deeper into a run you get.
     if (rng() < 0.12 + ramp * 0.22) {
       const sc2 = createScissors()
       sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z + 6 + rng() * 4)
       scene.add(sc2)
-      entities.push({ mesh: sc2, type: 'scissors', radius: 1.6, passageLane: safeLane })
+      entities.push({ mesh: sc2, type: 'scissors', radius: 1.6, passageGapX: gapCenterForChunk })
     }
   }
 
@@ -2957,7 +2929,7 @@ function spawnChunk(z) {
       flyerId: def.id,
       label: def.label,
       radius: def.radius,
-      passageLane: safeLane,
+      passageGapX: gapCenterForChunk,
     })
   }
 
@@ -2992,16 +2964,18 @@ function spawnChunk(z) {
     const y = telegraph ? starPlan.telegraphY + (rng() - 0.5) * 0.8 : 5.2 + rng() * 8.4
     // Mixing stars across lanes is what makes them a decision rather than a
     // freebie collected by sitting still on the reserved lane.
-    const starLane = chooseStarLane({
+    const x = chooseStarX({
       random: rng,
-      safeLane,
+      gapCenter: gapCenterForChunk,
+      gapWidth: gapWidthForChunk,
       hazards: chunkHazards,
+      halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
       telegraph,
-      planeRadius: PLANE_COLLISION_RADIUS,
+      damageRadius: getObstacleDamageRadius({
+        entityRadius: 1.6,
+        planeRadius: PLANE_COLLISION_RADIUS,
+      }),
     })
-    const x = starLane === null
-      ? (rng() - 0.5) * 11
-      : getStarX({ lane: starLane, random: rng, spread: telegraph ? 0.45 : 1.6 })
     if (telegraph) st.scale.setScalar(starPlan.telegraphScale)
     st.position.set(x, y, z + rng() * 8)
     scene.add(st)
@@ -3014,17 +2988,35 @@ function spawnChunk(z) {
   }
   // Powers — boosted chance; boost is more common early in pool
   if (starPlan.powerSpawn) {
-    const classic = POWER_KINDS.filter((k) => !TOY_KINDS.includes(k))
-    let pool
-    if (rng() < 0.28) pool = TOY_KINDS
-    else if (rng() < 0.35) pool = ['boost'] // weight boost higher
-    else pool = classic
+    // Boost stays weighted higher than the rest; the pool is otherwise flat.
+    const pool = rng() < 0.35 ? ['boost'] : POWER_KINDS
     const kind = pool[(rng() * pool.length) | 0]
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
     pu.position.set(safePickupX(), 5.4 + rng() * 8.2, z + 1 + rng() * 5)
     scene.add(pu)
     entities.push({ mesh: pu, type: 'power', radius: 1.35, kind })
+  }
+
+  // Updrafts — the only free height in the run. Deliberately generous in
+  // radius and stingy in count: they have to be visible from far enough away
+  // to be *routed toward*, or the altitude economy is just a slow bleed with
+  // no counterplay. Placed low, because the payoff for flying the dangerous
+  // part of the corridor should be the thing that keeps you flying.
+  if (rng() < UPDRAFT_CHANCE) {
+    const column = createUpdraftColumn()
+    column.position.set(
+      THREE.MathUtils.clamp(gapCenterForChunk + (rng() - 0.5) * 9, -MAX_X + 1.5, MAX_X - 1.5),
+      UPDRAFT_BASE_Y,
+      z + 2 + rng() * 6,
+    )
+    scene.add(column)
+    entities.push({
+      mesh: column,
+      type: 'updraft',
+      radius: UPDRAFT_RADIUS,
+      strength: UPDRAFT_STRENGTH,
+    })
   }
 }
 
@@ -3111,43 +3103,74 @@ function spawnBoss(z = 70, forcedKind = null) {
  *  of hazards instead of the usual sparse random spawns, so the mid-run
  *  pacing has more texture than "quiet until the next boss". */
 function spawnMiniGauntlet(z = 60) {
-  const safeLane = PASSAGE_LANES[(Math.floor(rng() * PASSAGE_LANES.length))]
-  const blockedLanes = PASSAGE_LANES.filter((lane) => lane !== safeLane)
+  // The gauntlet's whole job is to be denser than a normal wave while still
+  // being flyable, so it shares the same guarantee as every other spawn: one
+  // continuous gap, wide enough, whose position the player has to read. It
+  // just makes that gap narrower and puts more metal around it.
+  const gapWidth = requiredGapWidth({
+    planeRadius: PLANE_COLLISION_RADIUS,
+    tier: endlessTier().tier,
+  }) * 1.15
+  const gapCenter = chooseGapCenter({
+    random: rng,
+    previousCenter: lastGapCenter,
+    halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
+    gapWidth,
+  })
+  lastGapCenter = gapCenter
+  activePassageGap = { center: gapCenter, width: gapWidth }
   const placements = []
-  activePassageLane = safeLane
+
   if (rng() < 0.5) {
-    // Scissors zigzag: weave between the two blocked lanes while leaving a
-    // full lateral lane open for the player to commit to.
-    const lanes = [blockedLanes[0], blockedLanes[1], blockedLanes[0]]
-    lanes.forEach((lane, i) => {
+    // Scissor zigzag: three blades alternating either side of the gap, so the
+    // committed line through it is a slalom rather than a straight tunnel.
+    const plan = planWaveGaps({
+      random: rng,
+      count: 3,
+      halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
+      gapCenter,
+      gapWidth,
+      damageRadius: getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: PLANE_COLLISION_RADIUS }),
+    })
+    plan.xs.forEach((x, i) => {
       const sc = createScissors()
-      const x = PASSAGE_LANE_X[lane + 1] + (rng() - 0.5) * 1.2
       sc.position.set(x, 8 + rng() * 6, z + i * 9)
       scene.add(sc)
-      entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageLane: safeLane })
-      placements.push({ x, radius: 1.6, passageLane: safeLane })
+      entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenter })
+      placements.push({ x, radius: 1.6 })
     })
   } else {
-    // Flyer formation: four hazards share the two blocked lanes at staggered
-    // depths, preserving one readable lateral route instead of a full wall.
-    const count = 4
-    for (let i = 0; i < count; i++) {
+    // Flyer formation: four hazards spread around the gap at staggered depths.
+    const plan = planWaveGaps({
+      random: rng,
+      count: 4,
+      halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
+      gapCenter,
+      gapWidth,
+      damageRadius: getObstacleDamageRadius({ entityRadius: 1.1, planeRadius: PLANE_COLLISION_RADIUS }),
+    })
+    plan.xs.forEach((x, i) => {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      const lane = blockedLanes[i % blockedLanes.length]
-      const x = PASSAGE_LANE_X[lane + 1] + (rng() - 0.5) * 1.2
       flyer.position.set(x, 6 + rng() * 12, z + i * 3.5 + (rng() - 0.5) * 1.5)
       scene.add(flyer)
       entities.push({
-        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageLane: safeLane,
+        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageGapX: gapCenter,
       })
-      placements.push({ x, radius: def.radius, passageLane: safeLane })
-    }
+      placements.push({ x, radius: def.radius })
+    })
   }
-  const passage = choosePassageLane({ hazards: placements, preferredLane: safeLane })
-  const laneLabel = safeLane < 0 ? 'LEFT' : safeLane > 0 ? 'RIGHT' : 'CENTER'
-  zoneBanner.textContent = passage.guaranteed
-    ? `⚡ Hazard Gauntlet · ${laneLabel} lane open`
+
+  const room = gapClearanceAt({
+    x: gapCenter,
+    hazards: placements.map((placement) => ({
+      x: placement.x,
+      damageRadius: getObstacleDamageRadius({ entityRadius: placement.radius, planeRadius: PLANE_COLLISION_RADIUS }),
+    })),
+  })
+  const side = gapCenter < -1.5 ? 'LEFT' : gapCenter > 1.5 ? 'RIGHT' : 'CENTRE'
+  zoneBanner.textContent = room > 0
+    ? `⚡ Hazard Gauntlet · gap ${side}`
     : '⚡ Hazard Gauntlet · find the widest gap'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 2
@@ -3365,7 +3388,6 @@ function clearPower() {
     wr.scale.set(1, 1, 1)
     wr.rotation.z = 0
   }
-  tearSide = 0
 }
 
 function activatePower(kind) {
@@ -3382,7 +3404,7 @@ function activatePower(kind) {
     baseDuration: meta.duration,
     shieldDurationMul: fx.shieldDurationMul,
   }).duration
-  activePower = { kind, timeLeft: duration, duration, slingCharged: false }
+  activePower = { kind, timeLeft: duration, duration }
   audio.powerUp(kind)
   if (settings.haptics) Haptic.power()
   powerLabel.textContent = meta.label
@@ -3421,25 +3443,81 @@ function activatePower(kind) {
     spawnConfetti(planeX, planeY, 0)
   }
 
-  if (kind === 'tear') {
-    tearSide = rng() < 0.5 ? -1 : 1
-    const wl = plane.userData.wingL
-    const wr = plane.userData.wingR
-    if (tearSide < 0 && wl) {
-      wl.scale.set(0.25, 1, 0.5)
-      wl.rotation.z = 0.6
-    }
-    if (tearSide > 0 && wr) {
-      wr.scale.set(0.25, 1, 0.5)
-      wr.rotation.z = -0.6
-    }
-  }
-
-  if (kind === 'sling') slingHold = 0
   if (kind === 'magnet') {
     // tiny juice so magnet feels instant
     spawnConfetti(planeX, planeY, 1)
   }
+}
+
+/** How often a chunk carries an updraft. */
+const UPDRAFT_CHANCE = 0.42
+const UPDRAFT_RADIUS = 3.4
+/** Lift at the column's core, units/second — enough to out-climb a hard bank. */
+const UPDRAFT_STRENGTH = 9.5
+const UPDRAFT_BASE_Y = 5.2
+
+const updraftGeo = new THREE.CylinderGeometry(1.5, 2.6, 9, 12, 1, true)
+const updraftMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+  transparent: true,
+  opacity: 0.22,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+})
+
+/**
+ * A rising column of paper scraps. Drawn as an open cylinder rather than a
+ * particle system so it costs one draw call and still reads instantly as
+ * "go here" from the far end of a chunk.
+ */
+function createUpdraftColumn() {
+  const group = new THREE.Group()
+  const shell = new THREE.Mesh(updraftGeo, updraftMat)
+  group.add(shell)
+  group.userData.shell = shell
+  return group
+}
+
+/**
+ * Total lift from every updraft the plane is currently inside. Summed rather
+ * than max-ed so overlapping columns stack, which is what makes a chain of
+ * them a line worth flying.
+ */
+function collectUpdraftLift(x, y) {
+  let lift = 0
+  for (const entity of entities) {
+    if (entity.type !== 'updraft') continue
+    const mesh = entity.mesh
+    const z = mesh.position.z
+    if (z > 14 || z < -6) continue
+    const distance = Math.hypot(mesh.position.x - x, (mesh.position.y - y) * 0.55)
+    lift += updraftLift({ distance, radius: entity.radius || UPDRAFT_RADIUS, strength: entity.strength || UPDRAFT_STRENGTH })
+  }
+  return lift
+}
+
+/**
+ * Cash a flare in. A clean flare (released above `FLARE_FLOOR`) pays distance and
+ * speed; a flare scraped out below it still returns the climb — you survive a
+ * blown tuck, you just do not get paid for it.
+ */
+function applyFlarePayout(payout) {
+  if (!payout) return
+  velY += payout.climb
+  speedBoost = Math.max(speedBoost, payout.speed)
+  fovPunch = Math.max(fovPunch, 5 + 7 * payout.charge)
+  shake = Math.max(shake, 0.18 * payout.charge)
+  invuln = Math.max(invuln, 0.28)
+  if (payout.clean && payout.distance > 0) {
+    distance += payout.distance
+    runStats.flares = (runStats.flares || 0) + 1
+    spawnConfetti(planeX, planeY, 0)
+    audio.nearMiss(Math.min(3, 1 + Math.floor(payout.charge * 3)))
+    if (settings.haptics) Haptic.power()
+  }
+  bannerTimer = Math.max(bannerTimer, 0.9)
+  powerBanner.textContent = payout.banner
+  powerBanner.classList.remove('hidden')
 }
 
 function setSkyTexture(url, crossfade = true) {
@@ -3497,11 +3575,7 @@ function applyNightReadability(enabled) {
   birdMat.emissiveIntensity = night ? 0.35 : 0
   birdAccentMat.emissive.setHex(night ? 0xffcc80 : 0x000000)
   birdAccentMat.emissiveIntensity = night ? 0.22 : 0
-  if (deskAR.active || settings.arDesk) {
-    renderer.setClearColor(0x000000, 0)
-  } else {
-    renderer.setClearColor(night ? 0x6d6496 : 0xc8dff5, 1)
-  }
+  renderer.setClearColor(night ? 0x6d6496 : 0xc8dff5, 1)
 }
 
 function applyZone(z, announce) {
@@ -3581,37 +3655,6 @@ function updateSkyFade(dt) {
   skyMatB.opacity = 1 - skyFade
 }
 
-function updateWeaponFeedback(playing = state === 'playing', fx = activeUpgradeEffects) {
-  if (!fireBtn) return
-  const weapon = getWeaponState({
-    weaponLevel: fx.weaponLevel,
-    cooldownSeconds: fx.weaponCooldown,
-    cooldownLeft: fireCooldown,
-  })
-  const touch = settings.controlMode === 'joystick' || 'ontouchstart' in window
-  const showPush = playing && !weapon.unlocked && touch
-  fireBtn.classList.toggle('hidden', !playing || (!weapon.unlocked && !showPush))
-  fireBtn.dataset.ready = String(weapon.ready || (showPush && paperPushCooldown <= 0))
-  fireBtn.dataset.cooldown = weapon.unlocked ? weapon.cooldownRemaining.toFixed(2) : paperPushCooldown.toFixed(2)
-  fireBtn.classList.toggle('cooling', (weapon.unlocked && !weapon.ready) || (showPush && paperPushCooldown > 0))
-  const wasReady = fireBtn.classList.contains('weapon-ready')
-  fireBtn.classList.toggle('weapon-ready', weapon.unlocked && weapon.ready)
-  if (weapon.unlocked && weapon.ready && !wasReady) {
-    fireBtn.classList.remove('weapon-ready-pulse')
-    void fireBtn.offsetWidth
-    fireBtn.classList.add('weapon-ready-pulse')
-  }
-  if (weapon.unlocked) {
-    fireBtn.textContent = weapon.ready ? '🖋 Ready' : `🖋 ${weapon.cooldownRemaining.toFixed(1)}s`
-    fireBtn.setAttribute('aria-label', weapon.ready
-      ? 'Ink Blast ready'
-      : `Ink Blast recharging: ${weapon.cooldownRemaining.toFixed(1)} seconds`)
-  } else {
-    fireBtn.textContent = paperPushCooldown > 0 ? '💨 …' : '💨 Push'
-    fireBtn.setAttribute('aria-label', 'Paper push burst')
-  }
-}
-
 function updateMagnetPullFeedback(target, magnet) {
   if (!magnetPullTrail) return
   const active = Boolean(target && magnet.active)
@@ -3630,7 +3673,6 @@ function applyUpgradeVisuals(fx = activeUpgradeEffects) {
     trail.material.size = trailFeedback.size
     trail.material.color.setHex(trailFeedback.color)
   }
-  updateWeaponFeedback()
 }
 
 function resetGame() {
@@ -3659,7 +3701,6 @@ function resetGame() {
   nextSpawnZ = 35
   shake = 0
   hitStopTimer = 0
-  fireCooldown = 0
   elapsed = 0
   launchGraceSeconds = shouldGrantLaunchGrace({
     runKind,
@@ -3700,6 +3741,8 @@ function resetGame() {
   bossActive = false
   bossRecoveryUntil = 0
   activePassageLane = null
+  activePassageGap = { center: 0, width: 3 }
+  lastGapCenter = 0
   bossCount = 0
   distanceMilestones.clear()
   speedBoost = 0
@@ -3710,15 +3753,9 @@ function resetGame() {
   guardianHud?.classList.toggle('hidden', !guardian.visible)
   guardianHud?.setAttribute('data-hud-priority', guardian.visible ? 'primary' : 'secondary')
   if (guardianHudVal) guardianHudVal.textContent = String(guardian.remaining)
-  timeAttackLeft = TIME_ATTACK_SECONDS
-  timeAttackLastTickSecond = -1
-  timeAttackHud?.classList.toggle('hidden', runKind !== 'timeattack')
-  if (timeAttackValEl) timeAttackValEl.textContent = String(TIME_ATTACK_SECONDS)
   crashT = 0
   crashReason = ''
   fovPunch = 0
-  slingHold = 0
-  paperPushCooldown = 0
   mouseScreen.has = true
   mouseScreen.x = 0.5
   mouseScreen.y = 0.5
@@ -3875,22 +3912,18 @@ function resetStick() {
   releaseFloatingBase(stickBase)
 }
 function wantsJoystick() {
-  if (runKind === 'coop') return true
   return String(settings.controlMode || 'mouse') === 'joystick'
 }
 
 /** Force stick UI to match control mode — CSS + classes + aria */
 function showStick(playing) {
-  const windZone = $('wind-stick-zone')
   const root = $('game-root')
   const joy = wantsJoystick()
   const showFlyStick = !!(playing && joy)
-  const showWindStick = !!(playing && runKind === 'coop')
 
   // Mode classes drive CSS display rules
   root?.classList.toggle('joystick-mode', joy)
   root?.classList.toggle('mouse-mode', !joy)
-  root?.classList.toggle('coop-mode', runKind === 'coop' && playing)
 
   if (showFlyStick) {
     stickZone.classList.remove('hidden')
@@ -3901,26 +3934,35 @@ function showStick(playing) {
     resetStick()
   }
 
-  if (showWindStick && windZone) {
-    windZone.classList.remove('hidden')
-    windZone.setAttribute('aria-hidden', 'false')
-  } else if (windZone) {
-    windZone.classList.add('hidden')
-    windZone.setAttribute('aria-hidden', 'true')
-    windStick.x = windStick.y = 0
-    windStick.active = false
-    releaseFloatingBase(windBase())
-  }
-
   const hudCtrl = $('hud-ctrl')
   if (hudCtrl) {
-    hudCtrl.textContent = runKind === 'coop' ? 'Co-op' : joy ? 'Joystick' : isTouchPrimary ? 'Touch' : 'Mouse'
+    hudCtrl.textContent = joy ? 'Joystick' : isTouchPrimary ? 'Touch' : 'Mouse'
   }
-  updateWeaponFeedback(playing)
+
+  updateTuckButton(playing)
+}
+
+/**
+ * The Tuck button. Shown for the whole run rather than gated on an unlock,
+ * because the Tuck is a core verb and not a power-up — a touch player with no
+ * button has no access to the game's only deep move, and the keyboard's Space
+ * is not an option for them.
+ */
+function updateTuckButton(playing = state === 'playing') {
+  if (!fireBtn) return
+  fireBtn.classList.toggle('hidden', !playing)
+  const ready = tuckState.phase === 'idle' && tuckState.cooldown <= 0
+  fireBtn.dataset.ready = String(ready)
+  fireBtn.classList.toggle('cooling', !ready && tuckState.phase !== 'tucking')
+  fireBtn.classList.toggle('firing', tuckState.phase === 'tucking')
+  fireBtn.setAttribute(
+    'aria-label',
+    tuckState.phase === 'tucking' ? 'Tucking — release to flare' : 'Tuck — hold to dive, release to flare',
+  )
 }
 
 function updateControlUI() {
-  const mode = wantsJoystick() && runKind !== 'coop'
+  const mode = wantsJoystick()
     ? (settings.controlMode === 'joystick' ? 'joystick' : 'mouse')
     : settings.controlMode === 'joystick'
       ? 'joystick'
@@ -3972,7 +4014,6 @@ function syncRuntimeSettings(nextSettings = loadSettings()) {
   settingsSyncChain = settingsSyncChain
     .catch(() => ({ settings, arPermissionDenied: false }))
     .then(() => synchronizeRuntimeSettings(requestedSettings, {
-      deskAR,
       persist: (partial) => saveSettings(partial),
       applyDocumentA11y: (applied) => {
         settings = applied
@@ -4042,21 +4083,21 @@ function mouseWorldTarget(clientX, clientY, isTouch = false) {
     // Vertical aim is mapped straight from the screen row rather than taken
     // from the ray hit. The camera's height tracks planeY 1:1, so a ray-derived
     // target is always a fixed offset *above or below the plane* — the plane
-    // then chases that offset into MAX_Y or MIN_Y for every cursor position but
+    // then chases that offset into MAX_Y or the aim floor for every cursor position but
     // one exact row. Mapping the row onto the altitude band keeps the control
     // positional: screen top is the ceiling, screen bottom is the floor.
-    let ty = THREE.MathUtils.mapLinear(_aimNdc.y, -1, 1, MIN_Y, MAX_Y)
+    let ty = THREE.MathUtils.mapLinear(_aimNdc.y, -1, 1, AIM_FLOOR_Y, MAX_Y)
     if (settings.invertX) tx = -tx
     if (settings.invertY) {
       // Invert around mid altitude band
-      const mid = (MIN_Y + MAX_Y) * 0.5
+      const mid = (AIM_FLOOR_Y + MAX_Y) * 0.5
       ty = mid - (ty - mid)
     }
     mouseTarget.x = THREE.MathUtils.clamp(tx, -MAX_X, MAX_X)
-    mouseTarget.y = THREE.MathUtils.clamp(ty, MIN_Y, MAX_Y)
+    mouseTarget.y = THREE.MathUtils.clamp(ty, AIM_FLOOR_Y, MAX_Y)
     mouse.nx = THREE.MathUtils.clamp(mouseTarget.x / MAX_X, -1, 1)
     mouse.ny = THREE.MathUtils.clamp(
-      (mouseTarget.y - MIN_Y) / (MAX_Y - MIN_Y) * 2 - 1,
+      (mouseTarget.y - AIM_FLOOR_Y) / (MAX_Y - AIM_FLOOR_Y) * 2 - 1,
       -1,
       1,
     )
@@ -4068,8 +4109,8 @@ function mouseWorldTarget(clientX, clientY, isTouch = false) {
     if (settings.invertY) ny = -ny
     mouseTarget.x = THREE.MathUtils.clamp(nx * MAX_X * 0.9, -MAX_X, MAX_X)
     mouseTarget.y = THREE.MathUtils.clamp(
-      THREE.MathUtils.mapLinear(ny, -1, 1, MIN_Y + 0.5, MAX_Y - 0.5),
-      MIN_Y,
+      THREE.MathUtils.mapLinear(ny, -1, 1, AIM_FLOOR_Y + 0.5, MAX_Y - 0.5),
+      AIM_FLOOR_Y,
       MAX_Y,
     )
     mouse.nx = nx
@@ -4102,57 +4143,6 @@ function releaseFloatingBase(baseEl) {
 }
 
 // Wind stick (co-op P2)
-function windBase() { return $('wind-stick-base') }
-function windKnob() { return $('wind-stick-knob') }
-function setWindStick(cx, cy) {
-  const base = windBase()
-  const knob = windKnob()
-  if (!base || !knob) return
-  const rect = base.getBoundingClientRect()
-  const ox = rect.left + rect.width / 2
-  const oy = rect.top + rect.height / 2
-  let dx = cx - ox
-  let dy = cy - oy
-  const len = Math.hypot(dx, dy) || 1
-  const c = Math.min(len, STICK_MAX)
-  dx = (dx / len) * c
-  dy = (dy / len) * c
-  windStick.x = dx / STICK_MAX
-  windStick.y = -dy / STICK_MAX
-  knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`
-}
-function bindWindStick() {
-  const zone = $('wind-stick-zone')
-  const base = windBase()
-  if (!zone || !base || zone.dataset.bound) return
-  zone.dataset.bound = '1'
-  zone.addEventListener('pointerdown', (e) => {
-    if (windStick.active) return
-    e.preventDefault()
-    e.stopPropagation()
-    windStick.active = true
-    windStick.pointerId = e.pointerId
-    zone.setPointerCapture(e.pointerId)
-    anchorFloatingBase(base, zone, e.clientX, e.clientY)
-    setWindStick(e.clientX, e.clientY)
-  })
-  zone.addEventListener('pointermove', (e) => {
-    if (!windStick.active || e.pointerId !== windStick.pointerId) return
-    setWindStick(e.clientX, e.clientY)
-  })
-  const end = (e) => {
-    if (e.pointerId !== windStick.pointerId) return
-    windStick.active = false
-    windStick.x = windStick.y = 0
-    windStick.pointerId = null
-    const knob = windKnob()
-    if (knob) knob.style.transform = 'translate(-50%, -50%)'
-    releaseFloatingBase(base)
-  }
-  zone.addEventListener('pointerup', end)
-  zone.addEventListener('pointercancel', end)
-}
-bindWindStick()
 if (stickZone && stickBase) {
   stickZone.addEventListener('pointerdown', (e) => {
     if (stick.active) return
@@ -4245,8 +4235,9 @@ window.addEventListener('keydown', (e) => {
   if (manualPause && state === 'playing') return
   if (e.code === 'Space') {
     e.preventDefault()
-    // Don't restart mid-sling charge during play
-    if (state === 'playing' && activePower?.kind === 'sling') return
+    // In flight Space is the Tuck, which `advanceTuck` reads straight off the
+    // key set — so the keydown must not also be a restart.
+    if (state === 'playing') return
     if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
     else if (state === 'dead' && crashT <= 0) retryCurrentRun()
   }
@@ -4258,13 +4249,20 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code))
 // A key held down when focus leaves the window (alt-tab, clicking another
 // app) never gets its keyup event, so it would otherwise stay "held"
-// forever — endless Ink Blast fire, a slingshot stuck mid-charge, etc.
+// forever — which would leave the Tuck held down for the rest of the run.
 window.addEventListener('blur', () => keys.clear())
+// The action button is the Tuck: press and hold to dive, release to flare.
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
-  fireWeapon({ allowPush: true })
+  tuckPointerHeld = true
 })
+const releaseTuckPointer = () => { tuckPointerHeld = false }
+fireBtn?.addEventListener('pointerup', releaseTuckPointer)
+fireBtn?.addEventListener('pointercancel', releaseTuckPointer)
+fireBtn?.addEventListener('pointerleave', releaseTuckPointer)
+window.addEventListener('pointerup', releaseTuckPointer)
+window.addEventListener('blur', releaseTuckPointer)
 window.addEventListener('pointerdown', (e) => {
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
   mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
@@ -4294,7 +4292,7 @@ window.addEventListener(
 // Shell bridge and runtime-only controls
 // ---------------------------------------------------------------------------
 function hideAllPanels() {
-  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']) {
+  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel']) {
     $(id)?.classList.add('hidden')
   }
 }
@@ -4344,7 +4342,6 @@ const bindClick = (id, fn) => {
 
 bindClick('retry-btn', () => retryCurrentRun())
 bindClick('hangar-from-gameover', () => {
-  hotseat.active = false
   gameoverEl?.classList.add('hidden')
   const focusId = $('hangar-from-gameover')?.dataset?.focusUpgrade || null
   shellBridge?.openHangar?.('upgrades', focusId ? { focusUpgradeId: focusId } : undefined)
@@ -4355,7 +4352,6 @@ bindClick('menu-btn', () => {
     finalizeDeath()
   }
   manualPause = false
-  hotseat.active = false
   showMenu()
 })
 bindClick('pause-btn', () => setManualPause(!manualPause))
@@ -4367,7 +4363,6 @@ bindClick('pause-mute', () => {
 bindClick('pause-menu', () => {
   manualPause = false
   applyPauseState({ banner: false })
-  hotseat.active = false
   showMenu()
 })
 bindClick('share-btn', () => shareScore())
@@ -4393,26 +4388,9 @@ bindClick('photo-share', async () => {
     if (shareStatus) shareStatus.textContent = 'Share cancelled'
   }
 })
-bindClick('hotseat-go', () => {
-  hotseatInter?.classList.add('hidden')
-  startGame('hotseat', { continueHotseat: true })
-})
 
-$('ar-btn')?.addEventListener('click', async () => {
-  await audio.unlock()
-  const desired = !deskAR.active
-  const result = await syncRuntimeSettings(saveSettings({ arDesk: desired }))
-  shellBridge?.settingsApplied?.(result)
-  const on = result.settings.arDesk
-  notifications.show(result.arPermissionDenied
-    ? 'Camera permission needed for Desk AR'
-    : on ? '📷 Desk AR on — fly over your table!' : 'Desk AR off', { duration: 2500 })
-})
 function shareText() {
-  const { d, s, m, daily, weekly, timeAttack, foldId } = lastRun
-  if (timeAttack) {
-    return `I grabbed ${s}★ in 60 seconds of Time Attack on ${DIFFS[m]?.label || m} in Paper Plane Run!`
-  }
+  const { d, s, m, daily, weekly, foldId } = lastRun
   if (weekly) {
     const fold = foldById(foldId)
     return `I flew ${d}m · ${s}★ on Weekly ${weeklyKey()}${fold ? ` · ${fold.name}` : ''} in Paper Plane Run — race my ghost!`
@@ -4423,7 +4401,7 @@ function buildShareUrl() {
   const u = new URL(location.href)
   u.search = ''
   const code = encodeChallenge({
-    kind: lastRun.kind || (lastRun.weekly ? 'weekly' : lastRun.daily ? 'daily' : lastRun.timeAttack ? 'timeattack' : 'classic'),
+    kind: lastRun.kind || (lastRun.weekly ? 'weekly' : lastRun.daily ? 'daily' : 'classic'),
     mode: lastRun.m,
     seed: lastRun.seed,
     distance: lastRun.d,
@@ -4441,7 +4419,6 @@ function buildShareUrl() {
   u.searchParams.set('m', lastRun.m)
   if (lastRun.daily) u.searchParams.set('daily', '1')
   if (lastRun.weekly) u.searchParams.set('weekly', '1')
-  if (lastRun.timeAttack) u.searchParams.set('ta', '1')
   return u.toString()
 }
 async function shareScore() {
@@ -4501,12 +4478,6 @@ async function startGame(kind = 'classic', opts = {}) {
       return
     }
     layoutPlay = selectLayoutForStart(layoutPlay, kind, opts)
-    if (kind === 'hotseat' && !opts.continueHotseat) {
-      hotseat.turn = 0
-      hotseat.scores = [0, 0]
-      hotseat.active = true
-    }
-    if (kind === 'coop') hotseat.active = false
     hideAllPanels()
     manualPause = false
     resetGame()
@@ -4518,20 +4489,7 @@ async function startGame(kind = 'classic', opts = {}) {
     showStick(true)
     syncPauseUi()
     applyPauseState({ banner: false })
-    if (hotseat.active) {
-      hotseatHud?.classList.remove('hidden')
-      if (hotseatPlayerEl) hotseatPlayerEl.textContent = String(hotseat.turn + 1)
-    } else hotseatHud?.classList.add('hidden')
-    const coopHud = $('coop-hud')
-    if (coopHud) coopHud.classList.toggle('hidden', kind !== 'coop')
     audio.startFlight()
-    if (kind === 'coop') {
-      showFlightFeedback('P1 FLIES · P2 THROWS WIND', 'route', 2.4)
-      notifications.show('Co-op: arrows / left stick fly · WASD wind', { duration: 3600 })
-    }
-    if (kind === 'hotseat') {
-      showFlightFeedback(`HOT-SEAT · PLAYER ${hotseat.turn + 1}`, 'route', 2.2)
-    }
     if (kind === 'daily') {
       showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
     }
@@ -4623,9 +4581,7 @@ function capturePhoto() {
   try {
     lastPhotoDataUrl = buildRecapCard()
     photoImg.src = lastPhotoDataUrl
-    photoCaption.textContent = runKind === 'timeattack'
-      ? `${stars}★ in 60s · ${difficulty.label}`
-      : `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
+    photoCaption.textContent = `${Math.floor(distance)}m · ${stars}★ · ${difficulty.label}`
     photoWrap.classList.remove('hidden')
   } catch {
     photoWrap.classList.add('hidden')
@@ -4635,9 +4591,9 @@ function capturePhoto() {
 function applyRescuePop() {
   velX *= 0.4
   speedBoost = Math.max(speedBoost, 6)
-  mouseTarget.y = THREE.MathUtils.clamp(Math.max(mouseTarget.y, planeY) + 3.2, MIN_Y, MAX_Y)
+  mouseTarget.y = THREE.MathUtils.clamp(Math.max(mouseTarget.y, planeY) + 3.2, AIM_FLOOR_Y, MAX_Y)
   const joyMode = wantsJoystick()
-  const aiming = !joyMode && runKind !== 'coop'
+  const aiming = !joyMode
   if (aiming) rescueLift = 18
   else velY = Math.max(velY, 0) + 12
 }
@@ -4647,7 +4603,7 @@ function die(reason) {
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
   // clock running out. Neither should be absorbed by shield/guardian, and
   // neither plays the tumble-crash animation.
-  const isCleanEnd = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
+  const isCleanEnd = reason === 'Tutorial complete!' || reason === 'Journey route complete!'
 
   // Invulnerability (after shield break / boost start)
   if (invuln > 0 && !isCleanEnd) return
@@ -4706,6 +4662,14 @@ function die(reason) {
 
   const isWin = isCleanEnd
   state = 'dead'
+  // A dead run is not skimming or tucking. `updateGroundSkim` and `advanceTuck`
+  // only run while playing, so without this the last live frame's chain would
+  // survive into the game-over state — reported by the HUD and the snapshot as
+  // an active chain that no longer exists, and carried into the next frame if
+  // the run resumed.
+  groundSkim = createGroundSkimState()
+  tuckState = createTuckState()
+  updateTuckButton(false)
   crashT = isWin ? 0.35 : 1.05
   crashReason = reason
   shake = isWin ? 0.2 : 1.1
@@ -4846,10 +4810,10 @@ function finalizeDeathUnsafe() {
   guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
-  const isWin = reason === 'Tutorial complete!' || reason === "Time's up!" || reason === 'Journey route complete!'
+  const isWin = reason === 'Tutorial complete!' || reason === 'Journey route complete!'
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
-  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'timeattack' && runKind !== 'journey'
+  const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'journey'
   const d = Math.floor(distance)
   lastRun = {
     d,
@@ -4857,7 +4821,6 @@ function finalizeDeathUnsafe() {
     m: difficulty.id,
     daily: runKind === 'daily',
     weekly: runKind === 'weekly',
-    timeAttack: runKind === 'timeattack',
     seed: activeRunSeed,
     kind: runKind,
     foldId: activeFold?.id || '',
@@ -4871,12 +4834,7 @@ function finalizeDeathUnsafe() {
     saveBest(difficulty.id, d)
   }
   bestEl.textContent = `${Math.floor(bestDistance)}m`
-  const wasNewTimeAttackBest = runKind === 'timeattack' && stars > bestTimeAttackStars
-  if (wasNewTimeAttackBest) {
-    bestTimeAttackStars = stars
-    saveBest('timeattack-stars', stars)
-  }
-  newBestBadge?.classList.toggle('hidden', !wasNewBest && !wasNewTimeAttackBest)
+  newBestBadge?.classList.toggle('hidden', !wasNewBest)
 
   if (ghostRecorder && isDistanceRun && !isWin) {
     saveGhostIfBest(ghostStorageKey(), d, ghostRecorder.toJSON(), stars)
@@ -5001,41 +4959,17 @@ function finalizeDeathUnsafe() {
       daily: runKind === 'daily',
       weekly: runKind === 'weekly',
     })
-  } else if (runKind === 'timeattack') {
-    submitTimeAttackScore({ name, stars, distance: d, mode: difficulty.id })
   }
 
-  if (hotseat.active && runKind === 'hotseat') {
-    hotseat.scores[hotseat.turn] = d
-    if (hotseat.turn < hotseat.players - 1) {
-      hotseat.turn++
-      gameoverEl.classList.add('hidden')
-      hudEl.classList.add('hidden')
-      hotseatTitle.textContent = `Player ${hotseat.turn + 1}'s turn`
-      hotseatScores.textContent = hotseat.scores.map((s, i) => `P${i + 1}: ${s}m`).join(' · ')
-      hotseatInter.classList.remove('hidden')
-      crashT = -1
-      return
-    }
-    const winner = hotseat.scores[0] >= hotseat.scores[1] ? 1 : 2
-    $('gameover-title').textContent = `Player ${winner} wins!`
-    finalScoreEl.textContent = `P1 ${hotseat.scores[0]}m · P2 ${hotseat.scores[1]}m`
-    finalDetailEl.textContent = reason
-    newBestBadge?.classList.add('hidden')
-    hotseat.active = false
-  } else {
+  {
+
     $('gameover-title').textContent = runKind === 'journey' && completedJourneyRoute
       ? (journey.status === 'complete' ? 'Journey complete!' : 'Route complete!')
       : isWin ? reason : 'Crashed!'
-    if (runKind === 'timeattack') {
-      animateCountUp(finalScoreEl, stars, `★ in ${TIME_ATTACK_SECONDS}s · ${Math.floor(distance)}m flown`)
-      finalDetailEl.textContent = 'Nice reflexes!'
-    } else {
-      animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
-      finalDetailEl.textContent = runKind === 'journey' && completedJourneyRoute
-        ? `Stamp earned${journeyBonus ? ` · +${journeyBonus}★ route bonus` : ''}`
-        : reason
-    }
+    animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
+    finalDetailEl.textContent = runKind === 'journey' && completedJourneyRoute
+      ? `Stamp earned${journeyBonus ? ` · +${journeyBonus}★ route bonus` : ''}`
+      : reason
   }
 
   if (retryBtn) {
@@ -5089,6 +5023,32 @@ function finalizeDeathUnsafe() {
  * Ground skim — flying the low lane is the risky one (buildings rise from the
  * ground), so holding it banks stars and lifts the score multiplier.
  */
+/**
+ * The altitude readout. Deliberately three discrete states rather than a
+ * continuous colour ramp: at speed the player reads a state change, not a hue,
+ * and "you are about to hit the ground" has to survive being seen out of the
+ * corner of an eye.
+ */
+function updateAltitudeHud() {
+  if (!altitudeHud) return
+  const fraction = THREE.MathUtils.clamp((planeY - MIN_Y) / (MAX_Y - MIN_Y), 0, 1)
+  altitudeVal.textContent = planeY.toFixed(1)
+  altitudeFill.style.width = `${fraction * 100}%`
+  altitudeHud.dataset.alt = altitudeStatus.urgency > 0.55
+    ? 'critical'
+    : altitudeStatus.warning ? 'warn' : 'ok'
+}
+
+function updateTuckHud() {
+  if (!tuckHud) return
+  const tucking = tuckState.phase === 'tucking'
+  tuckHud.classList.toggle('hidden', !tucking)
+  if (!tucking) return
+  tuckVal.textContent = `${Math.round(tuckState.charge * 100)}%`
+  tuckFill.style.width = `${tuckState.charge * 100}%`
+  tuckHud.dataset.tuck = tuckState.charge > 0.75 ? 'deep' : 'shallow'
+}
+
 function updateGroundSkim(dt) {
   const next = advanceGroundSkim(groundSkim, {
     low: planeY < SKIM_CEILING,
@@ -5467,7 +5427,7 @@ function update(dt) {
   if (state === 'dead') {
     hideFlightReadability()
     // Dramatic crash: tumble, drop, paper spin
-    const isWin = crashReason === 'Tutorial complete!' || crashReason === "Time's up!" || crashReason === 'Journey route complete!'
+    const isWin = crashReason === 'Tutorial complete!' || crashReason === 'Journey route complete!'
     if (!isWin) {
       plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
       plane.rotation.x += dt * 2.2
@@ -5519,22 +5479,6 @@ function update(dt) {
     const eased = 1 - Math.pow(1 - spawnUnfold, 3)
     plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85) * 1.12)
   }
-  if (runKind === 'timeattack' && timeAttackLeft > 0) {
-    timeAttackLeft = Math.max(0, timeAttackLeft - dt)
-    const secLeft = Math.ceil(timeAttackLeft)
-    if (timeAttackValEl) timeAttackValEl.textContent = String(secLeft)
-    timeAttackHud?.classList.toggle('combo-pulse', timeAttackLeft <= 10)
-    // One tick per second crossed, only for the final urgent stretch.
-    if (secLeft <= 10 && secLeft >= 1 && secLeft !== timeAttackLastTickSecond) {
-      timeAttackLastTickSecond = secLeft
-      audio.timeTick(secLeft)
-      if (settings.haptics) Haptic.tap()
-    }
-    if (timeAttackLeft <= 0) {
-      die("Time's up!")
-      return
-    }
-  }
   if (runKind === 'journey' && journeyRunConfig) {
     const target = journeyRunConfig.finale ? 500 : 350
     if (distance >= target) {
@@ -5549,11 +5493,6 @@ function update(dt) {
       scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
     }
   }
-  if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt)
-  if (paperPushCooldown > 0) paperPushCooldown = Math.max(0, paperPushCooldown - dt)
-  updateWeaponFeedback()
-  if (keys.has('KeyX')) fireWeapon({ allowPush: true })
-  updateShots(dt)
   if (damageFlash > 0) {
     damageFlash = Math.max(0, damageFlash - dt)
     const t = damageFlash / 1.1
@@ -5686,27 +5625,9 @@ function update(dt) {
   let inputX = 0
   let inputY = 0
   const joyMode = wantsJoystick()
-  const mouseMode = !joyMode && runKind !== 'coop'
+  const mouseMode = !joyMode
 
-  // Co-op: P1 = arrows/stick only; P2 wind = WASD / IJKL / wind stick
-  if (runKind === 'coop') {
-    if (keys.has('ArrowLeft')) inputX -= 1
-    if (keys.has('ArrowRight')) inputX += 1
-    if (keys.has('ArrowUp')) inputY += 1
-    if (keys.has('ArrowDown')) inputY -= 1
-    if (stick.active || Math.abs(stick.x) + Math.abs(stick.y) > 0.02) {
-      inputX = THREE.MathUtils.clamp(inputX + stick.x, -1, 1)
-      inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
-    }
-    const inv = applyAxisInvert(inputX, inputY)
-    // The chase camera looks toward +Z (opposite Three's default -Z forward),
-    // which mirrors its screen-right direction onto world -X. Relative input
-    // modes (stick/keys) set world X directly, so without this flip
-    // "right" would visibly steer left. Mouse-aim mode doesn't need this —
-    // it raycasts through the camera's real basis, so it's self-correcting.
-    inputX = -inv.x
-    inputY = inv.y
-  } else if (joyMode) {
+  if (joyMode) {
     // Joystick / keyboard relative control
     if (keys.has('ArrowLeft') || keys.has('KeyA')) inputX -= 1
     if (keys.has('ArrowRight') || keys.has('KeyD')) inputX += 1
@@ -5730,7 +5651,7 @@ function update(dt) {
     if (keys.has('ArrowUp') || keys.has('KeyW')) mouseTarget.y += 18 * dt
     if (keys.has('ArrowDown') || keys.has('KeyS')) mouseTarget.y -= 18 * dt
     mouseTarget.x = THREE.MathUtils.clamp(mouseTarget.x, -MAX_X, MAX_X)
-    mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y, MIN_Y, MAX_Y)
+    mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y, AIM_FLOOR_Y, MAX_Y)
   }
 
   // Auto-level assist
@@ -5745,24 +5666,6 @@ function update(dt) {
       velX *= Math.pow(0.02, dt)
       velY *= Math.pow(0.04, dt)
     }
-  }
-
-  // Co-op wind from P2
-  let coopWindX = 0
-  let coopWindY = 0
-  if (runKind === 'coop') {
-    if (keys.has('KeyA') || keys.has('KeyJ')) coopWindX -= 1
-    if (keys.has('KeyD') || keys.has('KeyL')) coopWindX += 1
-    if (keys.has('KeyW') || keys.has('KeyI')) coopWindY += 1
-    if (keys.has('KeyS') || keys.has('KeyK')) coopWindY -= 1
-    coopWindX = THREE.MathUtils.clamp(coopWindX + windStick.x, -1, 1)
-    coopWindY = THREE.MathUtils.clamp(coopWindY + windStick.y, -1, 1)
-    // Same mirrored-camera correction as the main stick — P2 pushing "right"
-    // should blow P1 toward screen-right, i.e. world -X.
-    velX += -coopWindX * 28 * dt
-    velY += coopWindY * 22 * dt
-    const windHud = $('coop-wind-val')
-    if (windHud) windHud.textContent = `${coopWindX.toFixed(1)},${coopWindY.toFixed(1)}`
   }
 
   windTimer -= dt
@@ -5781,7 +5684,7 @@ function update(dt) {
     windActive -= dt
     windPushX = windForce * (activePower?.kind === 'slow' ? 0.5 : 1)
     if (windActive <= 0) windBanner.classList.add('hidden')
-  } else if (windTimer <= 0 && runKind !== 'tutorial' && runKind !== 'coop' && activeTwist?.windMul !== 0) {
+  } else if (windTimer <= 0 && runKind !== 'tutorial' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
     // Calm Skies twist sets windMul to 0, which is handled by the guard above
     pendingWindActive = 1.6 + rng() * 1.4
@@ -5793,16 +5696,6 @@ function update(dt) {
     audio.windGust()
     if (settings.haptics) Haptic.wind()
     runStats.winds++
-  } else if (runKind === 'coop' && windTimer <= 0) {
-    windTimer = 12
-    // rare ambient gust even in coop
-    if (rng() < 0.25) {
-      pendingWindActive = 1
-      pendingWindForce = (rng() < 0.5 ? -1 : 1) * 8
-      windWarningTimer = WIND_WARNING_SECONDS
-      windBanner.textContent = '💨 Wind incoming…'
-      windBanner.classList.remove('hidden')
-    }
   }
 
   const ufx = activeUpgradeEffects
@@ -5817,6 +5710,40 @@ function update(dt) {
   })
   const altitudeRecovery = getAltitudeRecovery({ baseSink: difficulty.sink, sinkMul: ufx.sinkMul })
 
+  // -------------------------------------------------------------------------
+  // Banked flight, the altitude economy, and the Tuck.
+  //
+  // These three are one system and have to resolve in this order: the Tuck
+  // decides how hard the sheet is diving, the bank decides how much lift is
+  // being spilled sideways, and only then is there a sink figure to integrate.
+  // -------------------------------------------------------------------------
+  const tuckHeld = state === 'playing' && !manualPause &&
+    (keys.has('Space') || tuckPointerHeld)
+  tuckState = advanceTuck(tuckState, {
+    held: tuckHeld,
+    dt,
+    height: planeY,
+    enabled: state === 'playing',
+    chargeRate: ufx.flareChargeRate,
+    payoutMul: ufx.flarePayoutMul,
+  })
+  const tuckFx = tuckFlightModifiers(tuckState)
+  tuckFxForFrame = tuckFx
+  if (tuckState.payout) applyFlarePayout(tuckState.payout)
+
+  // In aim mode the cursor no longer drives position directly. It commands the
+  // same bank the stick does, so both control schemes fly the identical plane
+  // — the old split meant mouse players were playing a different game with a
+  // different skill ceiling, and only one of them had any commitment in it.
+  const steerInput = mouseMode
+    ? aimCommand({ delta: mouseTarget.x - planeX, velocity: velX })
+    : inputX
+  bankState = advanceBank(bankState, {
+    inputX: steerInput,
+    dt,
+    rollMul: tuckFx.rollMul * (1 + Math.min(0.28, (ufx.handlingLevel || 0) * 0.05)),
+  })
+
   // Physics toys modifiers
   let sinkModifier = activeTwist?.sinkMul ?? 1
   let controlAcceleration = controlResponse.acceleration
@@ -5826,82 +5753,76 @@ function update(dt) {
     extraForceY += rescueLift / Math.max(dt, 0.001)
     rescueLift = 0
   }
-  if (activePower?.kind === 'tear') {
-    extraForceX += tearSide * 14
-    controlAcceleration *= 0.85
-  }
-  if (activePower?.kind === 'clip') {
-    sinkModifier *= 1.65
-    velX *= Math.pow(0.03, dt) // more stable
-    controlAcceleration *= 0.75
-  }
   if (activePower?.kind === 'boost') {
     // Boost is a dart, not a sink: the sheet holds altitude while it punches.
     sinkModifier *= 0.7
   }
-  // Rubber-band slingshot: hold Space to charge, release to launch
-  if (activePower?.kind === 'sling') {
-    if (keys.has('Space')) {
-      slingHold = Math.min(1, slingHold + dt * 0.85)
-      powerLabel.textContent = `🪢 Charge ${Math.floor(slingHold * 100)}%`
-      powerFill.style.width = `${slingHold * 100}%`
-    } else if (slingHold > 0.12) {
-      const power = slingHold
-      if (mouseMode) extraForceY += 18 * power / Math.max(dt, 0.001)
-      else velY += 18 * power
-      speedBoost = Math.max(speedBoost, 28 * power)
-      fovPunch = 6 + 8 * power
-      shake = 0.35
-      invuln = Math.max(invuln, 0.35)
-      audio.nearMiss(3)
-      if (settings.haptics) Haptic.power()
-      spawnConfetti(planeX, planeY, 0)
-      slingHold = 0
-      powerLabel.textContent = '🪢 Rubber Band'
-    } else slingHold = 0
-  }
+  // Sink is now assembled from what the plane is *doing*, not read off a
+  // difficulty table: the base glide, the cost of holding the nose up, the
+  // lift spilled by the current bank, and whatever the Tuck is adding or
+  // giving back. Holding "up" forever is no longer a strategy because it is
+  // the most expensive thing you can do with the stick.
+  const climbCommand = mouseMode
+    ? aimCommand({ delta: mouseTarget.y - planeY, velocity: velY })
+    : inputY
+  const sinkPerSecond = resolveSinkPerSecond({
+    baseSink: altitudeRecovery.sinkPerSecond,
+    inputY: climbCommand,
+    bankSink: bankSinkPerSecond(bankState.bank),
+    sinkMul: sinkModifier,
+  }) + tuckFx.extraSink
 
-  const sinkPerSecond = altitudeRecovery.sinkPerSecond * sinkModifier
-  if (mouseMode) {
-    const aimed = integrateAimFlight({
-      x: planeX,
-      y: planeY,
-      targetX: mouseTarget.x,
-      targetY: mouseTarget.y,
-      dt,
-      follow: controlResponse.follow,
-      sinkPerSecond,
-      extraForceX,
-      extraForceY,
-      maxVel: MAX_VEL,
-    })
-    planeX = aimed.x
-    planeY = aimed.y
-    velX = aimed.velX
-    velY = aimed.velY
-    mouseTarget.y = aimed.targetY
-  } else {
-    const flown = integrateRelativeFlight({
-      x: planeX,
-      y: planeY,
-      velX,
-      velY,
-      inputX,
-      inputY,
-      dt,
-      acceleration: controlAcceleration,
-      sinkPerSecond,
-      dragX: activePower?.kind === 'boost' ? 0.12 : 0.06,
-      dragY: activePower?.kind === 'boost' ? 0.15 : 0.1,
-      maxVel: MAX_VEL,
-      extraForceX,
-      extraForceY,
-    })
-    planeX = flown.x
-    planeY = flown.y
-    velX = flown.velX
-    velY = flown.velY
+  // Updrafts are the only free height in the run, which is what turns their
+  // placement into a route rather than scenery. Ground effect is not free
+  // height — it is a cushion that makes the deck holdable without making the
+  // floor unreachable, so a tuck can still punch through it.
+  const lift = collectUpdraftLift(planeX, planeY) + groundEffectLift(planeY)
+
+  const previousHeight = planeY
+  const flown = integrateRelativeFlight({
+    x: planeX,
+    y: planeY,
+    velX,
+    velY,
+    // Lateral acceleration comes from the bank angle, never from the stick
+    // directly — that indirection is the whole point of `banking.js`.
+    inputX: 0,
+    inputY: climbCommand,
+    dt,
+    acceleration: controlAcceleration,
+    sinkPerSecond: sinkPerSecond - lift,
+    dragX: LATERAL_DRAG,
+    dragY: activePower?.kind === 'boost' ? 0.15 : 0.1,
+    maxVel: MAX_VEL,
+    extraForceX: extraForceX + bankTurnAcceleration(bankState.bank),
+    extraForceY,
+  })
+  planeX = flown.x
+  velX = flown.velX
+  // Cap descent inside the cushion band before committing the new height, so a
+  // single long frame cannot carry the plane through ground effect and into the
+  // floor. A tuck still punches through — that is the move's whole risk.
+  velY = cushionDescent({
+    velY: flown.velY,
+    height: flown.y,
+    punchThrough: tuckState.phase === 'tucking',
+  })
+  planeY = velY === flown.velY ? flown.y : previousHeight + velY * dt
+  if (mouseMode) mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y - sinkPerSecond * 0.35 * dt, AIM_FLOOR_Y, MAX_Y)
+
+  // Height traded downward becomes forward speed, and climbing spends it back
+  // out of the same pool — one conserved quantity, so a dive cannot print
+  // speed and a climb is never free.
+  diveSpeed = advanceDiveSpeed(diveSpeed, { deltaHeight: planeY - previousHeight, dt })
+
+  altitudeStatus = evaluateAltitude(planeY)
+  if (altitudeStatus.grounded && state === 'playing' && invuln <= 0) {
+    die('Nosed into the paper ground')
+    return
   }
+  updateAltitudeHud()
+  updateTuckHud()
+  updateTuckButton(true)
 
   const bounded = applySoftBounds({
     x: planeX,
@@ -5940,8 +5861,12 @@ function update(dt) {
   // Tier speed rides on top of the difficulty cap, which cruise alone reaches
   // by ~450m. Applied after speedMul so slow/boost powers still scale the
   // whole cruise rather than only its pre-tier half.
-  speed = (cruise.cruiseSpeed + speedBoost + endlessTier().speedBonus * speedMul)
+  // Speed borrowed from height rides on top of cruise: the plane is fastest
+  // when it is spending the resource that keeps it alive, which is the whole
+  // tension the altitude economy exists to create.
+  speed = (cruise.cruiseSpeed + speedBoost + tuckFx.speedBonus + endlessTier().speedBonus * speedMul)
     * groundEffectSpeedMul(groundSkim.tier)
+    * diveSpeedMultiplier(diveSpeed)
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
@@ -6041,10 +5966,17 @@ function update(dt) {
     elapsed,
     reducedMotion: settings.reducedMotion,
   })
-  const aimOffX = mouseMode ? THREE.MathUtils.clamp(mouseTarget.x - planeX, -2, 2) * 0.12 : 0
+  // Roll is no longer inferred from lateral velocity — the bank axis *is* the
+  // roll, and showing the player the exact angle their steering commanded is
+  // what makes a commitment-based control scheme readable rather than mushy.
   pitch = THREE.MathUtils.lerp(pitch, flightPose.pitch, 1 - Math.pow(0.0006, dt))
-  roll = THREE.MathUtils.lerp(roll, flightPose.roll + aimOffX, 1 - Math.pow(0.0006, dt))
+  roll = THREE.MathUtils.lerp(roll, bankVisualRoll(bankState.bank), 1 - Math.pow(0.0002, dt))
   if (activePower?.kind === 'boost') pitch = THREE.MathUtils.lerp(pitch, -0.1, 0.12)
+  // A tuck pitches the nose down hard and pulls the FOV out; the flare snaps
+  // both back. The camera is doing most of the work of selling the move.
+  if (tuckState.phase === 'tucking') pitch = THREE.MathUtils.lerp(pitch, 0.42, Math.min(1, dt * 7))
+  else if (tuckState.phase === 'flaring') pitch = THREE.MathUtils.lerp(pitch, -0.32, Math.min(1, dt * 9))
+  fovPunch = Math.max(fovPunch, tuckFxForFrame.fov)
   // Fever adds a light shimmy on top of normal banking — a readable "turbo" feel
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
@@ -6052,12 +5984,10 @@ function update(dt) {
   const handleMul = 1 + Math.min(0.28, (activeUpgradeEffects.handlingLevel || 0) * 0.05)
   plane.rotation.z = THREE.MathUtils.clamp((roll + feverWobble) * handleMul, -0.9, 0.9)
   plane.rotation.y = flightPose.yaw
-  if (activePower?.kind !== 'tear') {
-    const wingL = plane.userData.wingL
-    const wingR = plane.userData.wingR
-    if (wingL) wingL.rotation.z = flightPose.wingFlex
-    if (wingR) wingR.rotation.z = -flightPose.wingFlex
-  }
+  const wingL = plane.userData.wingL
+  const wingR = plane.userData.wingR
+  if (wingL) wingL.rotation.z = flightPose.wingFlex
+  if (wingR) wingR.rotation.z = -flightPose.wingFlex
 
   // Invuln blink
   if (invuln > 0) {
@@ -6186,6 +6116,22 @@ function update(dt) {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
     const m = e.mesh
+
+    // Updrafts are pure scenery to the collision system — their whole effect
+    // is the lift `collectUpdraftLift` reads. They pulse so a column is
+    // legible as *rising* from the far end of a chunk.
+    if (e.type === 'updraft') {
+      const shell = m.userData.shell
+      if (shell) {
+        shell.rotation.y += dt * 0.8
+        const inside = Math.hypot(m.position.x - p.x, m.position.y - p.y) < (e.radius || 3.4) &&
+          Math.abs(m.position.z - p.z) < 6
+        shell.material = updraftMat
+        shell.scale.y = 1 + Math.sin(elapsed * 3 + m.position.z) * 0.06
+        shell.scale.x = shell.scale.z = inside ? 1.08 : 1
+      }
+      continue
+    }
 
     if (e.type === 'ring') {
       ringsLeft++
@@ -6498,7 +6444,6 @@ function upgradeRuntimeTextState() {
     distance,
     difficulty,
     activePowerKind: activePower?.kind,
-    fireCooldown,
     guardianLeft,
     planeRadius: PLANE_COLLISION_RADIUS,
     nearMissTighten: 1 - Math.min(combo, 10) * 0.015,
@@ -6532,7 +6477,7 @@ function upgradeRuntimeTextState() {
       active: activePower?.kind === 'boost',
     },
     guardian: runtime.guardian,
-    weapon: runtime.weapon,
+    flare: runtime.flare,
     fever: {
       ...runtime.fever,
       active: feverActive,
@@ -6579,7 +6524,16 @@ window.render_game_to_text = () => JSON.stringify({
     : null,
   distance: Math.floor(distance),
   stars,
-  player: { x: Number(planeX.toFixed(2)), y: Number(planeY.toFixed(2)) },
+  // Velocity and bank are part of the debug surface because the plane now has
+  // momentum: position alone no longer says where it is about to be, which is
+  // what any test (or autopilot) steering it has to reason about.
+  player: {
+    x: Number(planeX.toFixed(2)),
+    y: Number(planeY.toFixed(2)),
+    velX: Number(velX.toFixed(2)),
+    velY: Number(velY.toFixed(2)),
+    bank: Number(bankState.bank.toFixed(3)),
+  },
   plane: {
     skinId: activePlaneSkinId,
     silhouette: activePlaneSilhouette,
@@ -6628,6 +6582,8 @@ window.render_game_to_text = () => JSON.stringify({
   fairness: {
     passageLane: activePassageLane,
     passageLaneX: activePassageLane === null ? null : PASSAGE_LANE_X[activePassageLane + 1],
+    passageGapX: Number(activePassageGap.center.toFixed(2)),
+    passageGapWidth: Number(activePassageGap.width.toFixed(2)),
     airDamageRadius: Number(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: PLANE_COLLISION_RADIUS }).toFixed(3)),
     visibleHazards: entities
       .filter((entity) => (entity.type === 'bird' || entity.type === 'scissors') && entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
@@ -6637,7 +6593,7 @@ window.render_game_to_text = () => JSON.stringify({
         y: Number(entity.mesh.position.y.toFixed(2)),
         z: Number(entity.mesh.position.z.toFixed(2)),
         radius: entity.radius,
-        passageLane: entity.passageLane ?? null,
+        passageGapX: entity.passageGapX ?? null,
       })),
     // Star placement is a balance surface, not just decoration: if every star
     // sits on the reserved lane they cost nothing to collect. Exposed so the
@@ -6661,8 +6617,6 @@ window.render_game_to_text = () => JSON.stringify({
     lowPower: settings.lowPower,
     colorblindPowers: settings.colorblindPowers,
     reducedMotion: settings.reducedMotion,
-    arDesk: settings.arDesk,
-    arActive: deskAR.active,
     shadowsEnabled: renderer.shadowMap.enabled,
     dustVisible: dust.visible,
     shieldPowerColor: POWER_META.shield.color,

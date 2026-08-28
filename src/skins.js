@@ -1,4 +1,4 @@
-import { getPrestigeLevel, getWallet, spendWallet } from './upgrades.js'
+import { getWallet, spendWallet } from './upgrades.js'
 import { safeSetItem } from './game/safe-storage.js'
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
 
@@ -22,6 +22,14 @@ const LEGACY_LIFETIME_REQUIREMENTS = Object.freeze({
   stormfoil: 150,
   neon: 160,
   rainbow: 200,
+  // The four former prestige planes. Prestige is gone, but these were the
+  // only long-tail cosmetic goal in the game, so they survive as the far end
+  // of the same lifetime-star ladder every other plane sits on rather than
+  // being deleted along with the loop that used to gate them.
+  goldenfold: 300,
+  inkveil: 450,
+  starcrest: 650,
+  paperlegend: 1000,
 })
 
 function planeArt(id, silhouette) {
@@ -32,6 +40,13 @@ function planeArt(id, silhouette) {
   }
 }
 
+/**
+ * Every plane flies on the same generated paper sheet (`paper:sheet:city` in
+ * game/paper-art.js) and is distinguished by its `body`/`accent` tints alone.
+ * The old per-skin photographic JPEGs each carried their own lighting and
+ * grain, so two planes side by side looked like they came from two different
+ * games — which is exactly the incoherence the art rule exists to stop.
+ */
 export const SKINS = [
   {
     id: 'classic',
@@ -40,7 +55,7 @@ export const SKINS = [
     cost: 0,
     body: 0xfff6ec,
     accent: 0xf0956a,
-    map: '/assets/paper.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'mint',
@@ -49,7 +64,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.mint,
     body: 0xd8f5e8,
     accent: 0x34d399,
-    map: '/assets/skin-mint.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'coral',
@@ -58,7 +73,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.coral,
     body: 0xffe0d4,
     accent: 0xf97316,
-    map: '/assets/skin-coral.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'night',
@@ -67,7 +82,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.night,
     body: 0x2a3350,
     accent: 0xfbbf24,
-    map: '/assets/skin-night.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'gold',
@@ -76,7 +91,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.gold,
     body: 0xfff3c4,
     accent: 0xd97706,
-    map: '/assets/skin-gold.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'sunset',
@@ -85,7 +100,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.sunset,
     body: 0xffedd5,
     accent: 0xea580c,
-    map: '/assets/skin-coral.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'stormfoil',
@@ -94,7 +109,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.stormfoil,
     body: 0x4b5563,
     accent: 0xa78bfa,
-    map: '/assets/skin-night.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'neon',
@@ -103,7 +118,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.neon,
     body: 0x1e3a5f,
     accent: 0x38bdf8,
-    map: '/assets/skin-neon.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'rainbow',
@@ -112,7 +127,7 @@ export const SKINS = [
     cost: FUTURE_PRICE_TABLE.planes.rainbow,
     body: 0xfff7ed,
     accent: 0xa855f7,
-    map: '/assets/skin-rainbow.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'halloween',
@@ -122,7 +137,7 @@ export const SKINS = [
     seasonal: 'halloween',
     body: 0x1a1a1a,
     accent: 0xff6b00,
-    map: '/assets/skin-night.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'winter',
@@ -132,7 +147,7 @@ export const SKINS = [
     seasonal: 'winter',
     body: 0xe0f2fe,
     accent: 0x38bdf8,
-    map: '/assets/skin-mint.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'valentine',
@@ -142,7 +157,7 @@ export const SKINS = [
     seasonal: 'valentine',
     body: 0xffe4e6,
     accent: 0xe11d48,
-    map: '/assets/skin-coral.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'spring',
@@ -152,47 +167,43 @@ export const SKINS = [
     seasonal: 'spring',
     body: 0xfce7f3,
     accent: 0x65a30d,
-    map: '/assets/skin-mint.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'goldenfold',
     ...planeArt('goldenfold', 'classic'),
     name: 'Golden Fold',
-    cost: 0,
-    prestigeReq: 1,
+    cost: 150,
     body: 0xfff3c4,
     accent: 0x7c3aed,
-    map: '/assets/skin-gold.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'inkveil',
     ...planeArt('inkveil', 'dart'),
     name: 'Ink Veil',
-    cost: 0,
-    prestigeReq: 3,
+    cost: 185,
     body: 0x111827,
     accent: 0x38bdf8,
-    map: '/assets/skin-neon.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'starcrest',
     ...planeArt('starcrest', 'stunt'),
     name: 'Starcrest',
-    cost: 0,
-    prestigeReq: 5,
+    cost: 225,
     body: 0x1e1b4b,
     accent: 0xfbbf24,
-    map: '/assets/skin-night.jpg',
+    map: 'paper:sheet:city',
   },
   {
     id: 'paperlegend',
     ...planeArt('paperlegend', 'glider'),
     name: 'Paper Legend',
-    cost: 0,
-    prestigeReq: 10,
+    cost: 280,
     body: 0xfff7ed,
     accent: 0xa855f7,
-    map: '/assets/skin-rainbow.jpg',
+    map: 'paper:sheet:city',
   },
 ]
 
@@ -263,18 +274,16 @@ export function equipSkin(id) {
 
 function getRequirement(skin) {
   if (skin.seasonal) return { type: 'season', value: skin.seasonal }
-  if (skin.prestigeReq != null) return { type: 'prestige', value: skin.prestigeReq }
   return { type: 'lifetime-stars', value: LEGACY_LIFETIME_REQUIREMENTS[skin.id] }
 }
 
 function getPrice(skin) {
-  if (skin.seasonal || skin.prestigeReq != null) return null
+  if (skin.seasonal) return null
   return { currency: 'wallet-stars', value: skin.cost }
 }
 
 function availabilityMet(skin, seasonId) {
   if (skin.seasonal) return skin.seasonal === seasonId
-  if (skin.prestigeReq != null) return prestigeMet(skin)
   return getLifetimeStars() >= LEGACY_LIFETIME_REQUIREMENTS[skin.id]
 }
 
@@ -285,7 +294,7 @@ export function purchasePlane(id) {
 
   const owned = loadOwnership()
   if (owned.has(id)) return { ok: true, already: true }
-  if (skin.seasonal || skin.prestigeReq != null) return { ok: false, reason: 'claim-required' }
+  if (skin.seasonal) return { ok: false, reason: 'claim-required' }
   if (!availabilityMet(skin)) return { ok: false, reason: 'locked' }
   if (!spendWallet(skin.cost)) return { ok: false, reason: 'poor', need: skin.cost - getWallet() }
 
@@ -294,14 +303,14 @@ export function purchasePlane(id) {
   return { ok: true, cost: skin.cost }
 }
 
-/** Claim a free seasonal or prestige plane once its availability requirement is met. */
+/** Claim a free seasonal plane once its availability requirement is met. */
 export function claimPlane(id, seasonId = 'default') {
   const skin = SKINS.find((s) => s.id === id)
   if (!skin) return { ok: false, reason: 'missing' }
 
   const owned = loadOwnership()
   if (owned.has(id)) return { ok: true, already: true }
-  if (!skin.seasonal && skin.prestigeReq == null) return { ok: false, reason: 'purchase-required' }
+  if (!skin.seasonal) return { ok: false, reason: 'purchase-required' }
   if (!availabilityMet(skin, seasonId)) return { ok: false, reason: 'locked' }
 
   owned.add(id)
@@ -320,10 +329,6 @@ export function isUnlocked(id) {
 
 export function getSkin(id) {
   return SKINS.find((s) => s.id === id) || SKINS[0]
-}
-
-function prestigeMet(s) {
-  return s.prestigeReq != null && getPrestigeLevel() >= s.prestigeReq
 }
 
 export function listSkins(seasonId = 'default') {
