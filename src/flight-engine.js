@@ -4508,8 +4508,7 @@ function syncPauseUi() {
   if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
   const muteLabel = $('pause-mute')
   if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
-  // Desk AR is a flight-only control; the install shortcut belongs to the menus.
-  $('ar-btn')?.classList.toggle('hidden', !showPauseControl)
+  // The install shortcut belongs to the menus, not the flight corner row.
   const installEl = $('install-btn')
   if (installEl) {
     installEl.classList.toggle('hidden', showPauseControl || !installEl.hasAttribute('data-install-eligible'))
