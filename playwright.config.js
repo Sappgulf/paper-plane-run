@@ -7,7 +7,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  timeout: 45_000,
+  // Generous margin: this app boots a deferred WebGL engine, which is slow
+  // on cold hosts and CI runners even after the shell is interactive.
+  timeout: 90_000,
   retries: process.env.CI ? 1 : 0,
   workers: workerCount,
   reporter: 'line',

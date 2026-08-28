@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { existsSync } from 'node:fs'
 import { ZONES, nextZone, zoneAt } from '../src/zones.js'
 import { PAPER_PALETTES } from '../src/game/paper-art.js'
 
@@ -15,13 +16,21 @@ describe('zones', () => {
     expect(nextZone(1700)).toBeNull()
   })
 
-  // The art rule is enforced at the zone table, not by convention: a zone that
-  // reintroduced a photographic sky or ground would sail past a review, so the
-  // only shape a zone's art may take is a `paper:` spec backed by a palette.
-  test('every zone cuts its sky and ground from its own paper palette', () => {
+  // Skies and grounds are painted art that ships with the build; hazards are
+  // cut at runtime from the zone's own palette. Both halves have to hold for a
+  // zone to be complete, and a zone added without either would otherwise only
+  // show up as a missing texture in a screenshot nobody takes.
+  test('every zone ships its painted sky and ground', () => {
     for (const zone of ZONES) {
-      expect(zone.sky).toBe(`paper:sky:${zone.id}`)
-      expect(zone.ground).toBe(`paper:ground:${zone.id}`)
+      expect(zone.sky, zone.id).toBe(`/assets/sky-${zone.id}.jpg`)
+      expect(zone.ground, zone.id).toBe(`/assets/ground-${zone.id}.jpg`)
+      expect(existsSync(new URL(`../public${zone.sky}`, import.meta.url)), zone.sky).toBe(true)
+      expect(existsSync(new URL(`../public${zone.ground}`, import.meta.url)), zone.ground).toBe(true)
+    }
+  })
+
+  test('every zone backs its runtime-cut hazards with a full palette', () => {
+    for (const zone of ZONES) {
       const palette = PAPER_PALETTES[zone.id]
       expect(palette, `missing palette for ${zone.id}`).toBeTruthy()
       // Three tones plus an accent — no more, or it stops being cut paper.

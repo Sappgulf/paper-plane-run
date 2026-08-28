@@ -2,6 +2,72 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-08-25 — Round 6: fever identity, boss-pressure music, near-miss badges
+
+- **Fever identity:** while a fever burst runs, the paper plane itself burns gold — pulsing warm emissive on the body plus orange accent glow that resets cleanly when it ends. Combo float text now includes the paid meters (`NEAR MISS x3 · +3.75m`), and near-miss distance pays **double during fever** so the burst economy matches its visuals.
+- **Boss pressure music:** any active, un-cleared gate within 40m pins the adaptive music bed wide open next to fever — approaches audibly escalate.
+- Verified: fever fixture screenshot confirms golden plane + 1.5× chip + rainbow burst; Vitest suite green; full desktop gameplay e2e green.
+
+## 2026-08-25 — Round 5: flight dynamics, torn-paper crash burst, skill missions
+
+- **Flight — camera carving:** the chase camera now leans subtly into bank and pitch (`velX/velY → lookAt offsets`, clamped) so turns and dives read as carving air instead of a fixed rig — zero gameplay impact, pure feel.
+- **Crash — torn-paper burst:** the old two-burst crash pop becomes a staggered 30-shard torn-paper cloud in a new `aero` palette (paper creams + one ink fleck), layering the tumble, hit-stop and camera punch into a proper paper explosion. Win finishes keep their chime.
+- **Gameplay — missions for the new mechanics:** two new daily mission templates — "Clear N hazard gauntlets" and "Thread N tower gaps" — fed by `runStats.gauntlets/threads` counters wired into both reward paths and the run-summary stats.
+- **Crash-card layout fix:** game-over action buttons shared a grid row with the polaroid and column-stretched into giant buttons; both action rows now `align-self: start`.
+- Verification: 70 Vitest files / 425 tests (new `missionSkills` coverage); full desktop gameplay e2e passes; build PASS, bundle 107,184 initial / 845,342 total.
+
+## 2026-08-25 — Round 4: visual audit via SuperDesign + art rebalance
+
+- **Visual audit with the design skill:** ran SuperDesign init (repo → `.superdesign/init/` + `design-system.md`), created the menu project, produced a pixel-perfect reproduction draft plus two named direction drafts (Tidy Menu / Hero Edition) — all three live on superdesign.dev. Screenshot-audited every surface headlessly (desktop + mobile menu, hangar, flight, boss, game-over, journey).
+- **The loud-ground fix:** zone ground art was a saturated multicolor quilt that fought hazards. All six `ground-*.jpg` retoned with PIL (desaturate ~50% toward paper cream, warm channel shift, gentle contrast) — the paper-city layout stays, the saturation drops. Building texture deepened (autocontrast + window contrast) and building tints richened so towers read as cut paper instead of white ghosts.
+- **Plane readability:** deeper fold accents (`0xd96f4e` + slight warm emissive) so the plane silhouette holds against pale skies.
+- **Sky depth:** bigger, more numerous cushion clouds (12 / 16 low-power) parallaxing at 0.35×.
+- **Menu tidy (superdesign direction A):** the orphaned Pilot name field moved INTO the settings grid as a full-width third field (soft inset, evenly matched Difficulty/Controls columns), hints tightened, card translucency nudged so the paper-craft backdrop glows through.
+- **Audit tooling notes:** the old `#test-*` flight fixtures call `clearEntities()`, which deletes clouds — fixture screenshots were misleading; a no-fixture real-flight probe now drives the true view.
+- Verification: 69 Vitest / 423 tests; menu-boot + full gameplay e2e pass; build PASS; bundle 107,184 initial / 844,751 total.
+
+## 2026-08-25 — Round 3: real gameplay test pass, thread double-pay fix, new gameplay e2e suite
+
+- **Actually played every mode headlessly.** New `e2e/gameplay.spec.js` (6 desktop tests) drives the live engine through: an altitude-tier climb with golden-star verification, a gauntlet tripwire payout (+banner +monotonic wallet), a tagged-vs-control thread-gap proof, duplicate-orb refresh, boot-and-fly for daily / weekly / time attack / co-op / hot-seat (including pause→menu exit), and sustained-steering classic + tutorial completion. Shared helpers extracted to `e2e/smoke-helpers.js` so both suites drive identically.
+- **Real bug found & fixed — thread-the-gap paid twice per gap:** each of the two tagged towers resolved its own payout, cashing +40 instead of +20. Both towers now share one corridor object whose `paid` flag guards the reward (spawnChunk builds it once per gap).
+- **Testability contract extended:** `render_game_to_text` now exposes `lastReward` ('thread'/'gauntlet'), `power {kind,timeLeft}`, `banners {zone,action}`, and a `golden` flag on visible stars. Four deterministic DEV fixtures added (`#test-tier-climb`, `#test-gauntlet-payoff`, `#test-thread-gap?nothread`, `#test-power-refresh`), all with the spawn pump fully parked (`nextSpawnZ=1e9` — the old `220` still spawned because the pump decrements below its threshold on frame one).
+- **Menu-exit polish:** quitting mid-gust or mid-bullet-time no longer strands wind streaks or the slow-mo vignette behind the menu (`showMenu` clears both).
+- **e2e lessons baked into the spec:** hash-only navigations reuse the running engine (distinct queries force reloads); the boot deep-link cleanup wipes `location.search` before fixtures run, so the thread control flag is read at module top beside the other dev params; endless gauntlets legitimately recur every 250m, so assertions check payouts and monotonic stars rather than vanishing entities.
+- Verification: 69 Vitest files / 423 tests passed; FULL Playwright matrix on a quiet tree — 94 specs, **64 passed / 30 viewport-gated skips / 0 failed**; production build PASS; bundle budget 107,184 initial / 844,713 total vs 921,600; iOS parity re-synced byte-exact.
+
+## 2026-08-25 — Round 2: thread-the-gap, Golden Hour twist, music + milestone juice
+
+- **Thread-the-gap bonus:** when both side towers rise close enough that their inner faces leave a tight slot (≤5 units), spawnChunk marks the pair with the corridor bounds (capped at the shorter rooftop). A clean pass between them pays +20m with a whoosh and route confetti — wall clearance is honored so scraping doesn't pay (`game/thread-gap.js`, pure + tested).
+- **Golden Hour daily twist:** new deterministic daily modifier — stars pay double meters (spawn counts untouched), joining the rotation alongside Tailwind/Star Rush/etc.
+- **Fever music lift:** the adaptive music bed now pins to full intensity while Fever is active, so the score burst sounds like one; boss-free otherwise unchanged.
+- **Milestone celebrations:** 500m/1000m crossings pop gold confetti and an in-world `${m}m!` callout instead of silently advancing analytics.
+- Verification: 68 Vitest files / 423 tests passed; boot + silhouette e2e pass on desktop/mobile; bundle budget PASS (107,184 initial / 844,407 total); iOS parity 86 files byte-exact.
+
+## 2026-08-25 — Gameplay + juice upgrade pass
+
+- **Gauntlet payoff:** mini-gauntlets announced "lane open" but surviving paid nothing. An invisible tripwire marker now resolves behind the last hazard: holding the advertised lane banks +3★ / +50m with hit-stop, gold confetti, and a banner (pure rules in `game/gauntlet-reward.js`). Passing wide stays free — the lane promise is honest, only in-lane pays.
+- **Power refresh economy:** catching a duplicate orb used to wipe the active power's remaining timer via `clearPower()`. Same-kind pickups now top the timer back to full and pay +25m; switching kinds still replaces (one slot keeps HUD/physics toys sane) but refunds +12m (`game/power-pickup.js`).
+- **True bullet-time:** slow-mo was four disconnected number tweaks on cruise speed. It now dilates world scroll and the hazard motion clock (`hazardClock`, ×0.62) so hazards genuinely hang while controls stay full-rate, plus a cool `#slow-fx` vignette (reduced-motion aware). Boss directors step on scaled dt, so phases read in slow motion too.
+- **Star value rides risk:** star pickup paid flat +18m regardless of fever/skim. The meter bonus now multiplies by fever (×1.5) and skim tier (+8%/tier) — same risk systems the score factor uses (`game/star-value.js`).
+- **Golden tier stars:** every altitude-tier climb drops a 3-star golden arc along the reserved lane (5★ each, double meters, bigger self-lit art, star-streak chime, hit-stop) so deep runs get a visible payday. Scissor-squadron chance also scales +2%/tier.
+- **Wind made visible:** gusts were an invisible HUD shove. Pooled streak motes now stream across the field in the push direction, ambient dust leans with the gust, both gated off for reduced-motion/low-power.
+- **Confetti pool + palettes:** bursts allocated 10 fresh meshes+materials each and fired constantly. Now a persistent 96-piece ring buffer with per-event palettes — classic near-miss, gold currency (stars/streaks/gauntlet), rainbow fever, blue-violet route saves/boss clears/crash-wins.
+- **Plane model polish:** authored keel fold (underside crease, accent color) per silhouette — cosmetic only, collision radius unchanged — plus slightly richer upgrade-trail points.
+- Verification: 68 Vitest files / 418 tests passed; boot/silhouette/engine e2e specs pass (desktop+mobile); production build PASS, bundle budget 107,088 initial / 843,433 total vs 921,600 limit; iOS parity 86 files byte-exact after `build:ios` re-sync.
+
+## 2026-08-22 — Verification pass: real crash fixes, corner-button UX, flake-proof boot
+
+- **Crash fix:** `createWindTunnelGate` referenced an undefined `halfHeight` (only `halfWidth` was declared after the boss-fairness rebuild). Every wind-boss spawn killed the engine — in the browser this surfaced as `EngineLifecycleError: halfHeight is not defined` at boot, which broke the wind boss encounter and made the e2e boss lane unreliable. Declared the value from `userData` like its twins.
+- **Plane preview stale-hover fix:** after purchasing/equipping a plane, re-rendered card grid sat under a stationary cursor; browsers re-fire `pointerenter` for those cards and the preview reverted to the card under the pointer (e.g. buy Coral → preview says Classic Cream). Added a short post-render hover lock plus a moving-pointer guard (`lastPointerMoveAt`), so the equipped plane wins after purchase and genuine mouse/touch browsing still previews cards. Focus previews untouched for keyboard accessibility.
+- **Corner-button UI/UX:** Desk AR 📷 was shown on main menus and the install shortcut ⬇️ stayed visible mid-flight, crowding the mobile top row over the logo card. AR is now flight-only; install hides during flight and re-shows on menus only when PWA-eligible (`data-install-eligible`). Matched a boot `syncPauseUi()` so states apply without waiting for an interaction.
+- **Dev-boot race:** the service worker (which claims and reloads the page once on first install, killing the module graph mid-load) now registers only in production builds (`import.meta.env.PROD`); dev/e2e boots are single load, offline/PWA behavior unchanged on the deployed site.
+- **Shell boot marker:** `html[data-shell=ready]` set when the shell finishes top-level wiring — gives tests (and future perf probes) a deterministic boot signal; `openApp` waits for it, retrying across the first-visit SW reload.
+- **E2E suite health:** fixed stale expectations vs. the intentional economy/boss changes (mint 18★/coral 32★, passages 4.0×3.7, warning 1.5s/pressure 1.5s timings), scoped the upgrade-card lookup by `u-title` (Gold Rush's "stacks with Lucky Scrap" text made `hasText` match two cards), made game-over/boss flows engine-aware (`waitForGameText`), moved hangar-nav clicks to the suite's force-tap pattern, and added a corner-button state regression test. Global Playwright timeout 45s → 90s; heavy WebGL tests stay `test.slow()`.
+- Verification: 51 Vitest files / 256 tests passed; full Playwright 47 passed, 15 viewport-gated skips, 0 failed; production build + bundle budget PASS (94,312 initial / 789,954 total bytes vs 819,200 limit); iOS parity 114 files byte-exact.
+- **Rebased onto an upstream main advance** (`160cf19` + the Weekly Fold / aim-mode physics series): kept the wind-boss crash fix, corner-button UX, shell boot marker, and dev-SW gate while adopting upstream's stronger synchronous preview epoch/lock system (their `data-plane-id` sets immediately, focused-intent + pointer-gate locks) and `data-upgrade-id` e2e selectors; reconciled boss passages (now 4.8×4.4 normal) and ghost-share game-over copy. Full re-verification on the merged tree: 64 Vitest files / 406 tests; full Playwright 58 passed, 24 viewport-gated skips, 0 failed; bundle budget PASS (837,279 total / 921,600); iOS parity 86 files byte-exact.
+
+
+
 ## 2026-07-18 — Imagine boss emblems
 
 - Generated paper-diorama scissors / wind / stapler emblems; cut to real alpha webp+png.

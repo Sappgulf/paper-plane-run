@@ -177,10 +177,14 @@ let deferredInstall = null
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault()
   deferredInstall = event
+  installBtn?.setAttribute('data-install-eligible', '1')
   installBtn?.classList.remove('hidden')
 })
 
-if (isIos && !isStandalone) installBtn?.classList.remove('hidden')
+if (isIos && !isStandalone) {
+  installBtn?.setAttribute('data-install-eligible', '1')
+  installBtn?.classList.remove('hidden')
+}
 
 installBtn?.addEventListener('click', async (event) => {
   event.stopPropagation()
@@ -226,7 +230,9 @@ function showSwUpdateBanner(worker) {
   }
 }
 
-if (!disableServiceWorker && 'serviceWorker' in navigator) {
+// The offline shell belongs to the deployed build. In dev it would claim the
+// page and reload it once while the module graph is still loading.
+if (!import.meta.env.DEV && !disableServiceWorker && 'serviceWorker' in navigator) {
   let refreshing = false
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return
@@ -1632,3 +1638,5 @@ if (retryRequest) {
 } else {
   window.setTimeout(preloadEngine, 250)
 }
+
+document.documentElement.dataset.shell = 'ready'

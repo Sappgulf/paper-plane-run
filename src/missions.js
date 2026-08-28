@@ -15,6 +15,8 @@ const TEMPLATES = [
   { id: 'clean_run', label: (n) => `Fly ${n}m without a single power-up`, type: 'clean_distance', min: 90, max: 280 },
   { id: 'sharpshooter', label: (n) => `Pop ${n} hazards with Ink Blast in one run`, type: 'popped', min: 2, max: 8 },
   { id: 'fever_once', label: (n) => `Trigger Combo Fever ${n} time${n > 1 ? 's' : ''} in one run`, type: 'fever', min: 1, max: 2 },
+  { id: 'gauntlet_runner', label: (n) => `Clear ${n} hazard gauntlet${n > 1 ? 's' : ''} in one run`, type: 'gauntlets', min: 1, max: 3 },
+  { id: 'gap_threader', label: (n) => `Thread ${n} tower gap${n > 1 ? 's' : ''} in one run`, type: 'threads', min: 1, max: 2 },
 ]
 
 function loadState() {
@@ -98,6 +100,12 @@ export function updateMissionsFromRun(stats) {
         break
       case 'fever':
         val = stats.fevers || 0
+        break
+      case 'gauntlets':
+        val = stats.gauntlets ?? 0
+        break
+      case 'threads':
+        val = stats.threads ?? 0
         break
       default:
         val = 0

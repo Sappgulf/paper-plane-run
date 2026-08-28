@@ -3,10 +3,8 @@ import {
   HAZARD_INK,
   HAZARD_OUTLINE,
   PAPER_PALETTES,
-  SKY_BANDS,
   createHazardCanvas,
-  createPaperGroundCanvas,
-  createPaperSkyCanvas,
+  createPaperSheetCanvas,
   getPaperPalette,
   paperShadowSpec,
 } from '../src/game/paper-art.js'
@@ -20,16 +18,6 @@ describe('paper art direction', () => {
       // The three tones must actually be distinguishable, or the "cut paper
       // layers" read collapses into one flat field.
       expect(new Set([palette.far, palette.mid, palette.near]).size, id).toBe(3)
-    }
-  })
-
-  test('sky bands are uneven and cover the whole sheet', () => {
-    expect(SKY_BANDS[SKY_BANDS.length - 1].to).toBe(1)
-    const spans = SKY_BANDS.map((band, i) => band.to - (SKY_BANDS[i - 1]?.to ?? 0))
-    expect(new Set(spans.map((span) => span.toFixed(3))).size).toBe(spans.length)
-    // Ascending, so a band can never be cut behind the one before it.
-    for (let i = 1; i < SKY_BANDS.length; i += 1) {
-      expect(SKY_BANDS[i].to).toBeGreaterThan(SKY_BANDS[i - 1].to)
     }
   })
 
@@ -52,8 +40,7 @@ describe('paper art direction', () => {
   })
 
   test('canvases degrade to null headlessly rather than throwing', () => {
-    expect(createPaperSkyCanvas({ canvasFactory: () => null })).toBeNull()
-    expect(createPaperGroundCanvas({ canvasFactory: () => null })).toBeNull()
+    expect(createPaperSheetCanvas({ canvasFactory: () => null })).toBeNull()
   })
 })
 

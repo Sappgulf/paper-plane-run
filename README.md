@@ -105,6 +105,7 @@ in for birds and scissors.
 | Daily seeded route + **Weekly Fold** (ISO-week seed, rotating opening sky, local + remote weekly board) |
 | Near-miss combos, Combo Fever, star streaks |
 | **Ground skim** — the low lane is the dangerous one, so holding it pays; pulling up under control cashes the chain in |
+| **Risk pays everywhere** — hazard gauntlets bank +3★ for holding the promised gap, tight tower corridors pay a thread bonus, altitude tiers drop golden 5★ arcs, star meters ride fever + skim multipliers, duplicate power orbs refresh instead of wiping, slow-mo is real bullet-time, and wind gusts stream across the sky as weather |
 | **Zones** (City → Harbor → Storm → Sunset → Aurora → Midnight Origami), looping to a fresh lap rather than parking on the last one |
 | **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |

@@ -17,10 +17,11 @@
  *      crease, because that is what says "paper" rather than "flat shading".
  *   4. Depth comes from hard offset shadows between layers, never from blur.
  *
- * Skies and grounds are generated from that rule at runtime, so they are
- * guaranteed consistent, weigh nothing in the bundle, and can be retinted per
- * zone without producing another asset. The canvas factory is injected so the
- * palettes and band layout stay testable outside a browser.
+ * Zone skies and grounds are painted assets. What is generated here is what
+ * has to stay in lockstep with the palette at runtime: the paper stock every
+ * plane skin flies on, and the hazard sprites, which are cut in the zone's
+ * reserved accent so danger is one learnable colour. The canvas factory is
+ * injected so the palettes stay testable outside a browser.
  */
 
 /** Three tones (far → near) plus the read-me-first accent, per zone. */
@@ -56,18 +57,6 @@ export const DEFAULT_PALETTE = PAPER_PALETTES.city
 export function getPaperPalette(zoneId) {
   return PAPER_PALETTES[zoneId] || DEFAULT_PALETTE
 }
-
-/**
- * Horizontal bands a sky is cut from, as fractions of its height.
- *
- * Uneven on purpose: an evenly divided sky reads as a test card. The near band
- * is the thickest because it is the one the skyline sits against.
- */
-export const SKY_BANDS = Object.freeze([
-  Object.freeze({ tone: 'far', to: 0.42 }),
-  Object.freeze({ tone: 'mid', to: 0.68 }),
-  Object.freeze({ tone: 'near', to: 1 }),
-])
 
 function makeCanvas(factory, width, height) {
   const canvas = typeof factory === 'function'
@@ -118,62 +107,6 @@ function drawCrease(ctx, { x0, y0, x1, y1, alpha = 0.12 }) {
   ctx.lineTo(x1 + 2, y1)
   ctx.stroke()
   ctx.restore()
-}
-
-/**
- * Cut-paper sky: three flat bands, a crease at each seam, grain over the lot.
- *
- * Returns the canvas rather than a texture so the caller owns the THREE
- * wrapping, and returns null in a headless context so tests can still import
- * the palettes without a DOM.
- */
-export function createPaperSkyCanvas({ palette = DEFAULT_PALETTE, size = 512, canvasFactory } = {}) {
-  const width = Math.max(8, Math.floor(size))
-  const height = Math.max(8, Math.floor(size))
-  const canvas = makeCanvas(canvasFactory, width, height)
-  if (!canvas) return null
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  let top = 0
-  for (const band of SKY_BANDS) {
-    const bottom = band.to * height
-    ctx.fillStyle = palette[band.tone] || palette.mid
-    ctx.fillRect(0, top, width, bottom - top)
-    if (top > 0) drawCrease(ctx, { x0: 0, y0: top, x1: width, y1: top, alpha: 0.16 })
-    top = bottom
-  }
-  // A single off-vertical crease so the sky reads as one folded sheet rather
-  // than three stacked strips.
-  drawCrease(ctx, { x0: width * 0.62, y0: 0, x1: width * 0.55, y1: height, alpha: 0.07 })
-  drawGrain(ctx, width, height, 0.05, 7)
-  return canvas
-}
-
-/**
- * Cut-paper ground: two alternating tones in hard-edged strips running away
- * from the camera, with creases on the seams. No perspective baked in — the
- * plane geometry does that, and baking it would fight the tiling.
- */
-export function createPaperGroundCanvas({ palette = DEFAULT_PALETTE, size = 256, stripes = 6, canvasFactory } = {}) {
-  const width = Math.max(8, Math.floor(size))
-  const height = Math.max(8, Math.floor(size))
-  const canvas = makeCanvas(canvasFactory, width, height)
-  if (!canvas) return null
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  ctx.fillStyle = palette.ground || palette.far
-  ctx.fillRect(0, 0, width, height)
-  const count = Math.max(1, Math.floor(stripes))
-  const band = height / count
-  for (let i = 0; i < count; i += 1) {
-    if (i % 2 === 1) {
-      ctx.fillStyle = palette.groundAlt || palette.mid
-      ctx.fillRect(0, i * band, width, band)
-    }
-    drawCrease(ctx, { x0: 0, y0: i * band, x1: width, y1: i * band, alpha: 0.09 })
-  }
-  drawGrain(ctx, width, height, 0.06, 19)
-  return canvas
 }
 
 /** Flat sheet used for the plane itself and any prop that should read as stock. */

@@ -19,6 +19,12 @@ describe('daily twists', () => {
     expect(feather.sinkMul).toBeLessThan(1)
   })
 
+  test('golden hour doubles star meter payouts without touching spawn counts', () => {
+    const golden = TWISTS.find((t) => t.id === 'golden-hour')
+    expect(golden.starMeterMul).toBe(2)
+    expect(golden.starMul).toBeUndefined()
+  })
+
   test('is deterministic for a given date', () => {
     const d = new Date('2026-07-12T00:00:00Z')
     expect(todaysTwist(d)).toEqual(todaysTwist(d))

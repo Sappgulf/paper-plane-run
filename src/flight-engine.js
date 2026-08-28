@@ -34,6 +34,12 @@ import {
   resolveHazardOffset,
   resolveHazardRoll,
 } from './game/hazard-patterns.js'
+import { confettiColors } from './game/confetti-palette.js'
+import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/star-value.js'
+import { resolvePowerPickup } from './game/power-pickup.js'
+import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
+import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
+
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
   getUpgradeEffects,
@@ -103,7 +109,6 @@ import {
   wrapGroundLifeZ,
 } from './game/ground-life.js'
 import {
-  PASSAGE_LANE_X,
   createPacingWave,
   getCenterBuildingSafeRange,
   getFlyableBuildingHeight,
@@ -136,10 +141,8 @@ import { buildRunSummary } from './game/run-summary.js'
 import { createBannerState, resolveBanner } from './game/flight-banners.js'
 import { selectHudChips } from './game/hud-priority.js'
 import {
-  createPaperGroundCanvas,
   createHazardCanvas,
   createPaperSheetCanvas,
-  createPaperSkyCanvas,
   getPaperPalette,
 } from './game/paper-art.js'
 import {
@@ -475,7 +478,30 @@ function updateFlightReadability(routeState = null) {
   }
 
   if (!flightFocusEl) return
-  _focusNdc.copy(plane.position).project(camera)
+  // The marker names what's ahead — a star line, a hazard, a power-up — so it
+  // rides the *target*, never the plane. An always-on ring around your own
+  // plane read as a rendering artifact and buried the plane silhouette under
+  // HUD clutter; an empty corridor now simply shows nothing.
+  const focus = pickFlightFocus(entities, {
+    planeX,
+    planeY,
+    teachStars: shouldTelegraphStarLane(distance),
+  })
+  flightFocusEl.dataset.cue = focus.cue
+  if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
+  // A swift pop when the named thing changes keeps the marker from looking
+  // like a permanent fixture — it should feel like it just found something.
+  if (flightFocusEl.dataset.type !== focus.type) {
+    flightFocusEl.dataset.type = focus.type || 'none'
+    flightFocusEl.classList.remove('focus-pop')
+    void flightFocusEl.offsetWidth
+    flightFocusEl.classList.add('focus-pop')
+  }
+  if (!focus.target) {
+    flightFocusEl.classList.add('hidden')
+    return
+  }
+  _focusNdc.set(focus.target.x, focus.target.y, focus.target.z).project(camera)
   const focusOnScreen = _focusNdc.z <= 1 && Math.abs(_focusNdc.x) < 1.15 && Math.abs(_focusNdc.y) < 1.15
   if (!focusOnScreen) {
     flightFocusEl.classList.add('hidden')
@@ -484,14 +510,6 @@ function updateFlightReadability(routeState = null) {
   flightFocusEl.classList.remove('hidden')
   flightFocusEl.style.left = `${(_focusNdc.x * 0.5 + 0.5) * innerWidth}px`
   flightFocusEl.style.top = `${(1 - (_focusNdc.y * 0.5 + 0.5)) * innerHeight}px`
-
-  const focus = pickFlightFocus(entities, {
-    planeX,
-    planeY,
-    teachStars: shouldTelegraphStarLane(distance),
-  })
-  flightFocusEl.dataset.cue = focus.cue
-  if (flightFocusCueEl) flightFocusCueEl.textContent = focus.label
 }
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
@@ -571,7 +589,6 @@ let nextBossAt = 500
 let nextGauntletAt = 250
 let bossActive = false
 let bossRecoveryUntil = 0
-let activePassageLane = null
 /** The guaranteed gap for the wave being spawned: continuous, not a lane. */
 let activePassageGap = { center: 0, width: 3 }
 /** Last wave's gap centre, so consecutive gaps drift instead of teleporting. */
@@ -722,7 +739,7 @@ let feverFloatTimeout = null
 let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
@@ -742,6 +759,11 @@ const devCollisionProof = import.meta.env.DEV
 const devBossProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-proof')
   : null
+// Thread-gap proof's untagged control run (?nothread=1#test-thread-gap) — read
+// up here because the boot deep-link cleanup wipes location.search later.
+const devThreadControl = import.meta.env.DEV
+  ? new URLSearchParams(location.search).has('nothread')
+  : false
 const devBossPass = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-pass') === '1'
   : false
@@ -873,7 +895,7 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 40
 // point has to sit slightly *below* it: aiming level with the plane at a
 // far-forward z flattens the view angle and drops the plane off the bottom of
 // the frame. These values hold the plane around 68% down the screen.
-const CAM_HEIGHT = 3.35
+const CAM_HEIGHT = 3.05
 const CAM_AIM_LIFT = -0.1
 const CAM_AIM_Z = 13
 // Lateral/depth smoothing stays loose so steering reads as momentum. The
@@ -909,22 +931,18 @@ const loader = new THREE.TextureLoader()
 const texCache = {}
 
 /**
- * `paper:<kind>:<zone>` textures are cut at runtime from the zone palette in
- * game/paper-art.js rather than loaded from disk. Routing them through the
- * same cache as file textures means zone crossfade, ground tinting and the
- * low-power path all work on them unchanged — the art rule is enforced at the
- * loader, so there is no way to sneak a photograph back in later.
+ * `paper:<kind>:<zone>[:<variant>]` textures are cut at runtime from the zone
+ * palette in game/paper-art.js rather than loaded from disk: the paper stock
+ * every plane skin flies on, and the hazard sprites. Skies and grounds stay
+ * painted assets — routing the generated ones through the same cache as file
+ * textures means both kinds work identically everywhere downstream.
  */
 function createPaperTexture(spec) {
   const [, kind, zoneId, variant] = spec.split(':')
   const palette = getPaperPalette(zoneId)
-  const canvas = kind === 'ground'
-    ? createPaperGroundCanvas({ palette })
-    : kind === 'sheet'
-      ? createPaperSheetCanvas({ palette })
-      : kind === 'hazard'
-        ? createHazardCanvas({ kind: variant, palette })
-        : createPaperSkyCanvas({ palette })
+  const canvas = kind === 'hazard'
+    ? createHazardCanvas({ kind: variant, palette })
+    : createPaperSheetCanvas({ palette })
   if (!canvas) return new THREE.Texture()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -943,6 +961,9 @@ function loadTex(rawUrl) {
     const t = loader.load(url)
     t.colorSpace = THREE.SRGBColorSpace
     t.wrapS = t.wrapT = THREE.RepeatWrapping
+    // The floor is seen at a very grazing angle; without anisotropic filtering
+    // its painted detail collapses into mush a few meters out.
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4
     texCache[url] = t
   }
   return texCache[url]
@@ -1104,15 +1125,19 @@ function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
   return tex
 }
 const paperTex = loadTex('paper:sheet:city')
-const skyTex = loadTex('paper:sky:city')
+const buildingTex = loadTex('/assets/buildings.jpg')
+const skyTex = loadTex('/assets/sky-city.jpg')
 
 // Dual sky spheres for crossfade between zones
 const skyGeo = new THREE.SphereGeometry(300, 32, 16)
+// fog:false — scene fog is tuned for depth-cueing buildings and ground, but
+// blanketing the sky dome in it bleached the whole upper half of the frame
+// into milk. The painted skies carry the zone mood; let them show it.
 const skyMatA = new THREE.MeshBasicMaterial({
-  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 1,
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 1, fog: false,
 })
 const skyMatB = new THREE.MeshBasicMaterial({
-  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0,
+  map: skyTex, side: THREE.BackSide, depthWrite: false, transparent: true, opacity: 0, fog: false,
 })
 const skyA = new THREE.Mesh(skyGeo, skyMatA)
 const skyB = new THREE.Mesh(new THREE.SphereGeometry(298, 32, 16), skyMatB)
@@ -1122,19 +1147,35 @@ scene.add(skyA, skyB)
 let skyFade = 1 // 1 = show A, 0 = show B
 let skyFadeTarget = 1
 let activeSkyIsA = true
-let currentSkyUrl = 'paper:sky:city'
+let currentSkyUrl = '/assets/sky-city.jpg'
 
-const groundMap = loadTex('paper:ground:city')
-if (groundMap.repeat) groundMap.repeat.set(4, 30)
+const groundMap = loadTex('/assets/ground-city.jpg')
+// ~15m square tiles: dense enough that the painted detail stays crisp under
+// the camera instead of smearing into a pastel blur, and the repeat keeps the
+// texture's aspect ratio square so nothing stretches.
+if (groundMap.repeat) groundMap.repeat.set(6, 46)
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(90, 700),
-  new THREE.MeshStandardMaterial({ map: groundMap, color: 0xf2e6d8, roughness: 0.95 }),
+  // A warm mid tone — near-white tints pushed the fogged floor into a wash.
+  new THREE.MeshStandardMaterial({ map: groundMap, color: 0xcbb79c, roughness: 0.95 }),
 )
 ground.rotation.x = -Math.PI / 2
 ground.position.set(0, 0, 120)
 ground.receiveShadow = true
 scene.add(ground)
-let currentGroundUrl = 'paper:ground:city'
+let currentGroundUrl = '/assets/ground-city.jpg'
+
+// Contact shadow — the pale fuselage dissolves into bright paper streets at
+// distance, so an altitude-scaled blob keeps it anchored to the world.
+const planeShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(0.85, 22),
+  new THREE.MeshBasicMaterial({ color: 0x2b2015, transparent: true, opacity: 0.3, depthWrite: false }),
+)
+planeShadow.rotation.x = -Math.PI / 2
+planeShadow.position.y = 0.06
+planeShadow.renderOrder = 1
+planeShadow.visible = false
+scene.add(planeShadow)
 
 // ---------------------------------------------------------------------------
 // Ground life — flanking scenery that makes each zone feel inhabited.
@@ -1361,9 +1402,10 @@ function refreshGroundLife() {
 const trailPts = []
 const TRAIL_N = 24
 
-// Ambient wisp trail — always present at speed, independent of upgrades
+// Ambient wisp trail — wingtip streamers that make the plane readable in motion
 const wispPts = []
 const WISP_N = 14
+let wispSide = 1
 {
   const g = new THREE.BufferGeometry()
   const arr = new Float32Array(WISP_N * 3)
@@ -1371,7 +1413,7 @@ const WISP_N = 14
   const wisp = new THREE.Points(
     g,
     new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.1, transparent: true, opacity: 0.22, depthWrite: false,
+      color: 0xff8a5e, size: 0.17, transparent: true, opacity: 0.3, depthWrite: false,
     }),
   )
   wisp.name = 'ambientWisp'
@@ -1380,9 +1422,9 @@ const WISP_N = 14
   for (let i = 0; i < WISP_N; i++) wispPts.push(new THREE.Vector3())
 }
 
-const hemi = new THREE.HemisphereLight(0xffe8d6, 0x8fb8d8, 1.15)
+const hemi = new THREE.HemisphereLight(0xffe8d6, 0x7ba3c4, 0.92)
 scene.add(hemi)
-const sun = new THREE.DirectionalLight(0xfff0e0, 1.35)
+const sun = new THREE.DirectionalLight(0xfff0e0, 1.25)
 sun.position.set(30, 50, 20)
 sun.castShadow = true
 sun.shadow.mapSize.set(1024, 1024)
@@ -1407,6 +1449,43 @@ const dust = new THREE.Points(
 )
 scene.add(dust)
 dust.visible = !settings.lowPower
+
+// Wind streaks — gust forces used to be invisible (HUD banner only). A small
+// pooled set of stretched motes streams across the field in the push
+// direction so a gust reads as weather, not as an unexplained shove.
+const WIND_STREAK_COUNT = 16
+const windStreakGeo = new THREE.BoxGeometry(2.4, 0.05, 0.05)
+const windStreakMat = new THREE.MeshBasicMaterial({
+  color: 0xe8f6ff, transparent: true, opacity: 0.42, depthWrite: false,
+})
+const windStreaks = []
+for (let i = 0; i < WIND_STREAK_COUNT; i++) {
+  const s = new THREE.Mesh(windStreakGeo, windStreakMat)
+  s.visible = false
+  s.userData.jitter = Math.random()
+  scene.add(s)
+  windStreaks.push(s)
+}
+function resetWindStreak(s, dir) {
+  // Spawn on the upwind side so streaks fly with the push, past the plane.
+  s.position.set(
+    -dir * (12 + Math.random() * 14),
+    2.5 + Math.random() * 14,
+    18 + Math.random() * 55,
+  )
+}
+function updateWindStreaks(dt, pushX, worldSpeed) {
+  const active = Math.abs(pushX) > 0.01 && !settings.reducedMotion && !settings.lowPower
+  const dir = Math.sign(pushX)
+  for (const s of windStreaks) {
+    s.visible = active
+    if (!active) continue
+    s.position.x += dir * (9 + s.userData.jitter * 7) * dt
+    s.position.z -= worldSpeed * 0.45 * dt
+    if (Math.abs(s.position.x) > 30 || s.position.z < -12) resetWindStreak(s, dir)
+  }
+}
+
 applyPerformanceSettings()
 
 /**
@@ -1488,23 +1567,37 @@ function updatePlaneMarker() {
   planeMarkerMat.opacity = 0.34 - height * 0.2
 }
 
-// Confetti pool for near-miss
-const confetti = []
+// Confetti — a persistent pooled ring buffer instead of allocating 10 fresh
+// meshes + materials per burst (bursts fire constantly: near-miss chains,
+// stars, boss clears). Colors come from per-event palettes so gold reads as
+// currency, rainbow as fever, blue/violet as route progress.
+const CONFETTI_POOL_SIZE = 96
 const confettiGeo = new THREE.PlaneGeometry(0.15, 0.2)
-function spawnConfetti(x, y, z) {
+const confetti = []
+let confettiCursor = 0
+for (let i = 0; i < CONFETTI_POOL_SIZE; i++) {
+  const m = new THREE.Mesh(
+    confettiGeo,
+    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true }),
+  )
+  m.visible = false
+  m.userData.v = new THREE.Vector3()
+  m.userData.life = 0
+  scene.add(m)
+  confetti.push(m)
+}
+function spawnConfetti(x, y, z, palette = 'classic') {
+  const colors = confettiColors(palette)
   for (let i = 0; i < 10; i++) {
-    const m = new THREE.Mesh(
-      confettiGeo,
-      new THREE.MeshBasicMaterial({
-        color: [0xfbbf24, 0xf0956a, 0x60a5fa, 0xa78bfa, 0x34d399][i % 5],
-        side: THREE.DoubleSide,
-      }),
-    )
+    const m = confetti[confettiCursor]
+    confettiCursor = (confettiCursor + 1) % CONFETTI_POOL_SIZE
+    m.visible = true
+    m.material.color.setHex(colors[i % colors.length])
+    m.material.opacity = 1
+    m.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI)
     m.position.set(x, y, z)
-    m.userData.v = new THREE.Vector3((rng() - 0.5) * 6, rng() * 4 + 1, (rng() - 0.5) * 4)
+    m.userData.v.set((rng() - 0.5) * 6, rng() * 4 + 1, (rng() - 0.5) * 4)
     m.userData.life = 0.6 + rng() * 0.4
-    scene.add(m)
-    confetti.push(m)
   }
 }
 
@@ -1513,24 +1606,16 @@ const planeBodyMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: 0xfff6ec, roughness: 0.82, side: THREE.DoubleSide,
 })
 const planeAccentMat = new THREE.MeshStandardMaterial({
-  color: 0xf0956a, roughness: 0.7, side: THREE.DoubleSide,
+  color: 0xd96f4e, roughness: 0.7, side: THREE.DoubleSide, emissive: 0x3d1a10, emissiveIntensity: 0.18,
 })
 const planeTrailMat = new THREE.PointsMaterial({
-  color: 0xfff0c0, size: 0.22, transparent: true, opacity: 0.7, depthWrite: false,
+  color: 0xfff0c0, size: 0.27, transparent: true, opacity: 0.75, depthWrite: false,
 })
-/**
- * Buildings are scenery, and scenery's job is to be somewhere the gameplay
- * happens rather than something to look at. They were carrying the striped
- * ground texture, which at building scale read as corrugated cardboard and gave
- * the heaviest, busiest surface on screen to the objects that matter least.
- * Flat pale sheets instead: they still say "paper city", and they let the plane
- * and the accent-coloured hazards sit in front of them.
- */
 const buildingMats = [
-  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xf3ddd2, roughness: 0.95 }),
-  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xdcebe2, roughness: 0.95 }),
-  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xf6ecd4, roughness: 0.95 }),
-  new THREE.MeshStandardMaterial({ map: paperTex, color: 0xe4dcf2, roughness: 0.95 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5ab93, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0x96c4b0, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5d489, roughness: 0.9 }),
+  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xbfaae0, roughness: 0.9 }),
 ]
 const birdMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
@@ -1809,8 +1894,10 @@ function syncPlanePowerLook(dt = 0.016) {
     planeAccentMat.emissive.setHex(0xffb089)
     planeAccentMat.emissiveIntensity = 0.22
   } else {
-    planeBodyMat.emissive.setHex(0x000000)
-    planeBodyMat.emissiveIntensity = 0
+    // A whisper of warm lift keeps the white fuselage from dissolving into
+    // the bright paper ground when the sun is high.
+    planeBodyMat.emissive.setHex(0x584434)
+    planeBodyMat.emissiveIntensity = 0.16
     planeAccentMat.emissive.setHex(0x000000)
     planeAccentMat.emissiveIntensity = 0
   }
@@ -2191,9 +2278,15 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.05, 6, 16)
+// Lethal hazard read: a crisp inner ring plus a soft outer glow, so the
+// danger claims space instead of a thin hairline that vanishes into the sky.
+const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.12, 6, 20)
+const lethalGlowGeo = new THREE.TorusGeometry(1.16, 0.05, 6, 20)
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.75, depthWrite: false,
+  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false,
+})
+const lethalGlowMat = new THREE.MeshBasicMaterial({
+  color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false,
 })
 function attachLethalOutline(group, radius = 0.85) {
   if (!group || group.userData.lethalOutline) return group
@@ -2204,7 +2297,14 @@ function attachLethalOutline(group, radius = 0.85) {
   outline.scale.setScalar(radius)
   outline.visible = false
   group.add(outline)
+  const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
+  glow.name = 'lethalGlow'
+  glow.rotation.y = Math.PI / 2
+  glow.scale.setScalar(radius)
+  glow.visible = false
+  group.add(glow)
   group.userData.lethalOutline = outline
+  group.userData.lethalGlow = glow
   return group
 }
 
@@ -2524,14 +2624,27 @@ const starGlowGeo = new THREE.SphereGeometry(0.72, 12, 12)
 const starGlowMat = new THREE.MeshBasicMaterial({
   color: 0xfbbf24, transparent: true, opacity: 0.28, depthWrite: false,
 })
+// Golden variant — a rare tier-transition drop worth 5★. Bigger, hotter,
+// and self-lit so it reads as an event, not another pickup.
+const starCoreMatGold = new THREE.MeshBasicMaterial({
+  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18,
+  side: THREE.DoubleSide, depthWrite: false, color: 0xffd54a,
+})
+const starGlowMatGold = new THREE.MeshBasicMaterial({
+  color: 0xfde68a, transparent: true, opacity: 0.5, depthWrite: false,
+})
+const starGlowGeoGold = new THREE.SphereGeometry(1.15, 14, 14)
 
-function createStar() {
+function createStar({ golden = false } = {}) {
   const g = new THREE.Group()
-  const core = new THREE.Mesh(starCoreGeo, starCoreMat)
+  const core = new THREE.Mesh(starCoreGeo, golden ? starCoreMatGold : starCoreMat)
   core.rotation.y = Math.PI
+  core.scale.setScalar(golden ? 1.35 : 1)
   g.add(core)
   // Soft glow shell for readability
-  const glow = new THREE.Mesh(starGlowGeo, starGlowMat)
+  const glow = golden
+    ? new THREE.Mesh(starGlowGeoGold, starGlowMatGold)
+    : new THREE.Mesh(starGlowGeo, starGlowMat)
   g.add(glow)
   g.userData.core = core
   g.userData.billboard = core
@@ -2743,6 +2856,15 @@ let shake = 0
 let hitStopTimer = 0
 let spawnUnfold = 1
 let elapsed = 0
+// Slow-mo is a real time-dilation power, not just a cruise-speed tweak: the
+// world scroll and the hazard motion clock both run through this factor so
+// hazards genuinely hang in the air while you line up.
+const SLOWMO_WORLD_SCALE = 0.62
+/** Hazard/pattern clock — advances slower than `elapsed` during slow-mo. */
+let hazardClock = 0
+let slowmoActive = false
+/** Debug/test tag of the most recent skill-reward payout (thread/gauntlet). */
+let lastRewardTag = null
 let launchGraceSeconds = 0
 let activePower = null
 let bannerTimer = 0
@@ -2837,8 +2959,11 @@ function clearEntities() {
     scene.remove(ghostMesh)
     ghostMesh = null
   }
-  for (const c of confetti) scene.remove(c)
-  confetti.length = 0
+  for (const s of windStreaks) s.visible = false
+  for (const c of confetti) {
+    c.visible = false
+    c.userData.life = 0
+  }
 }
 
 function pickHazardType(zone) {
@@ -2926,6 +3051,7 @@ function spawnChunk(z) {
   if (!recovering) maybeSpawnGroundDecor(z)
 
   const early = distance < 90
+  const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
     if (rng() < (early ? 0.52 : 0.82)) {
       const w = 2.5 + rng() * 3.5
@@ -2940,9 +3066,23 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk })
+      const buildingEntity = { mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk }
+      entities.push(buildingEntity)
+      sideBuildings.push(buildingEntity)
       if (side === -1) leftInnerEdge = -laneSpread + radius
       else rightInnerEdge = laneSpread - radius
+    }
+  }
+  // Thread-the-gap: when both towers rose and their inner faces leave a tight
+  // slot, mark the pair so a clean pass through it pays (see collision loop).
+  if (leftInnerEdge !== null && rightInnerEdge !== null && sideBuildings.length === 2) {
+    const gapWidth = rightInnerEdge - leftInnerEdge
+    if (isThreadGapWidth(gapWidth)) {
+      // One shared corridor object per gap — the collision loop flips its
+      // `paid` flag so a pass can never cash in twice (once per tower).
+      const corridorTop = Math.min(sideBuildings[0].halfH, sideBuildings[1].halfH)
+      const corridor = { minX: leftInnerEdge, maxX: rightInnerEdge, maxY: corridorTop, paid: false }
+      for (const e of sideBuildings) e.thread = corridor
     }
   }
 
@@ -3017,8 +3157,8 @@ function spawnChunk(z) {
     scene.add(sc)
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenterForChunk })
     // Scissor squadron — a rarer second blade further down the lane, more
-    // likely to appear the deeper into a run you get.
-    if (rng() < 0.12 + ramp * 0.22) {
+    // likely to appear the deeper into a run you get (altitude tiers lean in).
+    if (rng() < 0.12 + ramp * 0.22 + tier.tier * 0.02) {
       const sc2 = createScissors()
       sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z + 6 + rng() * 4)
       scene.add(sc2)
@@ -3280,6 +3420,14 @@ function spawnMiniGauntlet(z = 60) {
     })),
   })
   const side = gapCenter < -1.5 ? 'LEFT' : gapCenter > 1.5 ? 'RIGHT' : 'CENTRE'
+  // Payoff marker: an invisible tripwire behind the last hazard. Passing it
+  // while holding the advertised gap banks a gauntlet reward — the same
+  // promise-for-payout contract boss gates already honor. Anchored to the
+  // wave's gap centre rather than a fixed lane, since the passage moves.
+  const marker = new THREE.Object3D()
+  marker.position.set(gapCenter, 9, z - 2)
+  scene.add(marker)
+  entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX: gapCenter, cleared: false })
   zoneBannerKind = 'gauntlet'
   zoneBanner.textContent = room > 0
     ? `⚡ Hazard Gauntlet · gap ${side}`
@@ -3507,17 +3655,45 @@ function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
 
-  // Always clear previous power visuals cleanly
-  clearPower()
-  // clearPower nulls activePower — restore wings/shield already handled
-
   const fx = activeUpgradeEffects
   const duration = getPowerDuration({
     kind,
     baseDuration: meta.duration,
     shieldDurationMul: fx.shieldDurationMul,
   }).duration
+  // Catching the same power again used to wipe its remaining timer through
+  // clearPower() — a strictly worse outcome for a lucky grab. Same-kind now
+  // tops the timer back to full; switching kinds still replaces (one power
+  // slot keeps the HUD sane) but refunds meters for lost time.
+  const pickup = resolvePowerPickup({ currentKind: activePower?.kind ?? null, nextKind: kind })
+  if (pickup.mode === 'refresh' && activePower) {
+    activePower.timeLeft = duration
+    activePower.duration = Math.max(activePower.duration, duration)
+    distance += pickup.refundMeters
+    audio.powerUp(kind)
+    if (settings.haptics) Haptic.collect()
+    powerFill.style.width = '100%'
+    powerBanner.textContent = `${meta.label} refreshed · +${pickup.refundMeters}m`
+    powerBannerKind = 'power'
+    powerBanner.classList.remove('hidden')
+    bannerTimer = 1.6
+    showFlightFeedback('POWER REFRESHED', 'power', 1.0)
+    spawnConfetti(planeX, planeY, 0, 'fever')
+    runStats.powers++
+    track('power_refresh', { kind })
+    return
+  }
+
+  // Always clear previous power visuals cleanly
+  clearPower()
+  // clearPower nulls activePower — restore wings/shield already handled
+
   activePower = { kind, timeLeft: duration, duration }
+  if (pickup.mode === 'replace') {
+    // Small consolation for the timer the swapped-out power had left.
+    distance += pickup.refundMeters
+    showFlightFeedback(`SWAP · +${pickup.refundMeters}m`, 'power', 0.9)
+  }
   audio.powerUp(kind)
   if (settings.haptics) Haptic.power()
   powerLabel.textContent = meta.label
@@ -3670,7 +3846,9 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
   currentGroundUrl = url
   const tex = loadTex(url)
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-  tex.repeat.set(4, 30)
+  // Keep the density set on the tiles so zone crossfades don't snap back to
+  // the old coarse repeat and blur the painted detail.
+  tex.repeat.set(6, 46)
   ground.material.map = tex
   ground.material.color.setHex(tint)
   ground.material.needsUpdate = true
@@ -3679,8 +3857,10 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
 function applyNightReadability(enabled) {
   const night = Boolean(enabled)
   document.documentElement.dataset.night = night ? '1' : '0'
-  hemi.intensity = night ? 1.55 : 1.15
-  sun.intensity = night ? 1.7 : 1.35
+  // Day base matches the tuned hemi/sun constants; night lifts them for
+  // readable silhouettes against the darker zones.
+  hemi.intensity = night ? 1.55 : 0.92
+  sun.intensity = night ? 1.7 : 1.25
   sun.color.setHex(night ? 0xffe9b8 : 0xfff0e0)
   for (const mat of buildingMats) {
     mat.emissive.setHex(night ? 0x3a3358 : 0x000000)
@@ -3761,6 +3941,21 @@ function updateEndlessTier() {
   notifications.show(`${next.name} — ${next.modifier.blurb}`, { duration: 3600 })
   audio.setAltitudeTier(next.tier)
   audio.zoneTransition()
+  // A tier climb now drops a short arc of golden stars (5★ each) along the
+  // guaranteed gap — deep runs get a visible payday instead of only numbers.
+  const laneX = activePassageGap.center
+  for (let i = 0; i < 3; i++) {
+    const g = createStar({ golden: true })
+    g.position.set(
+      THREE.MathUtils.clamp(laneX + (i - 1) * 1.1, -MAX_X, MAX_X),
+      7.5 + ((i * 2.7) % 7.5),
+      58 + i * 10,
+    )
+    scene.add(g)
+    entities.push({
+      mesh: g, type: 'star', radius: 1.2, golden: true, value: GOLDEN_STAR_VALUE, telegraph: true,
+    })
+  }
 }
 
 function updateSkyFade(dt) {
@@ -3797,6 +3992,10 @@ function resetGame() {
   const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
   clearPower()
+  hazardClock = 0
+  slowmoActive = false
+  lastRewardTag = null
+  document.getElementById('slow-fx')?.classList.remove('slowmo-active')
   flightFeedbackTimer = 0
   flightFeedbackEl?.classList.add('hidden')
   updateMagnetPullFeedback(null, { active: false })
@@ -3838,7 +4037,7 @@ function resetGame() {
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
   journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
@@ -3858,7 +4057,6 @@ function resetGame() {
   currentZoneLap = 0
   bossActive = false
   bossRecoveryUntil = 0
-  activePassageLane = null
   activePassageGap = { center: 0, width: 3 }
   lastGapCenter = 0
   bossCount = 0
@@ -3935,7 +4133,7 @@ function resetGame() {
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
-  camera.position.set(0, planeY + CAM_HEIGHT, -9)
+  camera.position.set(0, planeY + CAM_HEIGHT, -8)
   camera.lookAt(0, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
   ground.position.z = 120
   currentSkyUrl = ''
@@ -3974,11 +4172,13 @@ function resetGame() {
     }
   }
 
-  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 4 : 8
+  // Bigger, spread cushions give the open sky depth without a fog cost —
+  // they parallax at 0.35x world speed so altitude still reads.
+  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 8 : 16
   for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
-    cl.position.set((rng() - 0.5) * 55, 12 + rng() * 18, 20 + rng() * 180)
-    cl.scale.setScalar(1.2 + rng() * 1.8)
+    cl.position.set((rng() - 0.5) * 85, 9 + rng() * 22, 45 + rng() * 185)
+    cl.scale.setScalar(3.4 + rng() * 4.6)
     scene.add(cl)
     clouds.push(cl)
   }
@@ -4308,6 +4508,12 @@ function syncPauseUi() {
   if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
   const muteLabel = $('pause-mute')
   if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
+  // Desk AR is a flight-only control; the install shortcut belongs to the menus.
+  $('ar-btn')?.classList.toggle('hidden', !showPauseControl)
+  const installEl = $('install-btn')
+  if (installEl) {
+    installEl.classList.toggle('hidden', showPauseControl || !installEl.hasAttribute('data-install-eligible'))
+  }
 }
 
 function applyPauseState({ banner = true } = {}) {
@@ -4424,6 +4630,10 @@ function showMenu() {
   state = 'menu'
   launchChallenge = null
   manualPause = false
+  // Quitting mid-gust/mid-bullet-time must not freeze weather artifacts
+  // behind the menu — update() no longer drives these once state leaves play.
+  for (const s of windStreaks) s.visible = false
+  document.getElementById('slow-fx')?.classList.remove('slowmo-active')
   hideAllPanels()
   pauseOverlay?.classList.add('hidden')
   pauseBtn?.classList.add('hidden')
@@ -4744,7 +4954,7 @@ function die(reason) {
     _damageOrigColor.copy(planeBodyMat.color)
     applyRescuePop()
     // flash shield pop
-    spawnConfetti(planeX, planeY, 1)
+    spawnConfetti(planeX, planeY, 1, 'route')
     if (shieldBubble) shieldBubble.visible = false
     return
   }
@@ -4799,6 +5009,8 @@ function die(reason) {
   fovPunch = isWin ? 0 : -6
   showStick(false)
   clearPower()
+  // Freeze the weather with the world: no streaks hanging mid-gust.
+  for (const s of windStreaks) s.visible = false
   showFlightFeedback(isWin ? 'ROUTE COMPLETE' : 'PAPER CRASH', isWin ? 'route' : 'hazard', isWin ? 1.5 : 1.1)
   pulseFlightImpact(isWin ? 'route' : 'hazard')
 
@@ -4807,8 +5019,9 @@ function die(reason) {
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
-    spawnConfetti(planeX, planeY, 0)
-    spawnConfetti(planeX, planeY + 0.5, 1)
+    spawnConfetti(planeX, planeY, 0, 'aero')
+    spawnConfetti(planeX, planeY + 0.6, 0.4, 'aero')
+    spawnConfetti(planeX, planeY + 1.1, 0.9, 'aero')
     // paper burst velocity
     velX = (rng() - 0.5) * 20
     velY = 6 + rng() * 4
@@ -5063,6 +5276,8 @@ function finalizeDeathUnsafe() {
     powers: runStats.powers,
     winds: runStats.winds,
     popped: runStats.popped,
+    gauntlets: runStats.gauntlets ?? 0,
+    threads: runStats.threads ?? 0,
     mode: difficulty.id,
     daily: runKind === 'daily',
   })
@@ -5283,7 +5498,7 @@ function updateGroundSkim(dt) {
   }
 }
 
-function scrollWorld(move) {
+function scrollWorld(move, lateralDrift = 0) {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
     e.mesh.position.z -= move
@@ -5305,6 +5520,9 @@ function scrollWorld(move) {
   const pos = dust.geometry.attributes.position
   for (let i = 0; i < dustCount; i++) {
     pos.array[i * 3 + 2] -= move * 0.55
+    // A blowing gust leans the ambient dust with it — cheap but convincing
+    // weather cue that rides the same field instead of new geometry.
+    if (lateralDrift) pos.array[i * 3] = THREE.MathUtils.clamp(pos.array[i * 3] + lateralDrift, -22.5, 22.5)
     if (pos.array[i * 3 + 2] < -10) {
       pos.array[i * 3 + 2] = 200
       pos.array[i * 3] = (Math.random() - 0.5) * 45
@@ -5318,7 +5536,7 @@ function animateHazards(dt) {
   for (const e of entities) {
     if (e.journeyMotion) {
       const motion = e.journeyMotion
-      e.mesh.position.x = motion.originX + Math.sin(elapsed * motion.speed) * motion.amplitude * motion.direction
+      e.mesh.position.x = motion.originX + Math.sin(hazardClock * motion.speed) * motion.amplitude * motion.direction
     }
     if (e.type === 'bird') {
       const u = e.mesh.userData
@@ -5339,7 +5557,7 @@ function animateHazards(dt) {
       if (u.pattern && u.anchorX !== undefined && !e.journeyMotion) {
         const offset = resolveHazardOffset({
           pattern: u.pattern,
-          elapsed,
+          hazardClock,
           phase: u.phase,
           speed: u.motionSpeed,
           amplitudeX: u.amplitudeX,
@@ -5348,7 +5566,7 @@ function animateHazards(dt) {
         e.mesh.position.x = u.anchorX + offset.x
         e.mesh.position.y = u.anchorY + offset.y
         const roll = resolveHazardRoll({
-          pattern: u.pattern, elapsed, phase: u.phase, speed: u.motionSpeed,
+          pattern: u.pattern, hazardClock, phase: u.phase, speed: u.motionSpeed,
         })
         if (u.pattern === 'tumble') e.mesh.rotation.z = roll
         else if (u.billboard && u.pattern === 'orbit') u.billboard.rotation.z = roll
@@ -5362,7 +5580,7 @@ function animateHazards(dt) {
     if (e.type === 'power') {
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
       if (e.mesh.userData.glow) {
-        e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(elapsed * 5 + e.mesh.position.z) * 0.06
+        e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(hazardClock * 5 + e.mesh.position.z) * 0.06
       }
       if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
     }
@@ -5372,9 +5590,17 @@ function animateHazards(dt) {
     }
     const outline = e.mesh.userData.lethalOutline
     if (outline && (e.type === 'bird' || e.type === 'scissors')) {
-      const near = e.mesh.position.z < 28
+      // Start ringing earlier (z<36) so the approach reads as pressure; the
+      // shared glow mesh mirrors the pulse without a second draw call.
+      const near = e.mesh.position.z < 36
+      const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
       outline.visible = near
-      outline.material.opacity = near ? 0.55 + Math.sin(elapsed * 10) * 0.25 : 0
+      outline.material.opacity = pulse
+      const glow = e.mesh.userData.lethalGlow
+      if (glow) {
+        glow.visible = near
+        glow.material.opacity = pulse * 0.38
+      }
     }
     if (e.type === 'boss') {
       const u = e.mesh.userData
@@ -5459,7 +5685,7 @@ function animateHazards(dt) {
       if (safeRing) {
         safeRing.position.y = u.gapY
         // Soft pulse on the portal fill / frame without rescaling collision size.
-        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(elapsed * 7) * 0.02
+        const pulse = encounter?.motionAllowed === false ? 1 : 1 + Math.sin(hazardClock * 7) * 0.02
         safeRing.scale.set(pulse, pulse, 1)
       }
     }
@@ -5473,13 +5699,13 @@ function animateHazards(dt) {
   }
   for (let i = confetti.length - 1; i >= 0; i--) {
     const c = confetti[i]
+    if (!c.visible) continue
     c.userData.life -= dt
     c.position.addScaledVector(c.userData.v, dt)
     c.userData.v.y -= 8 * dt
     c.rotation.x += dt * 5
     if (c.userData.life <= 0) {
-      scene.remove(c)
-      confetti.splice(i, 1)
+      c.visible = false
     }
   }
 }
@@ -5501,7 +5727,8 @@ function registerNearMiss(kind = null) {
   if (tier) comboHud.classList.add(tier)
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
   comboHud.classList.add('combo-pulse')
-  comboFloat.textContent = describeNearMissFloat(combo)
+  const nearMissPay = 5 * combo * 0.25 * (feverActive ? 2 : 1)
+  comboFloat.textContent = `${describeNearMissFloat(combo)} · +${nearMissPay}m`
   comboFloat.classList.remove('fever-float')
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
@@ -5513,7 +5740,7 @@ function registerNearMiss(kind = null) {
   Haptic.nearMiss()
   const bursts = nearMissConfettiBursts(combo)
   for (let i = 0; i < bursts; i += 1) spawnConfetti(planeX, planeY + i * 0.25, 2 - i)
-  distance += 5 * combo * 0.25
+  distance += nearMissPay
   // Small camera punch that grows with the streak — bigger chains feel bigger.
   if (!settings.reducedMotion) shake = Math.max(shake, nearMissShakeAmount(combo))
   if (shouldTriggerFever({
@@ -5542,7 +5769,7 @@ function triggerFever() {
   audio.fever()
   Haptic.power()
   for (const offset of feverConfettiOffsets()) {
-    spawnConfetti(planeX, planeY + offset.y, offset.z)
+    spawnConfetti(planeX, planeY + offset.y, offset.z, 'fever')
   }
   runStats.fevers = (runStats.fevers || 0) + 1
   addLifetimeFever(1)
@@ -5572,7 +5799,7 @@ function registerStarStreak() {
     starsEl.textContent = String(stars)
     audio.starStreak(pickup.count / 5)
     if (settings.haptics) Haptic.collect()
-    spawnConfetti(planeX, planeY, 1)
+    spawnConfetti(planeX, planeY, 1, 'gold')
     powerBannerKind = 'power'
     powerBanner.textContent = pickup.banner
     powerBanner.classList.remove('hidden')
@@ -5584,6 +5811,12 @@ function registerStarStreak() {
 
 function update(dt) {
   elapsed += dt
+  const slowmo = activePower?.kind === 'slow'
+  if (slowmo !== slowmoActive) {
+    slowmoActive = slowmo
+    document.getElementById('slow-fx')?.classList.toggle('slowmo-active', slowmo)
+  }
+  hazardClock += slowmo ? dt * SLOWMO_WORLD_SCALE : dt
   updateGroundLife(elapsed)
   if (flightFeedbackTimer > 0) {
     flightFeedbackTimer -= dt
@@ -5808,13 +6041,32 @@ function update(dt) {
       feverHud?.classList.add('hidden')
     }
   }
+  // Golden paper: the plane glows while Fever burns — reset the instant it ends.
+  if (feverActive) {
+    const feverPulse = 0.3 + (Math.sin(elapsed * 9) + 1) * 0.18
+    planeBodyMat.emissive.setHex(0x8a4d00)
+    planeBodyMat.emissiveIntensity = feverPulse
+    planeAccentMat.emissive.setHex(0xff8c00)
+    planeAccentMat.emissiveIntensity = feverPulse * 0.9
+  } else if (planeBodyMat.emissiveIntensity !== 0) {
+    planeBodyMat.emissive.setHex(0x000000)
+    planeBodyMat.emissiveIntensity = 0
+    planeAccentMat.emissive.setHex(0x3d1a10)
+    planeAccentMat.emissiveIntensity = 0.18
+  }
 
   // Adaptive music: brighter/quicker as speed climbs and near-miss combo builds.
+  // Fever pins the bed wide open — the score burst should sound like one too.
   const speedFactor = THREE.MathUtils.clamp(
     (speed - difficulty.speedBase) / Math.max(1, difficulty.speedCap - difficulty.speedBase), 0, 1,
   )
   const comboFactor = Math.min(1, combo / 6)
-  audio.setIntensity(speedFactor * 0.55 + comboFactor * 0.55)
+  const bossPressure = entities.some(
+    (e) => e.type === 'boss' && !e.cleared && e.mesh.position.z > -2 && e.mesh.position.z < 40,
+  )
+  audio.setIntensity(feverActive || bossPressure
+    ? 1
+    : Math.min(1, speedFactor * 0.55 + comboFactor * 0.55))
 
   let inputX = 0
   let inputY = 0
@@ -5891,6 +6143,8 @@ function update(dt) {
     if (settings.haptics) Haptic.wind()
     runStats.winds++
   }
+  // Gust weather: streaks stream with the push while it blows.
+  updateWindStreaks(dt, windPushX, speed)
 
   const ufx = activeUpgradeEffects
   const activeControlMode = mouseMode
@@ -6067,7 +6321,9 @@ function update(dt) {
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
-    speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.55))
+    // The streak art is deliberately faint; the old 0.55 ceiling stacked with
+    // it into solid white beams across the play field.
+    speedFxEl.style.opacity = String(THREE.MathUtils.clamp(over / range, 0, 0.3))
   }
   const approachingBoss = entities.find((entity) => entity.type === 'boss' && !entity.cleared)
   const bossZ = approachingBoss?.mesh.position.z
@@ -6080,7 +6336,10 @@ function update(dt) {
     planeY += (assistY - planeY) * Math.min(1, dt * 2.4)
   }
   updateGroundSkim(dt)
-  const move = speed * dt * getBossApproachSpeedScale({ bossZ })
+  // Bullet-time: slow-mo dilates how fast the world streams past and how
+  // hazards move (via hazardClock), while plane controls stay at full rate —
+  // you think faster than the world for six seconds.
+  const move = speed * dt * getBossApproachSpeedScale({ bossZ }) * (slowmo ? SLOWMO_WORLD_SCALE : 1)
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
@@ -6111,23 +6370,32 @@ function update(dt) {
     pos.needsUpdate = true
   } else if (trail) trail.visible = false
 
-  // Ambient wisp trail — subtle always-on speed cue, skipped in low-power mode
+  // Ambient wisp trail — wingtip streamers, skipped in low-power mode
   const wisp = scene.getObjectByName('ambientWisp')
   if (wisp && renderQuality.secondaryEffects && speed > cfg.speedBase * 1.15) {
     wisp.visible = true
     for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])
-    wispPts[0].set(planeX + (Math.random() - 0.5) * 0.5, planeY - 0.15 + (Math.random() - 0.5) * 0.2, -0.8 - Math.random() * 0.6)
+    // Streamers peel off alternating wingtips so both sides read at speed.
+    wispSide *= -1
+    const span = (activeUpgradeEffects.planeScale || 1) * 1.12
+    wispPts[0].set(planeX + wispSide * 0.95 * span, planeY - 0.05 - Math.random() * 0.15, -0.7 - Math.random() * 0.5)
     const wpos = wisp.geometry.attributes.position
     for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
     wpos.needsUpdate = true
-    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.3)
+    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
   } else if (wisp) wisp.visible = false
 
-  // Funnel milestones
+  // Funnel milestones — the big ones get a small in-world celebration so the
+  // odometer crossing reads as an event, not just analytics.
   for (const m of [50, 100, 200, 500, 1000]) {
     if (distance >= m && !distanceMilestones.has(m)) {
       distanceMilestones.add(m)
       track(`distance_${m}`, { mode: difficulty.id, kind: runKind })
+      if (m >= 500) {
+        spawnConfetti(planeX, planeY + 0.4, 1, 'gold')
+        showFlightFeedback(`${m}m!`, 'route', 0.9)
+        pulseFlightImpact('route')
+      }
     }
   }
 
@@ -6258,7 +6526,7 @@ function update(dt) {
   checkTutorialHints(dt)
 
   // Camera: pull back slightly during boost
-  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -11 : -9
+  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10 : -8
   const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
@@ -6266,16 +6534,27 @@ function update(dt) {
   camera.position.x += (_camTarget.x - camera.position.x) * lateralEase
   camera.position.z += (_camTarget.z - camera.position.z) * lateralEase
   camera.position.y += (_camTarget.y - camera.position.y) * verticalEase
-  camera.lookAt(planeX * 0.2, planeY + CAM_AIM_LIFT, CAM_AIM_Z)
+  const leanX = THREE.MathUtils.clamp(velX * 0.38, -4.2, 4.2)
+  const leanY = THREE.MathUtils.clamp(velY * 0.3, -3.2, 3.2)
+  camera.lookAt(planeX * 0.2 + leanX, planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
     camera.position.x += (Math.random() - 0.5) * shake * 0.45
     camera.position.y += (Math.random() - 0.5) * shake * 0.25
   }
+  // Contact shadow tracks the plane's lane; it tightens and fades with
+  // altitude so height stays readable against the patterned ground.
+  const shadowUp = THREE.MathUtils.clamp(planeY / MAX_Y, 0, 1)
+  planeShadow.visible = state === 'playing'
+  planeShadow.position.x = planeX
+  planeShadow.position.z = 0
+  const shadowScale = 1.15 - shadowUp * 0.6
+  planeShadow.scale.setScalar(shadowScale)
+  planeShadow.material.opacity = 0.34 - shadowUp * 0.2
   audio.setFlightWind(Math.min(1, speed / 70))
 
-  scrollWorld(move)
-  animateHazards(dt)
+  scrollWorld(move, windPushX * dt * 0.5)
+  animateHazards(slowmo ? dt * SLOWMO_WORLD_SCALE : dt)
   updateFlightReadability(zp)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
@@ -6375,15 +6654,30 @@ function update(dt) {
         planeRadius: PLANE_COLLISION_RADIUS,
       }).catchRadius * (e.telegraph || shouldTelegraphStarLane(distance) ? 1.18 : 1)
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
-        stars++
+        // Star value rides the run's own risk systems: fever and ground-skim
+        // tiers multiply the meter bonus, golden drops pay 5★.
+        const pickup = resolveStarPickup({
+          golden: Boolean(e.golden),
+          feverActive,
+          skimTier: groundSkim.tier,
+          baseMeters: STAR_BASE_METERS * (activeTwist?.starMeterMul ?? 1),
+        })
+        stars += pickup.stars
         if (journeyTelemetry) journeyTelemetry.collectedJourneyStars += 1
         runStats.stars = stars
         starsEl.textContent = String(stars)
-        distance += 18
-        audio.collectStar()
-        if (settings.haptics) Haptic.collect()
-        showFlightFeedback('STAR +1 · +18m', 'star', 0.72)
-        spawnConfetti(m.position.x, m.position.y, m.position.z)
+        distance += pickup.meters
+        if (pickup.golden) {
+          audio.starStreak(1)
+          if (settings.haptics) Haptic.power()
+          hitStopTimer = Math.max(hitStopTimer, 0.05)
+          pulseFlightImpact('star')
+        } else {
+          audio.collectStar()
+          if (settings.haptics) Haptic.collect()
+        }
+        showFlightFeedback(pickup.label, 'star', pickup.golden ? 1.15 : 0.72)
+        spawnConfetti(m.position.x, m.position.y, m.position.z, pickup.golden ? 'gold' : 'classic')
         registerStarStreak()
         scene.remove(m)
         entities.splice(i, 1)
@@ -6412,6 +6706,36 @@ function update(dt) {
         spawnConfetti(m.position.x, m.position.y, m.position.z)
         scene.remove(m)
         entities.splice(i, 1)
+      }
+      continue
+    }
+
+    // Gauntlet tripwire — resolves even during invuln so a grace window
+    // can't eat the payoff for a clean run through the promised lane.
+    if (e.type === 'gauntlet') {
+      if (!e.cleared && m.position.z < -1.2) {
+        e.cleared = true
+        const reward = resolveGauntletReward({
+          inLane: isInsideGauntletLane({ playerX: p.x, laneX: e.gauntletLaneX }),
+        })
+        if (reward) {
+          stars += reward.stars
+          runStats.stars = stars
+          starsEl.textContent = String(stars)
+          distance += reward.bonusMeters
+          runStats.gauntlets = (runStats.gauntlets || 0) + 1
+          lastRewardTag = 'gauntlet'
+          hitStopTimer = Math.max(hitStopTimer, 0.06)
+          audio.gateClear()
+          if (settings.haptics) Haptic.collect()
+          spawnConfetti(p.x, planeY, 1, 'gold')
+          showFlightFeedback(reward.label, 'star', 1.3)
+          pulseFlightImpact('star')
+          powerBanner.textContent = `⚡ Gauntlet cleared · +${reward.stars}★`
+          powerBanner.classList.remove('hidden')
+          bannerTimer = Math.max(bannerTimer, 1.6)
+          track('gauntlet_clear', { distance: Math.floor(distance) })
+        }
       }
       continue
     }
@@ -6463,7 +6787,7 @@ function update(dt) {
             audio.missionComplete()
             if (settings.haptics) Haptic.collect()
             invuln = Math.max(invuln, reward.invulnSeconds)
-            spawnConfetti(planeX, planeY, 2)
+            spawnConfetti(planeX, planeY, 2, 'route')
             showFlightFeedback(`GATE CLEARED · +${reward.stars}★`, 'route', 1.6)
             pulseFlightImpact('route')
             audio.gateClear()
@@ -6520,6 +6844,29 @@ function update(dt) {
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
           registerNearMiss()
+        }
+      }
+      // Thread-the-gap: the first of a marked tight pair to pass behind the
+      // plane resolves the corridor ONCE (both towers share one corridor
+      // object whose `paid` flag guards the payout).
+      if (e.thread && !e.thread.paid && m.position.z < -1.2) {
+        e.thread.paid = true
+        const threaded = isInsideThreadGap({
+          playerX: p.x,
+          playerY: p.y,
+          minX: e.thread.minX,
+          maxX: e.thread.maxX,
+          maxY: e.thread.maxY,
+        })
+        if (threaded) {
+          distance += THREAD_REWARD_METERS
+          runStats.threads = (runStats.threads || 0) + 1
+          lastRewardTag = 'thread'
+          audio.hoopWhoosh()
+          spawnConfetti(p.x, planeY, 0.5, 'route')
+          showFlightFeedback(`THREADED THE GAP · +${THREAD_REWARD_METERS}m`, 'route', 1.1)
+          pulseFlightImpact('route')
+          track('thread_gap', { distance: Math.floor(distance) })
         }
       }
       continue
@@ -6611,6 +6958,7 @@ requestAnimationFrame(frame)
 try {
   resetGame()
   state = 'menu'
+  syncPauseUi()
   applySeasonVisuals()
   if (!tutorialDone && dailyHint) {
     dailyHint.textContent = 'New here? Try Tutorial — then Daily Route!'
@@ -6722,6 +7070,7 @@ window.render_game_to_text = () => JSON.stringify({
     : null,
   distance: Math.floor(distance),
   stars,
+  lastReward: lastRewardTag,
   // Velocity and bank are part of the debug surface because the plane now has
   // momentum: position alone no longer says where it is about to be, which is
   // what any test (or autopilot) steering it has to reason about.
@@ -6731,6 +7080,13 @@ window.render_game_to_text = () => JSON.stringify({
     velX: Number(velX.toFixed(2)),
     velY: Number(velY.toFixed(2)),
     bank: Number(bankState.bank.toFixed(3)),
+  },
+  power: activePower
+    ? { kind: activePower.kind, timeLeft: Math.round(activePower.timeLeft * 10) / 10 }
+    : null,
+  banners: {
+    zone: zoneBannerTimer > 0 ? zoneBanner.textContent : null,
+    action: bannerTimer > 0 ? powerBanner.textContent : null,
   },
   plane: {
     skinId: activePlaneSkinId,
@@ -6778,8 +7134,6 @@ window.render_game_to_text = () => JSON.stringify({
     })),
   },
   fairness: {
-    passageLane: activePassageLane,
-    passageLaneX: activePassageLane === null ? null : PASSAGE_LANE_X[activePassageLane + 1],
     passageGapX: Number(activePassageGap.center.toFixed(2)),
     passageGapWidth: Number(activePassageGap.width.toFixed(2)),
     airDamageRadius: Number(getObstacleDamageRadius({ entityRadius: 1.6, planeRadius: PLANE_COLLISION_RADIUS }).toFixed(3)),
@@ -6803,6 +7157,7 @@ window.render_game_to_text = () => JSON.stringify({
         y: Number(entity.mesh.position.y.toFixed(2)),
         z: Number(entity.mesh.position.z.toFixed(2)),
         telegraph: Boolean(entity.telegraph),
+        golden: Boolean(entity.golden),
       })),
   },
   upgrades: upgradeRuntimeTextState(),
@@ -7056,6 +7411,115 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   simulationPaused = true
 }
 
+if (import.meta.env.DEV && devTestState === '#test-tier-climb') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  distance = 985
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-gauntlet-payoff') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  spawnMiniGauntlet(45)
+  // Commit to the advertised gap so the tripwire pays when it passes.
+  const laneX = activePassageGap.center
+  planeX = laneX
+  planeY = 9
+  mouseTarget.x = laneX
+  mouseTarget.y = 9
+  plane.position.set(planeX, planeY, 0)
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
+  // Control variant rides the real query string (?nothread=1#test-thread-gap)
+  const control = devThreadControl
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  // No invuln here on purpose: the payoff lives inside the collideable
+  // building branch, and with spawns parked this scene has zero lethal hazards.
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  // Park the gap promise far from the corridor so a tier-climb golden drop
+  // can never drift into the plane and inject seed-dependent pickups.
+  activePassageGap = { center: 0, width: 3 }
+  // Twin towers with a 5-unit inner-face slot — the widest gap that still
+  // counts as a thread. Control run (?nothread) skips the tag only, keeping
+  // the RNG stream identical so totals differ by exactly the reward.
+  const makeTower = (x) => {
+    const b = createBuilding(3, 10, 3, buildingMats[0])
+    b.position.set(x, 0, 30)
+    scene.add(b)
+    return b
+  }
+  makeTower(-4)
+  makeTower(4)
+  const corridor = control ? null : { minX: -2.5, maxX: 2.5, maxY: 10, paid: false }
+  const towerEntity = (mesh) => ({
+    mesh,
+    type: 'building',
+    radius: 1.5,
+    halfH: 10,
+    passageGapX: null,
+    ...(corridor ? { thread: corridor } : {}),
+  })
+  entities.push(towerEntity(scene.children.at(-2)))
+  entities.push(towerEntity(scene.children.at(-1)))
+  // y=9 keeps the whole flight above the skim ceiling so ground-skim banking
+  // can't inject variable distance bonuses between the two variants.
+  planeX = 0
+  planeY = 9
+  mouseTarget.x = 0
+  mouseTarget.y = 9
+  plane.position.set(planeX, planeY, 0)
+  hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-power-refresh') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = 1e9 // fully park the spawn pump for this proof
+  windTimer = 999
+  elapsed = 2
+  launchGraceSeconds = 0
+  hudEl?.classList.remove('hidden')
+  activatePower('magnet')
+  advanceTime(1500)
+  // Drain ~1.5s off the timer, then catch the same kind again: the refresh
+  // path must top the timer back to full instead of restarting through
+  // clearPower(). render_game_to_text().power exposes the proof.
+  activatePower('magnet')
+  simulationPaused = true
+}
+
 if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {
   const zoneId = devTestState.slice('#test-journey-'.length)
   const stepIndex = ['city', 'harbor', 'storm', 'aurora'].indexOf(zoneId)
@@ -7079,6 +7543,32 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
 })
+
+if (import.meta.env.DEV) {
+  // Deterministic visual debugging: mirrors the live pose of the SAME
+  // instance that owns window.advanceTime, so probes can never race or
+  // double-boot the engine. Freeze holds the sim while a frame renders,
+  // so captures can't race the invuln blink.
+  window.__paperPose = () => ({
+    planePos: plane?.position.toArray(),
+    planeScale: plane?.scale.x,
+    planeVisible: plane?.visible,
+    camPos: camera.position.toArray(),
+    shadowVisible: planeShadow.visible,
+    shadowScale: planeShadow.scale.x,
+    unfold: spawnUnfold,
+    state,
+    groundUrl: currentGroundUrl,
+    groundMapLoaded: ground?.material?.map?.image ? true : false,
+    groundMapWidth: ground?.material?.map?.image?.width ?? null,
+    groundColor: ground?.material?.color?.getHex?.() ?? null,
+    skyUrl: currentSkyUrl,
+  })
+  window.__paperFreeze = (frozen) => {
+    simulationPaused = Boolean(frozen)
+    return window.__paperPose()
+  }
+}
 
 engineInstance = {
   startMode: startGame,
