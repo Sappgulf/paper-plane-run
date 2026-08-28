@@ -78,18 +78,33 @@ test.describe('gameplay systems regression', () => {
       // two URLs differing only by a hash would reuse the running engine.
       await openApp(page, `/${query}`)
       await waitForGameText(page)
-      const samples = await drive(page, { slices: 8, msPerSlice: 250 })
-      return samples.at(-1)
+      return drive(page, { slices: 8, msPerSlice: 250 })
     }
-    // The control skips only the corridor tag; everything else (seed, towers,
-    // inputs) matches. Cruise speed feeds back into distance accrual, so the
-    // total drifts a little between runs — the reward tag plus a clearly
-    // positive delta is the honest integration proof.
-    const threaded = await flyThrough('?run=tagged#test-thread-gap')
-    const control = await flyThrough('?nothread=1&run=control#test-thread-gap')
+
+    // The bonus is measured *inside* one run, as the jump in the slice where it
+    // lands, rather than by comparing two runs' totals. The runs free-run on
+    // rAF between navigation and the first driven slice, so they never accrue
+    // exactly the same amount of untimed flight — and since cruise speed now
+    // rides on how fast the plane is descending, that drift can exceed the
+    // reward itself and swamp the very thing being measured.
+    const threadedSamples = await flyThrough('?run=tagged#test-thread-gap')
+    const threaded = threadedSamples.at(-1)
     expect(threaded.lastReward).toBe('thread')
+
+    const deltas = threadedSamples.map((sample, index) => (
+      index === 0 ? null : sample.distance - threadedSamples[index - 1].distance
+    ))
+    const payoutIndex = threadedSamples.findIndex((sample, index) => (
+      index > 0 && sample.lastReward === 'thread' && threadedSamples[index - 1].lastReward !== 'thread'
+    ))
+    expect(payoutIndex, 'no slice recorded the thread payout').toBeGreaterThan(0)
+    // Cruise-only slices set the baseline the payout slice has to clear.
+    const cruise = deltas.filter((delta, index) => delta !== null && index !== payoutIndex)
+    const baseline = cruise.reduce((sum, delta) => sum + delta, 0) / cruise.length
+    expect(deltas[payoutIndex] - baseline).toBeGreaterThan(15)
+
+    const control = (await flyThrough('?nothread=1&run=control#test-thread-gap')).at(-1)
     expect(control.lastReward ?? null).toBeNull()
-    expect(threaded.distance - control.distance).toBeGreaterThan(5)
   })
 
   test('duplicate power orb refreshes the timer to full instead of wiping it', async ({ page }, testInfo) => {
