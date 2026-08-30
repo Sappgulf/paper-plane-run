@@ -177,6 +177,7 @@ import {
   requiredGapWidth,
   CORRIDOR_HALF_WIDTH,
 } from './game/gap-weave.js'
+import { planDeckLane } from './game/deck-lane.js'
 import {
   advanceFeverState,
   createFeverState,
@@ -3182,6 +3183,57 @@ function spawnChunk(z) {
     })
   }
 
+  // The deck lane. Every hazard above spawns at y >= 4.4, which left the
+  // ground-effect band — the one place `ground-skim.js` calls the sharpest
+  // risk in the game — with nothing in it at all. These sit inside that band,
+  // placed against this wave's guaranteed gap like everything else, so the
+  // cushion is still flyable and no longer free. See game/deck-lane.js.
+  // Not in the Journey: its legs end at an authored 350m or 500m, so the
+  // unbounded low-altitude parking this closes cannot happen there, and a lane
+  // that only starts at 240m would land entirely on top of the authored
+  // encounter that leg exists for.
+  if (!recovering && !early && runKind !== 'journey') {
+    const deck = planDeckLane({
+      random: rng,
+      distance,
+      tier: tier.tier,
+      gap: cfg.gap,
+    })
+    for (const height of deck.heights) {
+      const def = pickFlyerKind()
+      const flyer = createFlyer(def.id)
+      const anchorX = safeAirX(5 * cfg.gap, def.radius)
+      flyer.position.set(anchorX, height, z + 3 + rng() * 5)
+      // Deck hazards hold their height: a vertical swing down here would put
+      // the envelope through the floor, where the run already ends.
+      flyer.userData.anchorX = anchorX
+      flyer.userData.anchorY = height
+      flyer.userData.amplitudeX = clampAmplitudeToGap({
+        requestedAmplitude: 0.6 + rng() * 0.5,
+        anchorX,
+        gapCenter: gapCenterForChunk,
+        gapWidth: gapWidthForChunk,
+        damageRadius: getObstacleDamageRadius({
+          entityRadius: def.radius,
+          planeRadius: PLANE_COLLISION_RADIUS,
+        }),
+        reach: getPatternReach(flyer.userData.pattern).x,
+      })
+      flyer.userData.amplitudeY = 0
+      flyer.userData.motionSpeed = 5.5 + rng() * 2.5
+      scene.add(flyer)
+      entities.push({
+        mesh: flyer,
+        type: 'bird',
+        flyerId: def.id,
+        label: def.label,
+        radius: def.radius,
+        deck: true,
+        passageGapX: gapCenterForChunk,
+      })
+    }
+  }
+
   const ufx = activeUpgradeEffects
   const starPlan = applyStarLaneTelegraph(planStarSpawns({
     random: rng,
@@ -5194,6 +5246,8 @@ function finalizeDeathUnsafe() {
       receiptId: journeyRunConfig.attemptId,
       pilotId: journeyRunConfig.pilotId,
       routeId: journeyRunConfig.routeId,
+      chapter: journeyRunConfig.chapter || 1,
+      stepId: journeyRunConfig.stepId || '',
       destinationId: journeyRunConfig.zone,
       completed: completedJourneyRoute,
       risky: journeyRunConfig.risk === 'risky',
@@ -7144,6 +7198,10 @@ window.render_game_to_text = () => JSON.stringify({
         y: Number(entity.mesh.position.y.toFixed(2)),
         z: Number(entity.mesh.position.z.toFixed(2)),
         radius: entity.radius,
+        // Deck-lane hazards are the ones inside the ground-effect band, so a
+        // probe can tell "the deck is contested" from "the deck is empty and
+        // this hazard merely drifted low".
+        deck: !!entity.deck,
         passageGapX: entity.passageGapX ?? null,
       })),
     // Star placement is a balance surface, not just decoration: if every star

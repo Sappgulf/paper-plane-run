@@ -144,12 +144,22 @@ describe('ground skim HUD copy', () => {
   test('stays blank until a tier lands, then counts down to the next', () => {
     expect(describeSkimHudValue(createGroundSkimState())).toBe('')
     const { state } = skimFor(SKIM_TIER_SECONDS + 0.4)
-    expect(describeSkimHudValue(state)).toMatch(/^Skim · \d\.\ds$/)
+    expect(describeSkimHudValue(state)).toMatch(/^T1 · \d\.\ds$/)
   })
 
-  test('reads MAX at the top tier instead of a countdown', () => {
+  test('reads MAX and what the tier is worth, instead of a countdown', () => {
     const { state } = skimFor(SKIM_TIER_SECONDS * (SKIM_MAX_TIER + 1))
-    expect(describeSkimHudValue(state)).toBe('GROUND EFFECT! MAX')
+    expect(describeSkimHudValue(state)).toBe('MAX · 1.4×')
+  })
+
+  // The banner keeps the celebration; the chip has to stay chip-sized, or one
+  // tier-up shoves the whole HUD row sideways mid-run.
+  test('the chip value never grows to banner length', () => {
+    for (let tier = 1; tier <= SKIM_MAX_TIER; tier += 1) {
+      const { state } = skimFor(SKIM_TIER_SECONDS * tier + 0.05)
+      expect(describeSkimHudValue(state).length).toBeLessThanOrEqual(10)
+    }
+    expect(describeSkimTier(SKIM_MAX_TIER)).toBe('GROUND EFFECT!')
   })
 })
 

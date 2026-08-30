@@ -44,7 +44,8 @@ import {
   unlockJourneyChapter,
 } from './journey-storage.js'
 import { buildPostcardShareModel, loadPostcardAlbum } from './journey-postcards.js'
-import { renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from './journey-ui.js'
+import { renderJourneyBrief, renderJourneyMap, renderPilotChoices, renderPostcardAlbum, renderPostcardDetail, renderPostcardReveal, renderRouteChoices } from './journey-ui.js'
+import { routeStory } from './journey-story.js'
 import { loadMastery } from './journey-mastery-storage.js'
 import { applyDocumentA11y, loadSettings, saveSettings } from './settings.js'
 import { seasonInfo } from './seasonal.js'
@@ -336,6 +337,7 @@ function renderJourney() {
     startJourneyChapter(1)
   }
   renderJourneyMap($('journey-map'), journey)
+  renderJourneyBrief($('journey-brief'), journey)
   renderPilotChoices($('journey-pilots'), journey, getJourneyStampCount(), (pilotId) => {
     journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
     saveJourney(localStorage, journey)
@@ -381,6 +383,12 @@ function renderJourney() {
   renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
     ...route,
     selected: route.id === journey.selectedRouteId,
+    story: routeStory({
+      chapter: journey.chapter || 1,
+      stepId: route.stepId,
+      risk: route.risk,
+      pilotId: journey.pilotId,
+    }),
     objective: buildRunConfiguration({ ...journey, selectedRouteId: route.id })?.objective,
   })), (routeId) => {
     journey = selectJourneyRoute(journey, routeId)

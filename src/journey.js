@@ -182,6 +182,7 @@ export function buildRunConfiguration(journey) {
     journeyId: journey.id,
     chapter: journey.chapter || 1,
     stepIndex: journey.stepIndex,
+    stepId: route.stepId,
     routeId: route.id,
     zone: route.zone,
     modifier: route.modifier,

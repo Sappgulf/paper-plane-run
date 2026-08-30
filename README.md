@@ -38,6 +38,17 @@ falling toward the ground that now ends the run. A flare below the floor is a
 *save*: you get the climb, but none of the distance. See
 [`src/game/tuck-flare.js`](src/game/tuck-flare.js).
 
+**The deck is contested.** Ground effect cushions the plane hard enough that
+committed low flight can be *held* — which is what makes the skim band flyable
+at all, and which also meant that a plane parked in the cushion flew under the
+entire game: every airborne hazard spawned at y ≥ 4.4, side buildings sit
+outside the flyable corridor, and buildings only shove. A hands-off run reached
+32km. The deck lane puts ordinary lethal hazards inside the skim band, planned
+against the same guaranteed gap as every other wave, so the cushion stays
+flyable and stops being free. It ramps in after 240m, because a player should
+meet the cushion before they meet its price. See
+[`src/game/deck-lane.js`](src/game/deck-lane.js).
+
 ### Fairness
 
 Every wave contains at least one continuous horizontal gap wide enough for the
@@ -71,8 +82,11 @@ flying; they are simply not on screen
 
 **Chrome is sized in viewport units, not pixels.** Every size in the flight UI
 is a `clamp()` against viewport height, because the short edge is what runs out
-first. The menu collapses to two columns below 760px tall and drops its logo and
-tagline below 470px — a phone held sideways gets the buttons, not the poster.
+first. Below 760px tall the menu's setup block goes two-up and the four modes
+share one row, and below 470px it drops its logo and tagline — a phone held
+sideways gets the buttons, not the poster. The reverse holds too: given a
+desktop's width the Hangar widens and its grids go two- and three-up, rather
+than scrolling a fourteen-node tree through a 480px column.
 
 The plane and the hazards are the other half of legibility. A cream plane over
 a cream paper city was the least visible thing on screen, so it carries an
@@ -105,6 +119,7 @@ in for birds and scissors.
 | Daily seeded route + **Weekly Fold** (ISO-week seed, rotating opening sky, local + remote weekly board) |
 | Near-miss combos, Combo Fever, star streaks |
 | **Ground skim** — the low lane is the dangerous one, so holding it pays; pulling up under control cashes the chain in |
+| **Deck lane** — lethal hazards inside the ground-effect band, so the cushion is a risk you fly rather than a floor you park on |
 | **Risk pays everywhere** — hazard gauntlets bank +3★ for holding the promised gap, tight tower corridors pay a thread bonus, altitude tiers drop golden 5★ arcs, star meters ride fever + skim multipliers, duplicate power orbs refresh instead of wiping, slow-mo is real bullet-time, and wind gusts stream across the sky as weather |
 | **Zones** (City → Harbor → Storm → Sunset → Aurora → Midnight Origami), looping to a fresh lap rather than parking on the last one |
 | **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
@@ -136,6 +151,16 @@ The route editor stayed.
 ## Living Journey
 
 Choose **Begin Journey** from the main menu to start or resume a deterministic four-flight adventure. Each stop offers a safe and risky route with a visible modifier, objective, and reward multiplier. Every destination has authored arrival, escalation, and signature encounters with seeded lane and timing variation, so retries remain recognizable without rerolling.
+
+The chapter also has words. [`src/journey-story.js`](src/journey-story.js) is a
+lookup table of authored copy — a chapter premise, a briefing for the stop you
+are standing at, a line per route saying what that way through actually is, a
+line per pilot saying what they make of taking it, an arrival line on the
+results screen and a closing line on the postcard that turns on whether the
+Red Dart was beaten. It holds no state and reaches nothing, so `journey.js`
+stays a pure state machine and the prose can be rewritten without touching
+route generation. Before it, every card read out its modifier and there was no
+reason the letter had to get anywhere.
 
 **Chapter 1** runs Paper City → Harbor → Storm → Aurora (Red Dart / scissors finale). Finishing Chapter 1 unlocks **Chapter 2 · Desk After Dark**: Golden Fold → Midnight Desk → Stapler Alley → Desk Showdown (stapler gauntlet / Red Dart staple run).
 
@@ -175,8 +200,14 @@ npm test
 npm run build
 npm run verify:bundle-budget
 npm run verify:ios-parity
-npm run test:e2e:prod
+npm run test:e2e        # dev server — the only mode gameplay.spec.js can run in
+npm run test:e2e:prod   # the real production bundle; skips the dev-hook suite
 ```
+
+[`e2e/gameplay.spec.js`](e2e/gameplay.spec.js) steps the simulation with
+`window.advanceTime` and boots from `#test-*` states, both of which Vite strips
+from a production build — so it skips itself under `test:e2e:prod` rather than
+failing forty times on a missing hook. `smoke.spec.js` runs in both.
 
 In development, add `?seed=any-readable-label` to a URL to replay a classic
 or endless run with deterministic randomness; the active seed is included in

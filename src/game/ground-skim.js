@@ -136,12 +136,23 @@ export function skimReleaseDistance(tier) {
   return level * 12
 }
 
-/** HUD copy: the tier plus how close the next one is. */
+/**
+ * The chip's value is deliberately not the tier's *name*.
+ *
+ * `describeSkimTier` writes for the banner — "GROUND EFFECT!" is a celebration,
+ * eighteen characters wide with MAX on it, and in a HUD chip beside "778m" and
+ * "24" it stretched its card to four times its neighbours' width and shoved the
+ * rest of the row sideways every time a tier landed. The name still shouts, in
+ * the flight-feedback toast that fires on the tier-up. What the chip carries is
+ * the part that is still true a second later: which tier is held, and what it
+ * is currently worth.
+ */
 export function describeSkimHudValue(state) {
   const current = state || createGroundSkimState()
   if (!current.active || current.tier <= 0) return ''
-  if (current.tier >= SKIM_MAX_TIER) return `${describeSkimTier(current.tier)} MAX`
+  const multiplier = skimScoreMultiplier(current.tier).toFixed(2).replace(/0$/, '')
+  if (current.tier >= SKIM_MAX_TIER) return `MAX · ${multiplier}×`
   const into = current.seconds % SKIM_TIER_SECONDS
   const remaining = Math.max(0, SKIM_TIER_SECONDS - into)
-  return `${describeSkimTier(current.tier)} · ${remaining.toFixed(1)}s`
+  return `T${current.tier} · ${remaining.toFixed(1)}s`
 }

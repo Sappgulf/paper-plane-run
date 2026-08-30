@@ -16,6 +16,18 @@ async function drive(page, { slices, msPerSlice }) {
 }
 
 test.describe('gameplay systems regression', () => {
+  // Every test in this file drives the sim through `window.advanceTime` and
+  // boots from a `#test-*` state. Both are `import.meta.env.DEV` hooks that
+  // Vite strips from a production build, so this is a dev-server suite by
+  // construction (`npm run test:e2e`). Run under PLAYWRIGHT_PREVIEW it failed
+  // every test on a missing hook rather than on anything about the game, which
+  // made `npm run test:e2e:prod` — a documented verification step — permanently
+  // red and therefore useless as a signal.
+  test.skip(
+    process.env.PLAYWRIGHT_PREVIEW === '1',
+    'drives the sim through DEV-only advanceTime/#test-* hooks; run npm run test:e2e',
+  )
+
   test('altitude tier climb drops golden stars along the reserved lane', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
     test.slow()

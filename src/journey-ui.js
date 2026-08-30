@@ -1,4 +1,5 @@
 import { PILOTS, chapterMeta, stepsForChapter } from './journey.js'
+import { arrivalStory, chapterStory, closingStory, stepStory } from './journey-story.js'
 import { getPilotMasteryView } from './journey-mastery.js'
 import { getJourneyArtwork } from './journey-art.js'
 import { stampSpriteZone, zoneStampLabel } from './game/zone-stamps.js'
@@ -72,6 +73,29 @@ export function renderJourneyMap(root, journey) {
     </ol>`
 }
 
+/**
+ * The chapter's premise and the stop the player is actually standing at.
+ *
+ * Sits above the route cards because the choice below it only means something
+ * once you know what the letter is doing here — the cards themselves are two
+ * lines each and cannot carry the setup as well.
+ */
+export function renderJourneyBrief(root, journey) {
+  if (!root) return
+  const chapter = journey?.chapter || 1
+  const story = chapterStory(chapter)
+  const steps = stepsForChapter(chapter)
+  const step = journey?.status === 'active' ? steps[journey.stepIndex] : null
+  const stop = step ? stepStory(chapter, step.id) : null
+  root.innerHTML = `
+    <p class="journey-premise">${escapeHtml(story.premise)}</p>
+    ${stop ? `<div class="journey-stop-brief">
+      <strong>${escapeHtml(step.icon || '📍')} ${escapeHtml(stop.headline)}</strong>
+      <p>${escapeHtml(stop.brief)}</p>
+    </div>` : ''}`
+  root.classList?.remove('hidden')
+}
+
 export function renderRouteChoices(root, cards, onSelect) {
   if (!root) return
   root.innerHTML = cards.map((card) => `
@@ -80,8 +104,9 @@ export function renderRouteChoices(root, cards, onSelect) {
       <span class="route-risk">${card.risk === 'risky' ? '⚠ Risky' : '✓ Safe'}</span>
       <span class="route-icon">${card.icon}</span>
       <strong>${escapeHtml(card.label)}</strong>
-      <span>${escapeHtml(card.modifierLabel)}</span>
-      <small>${escapeHtml(card.description)}</small>
+      ${card.story ? `<small class="route-story">${escapeHtml(card.story.line)}</small>` : ''}
+      ${card.story ? `<em class="route-voice">${escapeHtml(card.story.voice)}</em>` : ''}
+      <small class="route-mechanic"><b>${escapeHtml(card.modifierLabel)}</b> · ${escapeHtml(card.description)}</small>
       ${card.objective ? `<small class="route-objective">Goal · ${escapeHtml(card.objective.label)}</small>` : ''}
       <span class="route-reward">${card.rewardMultiplier.toFixed(2)}× rewards · ${escapeHtml(stampLabel(card.stampId))}</span>
     </button>`).join('')
@@ -132,6 +157,9 @@ export function renderJourneyResultProgress(root, result) {
   root.innerHTML = `<div class="journey-result-progress${result.unlockedCosmetic ? ' unlocked' : ''}">
     <span class="journey-result-stamp zone-stamp" data-zone="${escapeHtml(stampSpriteZone(result.outcome.destinationId))}" role="img" aria-label="${escapeHtml(zoneStampLabel(result.outcome.destinationId))}"></span>
     ${result.outcome.completed ? '<strong>✓ Stamp earned</strong>' : '<strong>Flight progress saved</strong>'}
+    ${result.outcome.completed
+      ? `<em class="journey-arrival">${escapeHtml(arrivalStory(result.outcome.chapter, result.outcome.stepId))}</em>`
+      : ''}
     <span>${objective?.completed ? '✓ Objective complete' : '○ Objective missed'} · ${escapeHtml(objective?.label || 'Reach the destination')} ${objective ? `${objective.value}/${objective.target}` : ''}</span>
     <span>${leveledUp ? `★ Mastery Level ${result.masteryAfter.level}` : `Mastery Level ${result.masteryAfter?.level || 0}`} · ${telemetryProgress ? `+${telemetryProgress} flight marks` : 'route logged'}</span>
     ${result.unlockedCosmetic ? `<small>Unlocked · ${escapeHtml(cosmeticLabel(result.unlockedCosmetic))}</small>` : ''}
@@ -183,6 +211,7 @@ export function renderPostcardReveal(root, card, handlers = {}) {
     <span class="postcard-kicker">Journey complete</span>
     ${postcardImage(card)}
     <h2>${escapeHtml(art.name)}</h2>
+    <p class="postcard-closing">${escapeHtml(closingStory(card.chapter, { rivalBeaten: card.rivalBeaten }))}</p>
     <p>${card.totalDistance}m · ${card.totalStars}★ · ${card.stampIds?.length || 0}/4 stamps</p>
     <div class="btn-row wrap"><button type="button" class="cta-main cta-inline" data-postcard-action="details">View details</button><button type="button" class="btn-secondary" data-postcard-action="share">Share</button></div>
     <p class="share-status" data-postcard-status></p>

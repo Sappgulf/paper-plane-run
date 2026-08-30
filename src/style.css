@@ -649,15 +649,25 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   padding: 12px 16px; border-radius: 16px; text-align: center; pointer-events: none;
   box-shadow: 0 12px 32px rgba(91,33,182,.12);
 }
-/* The toast is viewport-positioned, so on narrow screens — where the menu card
-   starts near the top and the toast wraps to two lines — it lands on top of the
-   logo. Reserve headroom in the card while a toast is actually showing. */
-@media (max-width: 640px) {
-  #challenge-toast:not(.hidden) ~ #menu .menu-card { padding-top: 96px; }
-  /* Same collision on the panels that fill the width. */
-  #challenge-toast:not(.hidden) ~ #hangar-panel .hangar-card,
-  #challenge-toast:not(.hidden) ~ #journey-panel .journey-card { padding-top: 96px; }
+/* The toast is viewport-positioned, and a panel's card is pinned to the top of
+   the window whenever it is taller than the window — which is most of the time
+   on a laptop, not only on a phone. So the toast landed squarely on the menu's
+   logo and title. The previous fix reserved headroom inside the card and gated
+   it on viewport *width*, but the collision depends on where the card's top
+   edge is, so every desktop missed it. While any panel is open there is nothing
+   at the bottom of the screen, so the toast goes there and the collision stops
+   existing rather than being budgeted around. */
+#game-root:has(.panel:not(.hidden)) #challenge-toast {
+  top: auto;
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
 }
+/* Deliberately *no* matching padding on the panel. Reserving the docked
+   toast's room with a conditional `padding-bottom` reflowed every panel each
+   time a toast appeared or expired — and since a card is sized against the
+   panel's content box, its buttons moved 80px under the cursor mid-click, so a
+   mousedown and mouseup landed on different elements and no click fired at all.
+   The toast is transient and `pointer-events: none`, so the panel still scrolls
+   through it; a moving layout is the worse trade. */
 /* In flight the toast has to clear the HUD chip row, not sit on top of it.
    Below 820px the HUD drops to ~58px to clear the icon buttons — exactly the
    toast's own row — so a multi-line notification landed directly over the live
@@ -776,19 +786,29 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3) var(--space-4);
   text-align: center;
+  align-items: start;
 }
 @media (max-width: 420px) {
+  /* One column, so there is no second column to keep level and the two-line
+     floor under each blurb is just a gap. */
   .menu-setup { grid-template-columns: 1fr; }
+  .menu-setup .diff-blurb { min-height: 1.3em; }
 }
 .chip-label {
   display: block; font-size: 10px; font-weight: 900; letter-spacing: .12em;
   text-transform: uppercase; color: #8a6f68; margin-bottom: 8px;
 }
-.diff-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 4px; }
+/* A segment row, not a wrapping pill row. Three difficulty pills at a fixed
+   padding do not fit the setup column at the card's width, so they wrapped
+   2 + 1 and left the two setup columns different heights. A grid divides
+   whatever width there is instead of overflowing it. */
+.diff-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: var(--space-2); }
+.diff-row.control-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .diff-btn {
   font-family: inherit; font-weight: 800; font-size: 13px; color: #5c4540;
   background: rgba(255,255,255,.85); border: 1.5px solid rgba(61,44,41,.1);
-  border-radius: 999px; padding: 9px 16px; cursor: pointer;
+  border-radius: 999px; padding: 9px 6px; cursor: pointer;
+  white-space: nowrap;
   transition: transform .12s ease, box-shadow .12s ease;
 }
 .diff-btn:active { transform: scale(.97); }
@@ -809,21 +829,30 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   color: #fff !important; border-color: transparent !important;
   box-shadow: 0 6px 16px rgba(139,92,246,.35) !important;
 }
-.diff-blurb { font-size: 12px; font-weight: 700; color: #8a6f68; margin-bottom: 4px; min-height: 1.1em; }
+/* Two lines of floor. Side by side in the two-column setup block the two
+   blurbs are different lengths — "Balanced flight · classic chaos" is one line
+   where the mouse blurb is two — and without a floor the Controls column ran
+   lower than Difficulty and the checkbox under it sat off the grid. Both
+   single-column layouts drop the floor back to one line, where it is only a
+   gap. */
+.diff-blurb { font-size: 12px; font-weight: 700; color: #8a6f68; margin-bottom: 4px; min-height: 2.6em; line-height: 1.3; }
 .inline-check {
   display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px;
   font-size: 12px; font-weight: 800; color: #5c4540;
 }
 .menu-setup .name-row {
   grid-column: 1 / -1;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
   margin-top: 2px;
   padding: 8px 12px;
   background: rgba(255,255,255,.55);
   border: 1px solid rgba(61,44,41,.08);
   border-radius: var(--radius-sm);
 }
-.menu-setup .name-row input { flex: 1; max-width: 220px; text-align: left; }
+.menu-setup .name-row input { width: 100%; max-width: none; text-align: left; }
 
 .cta-main {
   width: 100%; font-family: inherit; font-weight: 900; font-size: 18px;
@@ -837,10 +866,16 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 .cta-main:active { transform: translateY(1px); }
 .cta-inline { width: auto; margin: 0; padding: 12px 20px; font-size: 15px; border-radius: 14px; }
 
+/* Four modes, then the Hangar. As a wrapping flex row the five pills broke
+   4 + 1 at the card's width, which reads as an accident rather than as the
+   one destination among four modes. A 2x2 grid with the Hangar spanning it
+   states that hierarchy at every width. */
 .menu-actions {
-  display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center;
-  margin-bottom: var(--space-2);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
+.menu-actions .action-hangar { grid-column: 1 / -1; }
 
 .engine-status {
   display: flex;
@@ -877,8 +912,8 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   color: #155e75;
 }
 .route-hints {
-  display: flex; flex-direction: column; gap: 2px;
-  margin: 2px 0 6px;
+  display: flex; flex-direction: column; gap: var(--space-1);
+  margin: var(--space-1) 0 var(--space-2);
 }
 .route-hints .mini-hint { margin: 0; min-height: 0; }
 
@@ -900,7 +935,17 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 
 /* Hangar */
 .hangar { justify-content: flex-start; padding-top: var(--panel-top-clear); }
-.hangar-card { max-height: none; display: flex; flex-direction: column; max-width: min(480px, 100%); }
+/* The card owns the window's height and the body scrolls inside it. The body
+   used to carry a fixed `vh` cap while the card was free to grow past the
+   viewport, which put "← Main menu" below the fold on an ordinary 1280x720
+   laptop — reachable only by scrolling the panel behind it. */
+.hangar-card {
+  display: flex; flex-direction: column;
+  max-width: min(480px, 100%);
+  /* Against the panel's content box, so the room a docked toast reserves with
+     `padding-bottom` is taken out of the card rather than covered by it. */
+  max-height: 100%;
+}
 .hangar-top { flex-shrink: 0; }
 .hangar-wallet { margin-bottom: 10px; }
 .hangar-group-switch {
@@ -932,11 +977,25 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   box-shadow: 0 4px 12px rgba(90,159,212,.3);
 }
 .hangar-body {
-  flex: 1; overflow-y: auto; max-height: min(58vh, 480px);
+  flex: 1; min-height: 140px; overflow-y: auto;
   -webkit-overflow-scrolling: touch; padding: 2px 2px 8px;
 }
 .page-intro { font-size: 13px; font-weight: 700; color: #6b554f; margin-bottom: 12px; line-height: 1.35; }
 
+/* On a desktop the Hangar was a 480px column in the middle of a 1280px window,
+   so a fourteen-node upgrade tree read as an endless one-per-row scroll with
+   two thirds of the screen unused beside it. Given the room, take it: the card
+   widens, the grids go two-up, and the whole tree is close to one screen. */
+@media (min-width: 900px) and (min-height: 640px) {
+  .hangar-card { width: min(880px, 100%); max-width: min(880px, 100%); }
+  .upgrade-grid,
+  .journey-chapter-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The banner and the tree filter head the list; they are not cards in it. */
+  .upgrade-grid > .upgrade-path-banner,
+  .upgrade-grid > .upgrade-tree-row { grid-column: 1 / -1; }
+  .skins-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .page-intro { max-width: 66ch; margin-inline: auto; }
+}
 
 .upgrade-grid { display: grid; gap: 10px; }
 .journey-chapter-picker {
@@ -994,7 +1053,10 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 .upgrade-tree-chip.active {
   color: #fff; background: linear-gradient(180deg,#a78bfa,#7c3aed); border-color: transparent;
 }
-.path-buy { margin-top: 8px; align-self: flex-start; }
+/* Centred, like the two lines of copy above it — the panel centres its text,
+   so a flex-start button read as misaligned rather than as left-aligned, and
+   more so once the desktop Hangar widened. */
+.path-buy { margin-top: 8px; align-self: center; }
 .upgrade-card[data-tree='handle'] { border-left: 3px solid #5a9fd4; }
 .upgrade-card[data-tree='survive'] { border-left: 3px solid #4ade80; }
 .upgrade-card[data-tree='score'] { border-left: 3px solid #f0b429; }
@@ -1378,6 +1440,22 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 .mastery-meter i { display:block;height:100%;background:#7f6ac8;border-radius:inherit; }
 .mastery-goal { grid-column:2;color:#695878; }
 .route-objective { color:#5d4698 !important;font-weight:800; }
+/* The story layer. The premise is set once at the top of the panel; the stop
+   brief is what changes under it, so it carries the border and the weight. */
+.journey-brief { margin:0 0 var(--space-4);display:grid;gap:var(--space-2); }
+.journey-premise { margin:0;font-size:12.5px;line-height:1.55;color:#6b5b78;text-align:center;max-width:60ch;justify-self:center; }
+.journey-stop-brief { border-left:3px solid #e7a06f;background:#fff8f1;border-radius:0 var(--radius-md) var(--radius-md) 0;padding:var(--space-3) var(--space-4);text-align:left; }
+.journey-stop-brief strong { display:block;font-size:14px;color:#4a3a55;margin-bottom:var(--space-1); }
+.journey-stop-brief p { margin:0;font-size:12.5px;line-height:1.55;color:#6b5b78; }
+/* Route cards carry two lines of story: what the way through is, then what the
+   chosen pilot makes of it. The voice line is the quieter of the two. */
+.journey-route-card .route-story { font-size:12.5px;color:#4f3f47 !important; }
+.journey-route-card .route-voice { font-size:11px;font-style:italic;line-height:1.4;color:#8b7a83; }
+.journey-route-card .route-mechanic { margin-top:var(--space-1);font-size:11px;color:#8a7a80 !important; }
+.journey-route-card .route-mechanic b { color:#6d5a75; }
+.journey-route-card.risky .route-voice { color:#a06550; }
+.journey-arrival { font-size:12px;font-style:italic;line-height:1.5;color:#6b5b78; }
+.postcard-closing { font-size:13.5px;font-style:italic;color:#6b5b78;margin:0 0 var(--space-2); }
 .journey-result-progress { position:relative;display:grid;gap:5px;margin:12px 0;padding:12px 76px 12px 12px;border:1.5px solid #bba9d8;border-radius:14px;background:#faf7ff;text-align:left;color:#55466f; }
 .journey-result-progress .journey-result-stamp { position:absolute;top:12px;right:12px;width:52px;height:52px; }
 .journey-result-progress span,.journey-result-progress small { font-size:12px; }
@@ -1394,7 +1472,11 @@ html.a11y-reduced-motion .journey-result-progress.unlocked { animation:none;outl
 .journey-postcard span,.journey-postcard small { font-size:10px;font-weight:800;color:#745e58; }
 .postcard-overlay { position:fixed;inset:0;z-index:30;background:rgba(34,25,35,.72);backdrop-filter:blur(12px);display:grid;place-items:center;padding:max(18px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));overflow-y:auto; }
 .postcard-surface { position:relative;width:min(620px,100%);max-height:calc(100dvh - 36px);overflow-y:auto;background:#fffaf2;border-radius:9px;padding:16px 16px 22px;box-shadow:0 24px 70px #170f19aa;color:#4c3d3b; }
-.postcard-surface > img { width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;background:#e4d8c7; }
+/* Capped, not just proportioned. At the surface's full width a 3:2 plate is
+   over 400px tall, which on a laptop left the card taller than the window and
+   pushed "View details" — the reveal's whole point — under the fold, reachable
+   only by scrolling a card most people would not think to scroll. */
+.postcard-surface > img { width:100%;aspect-ratio:3/2;max-height:min(38vh,320px);object-fit:cover;border-radius:6px;background:#e4d8c7; }
 .postcard-surface h2 { margin:14px 0 5px; }
 .postcard-surface p { line-height:1.5; }
 .postcard-kicker { display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:.14em;font-size:10px;font-weight:1000;color:#7f6ac8; }
@@ -1424,7 +1506,12 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 10px; row-gap: 0; padding: 16px 16px 14px;
   }
+  /* Everything spans. The card's own two columns exist so the setup block can
+     sit beside something; nothing is auto-placed there any more, so leaving
+     the setup block in one of them left half the card empty and squeezed the
+     difficulty pills until "Normal" clipped to "Norm". */
   .menu-panel .menu-hero,
+  .menu-panel .menu-section,
   .menu-panel .journey-main-cta,
   .menu-panel .menu-actions,
   .menu-panel .engine-status,
@@ -1439,11 +1526,21 @@ html.a11y-reduced-motion .reveal-card { animation:postcardRevealFade .18s ease-o
   }
   .menu-panel h1 { font-size: clamp(1.3rem, min(4vw, 6vh), 2.3rem); }
   .menu-panel .tagline { font-size: clamp(10px, 2vh, 12px); }
-  .menu-panel .menu-section:nth-child(2),
-  .menu-panel .menu-section:nth-child(3) { margin-bottom: 7px; padding: 9px 10px 6px; }
-  .menu-panel .diff-btn { padding: 7px 13px; }
+  .menu-panel .menu-section { margin-bottom: 7px; padding: 8px 10px 5px; }
+  .menu-panel .diff-btn { padding: 7px 8px; }
+  /* The two-line floor that keeps the columns level in the tall layout is pure
+     waste here, where the block is wide enough for both blurbs to fit on one. */
+  .menu-panel .diff-blurb { min-height: 1.3em; margin-bottom: 2px; }
+  .menu-panel .chip-label { margin-bottom: 5px; }
+  .menu-panel .inline-check { margin: 0 0 2px; }
+  .menu-panel .menu-setup { gap: var(--space-2) var(--space-4); }
   .menu-panel .cta-main { margin: 4px 0 8px; padding: 13px 18px; }
-  .menu-panel .menu-actions { gap: 6px; margin-bottom: 4px; }
+  /* With the width the spanning setup block frees up, the four modes fit one
+     row instead of two — which is the row the short layout exists to save. */
+  .menu-panel .menu-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px; margin-bottom: 4px;
+  }
   .menu-panel .action-pill { padding: 8px 12px; }
   .menu-panel .mini-hint { margin: 1px 0 4px; }
   .menu-panel .name-row input { padding: 6px 10px; }

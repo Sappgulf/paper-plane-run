@@ -1255,14 +1255,20 @@ test('an in-flight notification clears the HUD chip row instead of covering it',
   const errors = collectConsoleErrors(page)
   await openApp(page)
 
-  // In the menu the HUD is hidden and the toast keeps its own top row.
-  const menuTop = await page.evaluate(() => {
+  // In the menu the HUD is hidden, but the menu card is pinned to the top of
+  // the window whenever it is taller than the window — so what matters is not
+  // which row the toast takes, it is that the toast is never over the hero the
+  // player is reading.
+  const menuBoxes = await page.evaluate(() => {
     const toast = document.getElementById('challenge-toast')
-    toast.textContent = 'Season event'
+    toast.textContent = 'Season event — free seasonal skins!'
     toast.classList.remove('hidden')
-    return Math.round(toast.getBoundingClientRect().top)
+    const hero = document.querySelector('#menu .menu-hero')
+    const t = toast.getBoundingClientRect()
+    const h = hero.getBoundingClientRect()
+    return { toast: { top: t.top, bottom: t.bottom }, hero: { top: h.top, bottom: h.bottom } }
   })
-  expect(menuTop).toBeLessThan(96)
+  expect(menuBoxes.toast.top).toBeGreaterThanOrEqual(menuBoxes.hero.bottom)
 
   await tap(page.locator('#start-btn'))
   await waitForGameText(page)
