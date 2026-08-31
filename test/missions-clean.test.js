@@ -11,7 +11,6 @@ describe('clean-run mission type', () => {
         missions: [
           { id: 'clean_run-0', type: 'clean_distance', target: 150, progress: 0, done: false, claimed: false },
         ],
-        claimStars: 0,
       }),
     )
   })
@@ -36,7 +35,6 @@ describe('sharpshooter mission type', () => {
         missions: [
           { id: 'sharpshooter-0', type: 'popped', target: 5, progress: 0, done: false, claimed: false },
         ],
-        claimStars: 0,
       }),
     )
   })
@@ -61,7 +59,6 @@ describe('mission rewards', () => {
         missions: [
           { id: 'stars-0', type: 'stars', target: 20, progress: 20, done: true, claimed: false },
         ],
-        claimStars: 0,
       }),
     )
 
@@ -69,7 +66,6 @@ describe('mission rewards', () => {
     expect(claimMission('stars-0')).toBe(0)
     expect(JSON.parse(localStorage.getItem('paper-plane-run-missions'))).toMatchObject({
       missions: [{ id: 'stars-0', claimed: true }],
-      claimStars: 10,
     })
   })
 })

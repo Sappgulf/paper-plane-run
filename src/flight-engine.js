@@ -26,7 +26,7 @@ import {
   ghostDistanceAtTime,
 } from './ghost.js'
 import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
-import { resolveTier } from './game/endless-tiers.js'
+import { endlessTierAt, resolveTier } from './game/endless-tiers.js'
 import {
   getPatternReach,
   getTierMotionScale,
@@ -386,21 +386,41 @@ function checkHazardTelegraph() {
 }
 const _edgeNdc = new THREE.Vector3()
 const _focusNdc = new THREE.Vector3()
+// Reused candidate slots so the per-frame pass allocates nothing; `count`
+// marks the live prefix and the sort only ever touches that prefix.
+const edgeCandidates = []
 function updateEdgeIndicators() {
   if (!edgeIndicatorEl) return
   const w = innerWidth
   const h = innerHeight
-  const candidates = []
+  let count = 0
   for (const e of entities) {
     const kind = EDGE_KIND_BY_TYPE[e.type]
     if (!kind) continue
     const z = e.mesh.position.z
     if (z < 2 || z > 55) continue
-    candidates.push({ e, kind, z })
+    const slot = edgeCandidates[count]
+    if (slot) {
+      slot.e = e
+      slot.kind = kind
+      slot.z = z
+    } else {
+      edgeCandidates.push({ e, kind, z })
+    }
+    count++
   }
-  candidates.sort((a, b) => a.z - b.z)
+  for (let i = 1; i < count; i++) {
+    const key = edgeCandidates[i]
+    let j = i - 1
+    while (j >= 0 && edgeCandidates[j].z > key.z) {
+      edgeCandidates[j + 1] = edgeCandidates[j]
+      j--
+    }
+    edgeCandidates[j + 1] = key
+  }
   let used = 0
-  for (const { e, kind } of candidates) {
+  for (let ci = 0; ci < count; ci++) {
+    const { e, kind } = edgeCandidates[ci]
     if (used >= EDGE_POOL_SIZE) break
     _edgeNdc.copy(e.mesh.position).project(camera)
     if (_edgeNdc.z > 1) continue // behind camera
@@ -443,6 +463,20 @@ function pulseFlightImpact(tone = 'route') {
   warnFlashEl.classList.add(`impact-${tone}`)
   void warnFlashEl.offsetWidth
   warnFlashEl.classList.add('impact-pulse')
+}
+
+/** Power banner writers share the max-timer rule, but a short message must
+ *  not take the text from a long one while inheriting its remaining time —
+ *  only overwrite the copy when this message lives at least as long. The kind
+ *  feeds the HUD priority stack (game/hud-priority), so it only flips when
+ *  the text actually changes. */
+function showPowerBanner(text, duration, kind = 'power') {
+  if (duration >= bannerTimer) {
+    powerBanner.textContent = text
+    powerBannerKind = kind
+  }
+  powerBanner.classList.remove('hidden')
+  bannerTimer = Math.max(bannerTimer, duration)
 }
 
 function updateFlightReadability(routeState = null) {
@@ -585,6 +619,7 @@ let season = seasonInfo(settings.forceSeason)
 track('session_start', { season: season.id, dpr: devicePixelRatio })
 
 // Distance milestones for funnel
+const DISTANCE_FUNNEL_MILESTONES = Object.freeze([50, 100, 200, 500, 1000])
 const distanceMilestones = new Set()
 let nextBossAt = 500
 let nextGauntletAt = 250
@@ -736,6 +771,7 @@ let comboTimer = 0
 let feverActive = false
 let feverTimer = 0
 let feverFloatTimeout = null
+let comboFloatTimeout = null
 /** Consecutive star pickups within a short window — separate from the near-miss combo */
 let starStreak = 0
 let starStreakTimer = 0
@@ -1349,7 +1385,7 @@ function buildGroundLife(zoneId) {
       mesh.setColorAt(i, tint)
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-    groundLifeFields.push({ speciesDef, mesh, instances, motionScale: budget.motionScale })
+    groundLifeFields.push({ speciesDef, mesh, instances, motionScale: budget.motionScale, matrixDirty: true })
     scene.add(mesh)
   }
   updateGroundLife(0)
@@ -1360,14 +1396,42 @@ function scrollGroundLife(move) {
     // zSpeedMul is what makes traffic read as traffic: scrolling slower than
     // the ground looks like driving away, faster looks like oncoming.
     const step = move * (field.speciesDef.zSpeedMul ?? 1)
+    if (!step) continue
     for (const instance of field.instances) {
       instance.z = wrapGroundLifeZ(instance.z, step)
     }
+    field.matrixDirty = true
   }
 }
 
 function updateGroundLife(time) {
-  for (const { speciesDef, mesh, instances, motionScale } of groundLifeFields) {
+  if (document.hidden) return
+  for (const field of groundLifeFields) {
+    const { speciesDef, mesh, instances, motionScale } = field
+    // Static species have no per-frame motion — their matrix only changes
+    // when scrollGroundLife moves instance.z, so skip the compose/upload
+    // pass until that dirties them.
+    if (speciesDef.motion === 'none') {
+      if (!field.matrixDirty) continue
+      for (let i = 0; i < instances.length; i++) {
+        const instance = instances[i]
+        groundLifeDummy.position.set(instance.x, speciesDef.y, instance.z)
+        if (speciesDef.shape === 'road') {
+          // Flat on the ground and running down the field, not fanned out.
+          groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0)
+        } else if (speciesDef.flat) {
+          groundLifeDummy.rotation.set(-Math.PI / 2, instance.phase, 0)
+        } else {
+          groundLifeDummy.rotation.set(0, 0, 0)
+        }
+        groundLifeDummy.scale.setScalar(instance.scale)
+        groundLifeDummy.updateMatrix()
+        mesh.setMatrixAt(i, groundLifeDummy.matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+      field.matrixDirty = false
+      continue
+    }
     for (let i = 0; i < instances.length; i++) {
       const instance = instances[i]
       const motion = groundLifeTransform(speciesDef, instance.phase, time, motionScale)
@@ -1588,6 +1652,9 @@ for (let i = 0; i < CONFETTI_POOL_SIZE; i++) {
   confetti.push(m)
 }
 function spawnConfetti(x, y, z, palette = 'classic') {
+  // Single reduced-motion choke point: every burst in the game routes here,
+  // so the gate lives once instead of at each call site.
+  if (settings.reducedMotion) return
   const colors = confettiColors(palette)
   for (let i = 0; i < 10; i++) {
     const m = confetti[confettiCursor]
@@ -1730,20 +1797,20 @@ function maybeSpawnGroundDecor(z) {
     const river = createRiverPatch()
     river.position.z = z
     scene.add(river)
-    entities.push({ mesh: river, type: 'decor' })
+    entities.push({ mesh: river, type: 'decor', disposable: true })
   } else if (roll < 0.26) {
     const park = createParkPatch()
     const side = rng() < 0.5 ? -1 : 1
     park.position.x = side * (13 + rng() * 15)
     park.position.z = z + (rng() - 0.5) * 8
     scene.add(park)
-    entities.push({ mesh: park, type: 'decor' })
+    entities.push({ mesh: park, type: 'decor', disposable: true })
   } else if (roll < 0.34 && renderQuality.secondaryEffects) {
     const line = createClothesline()
     const side = rng() < 0.5 ? -1 : 1
     line.position.set(side * (12 + rng() * 8), 0, z)
     scene.add(line)
-    entities.push({ mesh: line, type: 'decor' })
+    entities.push({ mesh: line, type: 'decor', disposable: true })
   }
 }
 const windowMat = new THREE.MeshStandardMaterial({
@@ -2319,6 +2386,15 @@ let hazardPaletteZone = 'city'
 function hazardTexture(kind) {
   return loadTex(`paper:hazard:${hazardPaletteZone}:${kind === 'scissors' ? 'scissors' : 'flyer'}`)
 }
+
+// Gauntlet lane marker: one shared additive ribbon geometry/material, tinted
+// like the ring-glow accent, so the promised lane renders without a per-
+// spawn allocation.
+const gauntletLaneGeo = new THREE.PlaneGeometry(26, 18)
+const gauntletLaneMat = new THREE.MeshBasicMaterial({
+  color: 0xf59e0b, transparent: true, opacity: 0.13, depthWrite: false,
+  side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+})
 
 function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false, kind = 'flyer') {
   const g = new THREE.Group()
@@ -3067,7 +3143,7 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      const buildingEntity = { mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk }
+      const buildingEntity = { mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk, disposable: true }
       entities.push(buildingEntity)
       sideBuildings.push(buildingEntity)
       if (side === -1) leftInnerEdge = -laneSpread + radius
@@ -3105,7 +3181,7 @@ function spawnChunk(z) {
       b.position.x = safeRange.minX + rng() * (safeRange.maxX - safeRange.minX)
       b.position.z = z
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk })
+      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk, disposable: true })
     }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
@@ -3283,10 +3359,7 @@ function spawnChunk(z) {
     entities.push({ mesh: st, type: 'star', radius: telegraph ? 1.15 : 0.9, cluster: starPlan.cluster, telegraph })
   }
   if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
-    powerBanner.textContent = '💰 Gold Rush cluster!'
-    powerBannerKind = 'power'
-    powerBanner.classList.remove('hidden')
-    bannerTimer = Math.max(bannerTimer, 1.4)
+    showPowerBanner('💰 Gold Rush cluster!', 1.4, 'power')
   }
   // Powers — boosted chance; boost is more common early in pool
   if (starPlan.powerSpawn) {
@@ -3327,6 +3400,7 @@ function clearBossApproachHazards() {
   for (let index = entities.length - 1; index >= 0; index -= 1) {
     const entity = entities[index]
     if (!shouldClearForBossApproach({ type: entity.type, z: entity.mesh.position.z })) continue
+    if (entity.disposable) disposeMeshResources(entity.mesh)
     scene.remove(entity.mesh)
     entities.splice(index, 1)
   }
@@ -3478,6 +3552,15 @@ function spawnMiniGauntlet(z = 60) {
   // wave's gap centre rather than a fixed lane, since the passage moves.
   const marker = new THREE.Object3D()
   marker.position.set(gapCenter, 9, z - 2)
+  if (renderQuality.secondaryEffects) {
+    // Render the promised lane as a translucent vertical ribbon spanning the
+    // hazard corridor, so the paid lane is visible, not just advertised.
+    const ribbon = new THREE.Mesh(gauntletLaneGeo, gauntletLaneMat)
+    ribbon.rotation.y = Math.PI / 2
+    ribbon.position.set(0, 0, 9)
+    marker.add(ribbon)
+    marker.userData.ribbon = ribbon
+  }
   scene.add(marker)
   entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX: gapCenter, cleared: false })
   zoneBannerKind = 'gauntlet'
@@ -3526,7 +3609,8 @@ function dispatchJourneyEncounter(event) {
     break
   case 'gust':
     windActive = 2.2
-    windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7)
+    windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7) * difficulty.windForce
+    windBanner.textContent = '💨 Wind gust!'
     windBanner.classList.remove('hidden')
     audio.windGust()
     break
@@ -3976,6 +4060,9 @@ function endlessTier() {
 /** Recompute escalation only when the tier index actually changes, then announce it. */
 function updateEndlessTier() {
   if (!tiersApply()) return
+  // Cheap index probe first — resolveTier builds a frozen descriptor, so it
+  // should only run on a real tier change, not once per frame.
+  if (endlessTierAt(distance) === currentTier.tier) return
   const next = resolveTier(distance)
   if (next.tier === currentTier.tier) return
   const climbed = next.tier > currentTier.tier
@@ -4553,11 +4640,20 @@ function retryCurrentRun() {
   startGame(runKind, runKind === 'journey' ? { journeyConfig: buildRunConfiguration(journey) } : {})
 }
 
+// Tracks the dialog's last rendered state so focus moves once per
+// open/close transition instead of on every sync.
+let pauseDialogWasOpen = false
 function syncPauseUi() {
   const showPauseControl = state === 'playing'
+  const dialogOpen = manualPause && state === 'playing'
   pauseBtn?.classList.toggle('hidden', !showPauseControl)
-  pauseOverlay?.classList.toggle('hidden', !(manualPause && state === 'playing'))
-  if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
+  pauseOverlay?.classList.toggle('hidden', !dialogOpen)
+  if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(dialogOpen))
+  if (dialogOpen !== pauseDialogWasOpen) {
+    if (dialogOpen) $('pause-resume')?.focus()
+    else pauseBtn?.focus()
+    pauseDialogWasOpen = dialogOpen
+  }
   const muteLabel = $('pause-mute')
   if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
   // The install shortcut belongs to the menus, not the flight corner row.
@@ -4681,6 +4777,16 @@ function showMenu() {
   state = 'menu'
   launchChallenge = null
   manualPause = false
+  // The menu's attract-mode spawner runs the full spawnChunk, which reads
+  // run-state (tier, twists, boss recovery, zone) — reset it to fresh-run
+  // values so dying deep in a run doesn't haunt the menu background with
+  // midnight-zone/Tier-N hazards.
+  distance = 0
+  currentTier = ZERO_TIER
+  activeTwist = null
+  bossActive = false
+  bossRecoveryUntil = 0
+  currentZoneId = 'city'
   // Quitting mid-gust/mid-bullet-time must not freeze weather artifacts
   // behind the menu — update() no longer drives these once state leaves play.
   for (const s of windStreaks) s.visible = false
@@ -5538,7 +5644,7 @@ function updateGroundSkim(dt) {
     if (settings.haptics) Haptic.collect()
     showFlightFeedback(next.banner, 'star', 1.1)
     pulseFlightImpact('star')
-    if (!settings.reducedMotion) spawnConfetti(planeX, planeY - 0.3, 0)
+    spawnConfetti(planeX, planeY - 0.3, 0)
   }
 
   if (!skimHud || !skimVal) return
@@ -5551,11 +5657,26 @@ function updateGroundSkim(dt) {
   }
 }
 
+// Buildings/decor allocate fresh geometry per instance; free those GPU
+// buffers on removal. The WeakSet keeps a shared geometry from ever being
+// disposed twice if an entity is ever mis-flagged.
+const disposedGeometries = new WeakSet()
+function disposeMeshResources(mesh) {
+  if (!mesh) return
+  mesh.traverse((node) => {
+    if (node.geometry && !disposedGeometries.has(node.geometry)) {
+      disposedGeometries.add(node.geometry)
+      node.geometry.dispose()
+    }
+  })
+}
+
 function scrollWorld(move, lateralDrift = 0) {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i]
     e.mesh.position.z -= move
     if (e.mesh.position.z < -25) {
+      if (e.disposable) disposeMeshResources(e.mesh)
       scene.remove(e.mesh)
       entities.splice(i, 1)
     }
@@ -5785,7 +5906,8 @@ function registerNearMiss(kind = null) {
   comboFloat.classList.remove('fever-float')
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)
   comboFloat.classList.remove('hidden')
-  setTimeout(() => comboFloat.classList.add('hidden'), combo >= 6 ? 700 : 500)
+  clearTimeout(comboFloatTimeout)
+  comboFloatTimeout = setTimeout(() => comboFloat.classList.add('hidden'), combo >= 6 ? 700 : 500)
   if (combo === 3 || combo === 6 || combo === 10 || combo % 15 === 0) {
     showFlightFeedback(combo >= 6 ? `FEVER BUILDING · ${combo}x` : `NEAR MISS · ${combo}x`, combo >= 6 ? 'hot' : 'route', combo >= 6 ? 1.0 : 0.7)
   }
@@ -5853,10 +5975,7 @@ function registerStarStreak() {
     audio.starStreak(pickup.count / 5)
     if (settings.haptics) Haptic.collect()
     spawnConfetti(planeX, planeY, 1, 'gold')
-    powerBannerKind = 'power'
-    powerBanner.textContent = pickup.banner
-    powerBanner.classList.remove('hidden')
-    bannerTimer = 2.0
+    showPowerBanner(pickup.banner, 2.0, 'power')
     showFlightFeedback(pickup.banner, 'star', 1.2)
     pulseFlightImpact('star')
   }
@@ -6071,10 +6190,7 @@ function update(dt) {
     }
     if (prevCount >= 2 && !nextStreak.visible) {
       streakHud?.classList.add('hidden')
-      powerBannerKind = 'status'
-      powerBanner.textContent = '⭐ Star streak broken'
-      powerBanner.classList.remove('hidden')
-      bannerTimer = Math.max(bannerTimer, 1.1)
+      showPowerBanner('⭐ Star streak broken', 1.1, 'status')
     } else if (!nextStreak.visible) {
       streakHud?.classList.add('hidden')
     }
@@ -6440,7 +6556,7 @@ function update(dt) {
 
   // Funnel milestones — the big ones get a small in-world celebration so the
   // odometer crossing reads as an event, not just analytics.
-  for (const m of [50, 100, 200, 500, 1000]) {
+  for (const m of DISTANCE_FUNNEL_MILESTONES) {
     if (distance >= m && !distanceMilestones.has(m)) {
       distanceMilestones.add(m)
       track(`distance_${m}`, { mode: difficulty.id, kind: runKind })
@@ -6627,6 +6743,14 @@ function update(dt) {
     magnetBonus: ufx.magnetBonus,
     planeRadius: PLANE_COLLISION_RADIUS,
   })
+  // Per-star catch-radius checks reuse this scratch args object instead of
+  // allocating a fresh one for every star on every frame.
+  const magnetPullArgs = {
+    activePowerKind: activePower?.kind,
+    magnetBonus: ufx.magnetBonus,
+    starRadius: 0.9,
+    planeRadius: PLANE_COLLISION_RADIUS,
+  }
   const boostSafety = getBoostSafety(ufx)
   // Phase power: pass through airborne hazards (birds/scissors/boss) but
   // buildings and the ground are checked separately and still solid — this
@@ -6700,12 +6824,9 @@ function update(dt) {
       const dx = m.position.x - p.x
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
-      const catchR = getMagnetPull({
-        activePowerKind: activePower?.kind,
-        magnetBonus: ufx.magnetBonus,
-        starRadius: e.radius,
-        planeRadius: PLANE_COLLISION_RADIUS,
-      }).catchRadius * (e.telegraph || shouldTelegraphStarLane(distance) ? 1.18 : 1)
+      magnetPullArgs.starRadius = e.radius
+      const catchR = getMagnetPull(magnetPullArgs).catchRadius
+        * (e.telegraph || shouldTelegraphStarLane(distance) ? 1.18 : 1)
       if (dx * dx + dy * dy + dz * dz < catchR ** 2) {
         // Star value rides the run's own risk systems: fever and ground-skim
         // tiers multiply the meter bonus, golden drops pay 5★.
@@ -6768,6 +6889,7 @@ function update(dt) {
     if (e.type === 'gauntlet') {
       if (!e.cleared && m.position.z < -1.2) {
         e.cleared = true
+        if (m.userData.ribbon) m.userData.ribbon.visible = false
         const reward = resolveGauntletReward({
           inLane: isInsideGauntletLane({ playerX: p.x, laneX: e.gauntletLaneX }),
         })
@@ -6784,13 +6906,36 @@ function update(dt) {
           spawnConfetti(p.x, planeY, 1, 'gold')
           showFlightFeedback(reward.label, 'star', 1.3)
           pulseFlightImpact('star')
-          powerBanner.textContent = `⚡ Gauntlet cleared · +${reward.stars}★`
-          powerBanner.classList.remove('hidden')
-          bannerTimer = Math.max(bannerTimer, 1.6)
+          showPowerBanner(`⚡ Gauntlet cleared · +${reward.stars}★`, 1.6)
           track('gauntlet_clear', { distance: Math.floor(distance) })
         }
       }
       continue
+    }
+
+    // Boss gate expiry — resolves even while un-collideable, mirroring the
+    // gauntlet tripwire above: a gate the plane slipped past under a Phase
+    // power or invuln must still retire the encounter, or bossActive pins
+    // true and every future boss gate and mini-gauntlet silently stops
+    // spawning (the old cleanup sat inside the collision window and behind
+    // the canCollide gate, so it could never run). The gate plane is behind
+    // the camera at this depth, so freeing the mesh now is invisible.
+    if (e.type === 'boss') {
+      if (!e.cleared && m.position.z < -2.5) {
+        e.cleared = true
+        bossActive = false
+        scene.remove(m)
+        entities.splice(i, 1)
+        continue
+      }
+      if (m.position.z < -25) {
+        scene.remove(m)
+        entities.splice(i, 1)
+        bossActive = false
+        continue
+      }
+      // Still inside the collision window — fall through to the pass/collide
+      // test below (it runs after the canCollide gate, as before).
     }
 
     // Hazards ignored during invuln
@@ -6845,16 +6990,8 @@ function update(dt) {
             pulseFlightImpact('route')
             audio.gateClear()
             audio.hoopWhoosh()
-            powerBannerKind = 'boss'
-            powerBanner.textContent = `${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`
-            powerBanner.classList.remove('hidden')
-            bannerTimer = Math.max(bannerTimer, 1.8)
+            showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`, 1.8, 'boss')
           }
-        }
-        if (m.position.z < -20) {
-          scene.remove(m)
-          entities.splice(i, 1)
-          bossActive = false
         }
       }
       continue
@@ -6916,6 +7053,7 @@ function update(dt) {
           runStats.threads = (runStats.threads || 0) + 1
           lastRewardTag = 'thread'
           audio.hoopWhoosh()
+          if (settings.haptics) Haptic.collect()
           spawnConfetti(p.x, planeY, 0.5, 'route')
           showFlightFeedback(`THREADED THE GAP · +${THREAD_REWARD_METERS}m`, 'route', 1.1)
           pulseFlightImpact('route')

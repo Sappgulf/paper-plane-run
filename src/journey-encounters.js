@@ -59,11 +59,18 @@ function varyLanes(lanes, seed) {
   return lanes.map((lane) => clamp(lane + offset, -1, 1)).filter((lane, index, values) => values.indexOf(lane) === index)
 }
 
+function gateCountForZone(zone) {
+  const templates = ZONE_EVENTS[zone] || []
+  return templates.reduce((total, template) => (
+    template.type === 'shortcut-gate' ? total + (Number(template.params?.count) || 1) : total
+  ), 0)
+}
+
 export function buildJourneyObjective(config = {}) {
   let kind = 'completion'
   let target = 1
   if (config.finale && config.rival) kind = 'rival'
-  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = 2 }
+  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = gateCountForZone(config.zone) || 2 }
   else if (config.modifier === 'star-trail') { kind = 'star-trail'; target = 5 }
   else if (config.modifier === 'moving-formation') { kind = 'near-miss'; target = 4 }
   else if (config.modifier === 'low-visibility') kind = 'shieldless'

@@ -17,10 +17,35 @@ export const BUNDLE_BUDGET = Object.freeze({
   totalBytes: 900 * 1024,
 })
 
+// Entries pull in their statically imported chunks before the menu paints, so
+// those belong on the critical path too: walk entry.imports transitively,
+// deduping chunk ids shared between entries so each is counted exactly once.
+export function criticalPathEntries(manifest) {
+  const js = Object.values(manifest).filter((entry) => entry.file?.endsWith('.js'))
+  const visited = new Set()
+  const path = []
+  const visitImports = (entry) => {
+    for (const importedId of entry.imports ?? []) {
+      if (visited.has(importedId)) continue
+      visited.add(importedId)
+      const imported = manifest[importedId]
+      if (!imported) continue
+      if (imported.file?.endsWith('.js')) path.push(imported)
+      visitImports(imported)
+    }
+  }
+  for (const entry of js) {
+    if (!entry.isEntry) continue
+    path.push(entry)
+    visitImports(entry)
+  }
+  return path
+}
+
 export function summarizeManifest(manifest, sizes) {
   const js = Object.values(manifest).filter((entry) => entry.file?.endsWith('.js'))
   return {
-    initialBytes: js.filter((entry) => entry.isEntry).reduce((n, entry) => n + (sizes[entry.file] || 0), 0),
+    initialBytes: criticalPathEntries(manifest).reduce((n, entry) => n + (sizes[entry.file] || 0), 0),
     totalBytes: js.reduce((n, entry) => n + (sizes[entry.file] || 0), 0),
   }
 }
@@ -72,10 +97,8 @@ function formatBytes(bytes) {
   return `${bytes.toLocaleString('en-US')} bytes`
 }
 
-function printFiles(manifest, sizes, selector) {
-  return Object.values(manifest)
-    .filter((entry) => entry.file?.endsWith('.js'))
-    .filter(selector)
+function printFiles(sizes, entries) {
+  return entries
     .map((entry) => `  - ${entry.file}: ${formatBytes(sizes[entry.file] || 0)}`)
     .join('\n')
 }
@@ -92,11 +115,11 @@ function main() {
   if (!result.ok) {
     if (!result.initial.ok) {
       console.error('bundle budget: initial JavaScript files:')
-      console.error(printFiles(manifest, sizes, (entry) => entry.isEntry))
+      console.error(printFiles(sizes, criticalPathEntries(manifest)))
     }
     if (!result.total.ok) {
       console.error('bundle budget: total JavaScript files:')
-      console.error(printFiles(manifest, sizes, () => true))
+      console.error(printFiles(sizes, Object.values(manifest).filter((entry) => entry.file?.endsWith('.js'))))
     }
     console.error(`bundle budget: FAIL (${result.failures.join(', ')})`)
     process.exitCode = 1

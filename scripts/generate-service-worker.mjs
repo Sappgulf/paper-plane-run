@@ -60,7 +60,13 @@ export function generateServiceWorker(directory = 'dist') {
   const serviceWorkerPath = resolve(root, 'sw.js')
   if (!existsSync(serviceWorkerPath)) throw new Error(`Missing service worker template at ${serviceWorkerPath}`)
   const manifest = buildPrecacheManifest(root)
+  // The template IS the previous output on re-runs: strip the assignments
+  // injected last time (each is a single line, exactly as emitted below) so
+  // the fresh ones can't be overwritten by stale copies later in the file.
   const template = readFileSync(serviceWorkerPath, 'utf8')
+    .split('\n')
+    .filter((line) => !/^self\.__PPR_(CACHE_VERSION|PRECACHE|WARM)__ = /.test(line))
+    .join('\n')
   const injected = [
     `self.__PPR_CACHE_VERSION__ = ${JSON.stringify(manifest.version)}`,
     `self.__PPR_PRECACHE__ = ${JSON.stringify(manifest.shell)}`,

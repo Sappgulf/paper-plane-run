@@ -29,7 +29,6 @@ import {
 } from './upgrades.js'
 import {
   buildRunConfiguration,
-  chapterMeta,
   createJourney,
   getRouteChoices,
   selectJourneyPilot,
@@ -39,7 +38,6 @@ import {
   clearJourney,
   isChapterUnlocked,
   loadJourney,
-  loadUnlockedChapters,
   saveJourney,
   unlockJourneyChapter,
 } from './journey-storage.js'
@@ -157,10 +155,15 @@ if (pilotNameInput) {
 
 if (muteBtn) {
   muteBtn.textContent = shellAudio.muted ? '🔇' : '🔊'
+  muteBtn.setAttribute('aria-pressed', String(shellAudio.muted))
+  muteBtn.setAttribute('aria-label', shellAudio.muted ? 'Unmute' : 'Mute')
   muteBtn.addEventListener('click', async (event) => {
     event.stopPropagation()
     await shellAudio.unlock()
-    muteBtn.textContent = shellAudio.toggleMute() ? '🔇' : '🔊'
+    const muted = shellAudio.toggleMute()
+    muteBtn.textContent = muted ? '🔇' : '🔊'
+    muteBtn.setAttribute('aria-pressed', String(muted))
+    muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute')
   })
 }
 
@@ -174,6 +177,7 @@ const isIos =
 const installHint = $('install-hint')
 const installHintBody = $('install-hint-body')
 let deferredInstall = null
+let installHintFocusReturn = null
 
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault()
@@ -202,10 +206,18 @@ installBtn?.addEventListener('click', async (event) => {
       : 'Open your browser menu and choose <b>Install app</b> or <b>Add to Home Screen</b>.'
   }
   installHint?.classList.remove('hidden')
+  installHintFocusReturn = document.activeElement
+  $('install-hint-close')?.focus()
 })
-$('install-hint-close')?.addEventListener('click', () => installHint?.classList.add('hidden'))
+
+function closeInstallHint() {
+  installHint?.classList.add('hidden')
+  installHintFocusReturn?.focus?.()
+  installHintFocusReturn = null
+}
+$('install-hint-close')?.addEventListener('click', closeInstallHint)
 installHint?.addEventListener('click', (event) => {
-  if (event.target === installHint) installHint.classList.add('hidden')
+  if (event.target === installHint) closeInstallHint()
 })
 
 function swScriptUrl() {
@@ -272,9 +284,11 @@ function stopPlanePreview() {
   activePlanePreview = null
 }
 
+const PANEL_IDS = ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']
+
 function hideAllPanels() {
   stopPlanePreview()
-  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel']) {
+  for (const id of PANEL_IDS) {
     $(id)?.classList.add('hidden')
   }
 }
@@ -306,30 +320,6 @@ function startJourneyChapter(chapter = 1) {
   saveJourney(localStorage, journey)
   track('journey_chapter_started', { chapter: chapterId, journeyId: journey.id })
   return true
-}
-
-function renderJourneyChapterPicker(root) {
-  if (!root) return
-  const unlocked = loadUnlockedChapters(localStorage)
-  const chapter2Open = unlocked.includes(2) || getJourneyStampCount() >= 4
-  root.innerHTML = `
-    <div class="journey-chapter-picker">
-      <button type="button" class="journey-chapter-card" data-chapter="1">
-        <strong>${chapterMeta(1).title}</strong>
-        <span>${chapterMeta(1).subtitle}</span>
-        <small>Four flights · Red Dart finale</small>
-      </button>
-      <button type="button" class="journey-chapter-card${chapter2Open ? '' : ' locked'}" data-chapter="2" ${chapter2Open ? '' : 'disabled'}>
-        <strong>${chapterMeta(2).title}</strong>
-        <span>${chapterMeta(2).subtitle}</span>
-        <small>${chapter2Open ? 'Four flights · Stapler finale' : 'Complete Chapter 1 to unlock'}</small>
-      </button>
-    </div>`
-  root.onclick = (event) => {
-    const button = event.target.closest?.('[data-chapter]')
-    if (!button || button.disabled) return
-    if (startJourneyChapter(Number(button.dataset.chapter))) renderJourney()
-  }
 }
 
 function renderJourney() {
@@ -418,6 +408,22 @@ function closePostcardOverlay(root) {
   postcardFocusReturn = null
 }
 
+// Escape closes the shell overlays that otherwise only dismiss via pointer,
+// matching the click-outside/close-button paths (and their focus restore).
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return
+  if (installHint && !installHint.classList.contains('hidden')) {
+    event.preventDefault()
+    closeInstallHint()
+    return
+  }
+  const detail = $('postcard-detail')
+  if (detail && !detail.classList.contains('hidden')) {
+    event.preventDefault()
+    closePostcardOverlay(detail)
+  }
+})
+
 async function sharePostcard(card, root) {
   const model = buildPostcardShareModel(card, location.origin + location.pathname)
   if (!model) return
@@ -461,6 +467,7 @@ function showPostcardReveal(card) {
   })
   root.classList.remove('hidden')
   root.querySelector('button')?.focus()
+  shellAudio.missionComplete()
   track('journey_postcard_revealed', { postcardId: card.id })
 }
 
@@ -1099,6 +1106,15 @@ function renderSettings() {
   bind('set-low-power', 'lowPower')
   bind('set-haptics', 'haptics')
   bind('set-season', 'forceSeason')
+  // Music lives in GameAudio's own pref (audio.js), not settings.js — mirror
+  // how boot reads it and persist through the same toggle as the mute button.
+  const musicToggle = $('set-music')
+  if (musicToggle) {
+    musicToggle.checked = shellAudio.musicOn
+    musicToggle.onchange = () => {
+      musicToggle.checked = shellAudio.toggleMusic()
+    }
+  }
   const activeSeason = seasonInfo(settings.forceSeason)
   if ($('season-now')) $('season-now').textContent = `${activeSeason.name} (${activeSeason.id})`
 }
@@ -1125,8 +1141,14 @@ function renderStats() {
   `
 }
 
+// Generation token: a slow remote fetch (Global/Weekly) must never overwrite
+// a leaderboard rendered after it started, so every render captures a token
+// and bails before touching the DOM if a newer render has run since.
+let boardRenderToken = 0
+
 async function renderBoard(tab = 'local') {
   const list = $('board-list')
+  const token = ++boardRenderToken
   list.innerHTML = ''
   document.querySelectorAll('[data-board]').forEach((t) =>
     t.classList.toggle('active', t.dataset.board === tab),
@@ -1144,15 +1166,14 @@ async function renderBoard(tab = 'local') {
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
     rows = remote?.scores || []
-    if (!rows.length) {
-      list.innerHTML = '<li>No global scores yet — be the first!</li>'
-      return
-    }
   }
+  if (token !== boardRenderToken) return
   if (!rows.length) {
     if (tab === 'weekly') {
       const fold = thisWeeksFold()
       list.innerHTML = `<li>No scores for ${weeklyKey()} · ${fold.name} yet — go fly!</li>`
+    } else if (tab === 'remote') {
+      list.innerHTML = '<li>No global scores yet — be the first!</li>'
     } else {
       list.innerHTML = '<li>No scores yet — go fly!</li>'
     }
@@ -1340,6 +1361,10 @@ function restoreActionableMenu() {
 }
 
 async function startMode(kind, options = {}) {
+  // Snapshot which panel the user is on when the start is requested — if the
+  // engine fails we should only yank them back to the menu if they never
+  // navigated elsewhere during the await (e.g. opened the Hangar).
+  const panelAtStart = PANEL_IDS.find((id) => !$(id)?.classList.contains('hidden'))
   pendingStart = { kind, options }
   settings = loadSettings()
   void shellAudio.unlock()
@@ -1357,7 +1382,7 @@ async function startMode(kind, options = {}) {
   } catch (error) {
     engineFailed = true
     reportFlightEngineWarning('Flight engine unavailable', error)
-    restoreActionableMenu()
+    if (!panelAtStart || panelAtStart === 'menu') restoreActionableMenu()
     showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
     return undefined
   }
@@ -1403,6 +1428,12 @@ document.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopImmediatePropagation()
     showHangarTab(button.dataset.tab)
+    return
+  }
+  if (button?.matches('[data-board]')) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    void renderBoard(button.dataset.board)
     return
   }
   if (button?.matches('[data-hangar-group]')) {

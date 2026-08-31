@@ -52,7 +52,7 @@ export function getDailyMissions() {
         claimed: false,
       })
     }
-    state = { day, missions, claimStars: 0 }
+    state = { day, missions }
     saveState(state)
   }
   return state.missions
@@ -130,7 +130,6 @@ export function claimMission(id) {
   if (!m || !m.done || m.claimed) return 0
   m.claimed = true
   const reward = 8 + Math.floor(m.target / 10)
-  s.claimStars = (s.claimStars || 0) + reward
   saveState(s)
   return reward
 }

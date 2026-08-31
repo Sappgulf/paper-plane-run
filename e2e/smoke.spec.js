@@ -193,7 +193,6 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
         done: true,
         claimed: false,
       }],
-      claimStars: 0,
     }))
   })
   await openApp(page)
@@ -207,7 +206,7 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
   await expect(page.locator('#hangar-wallet')).toHaveText('10')
   await expect(page.locator('#hangar-lifetime')).toHaveText('10')
   await expect(page.getByRole('button', { name: 'Claim' })).toHaveCount(0)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).claimStars)).toBe(10)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).missions[0].claimed)).toBe(true)
   expect(errors).toEqual([])
 })
 

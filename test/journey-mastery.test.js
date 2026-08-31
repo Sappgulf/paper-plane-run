@@ -36,6 +36,20 @@ describe('Journey pilot mastery', () => {
     expect(view.cosmetics).toEqual(['milo-portrait-route-reader', 'milo-map-trail', 'milo-compass-border'])
   })
 
+  it('credits chapter 2 destinations toward navigator mastery', () => {
+    let state = createMasteryState()
+    for (const [index, destinationId] of ['sunset', 'midnight'].entries()) {
+      state = resolveMasteryOutcome(state, {
+        receiptId: `c2:${index}`,
+        pilotId: 'navigator',
+        completed: true,
+        destinationId,
+      })
+    }
+    expect(state.pilots.navigator.counters.routesCompleted).toBe(2)
+    expect(state.pilots.navigator.counters.destinations).toEqual(['sunset', 'midnight'])
+  })
+
   it('unlocks Daredevil mastery without granting gameplay currency', () => {
     let state = createMasteryState()
     state = resolveMasteryOutcome(state, { receiptId: 'pip:1', pilotId: 'daredevil', nearMisses: 8, completed: true, risky: true })
@@ -54,5 +68,13 @@ describe('Journey pilot mastery', () => {
     localStorage.setItem(JOURNEY_MASTERY_STORAGE_KEY, '{broken')
     expect(loadMastery(localStorage)).toEqual({ mastery: createMasteryState(), recovered: true })
     expect(localStorage.getItem('unrelated')).toBe('keep')
+  })
+
+  it('preserves raw storage when the save version is unknown', () => {
+    const raw = JSON.stringify({ version: 99, receipts: ['kept'], pilots: { navigator: { counters: { destinations: [] } } } })
+    localStorage.setItem(JOURNEY_MASTERY_STORAGE_KEY, raw)
+
+    expect(loadMastery(localStorage)).toEqual({ mastery: createMasteryState(), recovered: false })
+    expect(localStorage.getItem(JOURNEY_MASTERY_STORAGE_KEY)).toBe(raw)
   })
 })

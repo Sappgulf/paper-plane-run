@@ -1,4 +1,5 @@
 import { JOURNEY_VERSION, PILOTS, stepsForChapter } from './journey.js'
+import { safeSetItem } from './game/safe-storage.js'
 
 export const JOURNEY_STORAGE_KEY = 'paper-plane-run-journey-v1'
 export const JOURNEY_RECEIPTS_KEY = 'paper-plane-run-journey-receipts-v1'
@@ -59,7 +60,7 @@ export function unlockJourneyChapter(storage = localStorage, chapter = 2) {
   const unlocked = new Set(loadUnlockedChapters(storage))
   unlocked.add(Number(chapter) === 2 ? 2 : 1)
   const list = [...unlocked].sort()
-  storage.setItem(JOURNEY_CHAPTER_UNLOCK_KEY, JSON.stringify(list))
+  safeSetItem(JOURNEY_CHAPTER_UNLOCK_KEY, JSON.stringify(list))
   return list
 }
 
@@ -74,7 +75,7 @@ export function loadJourney(storage = localStorage) {
   try {
     const journey = migrateJourney(JSON.parse(raw))
     if (!validJourney(journey)) throw new Error('Invalid Journey save')
-    storage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
+    safeSetItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
     return { journey, recovered: false }
   } catch {
     storage.removeItem(JOURNEY_STORAGE_KEY)
@@ -84,7 +85,7 @@ export function loadJourney(storage = localStorage) {
 
 export function saveJourney(storage = localStorage, journey) {
   if (!validJourney(journey)) return false
-  storage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
+  safeSetItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
   // Completing Chapter 1 permanently unlocks Chapter 2.
   if (journey.status === 'complete' && (journey.chapter || 1) === 1) {
     unlockJourneyChapter(storage, 2)
@@ -103,6 +104,6 @@ export function applyJourneyRewardOnce(storage = localStorage, reward) {
   if (!Array.isArray(receipts)) receipts = []
   if (receipts.includes(reward.id)) return false
   receipts.push(reward.id)
-  storage.setItem(JOURNEY_RECEIPTS_KEY, JSON.stringify(receipts.slice(-200)))
+  safeSetItem(JOURNEY_RECEIPTS_KEY, JSON.stringify(receipts.slice(-200)))
   return true
 }

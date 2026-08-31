@@ -133,7 +133,7 @@ export const SKINS = [
     id: 'halloween',
     ...planeArt('halloween', 'stunt'),
     name: 'Jack-o-Plane',
-    cost: 999,
+    cost: 0,
     seasonal: 'halloween',
     body: 0x1a1a1a,
     accent: 0xff6b00,
@@ -143,7 +143,7 @@ export const SKINS = [
     id: 'winter',
     ...planeArt('winter', 'glider'),
     name: 'Frost Fold',
-    cost: 999,
+    cost: 0,
     seasonal: 'winter',
     body: 0xe0f2fe,
     accent: 0x38bdf8,
@@ -153,7 +153,7 @@ export const SKINS = [
     id: 'valentine',
     ...planeArt('valentine', 'dart'),
     name: 'Love Letter',
-    cost: 999,
+    cost: 0,
     seasonal: 'valentine',
     body: 0xffe4e6,
     accent: 0xe11d48,
@@ -163,7 +163,7 @@ export const SKINS = [
     id: 'spring',
     ...planeArt('spring', 'glider'),
     name: 'Blossom Sheet',
-    cost: 999,
+    cost: 0,
     seasonal: 'spring',
     body: 0xfce7f3,
     accent: 0x65a30d,
@@ -237,7 +237,7 @@ function loadOwnership() {
 
   const equipped = getEquippedSkinId()
   if (!owned.has(equipped)) {
-    owned.add(equipped)
+    safeSetItem(EQUIP, 'classic')
     changed = true
   }
 

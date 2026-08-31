@@ -12,7 +12,6 @@ describe('skill-reward mission types', () => {
           { id: 'gauntlet_runner-0', type: 'gauntlets', target: 2, progress: 0, done: false, claimed: false },
           { id: 'gap_threader-0', type: 'threads', target: 1, progress: 0, done: false, claimed: false },
         ],
-        claimStars: 0,
       }),
     )
   })

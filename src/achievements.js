@@ -4,6 +4,7 @@
  * player claim a one-time wallet-star reward.
  */
 import { safeSetItem } from './game/safe-storage.js'
+import { getLifetimeStars } from './skins.js'
 
 const DIST_KEY = 'paper-plane-run-lifetime-distance'
 const RUNS_KEY = 'paper-plane-run-total-runs'
@@ -73,7 +74,7 @@ export const ACHIEVEMENTS = [
     id: 'stars',
     name: 'Star Collector',
     icon: '⭐',
-    getValue: null, // filled in by caller via lifetimeStars param (avoids a circular import on skins.js)
+    getValue: null, // lifetime stars are read via skins.js's getLifetimeStars() (see claimAchievementTier)
     unit: '★',
     tiers: [
       { threshold: 50, reward: 10 },
@@ -147,6 +148,8 @@ export function claimAchievementTier(id, tierIndex) {
   if (tierIndex !== current + 1) return 0
   const tier = a.tiers[tierIndex]
   if (!tier) return 0
+  const value = a.id === 'stars' ? getLifetimeStars() : a.getValue()
+  if (value < tier.threshold) return 0
   claimed[id] = tierIndex
   saveClaimed(claimed)
   return tier.reward
