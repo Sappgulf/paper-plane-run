@@ -54,6 +54,15 @@ export function endlessTierAt(distance = 0) {
   return tierIndexFrom(Math.floor((meters - TIER_START) / TIER_SPAN) + 1)
 }
 
+export function endlessTierProgress(distance = 0) {
+  const meters = Math.max(0, Number(distance) || 0)
+  if (meters < TIER_START) return 0
+  const tier = endlessTierAt(meters)
+  const tierStart = TIER_START + (tier - 1) * TIER_SPAN
+  const into = Math.max(0, Math.min(1, (meters - tierStart) / TIER_SPAN))
+  return into
+}
+
 /** Distance at which a given tier begins, for HUD "next tier in Nm" readouts. */
 export function tierStartDistance(tier = 0) {
   const index = tierIndexFrom(tier)

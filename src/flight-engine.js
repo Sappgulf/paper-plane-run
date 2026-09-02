@@ -1005,11 +1005,9 @@ function loadTex(rawUrl) {
   }
   const url = resolveAssetUrl(rawUrl)
   if (!texCache[url]) {
-    const t = loader.load(url)
+    const t = loader.load(url, undefined, undefined, () => { delete texCache[url] })
     t.colorSpace = THREE.SRGBColorSpace
     t.wrapS = t.wrapT = THREE.RepeatWrapping
-    // The floor is seen at a very grazing angle; without anisotropic filtering
-    // its painted detail collapses into mush a few meters out.
     t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4
     texCache[url] = t
   }
@@ -1885,9 +1883,13 @@ let activePlaneSilhouette = 'classic'
 function disposeFlightPlane(model, trail) {
   if (model) {
     model.traverse((child) => {
-      child.geometry?.dispose?.()
-      if (child.name === 'shieldBubble' && child.material !== planeBodyMat && child.material !== planeAccentMat) {
-        child.material?.dispose?.()
+      if (child.geometry && !disposedGeometries.has(child.geometry)) {
+        disposedGeometries.add(child.geometry)
+        child.geometry.dispose()
+      }
+      if (child.name === 'shieldBubble' && child.material !== planeBodyMat && child.material !== planeAccentMat && !disposedGeometries.has(child.material)) {
+        disposedGeometries.add(child.material)
+        child.material.dispose()
       }
     })
     scene.remove(model)
@@ -3772,6 +3774,7 @@ const TUTORIAL_HINTS = [
   { at: 55, text: '⭐ Stars add to your score — fly through them.' },
   { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
   { at: 125, text: 'Chain near-misses to ignite Combo Fever — a short score multiplier burst!' },
+  { at: 28, text: '⬇️ Hold low for speed — but skim the paper, don\'t kiss it!' },
   { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
   { at: 160, text: 'Almost there — line up the last ring!' },
 ]
@@ -3916,7 +3919,7 @@ const updraftGeo = new THREE.CylinderGeometry(1.5, 2.6, 9, 12, 1, true)
 const updraftMat = new THREE.MeshBasicMaterial({
   color: 0xffffff,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.34,
   side: THREE.DoubleSide,
   depthWrite: false,
 })
@@ -6502,7 +6505,7 @@ function update(dt) {
     punchThrough: tuckState.phase === 'tucking',
   })
   planeY = velY === flown.velY ? flown.y : previousHeight + velY * dt
-  if (mouseMode) mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y - sinkPerSecond * 0.35 * dt, AIM_FLOOR_Y, MAX_Y)
+  // Mouse hold-level no longer secretly descends — only the plane sinks, not the target
 
   // Height traded downward becomes forward speed, and climbing spends it back
   // out of the same pool — one conserved quantity, so a dive cannot print
@@ -6562,8 +6565,7 @@ function update(dt) {
   // when it is spending the resource that keeps it alive, which is the whole
   // tension the altitude economy exists to create.
   speed = (cruise.cruiseSpeed + speedBoost + tuckFx.speedBonus + endlessTier().speedBonus * speedMul)
-    * groundEffectSpeedMul(groundSkim.tier)
-    * diveSpeedMultiplier(diveSpeed)
+    * Math.min(1.25, groundEffectSpeedMul(groundSkim.tier) * diveSpeedMultiplier(diveSpeed))
   if (speedFxEl) {
     const over = speed - cfg.speedBase
     const range = Math.max(1, cfg.speedCap - cfg.speedBase + 24)
@@ -7215,6 +7217,7 @@ document.addEventListener('visibilitychange', () => {
   applyPauseState()
 })
 function frame() {
+  if (renderer.getContext && renderer.getContext().isContextLost()) return
   if (!simulationPaused) {
     try {
       timer.update()

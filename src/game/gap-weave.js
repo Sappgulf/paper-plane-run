@@ -58,8 +58,10 @@ export function chooseGapCenter({
 } = {}) {
   const bound = Math.max(0, finite(halfWidth, CORRIDOR_HALF_WIDTH) - finite(gapWidth) * 0.5)
   const previous = clamp(finite(previousCenter), -bound, bound)
+  // 20% breathing room — occasionally hold the line so player can lock in
+  if (sample(random) < 0.20) return previous
   const drift = Math.max(0, finite(maxDrift, MAX_GAP_DRIFT))
-  const floor = Math.min(drift, Math.max(0, finite(minDrift, 2.4)))
+  const floor = Math.min(drift, Math.max(0, finite(minDrift, 1.2)))
   // Choose a signed offset in [minDrift, maxDrift], preferring the side with
   // room; if neither side has room for the minimum, fall back to the widest.
   const roll = sample(random)
@@ -180,7 +182,7 @@ export function clampAmplitudeToGap({
     Math.max(0, finite(gapWidth, 3)) * 0.5 -
     Math.max(0, finite(damageRadius))
   if (edge <= 0) return 0
-  return Math.min(requested, edge / span)
+  return Math.min(requested, (edge * 0.72) / span)
 }
 
 /** Smallest clearance between a point and every hazard's damage envelope. */
