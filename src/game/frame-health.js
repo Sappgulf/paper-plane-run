@@ -3,7 +3,7 @@ function round(value, digits = 1) {
   return Math.round(value * scale) / scale
 }
 
-export function createFrameHealthMonitor({ sampleSize = 120, onChange } = {}) {
+export function createFrameHealthMonitor({ sampleSize = 60, onChange } = {}) {
   const durations = []
   let status = 'warming'
 

@@ -57,6 +57,7 @@ export class GameAudio {
 
   async unlock() {
     if (this.started) return
+    try {
     const Ctx = window.AudioContext || window.webkitAudioContext
     if (!Ctx) return
     this.ctx = new Ctx()
@@ -98,6 +99,7 @@ export class GameAudio {
 
     this.started = true
     if (this.ctx.state === 'suspended') await this.ctx.resume()
+    } catch {}
   }
 
   setMuted(m) {

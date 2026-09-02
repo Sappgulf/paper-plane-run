@@ -14,7 +14,7 @@ export function cameraLean({ velX = 0, velY = 0 } = {}) {
 }
 
 export function bankRoll({ bank = 0 } = {}) {
-  return clamp((Number(bank) || 0) * 0.08, -0.06, 0.06)
+  return clamp((Number(bank) || 0) * 0.14, -0.12, 0.12)
 }
 
 export function shadowForPlane({ planeY = 0, planeX = 0, bank = 0, maxY = 20 } = {}) {

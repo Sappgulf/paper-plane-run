@@ -84,7 +84,7 @@ export const AIM_MAX_APPROACH = 17
 /** Approach speed requested per unit of distance to the cursor. */
 export const AIM_APPROACH_GAIN = 3.4
 /** How hard a mismatch between actual and wanted closing speed deflects. */
-export const AIM_VELOCITY_GAIN = 0.2
+export const AIM_VELOCITY_GAIN = 0.42
 
 export function aimCommand({
   delta = 0,

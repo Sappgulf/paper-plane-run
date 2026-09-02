@@ -1078,15 +1078,24 @@ function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
   tex.colorSpace = THREE.SRGBColorSpace
   const img = new Image()
   img.crossOrigin = 'anonymous'
+  img.onerror = () => { delete cutoutTexCache[url]; console.warn('cutout failed', url) }
+  img.onabort = img.onerror
   img.onload = () => {
     canvas.width = img.width
     canvas.height = img.height
     const ctx = canvas.getContext('2d')
     ctx.drawImage(img, 0, 0)
     const { width: w, height: h } = canvas
-    const data = ctx.getImageData(0, 0, w, h)
-    const px = data.data
-    const n = w * h
+    let data, px, n
+    try {
+      data = ctx.getImageData(0, 0, w, h)
+      px = data.data
+      n = w * h
+    } catch (err) {
+      console.warn('cutout tainted', url, err)
+      delete cutoutTexCache[url]
+      return
+    }
     // Reference backdrop color, averaged over the full border rather than
     // just 4 corners, so a corner that happens to fall on a shadow/subject
     // doesn't skew the reference.
@@ -3041,7 +3050,10 @@ function updateWeatherFx(dt) {
 }
 
 function clearEntities() {
-  for (const e of entities) scene.remove(e.mesh)
+  for (const e of entities) {
+    if (e.disposable) disposeMeshResources(e.mesh)
+    scene.remove(e.mesh)
+  }
   entities.length = 0
   for (const c of clouds) scene.remove(c)
   clouds.length = 0

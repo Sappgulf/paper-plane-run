@@ -166,7 +166,7 @@ if (muteBtn) {
   muteBtn.setAttribute('aria-label', shellAudio.muted ? 'Unmute' : 'Mute')
   muteBtn.addEventListener('click', async (event) => {
     event.stopPropagation()
-    await shellAudio.unlock()
+    try { await shellAudio.unlock() } catch {}
     const muted = shellAudio.toggleMute()
     muteBtn.textContent = muted ? '🔇' : '🔊'
     muteBtn.setAttribute('aria-pressed', String(muted))
@@ -1601,7 +1601,7 @@ async function startMode(kind, options = {}) {
   const panelAtStart = PANEL_IDS.find((id) => !$(id)?.classList.contains('hidden'))
   pendingStart = { kind, options }
   settings = loadSettings()
-  void shellAudio.unlock()
+  void shellAudio.unlock().catch(()=>{})
   showEngineStatus('Preparing your plane...')
   try {
     const result = await engineLoader.start(kind, {
@@ -1737,7 +1737,7 @@ function setShellDifficulty(id, { persist = true } = {}) {
 document.querySelectorAll('.diff-btn[data-diff]').forEach((button) => {
   button.addEventListener('click', () => {
     setShellDifficulty(button.dataset.diff)
-    void shellAudio.unlock().then(() => shellAudio.uiClick())
+    void shellAudio.unlock().catch(()=>{}).then(() => shellAudio.uiClick())
   })
 })
 setShellDifficulty(difficulty.id, { persist: false })
@@ -1776,7 +1776,7 @@ document.querySelectorAll('.ctrl-btn').forEach((button) => {
     settings = saveSettings({ controlMode: button.dataset.ctrl })
     syncShellControlUi()
     void syncSettingsWithEngine(settings)
-    void shellAudio.unlock().then(() => shellAudio.uiClick())
+    void shellAudio.unlock().catch(()=>{}).then(() => shellAudio.uiClick())
   })
 })
 

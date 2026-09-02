@@ -13,8 +13,8 @@ describe('camera rig', () => {
 
   test('bank roll is gentle and clamped', () => {
     expect(bankRoll({ bank: 0 })).toBe(0)
-    expect(bankRoll({ bank: 2 })).toBeCloseTo(0.06)
-    expect(bankRoll({ bank: -2 })).toBeCloseTo(-0.06)
+    expect(bankRoll({ bank: 2 })).toBeCloseTo(0.12)
+    expect(bankRoll({ bank: -2 })).toBeCloseTo(-0.12)
   })
 
   test('shadow shrinks and fades with altitude', () => {

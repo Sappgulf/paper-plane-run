@@ -25,7 +25,7 @@ export const CORRIDOR_HALF_WIDTH = 11
 /** Spare room beyond the plane's own radius that a gap must offer. */
 export const GAP_MARGIN = 1.5
 /** How far the gap centre may travel between consecutive waves. */
-export const MAX_GAP_DRIFT = 7.5
+export const MAX_GAP_DRIFT = 5.8
 
 function finite(value, fallback = 0) {
   const number = Number(value)
@@ -54,7 +54,7 @@ export function chooseGapCenter({
   halfWidth = CORRIDOR_HALF_WIDTH,
   gapWidth = 3,
   maxDrift = MAX_GAP_DRIFT,
-  minDrift = 2.4,
+  minDrift = 1.2,
 } = {}) {
   const bound = Math.max(0, finite(halfWidth, CORRIDOR_HALF_WIDTH) - finite(gapWidth) * 0.5)
   const previous = clamp(finite(previousCenter), -bound, bound)
@@ -198,7 +198,7 @@ export function gapClearanceAt({ x = 0, hazards = [], damageRadius = 1.2 } = {})
 /** Share of stars deliberately placed off the guaranteed gap. */
 export const OFF_GAP_STAR_CHANCE = 0.45
 /** Spare room a star needs beyond a hazard's envelope to be worth going for. */
-export const STAR_CLEARANCE = 1.1
+export const STAR_CLEARANCE = 2.2
 
 /**
  * Where a star goes.
