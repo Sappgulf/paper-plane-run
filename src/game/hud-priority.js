@@ -22,7 +22,7 @@
 export const HUD_ANCHORS = Object.freeze(['distance', 'stars', 'altitude'])
 
 /** How many non-anchor chips may share the row. */
-export const HUD_STATE_BUDGET = 2
+export const HUD_STATE_BUDGET = 3
 
 /**
  * Higher wins a slot. The ordering is "how much does this change what I do in
@@ -32,7 +32,7 @@ export const HUD_STATE_BUDGET = 2
 export const HUD_CHIP_RANK = Object.freeze({
   tuck: 100,
   guardian: 90,
-  power: 80,
+  power: 88,
   skim: 70,
   fever: 60,
   combo: 50,

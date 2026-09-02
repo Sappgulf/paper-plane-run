@@ -36,7 +36,7 @@ html, body, #game-root {
 /* —— Speed streaks (opacity driven by JS from current flight speed) ——
    Thin, faint rays that live only near the frame edge; earlier art ran
    near-opaque white to the mid-screen and read as a rendering artifact. */
-html[data-boosting='1'] #speed-fx { opacity: 0.34 !important; }
+html[data-boosting='1'] #speed-fx { opacity: 0.24 !important; }
 html[data-render-quality='low'] #speed-fx { display: none; }
 #speed-fx {
   position: absolute; inset: 0; pointer-events: none; z-index: 1;

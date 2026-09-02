@@ -26,7 +26,7 @@ export const ZONES = [
     sky: '/assets/sky-harbor.jpg',
     ground: '/assets/ground-harbor.jpg',
     groundTint: 0xb0d2e2,
-    hazardBias: { building: 0.7, bird: 1.4, scissors: 0.9 },
+    hazardBias: { building: 0.55, bird: 1.55, scissors: 0.85 },
   },
   {
     id: 'storm',
@@ -40,7 +40,7 @@ export const ZONES = [
     ground: '/assets/ground-storm.jpg',
     groundTint: 0x9a8aa6,
     nightReadability: true,
-    hazardBias: { building: 1.2, bird: 1.1, scissors: 1.5 },
+    hazardBias: { building: 1.55, bird: 0.85, scissors: 1.45 },
   },
   {
     id: 'sunset',
@@ -53,7 +53,7 @@ export const ZONES = [
     sky: '/assets/sky-sunset.jpg',
     ground: '/assets/ground-sunset.jpg',
     groundTint: 0xdca87e,
-    hazardBias: { building: 1.1, bird: 1.2, scissors: 1.2 },
+    hazardBias: { building: 0.95, bird: 1.15, scissors: 1.05 },
   },
   {
     id: 'aurora',
@@ -66,7 +66,7 @@ export const ZONES = [
     sky: '/assets/sky-aurora.jpg',
     ground: '/assets/ground-aurora.jpg',
     groundTint: 0x92a8a2,
-    hazardBias: { building: 1.3, bird: 1.3, scissors: 1.4 },
+    hazardBias: { building: 1.0, bird: 1.25, scissors: 1.25 },
   },
   {
     id: 'midnight',
@@ -80,7 +80,7 @@ export const ZONES = [
     ground: '/assets/ground-midnight.jpg',
     groundTint: 0x7a72a4,
     nightReadability: true,
-    hazardBias: { building: 1.35, bird: 1.45, scissors: 1.35 },
+    hazardBias: { building: 1.25, bird: 1.35, scissors: 1.2 },
   },
 ]
 

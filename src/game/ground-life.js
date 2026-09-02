@@ -322,9 +322,9 @@ export function resolveGroundLifeBudget({
     return Object.freeze({ enabled: false, countScale: 0, motionScale: 0 })
   }
   if (level === 'medium') {
-    return Object.freeze({ enabled: true, countScale: 0.5, motionScale: reducedMotion ? 0 : 0.7 })
+    return Object.freeze({ enabled: true, countScale: 0.42, motionScale: reducedMotion ? 0 : 0.7 })
   }
-  return Object.freeze({ enabled: true, countScale: 1, motionScale: reducedMotion ? 0 : 1 })
+  return Object.freeze({ enabled: true, countScale: 0.62, motionScale: reducedMotion ? 0 : 1 })
 }
 
 export function groundLifeCount(speciesDef, budget) {

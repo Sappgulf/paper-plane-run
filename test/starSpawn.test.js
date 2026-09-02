@@ -36,10 +36,10 @@ describe('gold rush star clusters', () => {
 })
 
 describe('opening star-lane telegraph', () => {
-  test('is active only in the first 40 meters', () => {
+  test('is active only in the first 80 meters', () => {
     expect(shouldTelegraphStarLane(0)).toBe(true)
-    expect(shouldTelegraphStarLane(39.9)).toBe(true)
-    expect(shouldTelegraphStarLane(40)).toBe(false)
+    expect(shouldTelegraphStarLane(79.9)).toBe(true)
+    expect(shouldTelegraphStarLane(80)).toBe(false)
   })
 
   test('guarantees a readable mid-lane star when the chunk would otherwise be empty', () => {

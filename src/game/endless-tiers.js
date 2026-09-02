@@ -26,7 +26,7 @@ const SPEED_PER_TIER = 1.6
 // Tuned so spacing is still tightening at MAX_TIER rather than pinning to the
 // floor early and making the last tiers a no-op on wave density.
 const SPACING_PER_TIER = 0.022
-const MIN_SPACING_SCALE = 0.82
+const MIN_SPACING_SCALE = 0.84
 const HAZARD_PER_TIER = 0.07
 const MAX_HAZARD_BONUS = 0.5
 

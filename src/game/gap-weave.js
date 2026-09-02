@@ -122,10 +122,26 @@ export function planWaveGaps({
     return Object.freeze({ xs: Object.freeze([]), gapCenter: center, gapWidth: half * 2 })
   }
 
+  // Archetype: 45% balanced wall (original), 35% clustered to heavier side, 20% single-sided wall
+  const archetypeRoll = sample(random)
+  const archetype = archetypeRoll < 0.45 ? 'balanced' : archetypeRoll < 0.8 ? 'clustered' : 'single'
+  let clusterBias = 0
+  if (archetype === 'clustered' && spans.length === 2) {
+    const leftWidth = spans[0].max - spans[0].min
+    const rightWidth = spans[1].max - spans[1].min
+    // Push 70% of hazards to the side with more room — creates a readable heavy/light split
+    clusterBias = leftWidth > rightWidth ? -0.18 : 0.18
+  }
   for (let i = 0; i < wanted; i += 1) {
-    // Walk a jittered position through the concatenated spans so both sides
-    // are filled in proportion to how much room they actually have.
-    const t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
+    let t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
+    if (archetype === 'clustered') t = clamp(t + clusterBias, 0, 1)
+    if (archetype === 'single' && spans.length === 2) {
+      // Single wall: all hazards on one side, other side empty — strongest gap read
+      const side = sample(random) < 0.5 ? 0 : 1
+      const span = spans[side]
+      xs.push(span.min + sample(random) * (span.max - span.min))
+      continue
+    }
     let cursor = clamp(t, 0, 1) * total
     for (const span of spans) {
       const width = span.max - span.min
@@ -208,7 +224,7 @@ export function chooseStarX({
 } = {}) {
   const center = finite(gapCenter)
   const half = Math.max(0, finite(gapWidth, 3)) * 0.5
-  const inGap = () => center + (sample(random) - 0.5) * Math.max(0.4, half * 1.2)
+  const inGap = () => center + (sample(random) - 0.5) * Math.max(0.35, half * 0.9)
   if (telegraph || sample(random) > clamp(finite(offGapChance, OFF_GAP_STAR_CHANCE), 0, 1)) {
     return inGap()
   }

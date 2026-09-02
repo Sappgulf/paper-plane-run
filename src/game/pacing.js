@@ -94,9 +94,9 @@ export function getWaveSpacing({ difficultyId = 'normal', distance = 0, recovery
   const base = BASE_SPACING[difficultyId] || BASE_SPACING.normal
   if (recovery) return base + 12
   const meters = Math.max(0, Number(distance) || 0)
-  const opening = Math.max(0, 8 - meters / 16)
-  const compression = Math.min(3, meters / 350)
-  return Math.max(14, base + opening - compression)
+  const opening = Math.max(0, 6 - meters / 20)
+  const compression = Math.min(2.2, meters / 420)
+  return Math.max(16, base + opening - compression)
 }
 
 export function createPacingWave({ index = 0, difficultyId = 'normal', afterBoss = false } = {}) {
@@ -144,6 +144,9 @@ export function getSideBuildingSpread({ gap = 1, random = Math.random } = {}) {
   const sample = Number(random())
   const roll = Number.isFinite(sample) ? sample : 0.5
   const scale = Math.max(0.7, Number(gap) || 1)
+  // ~12% of rolls create a true threadable slot (two towers framing a 5-7m lane).
+  const tight = roll < 0.12
+  if (tight) return (4.6 + roll * 8) * scale
   return 14.5 * scale + roll * 5.5 * scale
 }
 

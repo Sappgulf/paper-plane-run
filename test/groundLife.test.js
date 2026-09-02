@@ -173,15 +173,15 @@ describe('ground life budget', () => {
   test('halves the field at medium quality and keeps it whole at high', () => {
     const scatter = byId('park-blocks')
     expect(groundLifeCount(scatter, resolveGroundLifeBudget({ level: 'medium' })))
-      .toBe(Math.floor(scatter.count * 0.5))
+      .toBe(Math.floor(scatter.count * 0.42))
     expect(groundLifeCount(scatter, resolveGroundLifeBudget({ level: 'high' })))
-      .toBe(scatter.count)
+      .toBe(Math.floor(scatter.count * 0.62))
   })
 
   test('reduced motion keeps the scenery but stops it moving', () => {
     const budget = resolveGroundLifeBudget({ level: 'high', reducedMotion: true })
     expect(budget.enabled).toBe(true)
-    expect(budget.countScale).toBe(1)
+    expect(budget.countScale).toBe(0.62)
     expect(budget.motionScale).toBe(0)
     const still = groundLifeTransform(byId('pedestrians'), 0.3, 12, budget.motionScale)
     expect(still.offsetX).toBe(0)

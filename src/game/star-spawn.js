@@ -43,7 +43,7 @@ export function planStarSpawns({
   })
 }
 
-export const STAR_TELEGRAPH_DISTANCE = 40
+export const STAR_TELEGRAPH_DISTANCE = 80
 
 export function shouldTelegraphStarLane(distance = 0) {
   return (Number(distance) || 0) < STAR_TELEGRAPH_DISTANCE
@@ -65,6 +65,6 @@ export function applyStarLaneTelegraph(plan, { distance = 0, midY = 8 } = {}) {
     placements: Object.freeze(placements.slice(0, Math.max(starCount, placements.length))),
     telegraph,
     telegraphY: telegraph ? midY : null,
-    telegraphScale: telegraph ? 1.38 : 1,
+    telegraphScale: telegraph ? 1.55 : 1,
   })
 }

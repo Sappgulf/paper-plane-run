@@ -662,7 +662,7 @@ const DIFFS = {
   hard: {
     id: 'hard', label: 'Hard', blurb: 'Faster · denser · meaner wind',
     speedBase: 34, speedRamp: 0.05, speedCap: 58, hazardScale: 1.35,
-    buildingH: 1.25, birdCount: 1.4, powerChance: 0.12, starChance: 0.48,
+    buildingH: 1.15, birdCount: 1.2, powerChance: 0.12, starChance: 0.48,
     windForce: 1.35, sink: 3.1, scoreMul: 1.25, gap: 0.85,
   },
 }
@@ -1841,6 +1841,9 @@ const rivalMat = new THREE.MeshStandardMaterial({
 
 function buildPowerMeta() {
   const c = powerColors(settings.colorblindPowers)
+  // Core endless trio — shield/magnet/boost only. Slow + Phase are retired from
+  // endless spawn (they remain available to Journey encounters if needed) to
+  // keep the sky readable and the HUD unambiguous.
   return {
     shield: {
       label: '🛡 Shield',
@@ -1848,10 +1851,8 @@ function buildPowerMeta() {
       banner: '🛡 Paper Shield!',
       duration: SHIELD_BASE_DURATION,
     },
-    slow: { label: '⏱ Slow-mo', color: c.slow, banner: '⏱ Slow Motion!', duration: 6 },
     magnet: { label: '🧲 Magnet', color: c.magnet, banner: '🧲 Star Magnet!', duration: 9 },
     boost: { label: '🚀 Boost', color: c.boost, banner: '🚀 Speed Boost!', duration: 5 },
-    phase: { label: '👻 Phase', color: c.phase, banner: '👻 Phasing through hazards!', duration: 4 },
   }
 }
 let POWER_META = buildPowerMeta()
@@ -2746,7 +2747,7 @@ function createStar({ golden = false } = {}) {
 const powerGlowGeo = new THREE.SphereGeometry(0.95, 20, 16)
 const powerCoreGeoBoost = new THREE.ConeGeometry(0.38, 0.95, 6)
 const powerCoreGeoDefault = new THREE.IcosahedronGeometry(0.48, 0)
-const powerRingGeo = new THREE.TorusGeometry(0.78, 0.06, 10, 32)
+const powerRingGeo = new THREE.TorusGeometry(0.78, 0.11, 10, 32)
 const powerIconGeoBoost = new THREE.PlaneGeometry(1.3, 1.3)
 const powerIconGeoDefault = new THREE.PlaneGeometry(0.85, 0.85)
 // Materials DO depend on kind (color), but that color is otherwise fixed
@@ -2764,9 +2765,9 @@ function createPowerUp(kind) {
   let mats = powerMatCache[kind]
   if (!mats) {
     mats = {
-      glowMat: new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, depthWrite: false }),
+      glowMat: new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false }),
       coreMat: new THREE.MeshStandardMaterial({
-        color: col, emissive: col, emissiveIntensity: 0.75, roughness: 0.22, metalness: 0.35,
+        color: col, emissive: col, emissiveIntensity: 0.9, roughness: 0.22, metalness: 0.35,
       }),
       ringMat: new THREE.MeshStandardMaterial({
         color: 0xfffaf2, emissive: col, emissiveIntensity: 0.55, roughness: 0.3, metalness: 0.4,
@@ -2825,7 +2826,7 @@ function createPowerUp(kind) {
   g.userData.ring = ring
   g.userData.core = core
   g.userData.glow = glow
-  g.scale.setScalar(1.2)
+  g.scale.setScalar(1.32)
   return g
 }
 
@@ -3142,10 +3143,11 @@ function spawnChunk(z) {
   const early = distance < 90
   const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
-    if (rng() < (early ? 0.52 : 0.82)) {
+    if (rng() < (early ? 0.48 : 0.62)) {
       const w = 2.5 + rng() * 3.5
+      const heights = [5.2, 8.6, 12.2]
       const h = getFlyableBuildingHeight({
-        requestedHeight: (5 + rng() * (8 + ramp * 8)) * cfg.buildingH,
+        requestedHeight: heights[(rng()*3)|0] * (0.9 + rng()*0.2) * cfg.buildingH,
         maxAltitude: MAX_Y,
       })
       const d = 2.5 + rng() * 3
@@ -3178,8 +3180,9 @@ function spawnChunk(z) {
   const ht = recovering || early ? null : pickHazardType(zone)
   if (ht === 'building') {
     const w = 2 + rng() * 3
+    const centerHeights = [5.0, 8.4, 11.8]
     const h = getFlyableBuildingHeight({
-      requestedHeight: (6 + rng() * (6 + ramp * 6)) * cfg.buildingH,
+      requestedHeight: centerHeights[(rng()*3)|0] * (0.9 + rng()*0.15) * cfg.buildingH,
       maxAltitude: MAX_Y,
     })
     const d = 2 + rng() * 2.5
@@ -3198,7 +3201,7 @@ function spawnChunk(z) {
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
     // 8-bird pileup in one chunk — cap the swarm so density stays readable.
-    const count = Math.min(5, Math.max(1, Math.round((1 + rng() * (2 + ramp * 3)) * cfg.birdCount)))
+    const count = Math.min(3, Math.max(1, Math.round((1 + rng() * (1.6 + ramp * 2.2)) * cfg.birdCount)))
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
@@ -3376,7 +3379,7 @@ function spawnChunk(z) {
   // Powers — boosted chance; boost is more common early in pool
   if (starPlan.powerSpawn) {
     // Boost stays weighted higher than the rest; the pool is otherwise flat.
-    const pool = rng() < 0.35 ? ['boost'] : POWER_KINDS
+    const pool = rng() < 0.18 ? ['boost'] : POWER_KINDS
     const kind = pool[(rng() * pool.length) | 0]
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
@@ -3564,12 +3567,15 @@ function spawnMiniGauntlet(z = 60) {
   // wave's gap centre rather than a fixed lane, since the passage moves.
   const marker = new THREE.Object3D()
   marker.position.set(gapCenter, 9, z - 2)
-  if (renderQuality.secondaryEffects) {
-    // Render the promised lane as a translucent vertical ribbon spanning the
-    // hazard corridor, so the paid lane is visible, not just advertised.
+  // Ribbon always visible — the lane promise must read on low-power too.
+  {
     const ribbon = new THREE.Mesh(gauntletLaneGeo, gauntletLaneMat)
     ribbon.rotation.y = Math.PI / 2
     ribbon.position.set(0, 0, 9)
+    if (!renderQuality.secondaryEffects) {
+      ribbon.material = ribbon.material.clone()
+      ribbon.material.opacity = 0.18
+    }
     marker.add(ribbon)
     marker.userData.ribbon = ribbon
   }
@@ -3577,8 +3583,8 @@ function spawnMiniGauntlet(z = 60) {
   entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX: gapCenter, cleared: false })
   zoneBannerKind = 'gauntlet'
   zoneBanner.textContent = room > 0
-    ? `⚡ Hazard Gauntlet · gap ${side}`
-    : '⚡ Hazard Gauntlet · find the widest gap'
+    ? `⚡ Gauntlet · gap ${side} — hold the lane`
+    : '⚡ Gauntlet · widest gap'
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 2
   audio.windGust()
@@ -5727,7 +5733,17 @@ function animateHazards(dt) {
   for (const e of entities) {
     if (e.journeyMotion) {
       const motion = e.journeyMotion
-      e.mesh.position.x = motion.originX + Math.sin(hazardClock * motion.speed) * motion.amplitude * motion.direction
+      const requested = Math.abs(motion.amplitude || 0)
+      const clamped = clampAmplitudeToGap({
+        requestedAmplitude: requested,
+        anchorX: motion.originX,
+        gapCenter: lastGapCenter,
+        gapWidth: 5.5,
+        damageRadius: e.radius || 0.7,
+        reach: 1,
+      })
+      const amp = Math.min(requested, clamped)
+      e.mesh.position.x = motion.originX + Math.sin(hazardClock * motion.speed) * amp * motion.direction
     }
     if (e.type === 'bird') {
       const u = e.mesh.userData
@@ -5811,7 +5827,7 @@ function animateHazards(dt) {
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
         zoneBannerKind = 'boss'
-        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} Fly the glowing hoop`
+        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} Fly the glowing ring — hold GO!`
         zoneBanner.classList.remove('hidden')
         zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.7
         hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
@@ -6482,7 +6498,7 @@ function update(dt) {
   diveSpeed = advanceDiveSpeed(diveSpeed, { deltaHeight: planeY - previousHeight, dt })
 
   altitudeStatus = evaluateAltitude(planeY)
-  if (altitudeStatus.grounded && state === 'playing' && invuln <= 0) {
+  if (altitudeStatus.grounded && state === 'playing' && invuln <= 0 && !isLaunchGraceActive(elapsed, launchGraceSeconds)) {
     die('Nosed into the paper ground')
     return
   }
@@ -7080,7 +7096,11 @@ function update(dt) {
         const push = Math.sign(p.x - m.position.x) || (p.x >= 0 ? 1 : -1)
         planeX = THREE.MathUtils.clamp(planeX + push * 0.55, -MAX_X, MAX_X)
         velX = push * 12
+        velY = Math.max(velY, 0.8)
         mouseTarget.x = planeX
+        // Nudge out of skim band so a single shove doesn't chain into ground
+        if (planeY < 2.8) planeY = 2.8
+        Haptic.tap()
       }
       if (
         m.position.z > -2 &&
