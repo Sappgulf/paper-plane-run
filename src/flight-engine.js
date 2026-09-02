@@ -27,7 +27,16 @@ import {
   ghostDistanceAtTime,
 } from './ghost.js'
 import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
-import { endlessTierAt, resolveTier, tierProgress } from './game/endless-tiers.js'
+import {
+  endlessTierAt,
+  endlessTierProgress,
+  getTierHazardBonusSmooth,
+  getTierScoreMultiplierSmooth,
+  getTierSpacingScaleSmooth,
+  getTierSpeedBonusSmooth,
+  resolveTier,
+  tierProgress,
+} from './game/endless-tiers.js'
 import {
   getPatternReach,
   getTierMotionScale,
@@ -966,6 +975,9 @@ if (!settings.lowPower) {
   const pmrem = new THREE.PMREMGenerator(renderer)
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
   pmrem.dispose()
+} else {
+  scene.environment?.dispose?.()
+  scene.environment = null
 }
 
 // Every asset path in this file is authored as a root-absolute string
@@ -2031,6 +2043,27 @@ function syncPlanePowerLook(dt = 0.016) {
   }
   const stitch = plane.getObjectByName('guardianStitch')
   if (stitch) stitch.visible = guardianLeft > 0 && state === 'playing'
+  // Boost outline shrink pulse: the hitbox reduction (0.78 → 0.60) is invisible
+  // without a visual cue beyond the safety text banner. The ink outline that
+  // already edges the plane now breathes smaller while boosting, so the tighter
+  // hitbox reads instantly even at speed. Scale tracks the upgrade's
+  // collisionScale: a higher Turbo Fold rank = visibly tighter outline.
+  const outline = plane?.userData?.outlineShell
+  if (outline) {
+    if (boosting) {
+      const safety = getBoostSafety(fx)
+      const pulse = 0.96 + Math.sin(elapsed * 14) * 0.04
+      const shrink = 0.92 + safety.collisionScale * 0.13
+      outline.visible = true
+      for (const child of outline.children) {
+        child.scale.setScalar(1.085 * pulse * shrink)
+      }
+      planeOutlineMat.opacity = 0.86 + Math.sin(elapsed * 18) * 0.08
+    } else {
+      planeOutlineMat.opacity = 0.82
+      for (const child of outline.children) child.scale.setScalar(1.085)
+    }
+  }
   const stretch = boosting ? 1.1 : 1
   plane.scale.setScalar((fx.planeScale || 1) * 1.12 * stretch)
   if (upgradeTrail) {
@@ -2763,20 +2796,36 @@ const starGlowMatGold = new THREE.MeshBasicMaterial({
   color: 0xfde68a, transparent: true, opacity: 0.5, depthWrite: false,
 })
 const starGlowGeoGold = new THREE.SphereGeometry(1.15, 14, 14)
+// Wealth / Gold Rush 3-star cluster: gold tint so the payout reads as currency,
+// but keeps the normal 1★ value (unlike the tier golden 5★). Distinct material
+// so the cluster is instantly recognizable even mid-wave.
+const starCoreMatWealth = new THREE.MeshBasicMaterial({
+  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18,
+  side: THREE.DoubleSide, depthWrite: false, color: 0xffe9a8,
+})
+const starGlowMatWealth = new THREE.MeshBasicMaterial({
+  color: 0xfcd34d, transparent: true, opacity: 0.38, depthWrite: false,
+})
+const starGlowGeoWealth = new THREE.SphereGeometry(0.86, 12, 12)
 
-function createStar({ golden = false } = {}) {
+function createStar({ golden = false, wealth = false } = {}) {
   const g = new THREE.Group()
-  const core = new THREE.Mesh(starCoreGeo, golden ? starCoreMatGold : starCoreMat)
+  const mat = golden ? starCoreMatGold : wealth ? starCoreMatWealth : starCoreMat
+  const core = new THREE.Mesh(starCoreGeo, mat)
   core.rotation.y = Math.PI
-  core.scale.setScalar(golden ? 1.35 : 1)
+  core.scale.setScalar(golden ? 1.35 : wealth ? 1.18 : 1)
   g.add(core)
   // Soft glow shell for readability
   const glow = golden
     ? new THREE.Mesh(starGlowGeoGold, starGlowMatGold)
-    : new THREE.Mesh(starGlowGeo, starGlowMat)
+    : wealth
+      ? new THREE.Mesh(starGlowGeoWealth, starGlowMatWealth)
+      : new THREE.Mesh(starGlowGeo, starGlowMat)
   g.add(glow)
   g.userData.core = core
   g.userData.billboard = core
+  g.userData.wealth = wealth
+  g.userData.golden = golden
   return g
 }
 
@@ -3127,13 +3176,15 @@ function spawnChunk(z) {
   const tier = endlessTier()
   // The shipped ramp saturates at 700m; tier headroom keeps flock sizes and
   // building heights growing past it instead of freezing for the rest of the run.
-  const ramp = Math.min(1, distance / 700) + tier.hazardBonus
+  // Smooth lerp within the tier (endlessTierProgress) prevents a step at each
+  // tier boundary — escalation is a continuous curve, not a staircase.
+  const ramp = Math.min(1, distance / 700) + getTierHazardBonusSmooth(distance)
   const cfg = difficulty
   const zone = activeZoneAt(distance)
   const recovering = distance < bossRecoveryUntil
   const waveSpacing =
     getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) *
-    cfg.gap * tier.spacingScale
+    cfg.gap * getTierSpacingScaleSmooth(distance)
   const wave = createPacingWave({
     index: Math.max(0, Math.round((z - 35) / Math.max(1, waveSpacing))),
     difficultyId: difficulty.id,
@@ -3186,7 +3237,7 @@ function spawnChunk(z) {
   const early = distance < 90
   const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
-    if (rng() < (early ? 0.38 : 0.42)) {
+    if (rng() < 0.38) {
       const w = 2.5 + rng() * 3.5
       const heights = [5.2, 8.6, 12.2]
       const h = getFlyableBuildingHeight({
@@ -3223,7 +3274,7 @@ function spawnChunk(z) {
   const ht = recovering || early ? null : pickHazardType(zone)
   if (ht === 'building') {
     const w = 2 + rng() * 3
-    const centerHeights = [5.0, 8.4, 11.8]
+    const centerHeights = [5.2, 8.6, 12.2]
     const h = getFlyableBuildingHeight({
       requestedHeight: centerHeights[(rng()*3)|0] * (0.9 + rng()*0.15) * cfg.buildingH,
       maxAltitude: MAX_Y,
@@ -3393,8 +3444,11 @@ function spawnChunk(z) {
     }))
 
   // Stars — often 1–2; Gold Rush raises cluster odds through planStarSpawns
+  // and occasionally makes a gold-tinted 3-star cluster so wealth payouts are
+  // visually distinct from Lucky Scrap's 2-star rolls.
+  const wealthCluster = Boolean(starPlan.triple && starPlan.cluster && ufx.doubleStarBonus > 0)
   for (let s = 0; s < starPlan.starCount; s++) {
-    const st = createStar()
+    const st = createStar({ wealth: wealthCluster })
     const telegraph = starPlan.telegraph && s === 0
     const y = telegraph ? starPlan.telegraphY + (rng() - 0.5) * 0.8 : 5.2 + rng() * 8.4
     // Mixing stars across lanes is what makes them a decision rather than a
@@ -3412,12 +3466,13 @@ function spawnChunk(z) {
       }),
     })
     if (telegraph) st.scale.setScalar(starPlan.telegraphScale)
+    else if (wealthCluster) st.scale.setScalar(1.08)
     st.position.set(x, y, z + rng() * 8)
     scene.add(st)
-    entities.push({ mesh: st, type: 'star', radius: telegraph ? 1.15 : 0.9, cluster: starPlan.cluster, telegraph })
+    entities.push({ mesh: st, type: 'star', radius: telegraph ? 1.15 : wealthCluster ? 1.0 : 0.9, cluster: starPlan.cluster, telegraph, wealthCluster })
   }
   if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
-    showPowerBanner('💰 Gold Rush cluster!', 1.4, 'power')
+    showPowerBanner(wealthCluster ? '💰 Gold Rush — 3-star cluster!' : '💰 Gold Rush cluster!', 1.4, 'power')
   }
   // Powers — boosted chance; boost is more common early in pool
   if (starPlan.powerSpawn) {
@@ -3798,15 +3853,17 @@ function spawnTutorial() {
 }
 
 // One-time contextual tips shown as a first-time player progresses through the tutorial.
+// Sorted ascending so distance checks fire chronologically; three altitude cues at
+// 28/68/105m teach low-skim risk, mid-altitude conservation, and high-altitude escape.
 const TUTORIAL_HINTS = [
   { at: 0, text: 'Steer with your mouse, arrow keys, or drag — thread the glowing rings!' },
+  { at: 28, text: '⬇️ ALTITUDE 28m — Hold low (2–4m) for speed — skim the paper, don\'t kiss it!' },
   { at: 40, text: 'Nice flying! Keep chasing the rings ahead.' },
   { at: 55, text: '⭐ Stars add to your score — fly through them.' },
+  { at: 68, text: '↕️ ALTITUDE 68m — Mid-altitude conserves height; climbing costs speed, diving buys it.' },
+  { at: 105, text: '⬆️ ALTITUDE 105m — Need height? Climb toward updrafts — the paper lift is free speed.' },
   { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
   { at: 125, text: 'Chain near-misses to ignite Combo Fever — a short score multiplier burst!' },
-  { at: 28, text: '⬇️ Hold low for speed — but skim the paper, don\'t kiss it!' },
-  { at: 68, text: '↔️ Steer early — the gap drifts, don\'t wait to see it!' },
-  { at: 105, text: '💨 Stars off the gap are bait — 2.6m clearance beats a wall' },
   { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
   { at: 160, text: 'Almost there — line up the last ring!' },
 ]
@@ -5022,7 +5079,7 @@ async function startGame(kind = 'classic', opts = {}) {
       crashT = 0
       finalizeDeath()
     }
-    void audio.unlock()
+    void audio.unlock().catch(() => {})
     audio.uiClick()
     runKind = kind
     if (opts.challenge) launchChallenge = opts.challenge
@@ -6598,7 +6655,9 @@ function update(dt) {
   // Speed borrowed from height rides on top of cruise: the plane is fastest
   // when it is spending the resource that keeps it alive, which is the whole
   // tension the altitude economy exists to create.
-  speed = (cruise.cruiseSpeed + speedBoost + tuckFx.speedBonus + endlessTier().speedBonus * speedMul)
+  // Endless tier speed escalates smoothly within the tier via endlessTierProgress,
+  // so crossing a tier boundary is a curve rather than a jump.
+  speed = (cruise.cruiseSpeed + speedBoost + tuckFx.speedBonus + getTierSpeedBonusSmooth(distance) * speedMul)
     * Math.min(1.25, groundEffectSpeedMul(groundSkim.tier) * diveSpeedMultiplier(diveSpeed))
   if (speedFxEl) {
     const over = speed - cfg.speedBase
@@ -6628,7 +6687,7 @@ function update(dt) {
     (1 + combo * 0.02) *
     (1 + Math.min(0.35, speedBoost * 0.01)) *
     skimScoreMultiplier(groundSkim.tier) *
-    endlessTier().scoreMultiplier *
+    getTierScoreMultiplierSmooth(distance) *
     (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
 
@@ -6653,6 +6712,9 @@ function update(dt) {
   } else if (trail) trail.visible = false
 
   // Ambient wisp trail — wingtip streamers, active at speed, high bank, tuck dive, or fever
+  // Handling/Lift/Glide perceptibility: glide lengthens the contrail, lift adds a
+  // faint lift to opacity at low altitude, and handling sharpens wisp response to
+  // bank so a max-handling plane visibly flexes more even without measuring numbers.
   const wisp = scene.getObjectByName('ambientWisp')
   const highG = Math.abs(bankState?.bank || 0) > 0.35 || tuckState?.diving || feverActive
   if (wisp && renderQuality.secondaryEffects && (speed > cfg.speedBase * 1.15 || highG)) {
@@ -6661,12 +6723,16 @@ function update(dt) {
     // Streamers peel off alternating wingtips so both sides read at speed.
     wispSide *= -1
     const span = (activeUpgradeEffects.planeScale || 1) * 1.12
-    wispPts[0].set(planeX + wispSide * 0.95 * span, planeY - 0.05 - Math.random() * 0.15, -0.7 - Math.random() * 0.5)
+    const handlingFlex = 1 + Math.min(0.28, (activeUpgradeEffects.handlingLevel || 0) * 0.06)
+    wispPts[0].set(planeX + wispSide * 0.95 * span * handlingFlex, planeY - 0.05 - Math.random() * 0.15, -0.7 - Math.random() * 0.5)
     const wpos = wisp.geometry.attributes.position
     for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
     wpos.needsUpdate = true
     const baseOpacity = feverActive ? 0.65 : highG ? 0.5 : THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
-    wisp.material.opacity = baseOpacity
+    const glideLift = Math.min(0.12, (activeUpgradeEffects.speedMul ? (activeUpgradeEffects.speedMul - 1) * 0.6 : 0) + (activeUpgradeEffects.sinkMul ? (1 - activeUpgradeEffects.sinkMul) * 0.08 : 0))
+    wisp.material.opacity = Math.min(0.72, baseOpacity + glideLift)
+    // Glide lengthens the contrail visually: size scales with speedMul
+    wisp.material.size = 0.17 + Math.min(0.08, (activeUpgradeEffects.speedMul ? (activeUpgradeEffects.speedMul - 1) * 0.4 : 0))
     if (feverActive) {
       wisp.material.color.setHex(0xfbbf24)
     } else {

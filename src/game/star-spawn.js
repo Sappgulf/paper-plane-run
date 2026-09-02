@@ -28,7 +28,18 @@ export function planStarSpawns({
     return Number.isFinite(value) ? value : 0.5
   }
   const clusterRoll = sample()
-  const rolls = clusterRoll < rates.doubleStarChance ? 2 : 1
+  // Gold Rush wealth cluster: when doubleStarBonus is present a portion of the
+  // cluster window becomes a 3-star cluster with a gold tint so the payout is
+  // visually distinct from Lucky Scrap's 2-star roll.
+  const tripleChance = Math.min(0.12, Math.max(0, Number(doubleStarBonus) || 0) * 0.45)
+  let rolls = 1
+  let triple = false
+  if (tripleChance > 0 && clusterRoll < tripleChance) {
+    rolls = 3
+    triple = true
+  } else if (clusterRoll < rates.doubleStarChance) {
+    rolls = 2
+  }
   const placements = []
   for (let index = 0; index < rolls; index += 1) {
     if (sample() < rates.starChance) placements.push(index)
@@ -37,6 +48,7 @@ export function planStarSpawns({
     rates,
     rolls,
     cluster: rolls > 1,
+    triple,
     starCount: placements.length,
     placements: Object.freeze(placements),
     powerSpawn: sample() < rates.powerChance,

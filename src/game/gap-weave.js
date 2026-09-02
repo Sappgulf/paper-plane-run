@@ -128,34 +128,55 @@ export function planWaveGaps({
     return Object.freeze({ xs: Object.freeze([]), gapCenter: center, gapWidth: half * 2 })
   }
 
-  // Archetype: 45% balanced wall (original), 35% clustered to heavier side, 20% single-sided wall
+  // Archetype: 45% balanced wall, 35% clustered (heavy/light split), 20% single-sided wall
+  // Each archetype is visually distinct so the gap reads at a glance rather than
+  // as a uniform picket fence: balanced spreads evenly, clustered pushes 70% to
+  // the side with more room, single stacks everything on one side for the
+  // strongest possible gap signal.
   const archetypeRoll = sample(random)
   const archetype = archetypeRoll < 0.45 ? 'balanced' : archetypeRoll < 0.8 ? 'clustered' : 'single'
-  let clusterBias = 0
-  if (archetype === 'clustered' && spans.length === 2) {
+  if (archetype === 'single' && spans.length === 2) {
+    // Single wall: all hazards on one side, other side empty — strongest gap read.
+    // Side chosen once per wave so the wall actually reads as a single mass.
+    const side = sample(random) < 0.5 ? 0 : 1
+    const span = spans[side]
+    const width = span.max - span.min
+    for (let i = 0; i < wanted; i += 1) {
+      const t = (i + 0.5) / wanted + (sample(random) - 0.5) * (0.8 / wanted)
+      xs.push(clamp(span.min + clamp(t, 0, 1) * width, span.min, span.max))
+    }
+  } else if (archetype === 'clustered' && spans.length === 2) {
+    // Clustered: 70% to the heavier side (more room), remainder to light side.
     const leftWidth = spans[0].max - spans[0].min
     const rightWidth = spans[1].max - spans[1].min
-    // Push 70% of hazards to the side with more room — creates a readable heavy/light split
-    clusterBias = leftWidth > rightWidth ? -0.18 : 0.18
-  }
-  for (let i = 0; i < wanted; i += 1) {
-    let t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
-    if (archetype === 'clustered') t = clamp(t + clusterBias, 0, 1)
-    if (archetype === 'single' && spans.length === 2) {
-      // Single wall: all hazards on one side, other side empty — strongest gap read
-      const side = sample(random) < 0.5 ? 0 : 1
-      const span = spans[side]
-      xs.push(span.min + sample(random) * (span.max - span.min))
-      continue
+    const heavyIdx = leftWidth >= rightWidth ? 0 : 1
+    const lightIdx = 1 - heavyIdx
+    const heavyCount = Math.max(1, Math.min(wanted - 1, Math.round(wanted * 0.7)))
+    const lightCount = wanted - heavyCount
+    const heavySpan = spans[heavyIdx]
+    const lightSpan = spans[lightIdx]
+    for (let i = 0; i < heavyCount; i += 1) {
+      const t = (i + 0.5) / heavyCount + (sample(random) - 0.5) * (0.7 / heavyCount)
+      const width = heavySpan.max - heavySpan.min
+      xs.push(clamp(heavySpan.min + clamp(t, 0, 1) * width, heavySpan.min, heavySpan.max))
     }
-    let cursor = clamp(t, 0, 1) * total
-    for (const span of spans) {
-      const width = span.max - span.min
-      if (cursor <= width || span === spans[spans.length - 1]) {
-        xs.push(clamp(span.min + cursor, span.min, span.max))
-        break
+    for (let i = 0; i < lightCount; i += 1) {
+      const t = (i + 0.5) / lightCount + (sample(random) - 0.5) * (0.7 / lightCount)
+      const width = lightSpan.max - lightSpan.min
+      xs.push(clamp(lightSpan.min + clamp(t, 0, 1) * width, lightSpan.min, lightSpan.max))
+    }
+  } else {
+    for (let i = 0; i < wanted; i += 1) {
+      let t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
+      let cursor = clamp(t, 0, 1) * total
+      for (const span of spans) {
+        const width = span.max - span.min
+        if (cursor <= width || span === spans[spans.length - 1]) {
+          xs.push(clamp(span.min + cursor, span.min, span.max))
+          break
+        }
+        cursor -= width
       }
-      cursor -= width
     }
   }
 

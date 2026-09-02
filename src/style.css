@@ -286,16 +286,16 @@ html.a11y-reduced-motion .flight-route-track span { transition: none; }
   font-size: 12px; font-weight: 800; color: #6b5450;
 }
 @media (min-width: 720px) {
-  .hud-card[data-hud-priority='tertiary'] { display: none; }
+  #hud:not(.hidden) .hud-card[data-hud-priority='tertiary'] { display: none; }
 }
 html[data-night='1'] .hud-card {
   background: rgba(255,250,242,.94);
   border-color: rgba(255,255,255,.55);
 }
 .hud-card.stars > span:nth-child(2) { color: #d97706; }
-.hud-card.combo-hud > span:nth-child(2) { color: #7c3aed; }
+.hud-card.combo-hud > span:nth-child(2) { color: #b45309; }
 .hud-card.combo-hud.combo-pulse { animation: comboPulse 0.4s cubic-bezier(.34,1.56,.64,1); }
-.hud-card.combo-hud.combo-tier-warm { border-color: rgba(124,58,237,.35); }
+.hud-card.combo-hud.combo-tier-warm { border-color: rgba(245,158,11,.35); background: rgba(255,247,224,.88); }
 .hud-card.combo-hud.combo-tier-hot {
   border-color: rgba(245,130,32,.55);
   background: rgba(255,244,232,.95);
@@ -307,7 +307,7 @@ html[data-night='1'] .hud-card {
 }
 .hud-card.combo-hud.combo-tier-legend > span:nth-child(2) { color: #b45309; }
 
-/* Ground skim — a cool, low-to-the-deck counterpart to the warm combo chip. */
+/* Ground skim — shares the same warm amber as combo/fever so the whole flight HUD reads as one family. */
 .hud-card.skim-hud > span:nth-child(2) { color: #b45309; white-space: nowrap; }
 .hud-card.skim-hud.skim-tier-warm { border-color: rgba(245,158,11,.35); background: rgba(255,247,224,.88); }
 .hud-card.skim-hud.skim-tier-hot {
@@ -316,13 +316,13 @@ html[data-night='1'] .hud-card {
 }
 .hud-card.skim-hud.skim-tier-hot > span:nth-child(2) { color: #92400e; }
 .hud-card.skim-hud.skim-tier-legend {
-  border-color: rgba(34,211,238,.75);
-  background: linear-gradient(135deg, rgba(236,254,255,.96), rgba(207,250,254,.98));
+  border-color: rgba(251,191,36,.70);
+  background: linear-gradient(135deg, rgba(255,247,224,.96), rgba(254,243,199,.98));
 }
-.hud-card.skim-hud.skim-tier-legend > span:nth-child(2) { color: #155e75; }
+.hud-card.skim-hud.skim-tier-legend > span:nth-child(2) { color: #92400e; }
 @keyframes comboPulse {
   0% { transform: scale(1); }
-  35% { transform: scale(1.28); box-shadow: 0 8px 24px rgba(124,58,237,.45); }
+  35% { transform: scale(1.28); box-shadow: 0 8px 24px rgba(217,119,6,.32); }
   100% { transform: scale(1); }
 }
 .hud-card.streak-hud { border-color: rgba(217,119,6,.4); background: rgba(255,247,224,.92); }
@@ -795,8 +795,8 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   background: rgba(255,255,255,.45);
   border: 1px solid rgba(61,44,41,.06);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3) var(--space-2);
-  margin-bottom: var(--space-3);
+  padding: 6px 10px 6px;
+  margin-bottom: 8px;
 }
 .menu-setup {
   display: grid;
@@ -852,7 +852,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
    lower than Difficulty and the checkbox under it sat off the grid. Both
    single-column layouts drop the floor back to one line, where it is only a
    gap. */
-.diff-blurb { font-size: 12px; font-weight: 800; color: #8a6f68; margin-bottom: 4px; min-height: 2.6em; line-height: 1.3; }
+.diff-blurb { font-size: 12px; font-weight: 800; color: #8a6f68; margin-bottom: 3px; min-height: 2em; line-height: 1.3; }
 .inline-check {
   display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px;
   font-size: 12px; font-weight: 800; color: #5c4540;
@@ -873,10 +873,10 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 
 .cta-main {
   width: 100%; font-family: inherit; font-weight: 900; font-size: 18px;
-  color: #fffaf2; border: none; border-radius: 18px; padding: 15px 20px;
-  cursor: pointer; margin: var(--space-2) 0 var(--space-3);
+  color: #fffaf2; border: 1.5px solid rgba(255,255,255,.22); border-radius: 18px; padding: 15px 20px;
+  cursor: pointer; margin: 6px 0 8px;
   background: linear-gradient(180deg, #f2a07a 0%, #e06b4a 55%, #d45a3c 100%);
-  box-shadow: 0 12px 28px rgba(224,107,74,.38), 0 1px 0 rgba(255,255,255,.25) inset;
+  box-shadow: 0 14px 32px rgba(224,107,74,.42), 0 1px 0 rgba(255,255,255,.25) inset;
   transition: transform .12s ease, filter .12s ease;
 }
 .cta-main:hover { filter: brightness(1.04); }
@@ -919,9 +919,9 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   box-shadow: 0 4px 12px rgba(61,44,41,.05);
 }
 .action-hangar {
-  background: linear-gradient(180deg, #ede9fe, #ddd6fe);
-  border-color: rgba(124,58,237,.2);
-  color: #5b21b6;
+  background: linear-gradient(180deg, #f5f3ff, #ede9fe);
+  border-color: rgba(124,58,237,.14);
+  color: #5d4698;
 }
 #weekly-btn {
   background: linear-gradient(180deg, #e0f2fe, #bae6fd);
@@ -951,7 +951,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 
 /* Hangar */
-.hangar { justify-content: flex-start; padding-top: var(--panel-top-clear); }
+.hangar { justify-content: flex-start; padding-top: var(--panel-top-clear); overscroll-behavior: contain; }
 /* The card owns the window's height and the body scrolls inside it. The body
    used to carry a fixed `vh` cap while the card was free to grow past the
    viewport, which put "← Main menu" below the fold on an ordinary 1280x720
@@ -963,6 +963,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
   /* Against the panel's content box, so the room a docked toast reserves with
      `padding-bottom` is taken out of the card rather than covered by it. */
   max-height: 100%;
+  overscroll-behavior: contain;
 }
 .hangar-top { flex-shrink: 0; }
 .hangar-wallet { margin-bottom: 10px; }
@@ -1004,6 +1005,8 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 .hangar-body {
   flex: 1; min-height: 140px; overflow-y: auto;
   -webkit-overflow-scrolling: touch; padding: 2px 2px 8px;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
 }
 .page-intro { font-size: 13px; font-weight: 800; color: #6b554f; margin-bottom: 12px; line-height: 1.35; }
 
@@ -1011,7 +1014,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
    so a fourteen-node upgrade tree read as an endless one-per-row scroll with
    two thirds of the screen unused beside it. Given the room, take it: the card
    widens, the grids go two-up, and the whole tree is close to one screen. */
-@media (min-width: 900px) and (min-height: 640px) {
+@media (min-width: 880px) and (min-height: 640px) {
   .hangar-card { width: min(880px, 100%); max-width: min(880px, 100%); }
   .upgrade-grid,
   .journey-chapter-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1023,6 +1026,26 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 
 .upgrade-grid { display: grid; gap: 10px; }
+.hangar-search-row { display: flex; gap: 8px; margin: 6px 0 4px; }
+.hangar-search-input {
+  flex: 1; padding: 8px 12px; border-radius: 999px;
+  border: 1.5px solid rgba(61,44,41,.12); font: 700 13px inherit;
+  background: #fff; color: #3d2c29; outline: none;
+}
+.hangar-search-input:focus { border-color: rgba(90,159,212,.45); box-shadow: 0 0 0 3px rgba(90,159,212,.15); }
+.hangar-search-input::placeholder { color: #9a8a85; }
+.hangar-search-clear {
+  padding: 8px 12px; border-radius: 999px;
+  border: 1.5px solid rgba(61,44,41,.1); background: #fff;
+  font: 800 13px inherit; cursor: pointer;
+}
+.upgrade-path-banner.synergy {
+  border-color: rgba(245,158,11,.22);
+  background: linear-gradient(135deg, rgba(255,251,235,.92), rgba(255,250,242,.96));
+  box-shadow: 0 4px 12px rgba(61,44,41,.04);
+}
+.upgrade-path-banner.synergy strong { color: #92400e; font-size: 12px; }
+.upgrade-path-banner.synergy span { color: #8a6f68; font-size: 11px; }
 
 .upgrade-path-banner {
   grid-column: 1 / -1;

@@ -976,21 +976,21 @@ function renderUpgrades() {
     treeNav.appendChild(chip)
   }
   const searchRow = document.createElement('div')
-  searchRow.style.cssText = 'display:flex;gap:8px;margin:6px 0 4px'
+  searchRow.className = 'hangar-search-row'
   const searchInput = document.createElement('input')
   searchInput.type = 'search'
+  searchInput.className = 'hangar-search-input'
   searchInput.placeholder = 'Search upgrades…'
   searchInput.value = hangarUpgradeSearch || ''
   searchInput.setAttribute('aria-label', 'Search upgrades')
-  searchInput.style.cssText = 'flex:1;padding:8px 12px;border-radius:999px;border:1.5px solid rgba(61,44,41,.12);font:700 13px inherit;background:#fff;outline:none'
   searchInput.oninput = () => { hangarUpgradeSearch = searchInput.value; renderUpgrades() }
   searchRow.appendChild(searchInput)
   if (hangarUpgradeSearch) {
     const clearBtn = document.createElement('button')
     clearBtn.type = 'button'
+    clearBtn.className = 'hangar-search-clear'
     clearBtn.textContent = '✕'
     clearBtn.setAttribute('aria-label', 'Clear search')
-    clearBtn.style.cssText = 'padding:8px 12px;border-radius:999px;border:1.5px solid rgba(61,44,41,.1);background:#fff;font:800 13px inherit;cursor:pointer'
     clearBtn.onclick = () => { hangarUpgradeSearch = ''; renderUpgrades() }
     searchRow.appendChild(clearBtn)
   }
@@ -1002,9 +1002,7 @@ function renderUpgrades() {
     const text = goldReady && feverReady ? '✨ Double synergy active: Gold trail + Fever/Streak bonus' : goldReady ? '✨ Gold synergy active (Wide Wings + Paper Trail maxed)' : feverReady ? '🔥 Fever synergy active (Fever Focus + Steady Hands maxed)' : null
     if (!text) return null
     const el = document.createElement('div')
-    el.className = 'upgrade-path-banner'
-    el.style.background = 'linear-gradient(135deg, rgba(255,243,199,.96), rgba(255,250,242,.96))'
-    el.style.borderColor = 'rgba(245,158,11,.42)'
+    el.className = 'upgrade-path-banner synergy'
     el.innerHTML = `<strong>${text}</strong><span>Keep both trees maxed for the bonus to stay.</span>`
     return el
   })()
@@ -1043,6 +1041,9 @@ function renderUpgrades() {
   const wingspan = upgrades.find((u) => u.id === 'wingspan')
   const trail = upgrades.find((u) => u.id === 'trail')
   const synergyGold = !!(wingspan?.maxed && trail?.maxed)
+  const fever = upgrades.find((u) => u.id === 'fever')
+  const streak = upgrades.find((u) => u.id === 'streak')
+  const synergyFever = !!(fever?.maxed && streak?.maxed)
   for (const u of upgrades) {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
@@ -1074,9 +1075,12 @@ function renderUpgrades() {
         }
       }
     }
-    const blurb = synergyGold && (u.id === 'trail' || u.id === 'wingspan')
-      ? `${u.blurb} · Gold synergy trail active`
-      : u.blurb
+    let blurb = u.blurb
+    if (synergyGold && (u.id === 'trail' || u.id === 'wingspan')) blurb += ' · ✨ Gold synergy active'
+    if (synergyFever && (u.id === 'fever' || u.id === 'streak')) blurb += ' · 🔥 Fever synergy active'
+    // Surface stacking synergy for wealth/luck even before max
+    if (u.id === 'wealth') blurb += ' · Stacks with Lucky Scrap'
+    if (u.id === 'luck') blurb += ' · Stacks with Gold Rush'
     card.innerHTML = `
       <div>
         <div class="u-title">${u.icon} ${u.name}</div>

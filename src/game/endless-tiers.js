@@ -112,12 +112,24 @@ export function getTierSpacingScale(tier = 0) {
   return Math.max(MIN_SPACING_SCALE, 1 - tierIndexFrom(tier) * SPACING_PER_TIER)
 }
 
+export function getTierSpacingScaleSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return Math.max(MIN_SPACING_SCALE, 1 - (tier + progress * 0.5) * SPACING_PER_TIER)
+}
+
 /**
  * Extra hazard-ramp headroom past the shipped `min(1, distance / 700)` cap, so
  * flock sizes and building heights keep growing without a second saturation.
  */
 export function getTierHazardBonus(tier = 0) {
   return Math.min(MAX_HAZARD_BONUS, tierIndexFrom(tier) * HAZARD_PER_TIER)
+}
+
+export function getTierHazardBonusSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return Math.min(MAX_HAZARD_BONUS, (tier + progress * 0.5) * HAZARD_PER_TIER)
 }
 
 /** Per-tier hazard-type weighting, folded on top of the zone's own bias. */
@@ -131,6 +143,12 @@ export function getTierHazardBias(tier = 0) {
  */
 export function getTierScoreMultiplier(tier = 0) {
   return 1 + tierIndexFrom(tier) * 0.06
+}
+
+export function getTierScoreMultiplierSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return 1 + (tier + progress * 0.5) * 0.06
 }
 
 /** Everything the run loop needs for one tier, resolved once per tier change. */
