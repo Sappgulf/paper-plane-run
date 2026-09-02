@@ -5,8 +5,15 @@ import { Haptic } from './haptics.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
 import { getFunnelSummary, track } from './analytics.js'
-import { claimAchievementTier, getAchievementProgress } from './achievements.js'
-import { claimMission, getDailyMissions, unclaimedRewards } from './missions.js'
+import {
+  claimAchievementTier,
+  getAchievementProgress,
+  getLifetimeDistance,
+  getLifetimeFever,
+  getLifetimePopped,
+  getRunCount,
+} from './achievements.js'
+import { claimMission, getDailyMissions, getPlayStreak, unclaimedRewards } from './missions.js'
 import { createNotificationQueue } from './game/notification-queue.js'
 import {
   addLifetimeStars,
@@ -913,6 +920,7 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
 
 let hangarFocusUpgradeId = null
 let hangarUpgradeTree = null
+let hangarUpgradeSearch = ''
 
 function renderUpgrades() {
   refreshHangarWallet()
@@ -964,8 +972,45 @@ function renderUpgrades() {
     chip.onclick = () => { hangarUpgradeTree = tree.id; renderUpgrades() }
     treeNav.appendChild(chip)
   }
-  grid.appendChild(treeNav)
-  const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).sort((a, b) => {
+  const searchRow = document.createElement('div')
+  searchRow.style.cssText = 'display:flex;gap:8px;margin:6px 0 4px'
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = 'Search upgrades…'
+  searchInput.value = hangarUpgradeSearch || ''
+  searchInput.setAttribute('aria-label', 'Search upgrades')
+  searchInput.style.cssText = 'flex:1;padding:8px 12px;border-radius:999px;border:1.5px solid rgba(61,44,41,.12);font:700 13px inherit;background:#fff;outline:none'
+  searchInput.oninput = () => { hangarUpgradeSearch = searchInput.value; renderUpgrades() }
+  searchRow.appendChild(searchInput)
+  if (hangarUpgradeSearch) {
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.textContent = '✕'
+    clearBtn.setAttribute('aria-label', 'Clear search')
+    clearBtn.style.cssText = 'padding:8px 12px;border-radius:999px;border:1.5px solid rgba(61,44,41,.1);background:#fff;font:800 13px inherit;cursor:pointer'
+    clearBtn.onclick = () => { hangarUpgradeSearch = ''; renderUpgrades() }
+    searchRow.appendChild(clearBtn)
+  }
+  grid.appendChild(searchRow)
+  const synergyBanner = (() => {
+    const gold = getAllUpgradeLevels()
+    const goldReady = gold.wingspan >= 3 && gold.trail >= 3
+    const feverReady = gold.fever >= 3 && gold.streak >= 3
+    const text = goldReady && feverReady ? '✨ Double synergy active: Gold trail + Fever/Streak bonus' : goldReady ? '✨ Gold synergy active (Wide Wings + Paper Trail maxed)' : feverReady ? '🔥 Fever synergy active (Fever Focus + Steady Hands maxed)' : null
+    if (!text) return null
+    const el = document.createElement('div')
+    el.className = 'upgrade-path-banner'
+    el.style.background = 'linear-gradient(135deg, rgba(255,243,199,.96), rgba(255,250,242,.96))'
+    el.style.borderColor = 'rgba(245,158,11,.42)'
+    el.innerHTML = `<strong>${text}</strong><span>Keep both trees maxed for the bonus to stay.</span>`
+    return el
+  })()
+  if (synergyBanner) grid.appendChild(synergyBanner)
+  const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).filter((u) => {
+    if (!hangarUpgradeSearch) return true
+    const q = hangarUpgradeSearch.toLowerCase()
+    return u.name.toLowerCase().includes(q) || u.blurb.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)
+  }).sort((a, b) => {
     const recA = pathBanner.upgradeId === a.id ? 0 : 1
     const recB = pathBanner.upgradeId === b.id ? 0 : 1
     if (recA !== recB) return recA - recB
@@ -1120,9 +1165,26 @@ function renderSettings() {
 }
 
 function renderStats() {
-  const f = getFunnelSummary()
   const box = $('stats-body')
   if (!box) return
+
+  const lifetimeDist = getLifetimeDistance()
+  const lifetimeStars = getLifetimeStars()
+  const totalRuns = getRunCount()
+  const totalPopped = getLifetimePopped()
+  const totalFever = getLifetimeFever()
+  const streak = getPlayStreak()
+  const postcards = loadPostcardAlbum(localStorage).length
+  const skins = listSkins()
+  const ownedSkins = skins.filter((s) => s.owned).length
+  const localTop = getLocalTop(1)
+  const bestRecord = localTop.length ? `${localTop[0].score}m` : '0m'
+
+  const formattedDist = lifetimeDist >= 1000
+    ? `${(lifetimeDist / 1000).toFixed(1)} km`
+    : `${lifetimeDist} m`
+
+  const f = getFunnelSummary()
   const reasons = Object.entries(f.reasons)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
@@ -1132,12 +1194,95 @@ function renderStats() {
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `<li>${k}: <strong>${v}</strong></li>`)
     .join('')
+
+  const wallet = getWallet()
+  const nextMilestones = []
+  const affordableUpgrades = listUpgrades().filter((u) => !u.maxed).sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity)).slice(0, 2)
+  for (const u of affordableUpgrades) {
+    const est = estimateRunsToAfford({ wallet, cost: u.cost })
+    nextMilestones.push({ icon: u.icon, label: u.name, detail: `${u.cost}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / u.cost) * 100) })
+  }
+  const nextPlane = listSkins().filter((s) => s.state === 'available' && s.price).sort((a, b) => (a.price.value ?? Infinity) - (b.price.value ?? Infinity))[0]
+  if (nextPlane) {
+    const est = estimateRunsToAfford({ wallet, cost: nextPlane.price.value })
+    nextMilestones.push({ icon: '🎨', label: nextPlane.name, detail: `${nextPlane.price.value}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / nextPlane.price.value) * 100) })
+  }
+  while (nextMilestones.length < 3) {
+    nextMilestones.push({ icon: '✅', label: 'All in reach', detail: 'Keep flying for endgame cosmetics', progress: 100 })
+    if (nextMilestones.length >= 3) break
+  }
+  const milestonesHtml = nextMilestones.slice(0, 3).map((m) => `
+    <div class="milestone-card">
+      <span class="milestone-icon">${m.icon}</span>
+      <div class="milestone-copy">
+        <strong>${m.label}</strong>
+        <span>${m.detail}</span>
+        <div class="mission-bar" style="margin-top:4px;height:5px"><div class="mission-fill" style="width:${m.progress}%"></div></div>
+      </div>
+    </div>`).join('')
+
   box.innerHTML = `
-    <p class="tagline">Anonymous events on this device (+ optional server). Session ${f.session.slice(0, 10)}…</p>
-    <h3>Funnel</h3>
-    <ul class="list-card">${counts || '<li>No events yet</li>'}</ul>
-    <h3>Death reasons</h3>
-    <ul class="list-card">${reasons || '<li>—</li>'}</ul>
+    <p class="page-intro">Pilot Dossier · Lifetime flight records &amp; accomplishments.</p>
+    <h3 style="text-align:left;font-size:13px;margin:10px 0 6px;color:var(--ink)">Next on the runway</h3>
+    <div class="milestones-row">${milestonesHtml}</div>
+    <p class="tagline" style="text-align:left;margin:2px 0 10px">Wallet ${wallet}★ · ~${estimateRunsToAfford({ wallet, cost: 10 }).runs || 1} run to your cheapest fold · Lifetime ${lifetimeStars}★ gates your hangar</p>
+    <div class="pilot-logbook-grid">
+      <div class="logbook-card">
+        <span class="logbook-icon">🌍</span>
+        <strong class="logbook-num">${formattedDist}</strong>
+        <span class="logbook-label">Lifetime Airtime</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">⭐</span>
+        <strong class="logbook-num">${lifetimeStars.toLocaleString()}★</strong>
+        <span class="logbook-label">Lifetime Stars</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🏆</span>
+        <strong class="logbook-num">${bestRecord}</strong>
+        <span class="logbook-label">Best Record</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🛫</span>
+        <strong class="logbook-num">${totalRuns.toLocaleString()}</strong>
+        <span class="logbook-label">Total Flights</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🔥</span>
+        <strong class="logbook-num">${totalFever.toLocaleString()}</strong>
+        <span class="logbook-label">Fever Bursts</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🎯</span>
+        <strong class="logbook-num">${totalPopped.toLocaleString()}</strong>
+        <span class="logbook-label">Targets Popped</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🎨</span>
+        <strong class="logbook-num">${ownedSkins}/${skins.length}</strong>
+        <span class="logbook-label">Planes Owned</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">💌</span>
+        <strong class="logbook-num">${postcards}</strong>
+        <span class="logbook-label">Postcards</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">📅</span>
+        <strong class="logbook-num">${streak} ${streak === 1 ? 'day' : 'days'}</strong>
+        <span class="logbook-label">Daily Streak</span>
+      </div>
+    </div>
+    <details class="stats-diagnostics">
+      <summary>Technical Diagnostics</summary>
+      <div class="stats-diagnostics-body">
+        <p class="tagline">Session ${f.session.slice(0, 10)}…</p>
+        <h4 style="margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);">Event Funnel</h4>
+        <ul class="list-card">${counts || '<li>No events yet</li>'}</ul>
+        <h4 style="margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);">Hazard Incidents</h4>
+        <ul class="list-card">${reasons || '<li>—</li>'}</ul>
+      </div>
+    </details>
   `
 }
 
@@ -1215,33 +1360,122 @@ async function renderBoard(tab = 'local') {
 let editorLayout = emptyLayout()
 let editorTool = 'building'
 const editorCanvas = $('editor-canvas')
-const ectx = editorCanvas.getContext('2d')
+const ectx = editorCanvas?.getContext?.('2d')
+
+function drawEditorStar(ctx, cx, cy, r, color) {
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.beginPath()
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5 - Math.PI / 2
+    const x = cx + Math.cos(a) * r
+    const y = cy + Math.sin(a) * r
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+    const a2 = a + Math.PI / 5
+    ctx.lineTo(cx + Math.cos(a2) * (r * 0.45), cy + Math.sin(a2) * (r * 0.45))
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
 
 function drawEditor() {
+  if (!editorCanvas || !ectx) return
   const w = editorCanvas.width
   const h = editorCanvas.height
-  ectx.fillStyle = '#e8f0f8'
+  ectx.fillStyle = '#f8fafc'
   ectx.fillRect(0, 0, w, h)
-  ectx.strokeStyle = '#c5d4e0'
-  for (let i = 0; i < 10; i++) {
-    const y = (i / 10) * h
+
+  // Minor grid lines
+  ectx.strokeStyle = 'rgba(203, 213, 225, 0.45)'
+  ectx.lineWidth = 1
+  for (let x = 0; x < w; x += 18) {
+    ectx.beginPath()
+    ectx.moveTo(x, 0)
+    ectx.lineTo(x, h)
+    ectx.stroke()
+  }
+  for (let y = 0; y < h; y += 20) {
     ectx.beginPath()
     ectx.moveTo(0, y)
     ectx.lineTo(w, y)
     ectx.stroke()
   }
-  ectx.fillStyle = '#94a3b8'
-  ectx.fillRect(w / 2 - 2, 0, 4, 12)
-  ectx.font = '11px Nunito'
-  ectx.fillText('→ flight', w / 2 - 18, 22)
-  const colors = { building: '#f0956a', bird: '#4a3f3a', scissors: '#94a3b8', star: '#fbbf24', power: '#a78bfa' }
+
+  // Major flight axis
+  ectx.strokeStyle = 'rgba(148, 163, 184, 0.55)'
+  ectx.lineWidth = 1.5
+  ectx.setLineDash([4, 4])
+  ectx.beginPath()
+  ectx.moveTo(w / 2, 0)
+  ectx.lineTo(w / 2, h)
+  ectx.stroke()
+  ectx.setLineDash([])
+
+  // Distance markers along the edge
+  ectx.fillStyle = '#64748b'
+  ectx.font = '9px Nunito, sans-serif'
+  ectx.textAlign = 'left'
+  for (let d = 0; d <= 200; d += 50) {
+    const y = (d / 200) * (h - 20) + 12
+    ectx.fillText(`${d}m`, 4, y)
+  }
+
+  ectx.fillStyle = '#475569'
+  ectx.textAlign = 'center'
+  ectx.font = 'bold 10px Nunito, sans-serif'
+  ectx.fillText('▲ START (0m)', w / 2, 12)
+  ectx.fillText('FINISH (200m) ▼', w / 2, h - 3)
+
+  const colors = { building: '#ea580c', bird: '#0284c7', scissors: '#dc2626', star: '#f59e0b', power: '#8b5cf6' }
   for (const it of editorLayout.items) {
     const px = ((it.x + 14) / 28) * w
-    const py = (it.z / 200) * h
-    ectx.fillStyle = colors[it.t] || '#333'
-    ectx.beginPath()
-    ectx.arc(px, py, 6, 0, Math.PI * 2)
-    ectx.fill()
+    const py = (it.z / 200) * (h - 20) + 10
+
+    ectx.save()
+    ectx.shadowColor = 'rgba(0,0,0,0.18)'
+    ectx.shadowBlur = 4
+    ectx.shadowOffsetY = 2
+
+    const col = colors[it.t] || '#333'
+    if (it.t === 'star') {
+      drawEditorStar(ectx, px, py, 7, col)
+    } else if (it.t === 'power') {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.moveTo(px, py - 6)
+      ectx.lineTo(px + 6, py)
+      ectx.lineTo(px, py + 6)
+      ectx.lineTo(px - 6, py)
+      ectx.closePath()
+      ectx.fill()
+    } else if (it.t === 'building') {
+      ectx.fillStyle = col
+      ectx.fillRect(px - 6, py - 6, 12, 12)
+      ectx.fillStyle = 'rgba(255,255,255,0.7)'
+      ectx.fillRect(px - 3, py - 3, 6, 6)
+    } else if (it.t === 'scissors') {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.arc(px - 3, py + 3, 3, 0, Math.PI * 2)
+      ectx.arc(px + 3, py + 3, 3, 0, Math.PI * 2)
+      ectx.fill()
+      ectx.strokeStyle = col
+      ectx.lineWidth = 2
+      ectx.beginPath()
+      ectx.moveTo(px - 3, py + 3)
+      ectx.lineTo(px + 4, py - 5)
+      ectx.moveTo(px + 3, py + 3)
+      ectx.lineTo(px - 4, py - 5)
+      ectx.stroke()
+    } else {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.arc(px, py, 5.5, 0, Math.PI * 2)
+      ectx.fill()
+    }
+    ectx.restore()
   }
 }
 

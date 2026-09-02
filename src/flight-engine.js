@@ -39,6 +39,8 @@ import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/s
 import { resolvePowerPickup } from './game/power-pickup.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
+import { pollFirstActiveGamepad } from './game/gamepad.js'
+import { bankRoll as computeBankRoll, cameraLean, cameraTarget, shadowForPlane } from './game/camera-rig.js'
 
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
@@ -459,10 +461,18 @@ function showFlightFeedback(message, tone = 'route', duration = 1.05) {
 
 function pulseFlightImpact(tone = 'route') {
   if (!warnFlashEl) return
-  warnFlashEl.classList.remove('impact-pulse', 'impact-hazard', 'impact-star', 'impact-power', 'impact-route')
+  warnFlashEl.classList.remove('impact-pulse', 'paper-crease', 'impact-hazard', 'impact-star', 'impact-power', 'impact-route')
   warnFlashEl.classList.add(`impact-${tone}`)
   void warnFlashEl.offsetWidth
   warnFlashEl.classList.add('impact-pulse')
+}
+
+function pulsePaperCrease() {
+  if (!warnFlashEl || settings.reducedMotion) return
+  warnFlashEl.classList.remove('paper-crease')
+  void warnFlashEl.offsetWidth
+  warnFlashEl.classList.add('paper-crease')
+  setTimeout(() => warnFlashEl.classList.remove('paper-crease'), 460)
 }
 
 /** Power banner writers share the max-timer rule, but a short message must
@@ -1542,11 +1552,13 @@ function resetWindStreak(s, dir) {
 function updateWindStreaks(dt, pushX, worldSpeed) {
   const active = Math.abs(pushX) > 0.01 && !settings.reducedMotion && !settings.lowPower
   const dir = Math.sign(pushX)
+  const feverBoost = typeof feverActive !== 'undefined' && feverActive ? 1.8 : 1
   for (const s of windStreaks) {
     s.visible = active
     if (!active) continue
-    s.position.x += dir * (9 + s.userData.jitter * 7) * dt
+    s.position.x += dir * (9 + s.userData.jitter * 7) * dt * feverBoost
     s.position.z -= worldSpeed * 0.45 * dt
+    s.material.opacity = feverBoost > 1 ? 0.62 : 0.42
     if (Math.abs(s.position.x) > 30 || s.position.z < -12) resetWindStreak(s, dir)
   }
 }
@@ -3938,7 +3950,8 @@ function applyFlarePayout(payout) {
     distance += payout.distance
     runStats.flares = (runStats.flares || 0) + 1
     spawnConfetti(planeX, planeY, 0)
-    audio.nearMiss(Math.min(3, 1 + Math.floor(payout.charge * 3)))
+    if (typeof audio.flare === 'function') audio.flare(payout.charge)
+    else audio.nearMiss(Math.min(3, 1 + Math.floor(payout.charge * 3)))
     if (settings.haptics) Haptic.power()
   }
   bannerTimer = Math.max(bannerTimer, 0.9)
@@ -4624,6 +4637,8 @@ if (stickZone && stickBase) {
   stickZone.addEventListener('pointercancel', endStick)
 }
 
+const lastGamepadButtons = { pause: false, mute: false, startFly: false }
+
 // Input
 function ghostStorageKey() {
   if (runKind === 'daily') return `${difficulty.id}-daily`
@@ -4669,6 +4684,7 @@ function applyPauseState({ banner = true } = {}) {
     manual: manualPause && state === 'playing',
   })
   simulationPaused = transition.paused
+  audio.setPaused?.(simulationPaused)
   if (simulationPaused) {
     keys.clear()
     audio.ctx?.suspend().catch(() => {})
@@ -5323,6 +5339,7 @@ function finalizeDeathUnsafe() {
   if (wasNewBest) {
     bestDistance = d
     saveBest(difficulty.id, d)
+    if (typeof audio.newRecord === 'function') audio.newRecord()
   }
   bestEl.textContent = `${Math.floor(bestDistance)}m`
   newBestBadge?.classList.toggle('hidden', !wasNewBest)
@@ -5913,6 +5930,7 @@ function registerNearMiss(kind = null) {
   }
   audio.nearMiss(combo, kind)
   Haptic.nearMiss()
+  if (combo === 6 || combo % 10 === 0) pulsePaperCrease()
   const bursts = nearMissConfettiBursts(combo)
   for (let i = 0; i < bursts; i += 1) spawnConfetti(planeX, planeY + i * 0.25, 2 - i)
   distance += nearMissPay
@@ -5936,6 +5954,7 @@ function triggerFever() {
   feverFx?.classList.add('fever-active')
   feverHud?.classList.remove('hidden')
   if (feverVal) feverVal.textContent = describeFeverHudValue(fever)
+  pulsePaperCrease()
   comboFloat.textContent = '🔥 FEVER!'
   comboFloat.classList.add('fever-float')
   comboFloat.classList.remove('hidden')
@@ -6242,12 +6261,37 @@ function update(dt) {
   const joyMode = wantsJoystick()
   const mouseMode = !joyMode
 
+  const gpState = typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
+    ? pollFirstActiveGamepad(navigator.getGamepads())
+    : null
+
+  if (gpState) {
+    if (gpState.pause && !lastGamepadButtons.pause) {
+      if (state === 'playing') setManualPause(!manualPause)
+    }
+    if (gpState.mute && !lastGamepadButtons.mute) {
+      muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
+      syncPauseUi()
+    }
+    if (gpState.startFly && !lastGamepadButtons.startFly) {
+      if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
+      else if (state === 'dead' && crashT <= 0) retryCurrentRun()
+    }
+    lastGamepadButtons.pause = gpState.pause
+    lastGamepadButtons.mute = gpState.mute
+    lastGamepadButtons.startFly = gpState.startFly
+  }
+
   if (joyMode) {
     // Joystick / keyboard relative control
     if (keys.has('ArrowLeft') || keys.has('KeyA')) inputX -= 1
     if (keys.has('ArrowRight') || keys.has('KeyD')) inputX += 1
     if (keys.has('ArrowUp') || keys.has('KeyW')) inputY += 1
     if (keys.has('ArrowDown') || keys.has('KeyS')) inputY -= 1
+    if (gpState && (Math.abs(gpState.x) > 0.02 || Math.abs(gpState.y) > 0.02)) {
+      inputX = THREE.MathUtils.clamp(inputX + gpState.x, -1, 1)
+      inputY = THREE.MathUtils.clamp(inputY + gpState.y, -1, 1)
+    }
     if (stick.active || Math.abs(stick.x) + Math.abs(stick.y) > 0.02) {
       inputX = THREE.MathUtils.clamp(inputX + stick.x, -1, 1)
       inputY = THREE.MathUtils.clamp(inputY + stick.y, -1, 1)
@@ -6258,13 +6302,18 @@ function update(dt) {
     inputY = inv.y
   } else {
     // Mouse aim: plane flies toward cursor world target
-    // Keyboard still nudges target for accessibility. mouseTarget is a
+    // Keyboard / stick still nudges target for accessibility. mouseTarget is a
     // world position (not camera-relative), so it needs the same mirror
     // flip as the relative-input modes above.
     if (keys.has('ArrowLeft') || keys.has('KeyA')) mouseTarget.x += 18 * dt
     if (keys.has('ArrowRight') || keys.has('KeyD')) mouseTarget.x -= 18 * dt
     if (keys.has('ArrowUp') || keys.has('KeyW')) mouseTarget.y += 18 * dt
     if (keys.has('ArrowDown') || keys.has('KeyS')) mouseTarget.y -= 18 * dt
+    if (gpState && (Math.abs(gpState.x) > 0.02 || Math.abs(gpState.y) > 0.02)) {
+      const inv = applyAxisInvert(gpState.x, gpState.y)
+      mouseTarget.x += -inv.x * 24 * dt
+      mouseTarget.y += inv.y * 24 * dt
+    }
     mouseTarget.x = THREE.MathUtils.clamp(mouseTarget.x, -MAX_X, MAX_X)
     mouseTarget.y = THREE.MathUtils.clamp(mouseTarget.y, AIM_FLOOR_Y, MAX_Y)
   }
@@ -6335,7 +6384,7 @@ function update(dt) {
   // being spilled sideways, and only then is there a sink figure to integrate.
   // -------------------------------------------------------------------------
   const tuckHeld = state === 'playing' && !manualPause &&
-    (keys.has('Space') || tuckPointerHeld)
+    (keys.has('Space') || tuckPointerHeld || Boolean(gpState?.tuck))
   tuckState = advanceTuck(tuckState, {
     held: tuckHeld,
     dt,
@@ -6539,9 +6588,10 @@ function update(dt) {
     pos.needsUpdate = true
   } else if (trail) trail.visible = false
 
-  // Ambient wisp trail — wingtip streamers, skipped in low-power mode
+  // Ambient wisp trail — wingtip streamers, active at speed, high bank, tuck dive, or fever
   const wisp = scene.getObjectByName('ambientWisp')
-  if (wisp && renderQuality.secondaryEffects && speed > cfg.speedBase * 1.15) {
+  const highG = Math.abs(bankState?.bank || 0) > 0.35 || tuckState?.diving || feverActive
+  if (wisp && renderQuality.secondaryEffects && (speed > cfg.speedBase * 1.15 || highG)) {
     wisp.visible = true
     for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])
     // Streamers peel off alternating wingtips so both sides read at speed.
@@ -6551,7 +6601,13 @@ function update(dt) {
     const wpos = wisp.geometry.attributes.position
     for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
     wpos.needsUpdate = true
-    wisp.material.opacity = THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
+    const baseOpacity = feverActive ? 0.65 : highG ? 0.5 : THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
+    wisp.material.opacity = baseOpacity
+    if (feverActive) {
+      wisp.material.color.setHex(0xfbbf24)
+    } else {
+      wisp.material.color.setHex(0xffffff)
+    }
   } else if (wisp) wisp.visible = false
 
   // Funnel milestones — the big ones get a small in-world celebration so the
@@ -6699,12 +6755,14 @@ function update(dt) {
   const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
-  _camTarget.set(planeX * CAM_FOLLOW_X, camY, camZ)
+  const tgt = cameraTarget({ planeX, planeY, camHeight: camY - planeY, camZ, followX: CAM_FOLLOW_X })
+  _camTarget.set(tgt.x, tgt.y, tgt.z)
   camera.position.x += (_camTarget.x - camera.position.x) * lateralEase
   camera.position.z += (_camTarget.z - camera.position.z) * lateralEase
   camera.position.y += (_camTarget.y - camera.position.y) * verticalEase
-  const leanX = THREE.MathUtils.clamp(velX * 0.38, -4.2, 4.2)
-  const leanY = THREE.MathUtils.clamp(velY * 0.3, -3.2, 3.2)
+  const { leanX, leanY } = cameraLean({ velX, velY })
+  const camRoll = computeBankRoll({ bank: bankState?.bank ?? 0 })
+  camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, camRoll, 1 - Math.pow(0.01, dt))
   camera.lookAt(planeX * 0.2 + leanX, planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
@@ -6713,13 +6771,13 @@ function update(dt) {
   }
   // Contact shadow tracks the plane's lane; it tightens and fades with
   // altitude so height stays readable against the patterned ground.
-  const shadowUp = THREE.MathUtils.clamp(planeY / MAX_Y, 0, 1)
+  const sh = shadowForPlane({ planeY, planeX, bank: plane.rotation.z, maxY: MAX_Y })
   planeShadow.visible = state === 'playing'
-  planeShadow.position.x = planeX
+  planeShadow.position.x = sh.x
   planeShadow.position.z = 0
-  const shadowScale = 1.15 - shadowUp * 0.6
-  planeShadow.scale.setScalar(shadowScale)
-  planeShadow.material.opacity = 0.34 - shadowUp * 0.2
+  planeShadow.scale.set(sh.scale, sh.scale * sh.scaleYFactor, 1)
+  planeShadow.rotation.z = sh.rotationZ
+  planeShadow.material.opacity = sh.opacity
   audio.setFlightWind(Math.min(1, speed / 70))
 
   scrollWorld(move, windPushX * dt * 0.5)
@@ -6842,7 +6900,8 @@ function update(dt) {
         starsEl.textContent = String(stars)
         distance += pickup.meters
         if (pickup.golden) {
-          audio.starStreak(1)
+          if (typeof audio.goldenStar === 'function') audio.goldenStar()
+          else audio.starStreak(1)
           if (settings.haptics) Haptic.power()
           hitStopTimer = Math.max(hitStopTimer, 0.05)
           pulseFlightImpact('star')
@@ -6901,9 +6960,11 @@ function update(dt) {
           runStats.gauntlets = (runStats.gauntlets || 0) + 1
           lastRewardTag = 'gauntlet'
           hitStopTimer = Math.max(hitStopTimer, 0.06)
-          audio.gateClear()
+          if (typeof audio.gauntletClear === 'function') audio.gauntletClear()
+          else audio.gateClear()
           if (settings.haptics) Haptic.collect()
           spawnConfetti(p.x, planeY, 1, 'gold')
+          pulsePaperCrease()
           showFlightFeedback(reward.label, 'star', 1.3)
           pulseFlightImpact('star')
           showPowerBanner(`⚡ Gauntlet cleared · +${reward.stars}★`, 1.6)
@@ -7052,9 +7113,11 @@ function update(dt) {
           distance += THREAD_REWARD_METERS
           runStats.threads = (runStats.threads || 0) + 1
           lastRewardTag = 'thread'
-          audio.hoopWhoosh()
+          if (typeof audio.threadGap === 'function') audio.threadGap()
+          else audio.hoopWhoosh()
           if (settings.haptics) Haptic.collect()
           spawnConfetti(p.x, planeY, 0.5, 'route')
+          pulsePaperCrease()
           showFlightFeedback(`THREADED THE GAP · +${THREAD_REWARD_METERS}m`, 'route', 1.1)
           pulseFlightImpact('route')
           track('thread_gap', { distance: Math.floor(distance) })

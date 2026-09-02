@@ -62,7 +62,12 @@ export class GameAudio {
     this.ctx = new Ctx()
     this.master = this.ctx.createGain()
     this.master.gain.value = this.muted ? 0 : 0.4
-    this.master.connect(this.ctx.destination)
+
+    this.masterFilter = this.ctx.createBiquadFilter()
+    this.masterFilter.type = 'lowpass'
+    this.masterFilter.frequency.value = 20000
+    this.master.connect(this.masterFilter)
+    this.masterFilter.connect(this.ctx.destination)
 
     this.sfx = this.ctx.createGain()
     this.sfx.gain.value = 0.9
@@ -104,6 +109,13 @@ export class GameAudio {
   toggleMute() {
     this.setMuted(!this.muted)
     return this.muted
+  }
+
+  setPaused(paused) {
+    if (!this.ctx || !this.masterFilter) return
+    const t = this._now()
+    this.masterFilter.frequency.cancelScheduledValues(t)
+    this.masterFilter.frequency.exponentialRampToValueAtTime(paused ? 420 : 20000, t + 0.25)
   }
 
   setMusic(on) {
@@ -180,6 +192,69 @@ export class GameAudio {
     this._tone(880, 0.08, 'sine', 0.14)
     this._tone(1175, 0.12, 'triangle', 0.12)
     this._tone(1568, 0.16, 'sine', 0.08)
+  }
+
+  /** Ethereal 4-note ascending sparkle for golden stars. */
+  goldenStar() {
+    if (!this.ctx || this.muted) return
+    const t = this._now()
+    const notes = [880, 1108.73, 1318.51, 1760]
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator()
+      const g = this.ctx.createGain()
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle'
+      osc.frequency.value = f
+      const start = t + i * 0.04
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.12, start + 0.015)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.18)
+      osc.connect(g)
+      g.connect(this.sfx || this.master)
+      osc.start(start)
+      osc.stop(start + 0.2)
+    })
+  }
+
+  /** Aerodynamic slicing swoosh + crisp chime for threading a gap between buildings. */
+  threadGap() {
+    this._tone(440, 0.14, 'sine', 0.12, 880)
+    this._tone(1320, 0.1, 'triangle', 0.09)
+    this._tone(1760, 0.15, 'sine', 0.06)
+  }
+
+  /** Triumphant 3-note mini-fanfare for surviving a mini-gauntlet corridor. */
+  gauntletClear() {
+    this._tone(523.25, 0.09, 'square', 0.08)
+    this._tone(659.25, 0.12, 'triangle', 0.11)
+    this._tone(1046.5, 0.2, 'sine', 0.12)
+  }
+
+  /** Ascending resonant paper lift when releasing a charged tuck into a flare. */
+  flare(charge = 1) {
+    const intensity = Math.min(1, Math.max(0.3, charge))
+    this._tone(220, 0.18 * intensity, 'sine', 0.1 * intensity, 580)
+    this._tone(440, 0.15 * intensity, 'triangle', 0.08 * intensity, 880)
+  }
+
+  /** Celebratory 4-note major fanfare when breaking the personal best record. */
+  newRecord() {
+    if (!this.ctx || this.muted) return
+    const t = this._now()
+    const notes = [587.33, 739.99, 880, 1174.66]
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator()
+      const g = this.ctx.createGain()
+      osc.type = 'triangle'
+      osc.frequency.value = f
+      const start = t + i * 0.07
+      g.gain.setValueAtTime(0.0001, start)
+      g.gain.exponentialRampToValueAtTime(0.15, start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.28)
+      osc.connect(g)
+      g.connect(this.sfx || this.master)
+      osc.start(start)
+      osc.stop(start + 0.3)
+    })
   }
 
   nearMiss(combo = 1, kind = null) {
