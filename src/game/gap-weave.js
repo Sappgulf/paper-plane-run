@@ -55,7 +55,11 @@ export function chooseGapCenter({
   gapWidth = 3,
   maxDrift = MAX_GAP_DRIFT,
   minDrift = 1.2,
+  tier = 0,
 } = {}) {
+  // Tier scales drift down slightly so late speed doesn't demand precognition
+  const tierScale = Math.max(0.72, 1 - Math.max(0, tier) * 0.035)
+  maxDrift = maxDrift * tierScale
   const bound = Math.max(0, finite(halfWidth, CORRIDOR_HALF_WIDTH) - finite(gapWidth) * 0.5)
   const previous = clamp(finite(previousCenter), -bound, bound)
   // 20% breathing room — occasionally hold the line so player can lock in

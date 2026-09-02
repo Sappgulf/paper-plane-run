@@ -884,8 +884,11 @@ canvas.addEventListener('webglcontextlost', (e) => {
   keys.clear()
   notifications.show('⚠️ Graphics connection lost — reconnecting…', { persistent: true })
 }, false)
+let _webglRestoreDebounced = false
 canvas.addEventListener('webglcontextrestored', () => {
-  location.reload()
+  if (_webglRestoreDebounced) return
+  _webglRestoreDebounced = true
+  setTimeout(() => location.reload(), 300)
 }, false)
 
 function applyPerformanceSettings(status = frameHealth.snapshot().status) {
@@ -3126,6 +3129,7 @@ function spawnChunk(z) {
         previousCenter: lastGapCenter,
         halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
         gapWidth: gapWidthForChunk,
+        tier: (typeof tier !== 'undefined' ? tier.tier ?? tier : endlessTierAt(distance)),
       })
   lastGapCenter = gapCenterForChunk
   activePassageGap = { center: gapCenterForChunk, width: gapWidthForChunk }
@@ -3522,6 +3526,7 @@ function spawnMiniGauntlet(z = 60) {
     previousCenter: lastGapCenter,
     halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
     gapWidth,
+    tier: (typeof tier !== 'undefined' ? tier.tier ?? tier : 0),
   })
   lastGapCenter = gapCenter
   activePassageGap = { center: gapCenter, width: gapWidth }
@@ -6517,6 +6522,8 @@ function update(dt) {
     die('Nosed into the paper ground')
     return
   }
+  // Altitude breakdown tooltip: base sink + bank cost + tuck extra
+  if (altitudeHud) altitudeHud.title = `sink \${sinkPerSecond.toFixed(1)}/s (base \${altitudeRecovery.sinkPerSecond.toFixed(1)} + bank \${bankSinkPerSecond(bankState.bank).toFixed(1)} + tuck \${tuckFxForFrame.extraSink.toFixed(1)})`
   updateAltitudeHud()
   updateTuckHud()
   updateTuckButton(true)
