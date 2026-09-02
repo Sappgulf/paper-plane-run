@@ -1009,7 +1009,31 @@ function loadTex(rawUrl) {
   }
   const url = resolveAssetUrl(rawUrl)
   if (!texCache[url]) {
-    const t = loader.load(url, undefined, undefined, () => { delete texCache[url] })
+    const isGround = url.includes('/ground-') || url.includes('buildings.jpg')
+    const onLoad = isGround ? (tex) => {
+      // Desaturate toward paper cream (#fffaf2) 55% to keep palette calm
+      try {
+        const img = tex.image
+        if (img && img.width) {
+          const c = document.createElement('canvas')
+          c.width = img.width; c.height = img.height
+          const ctx = c.getContext('2d')
+          ctx.drawImage(img, 0, 0)
+          const d = ctx.getImageData(0,0,c.width,c.height)
+          for (let i=0;i<d.data.length;i+=4){
+            const avg = (d.data[i]+d.data[i+1]+d.data[i+2])/3
+            const t2 = 0.55
+            d.data[i] = avg*t2 + 255*(1-t2)*0.98
+            d.data[i+1] = avg*t2 + 250*(1-t2)*0.97
+            d.data[i+2] = avg*t2 + 242*(1-t2)*0.96
+          }
+          ctx.putImageData(d,0,0)
+          tex.image = c
+          tex.needsUpdate = true
+        }
+      } catch {}
+    } : undefined
+    const t = loader.load(url, onLoad, undefined, () => { delete texCache[url] })
     t.colorSpace = THREE.SRGBColorSpace
     t.wrapS = t.wrapT = THREE.RepeatWrapping
     t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4
@@ -3162,7 +3186,7 @@ function spawnChunk(z) {
   const early = distance < 90
   const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
-    if (rng() < (early ? 0.48 : 0.62)) {
+    if (rng() < (early ? 0.38 : 0.42)) {
       const w = 2.5 + rng() * 3.5
       const heights = [5.2, 8.6, 12.2]
       const h = getFlyableBuildingHeight({
@@ -4355,7 +4379,7 @@ function resetGame() {
 
   // Bigger, spread cushions give the open sky depth without a fog cost —
   // they parallax at 0.35x world speed so altitude still reads.
-  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 8 : 16
+  const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 4 : 7
   for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
     cl.position.set((rng() - 0.5) * 85, 9 + rng() * 22, 45 + rng() * 185)

@@ -30,7 +30,7 @@ html, body, #game-root {
   -webkit-touch-callout: none;
 }
 
-#c { display: block; width: 100%; height: 100%; touch-action: none; filter: saturate(0.86) brightness(1.02); }
+#c { display: block; width: 100%; height: 100%; touch-action: none; filter: saturate(0.72) brightness(1.04); }
 .hidden { display: none !important; }
 
 /* —— Speed streaks (opacity driven by JS from current flight speed) ——
