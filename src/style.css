@@ -278,7 +278,7 @@ html.a11y-reduced-motion .flight-route-track span { transition: none; }
 .hud-card[data-hud-priority='secondary'] { background: rgba(255,250,242,.62); border-color: rgba(61,44,41,.08); }
 .hud-card[data-hud-priority='secondary'] > span:nth-child(2) { font-size: calc(var(--hud-fs-value) * 0.86); }
 .hud-card[data-hud-priority='tertiary'] {
-  background: rgba(255,250,242,.72); border-color: rgba(61,44,41,.10);
+  background: rgba(255,245,220,.82); border-color: rgba(245,158,11,.14);
   box-shadow: none; padding: 3px 7px; min-width: 0;
 }
 .hud-card[data-hud-priority='tertiary'] .label { font-size: 9px; color: #8a6f68; }
@@ -1469,7 +1469,7 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 
 #gameover {
   background:
-    linear-gradient(165deg, rgba(40,30,28,.4), rgba(255,220,200,.78)),
+    linear-gradient(165deg, rgba(200,223,245,.12) 0%, rgba(255,238,225,.20) 100%),
     url('/assets/paper-world-backdrop.webp') center / cover no-repeat;
 }
 

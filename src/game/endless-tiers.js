@@ -101,6 +101,12 @@ export function getTierSpeedBonus(tier = 0) {
   return tierIndexFrom(tier) * SPEED_PER_TIER
 }
 
+export function getTierSpeedBonusSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return tier * SPEED_PER_TIER + progress * SPEED_PER_TIER * 0.5
+}
+
 /** Multiplier applied to wave spacing. Floored so waves never become unreadable. */
 export function getTierSpacingScale(tier = 0) {
   return Math.max(MIN_SPACING_SCALE, 1 - tierIndexFrom(tier) * SPACING_PER_TIER)

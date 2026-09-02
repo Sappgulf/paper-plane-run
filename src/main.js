@@ -201,8 +201,10 @@ if (isIos && !isStandalone) {
 installBtn?.addEventListener('click', async (event) => {
   event.stopPropagation()
   if (deferredInstall) {
-    deferredInstall.prompt()
-    await deferredInstall.userChoice
+    try {
+      deferredInstall.prompt()
+      await deferredInstall.userChoice
+    } catch {}
     deferredInstall = null
     installBtn.classList.add('hidden')
     return
@@ -247,6 +249,7 @@ function showSwUpdateBanner(worker) {
     btn.disabled = true
     btn.textContent = 'Updating…'
     worker.postMessage({ type: 'SKIP_WAITING' })
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Retry update' }, 8000)
   }
 }
 
@@ -1580,9 +1583,13 @@ const shellBridge = Object.freeze({
 })
 
 function showEngineStatus(message, { retry = false } = {}) {
-  if (engineStatusMessage) engineStatusMessage.textContent = message
+  if (engineStatusMessage) {
+    engineStatusMessage.textContent = message
+    engineStatusMessage.setAttribute('aria-live', 'assertive')
+  }
   engineRetry?.classList.toggle('hidden', !retry)
   engineStatus?.classList.remove('hidden')
+  engineStatus?.setAttribute('aria-live', 'assertive')
 }
 
 function hideEngineStatus() {
@@ -1695,7 +1702,7 @@ document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
 engineRetry?.addEventListener('click', () => {
   if (engineFailed) {
     if (pendingStart) {
-      sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart))
+      try { sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart)) } catch {}
     }
     location.reload()
     return

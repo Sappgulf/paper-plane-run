@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
+import { createPool } from './pool.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
 import { todaysTwist } from './twists.js'
 import { foldById, thisWeeksFold, weeklyKey, weeklySeed } from './game/weekly-fold.js'
@@ -26,7 +27,7 @@ import {
   ghostDistanceAtTime,
 } from './ghost.js'
 import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
-import { endlessTierAt, resolveTier } from './game/endless-tiers.js'
+import { endlessTierAt, resolveTier, tierProgress } from './game/endless-tiers.js'
 import {
   getPatternReach,
   getTierMotionScale,
@@ -3780,6 +3781,8 @@ const TUTORIAL_HINTS = [
   { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
   { at: 125, text: 'Chain near-misses to ignite Combo Fever — a short score multiplier burst!' },
   { at: 28, text: '⬇️ Hold low for speed — but skim the paper, don\'t kiss it!' },
+  { at: 68, text: '↔️ Steer early — the gap drifts, don\'t wait to see it!' },
+  { at: 105, text: '💨 Stars off the gap are bait — 2.6m clearance beats a wall' },
   { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
   { at: 160, text: 'Almost there — line up the last ring!' },
 ]
@@ -6781,8 +6784,25 @@ function update(dt) {
     nextZoneHud.classList.toggle('hidden', !showHint)
     if (showHint) hudNextZoneEl.textContent = `${zp.next.name} · ${Math.max(0, Math.ceil(zp.remain))}m`
   }
+  // Tier progress HUD: show next tier in Xm alongside zone
+  if (typeof tierProgress === 'function' && nextZoneHud && hudNextZoneEl) {
+    const tp = tierProgress(distance)
+    if (tp.next && tp.nextAt) {
+      const remainTier = Math.max(0, Math.ceil(tp.nextAt - distance))
+      if (remainTier < 250 && tp.next) {
+        nextZoneHud.classList.remove('hidden')
+        hudNextZoneEl.textContent = `Tier ${tp.next} · ${remainTier}m`
+      }
+    }
+  }
   updateEndlessTier()
   updateEdgeIndicators()
+  // Faint gap moth trail — always on, 0.12 opacity, so the guaranteed gap reads even without gauntlet ribbon
+  const gapTrailEl = document.getElementById('gap-trail')
+  if (gapTrailEl && activePassageGap && state === 'playing') {
+    gapTrailEl.style.left = `calc(50% + ${activePassageGap.center * 1.8}%)`
+    gapTrailEl.classList.add('visible')
+  } else if (gapTrailEl) gapTrailEl.classList.remove('visible')
   checkHazardTelegraph()
   updateWeatherFx(dt)
   checkTutorialHints(dt)

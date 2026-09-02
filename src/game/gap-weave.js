@@ -204,7 +204,7 @@ export function gapClearanceAt({ x = 0, hazards = [], damageRadius = 1.2 } = {})
 /** Share of stars deliberately placed off the guaranteed gap. */
 export const OFF_GAP_STAR_CHANCE = 0.45
 /** Spare room a star needs beyond a hazard's envelope to be worth going for. */
-export const STAR_CLEARANCE = 2.2
+export const STAR_CLEARANCE = 2.6
 
 /**
  * Where a star goes.
