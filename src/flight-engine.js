@@ -6548,9 +6548,16 @@ function update(dt) {
   // lift spilled by the current bank, and whatever the Tuck is adding or
   // giving back. Holding "up" forever is no longer a strategy because it is
   // the most expensive thing you can do with the stick.
-  const climbCommand = mouseMode
+  // A held Tuck commits the nose down. In aim mode the cursor would otherwise
+  // keep commanding the plane back up to its target height and cancel the dive
+  // outright, so while tucking the aim climb is clamped to non-climbing and the
+  // target follows the plane down (no snap back up to the old height on release).
+  const tucking = tuckState.phase === 'tucking'
+  if (mouseMode && tucking) mouseTarget.y = Math.min(mouseTarget.y, planeY)
+  const aimClimb = mouseMode
     ? aimCommand({ delta: mouseTarget.y - planeY, velocity: velY })
     : inputY
+  const climbCommand = tucking ? Math.min(0, aimClimb) : aimClimb
   const sinkPerSecond = resolveSinkPerSecond({
     baseSink: altitudeRecovery.sinkPerSecond,
     inputY: climbCommand,
