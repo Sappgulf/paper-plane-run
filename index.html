@@ -14,7 +14,18 @@
     <meta name="apple-mobile-web-app-title" content="Paper Plane" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#c8dff5" />
-    <meta name="description" content="Paper Plane Run — soar through a paper world." />
+    <meta name="description" content="Paper Plane Run — fold your plane and soar through a living paper world. Dodge birds and scissors, chase stars, ride the wind and upgrade your hangar. Free, plays in your browser." />
+    <link rel="canonical" href="https://paper-plane-run.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Paper Plane Run" />
+    <meta property="og:title" content="Paper Plane Run" />
+    <meta property="og:description" content="Soar through a paper world: dodge, collect stars, upgrade your plane. Free in your browser." />
+    <meta property="og:url" content="https://paper-plane-run.vercel.app/" />
+    <meta property="og:image" content="https://paper-plane-run.vercel.app/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Paper Plane Run" />
+    <meta name="twitter:description" content="Soar through a paper world: dodge, collect stars, upgrade your plane." />
+    <meta name="twitter:image" content="https://paper-plane-run.vercel.app/icon-512.png" />
     <title>Paper Plane Run</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,7 +33,8 @@
   </head>
   <body>
     <div id="game-root" class="mouse-mode">
-      <canvas id="c"></canvas>
+      <canvas id="c" role="img" aria-label="Paper Plane Run game view"></canvas>
+      <noscript><p style="position:absolute;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:700 18px system-ui,sans-serif;color:#2b1d1a">Paper Plane Run needs JavaScript to fly. Please enable it and reload.</p></noscript>
       <div id="speed-fx" aria-hidden="true"></div>
       <div id="fever-fx" aria-hidden="true"></div>
       <div id="slow-fx" aria-hidden="true"></div>
