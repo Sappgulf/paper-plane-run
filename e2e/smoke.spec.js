@@ -51,7 +51,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 test('Journey route cards and the live HUD expose stamps and shortcut risk', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
 
   await expect(page.locator('.journey-route-card')).toHaveCount(2)
   await expect(page.locator('.journey-route-card .zone-stamp')).toHaveCount(2)
@@ -432,7 +432,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
 test('starting a new Journey records journey_restarted analytics', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   await tap(page.getByRole('button', { name: 'Start a new Journey' }))
 
   const restarted = await page.evaluate(() => {
@@ -718,7 +718,7 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   const errors = collectConsoleErrors(page)
   await openApp(page)
 
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   await expect(page.getByRole('heading', { name: 'Across the Paper Skies' })).toBeVisible()
   await expect(page.locator('.journey-stop')).toHaveCount(4)
   await expect(page.locator('.journey-pilot')).toHaveCount(2)
@@ -776,11 +776,11 @@ test('postcard reveal respects reduced motion and compact scrolling', async ({ p
 
 test('Living Journey selection survives a reload', async ({ page }) => {
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   const routeId = await page.locator('.journey-route-card').first().getAttribute('data-route-id')
   await tap(page.locator('.journey-route-card').first())
   await page.reload()
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
 
   await expect(page.locator(`[data-route-id="${routeId}"]`)).toHaveClass(/selected/)
 })
