@@ -5591,7 +5591,9 @@ function finalizeDeathUnsafe() {
     animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
     finalDetailEl.textContent = runKind === 'journey' && completedJourneyRoute
       ? `Stamp earned${journeyBonus ? ` · +${journeyBonus}★ route bonus` : ''}`
-      : reason
+      : reason === 'Tutorial complete!'
+        ? 'You have the controls. Now take them into a real flight.'
+        : reason
   }
 
   if (retryBtn) {
