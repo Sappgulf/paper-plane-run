@@ -6665,7 +6665,7 @@ function update(dt) {
     return
   }
   // Altitude breakdown tooltip: base sink + bank cost + tuck extra
-  if (altitudeHud) altitudeHud.title = `sink \${sinkPerSecond.toFixed(1)}/s (base \${altitudeRecovery.sinkPerSecond.toFixed(1)} + bank \${bankSinkPerSecond(bankState.bank).toFixed(1)} + tuck \${tuckFxForFrame.extraSink.toFixed(1)})`
+  if (altitudeHud) altitudeHud.title = `sink ${sinkPerSecond.toFixed(1)}/s (base ${altitudeRecovery.sinkPerSecond.toFixed(1)} + bank ${bankSinkPerSecond(bankState.bank).toFixed(1)} + tuck ${tuckFxForFrame.extraSink.toFixed(1)})`
   updateAltitudeHud()
   updateTuckHud()
   updateTuckButton(true)

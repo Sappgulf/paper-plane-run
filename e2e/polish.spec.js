@@ -61,6 +61,7 @@ test('pause freezes the run, contains focus and resumes through native Space', a
   await tap(page.locator('#tutorial-btn'))
   await waitForGameText(page)
   await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
+  await expect(page.locator('#altitude-hud')).toHaveAttribute('title', /^sink \d+\.\d\/s \(base \d+\.\d \+ bank \d+\.\d \+ tuck \d+\.\d\)$/)
   await page.keyboard.press('Escape')
   await expect(page.locator('#pause-resume')).toBeFocused()
   const paused = await snapshot(page)
