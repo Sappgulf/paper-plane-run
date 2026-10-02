@@ -12,6 +12,7 @@ Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and 
 - Xcode Debug build, install, and launch passed on iPhone 18 Pro simulator. Native playtesting verified guide, tutorial completion, touch steering, replay, and pause totals. Browser screenshots and deterministic flight state were inspected; release artifacts are kept in ignored `output/`.
 - Deployment excludes local test output, native build files, and the user's untracked `.claude` folder.
 - Live production smoke found escaped template expressions in the altitude tooltip. Replaced the placeholders with computed sink rates and added a rendered-title assertion to the desktop/mobile pause lane. Final focused development and production checks each passed 2/2; all 545 unit tests passed again after the fix. Live tutorial completion, replay, pause totals, service-worker restart, phone layout, and leaderboard GET were verified.
+- Follow-up CI audit: GitHub's checks never started because the account is locked by a billing issue (run `37046066808`, check annotation). Independently reproduced the workflow's missing `ios-dist` prerequisite from a clean Git archive. Added `build:ios` before parity; the clean source build and 75-file comparison passed on Node 22. Hosted CI remains unverified until the account billing lock is resolved; production is ready and healthy.
 
 ## 2026-08-30 — Round 7: full-sweep audit fixes across engine, shell, meta, and iOS
 
