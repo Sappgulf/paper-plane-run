@@ -141,10 +141,21 @@
       <div id="menu" class="panel menu-panel">
         <div class="menu-card">
           <div class="menu-hero">
-            <span class="menu-eyebrow">A little paper. A big sky.</span>
-            <img class="logo" src="/assets/logo.jpg" alt="Paper plane" width="120" height="120" />
-            <h1>Paper Plane Run</h1>
-            <p class="tagline">Find your line. Ride the wind. Make every fold count.</p>
+            <span class="menu-eyebrow">The Paper Flight Club · Est. today</span>
+            <span class="launch-mark" aria-hidden="true">↗</span>
+            <h1>Paper Plane<br />Run<span class="title-period" aria-hidden="true">.</span></h1>
+            <p class="tagline">Fold something small.<br />Go somewhere extraordinary.</p>
+          </div>
+
+
+          <button id="journey-btn" type="button" class="cta-main journey-main-cta" data-cta="primary" aria-label="Begin Journey — primary action"><span>Begin Journey <b aria-hidden="true">↗</b></span><small id="journey-launch-copy">A story in four flights. Two chapters of sky.</small></button>
+
+          <div class="menu-actions">
+            <button id="start-btn" type="button" class="action-pill" title="The original endless flight"><span>Classic <b aria-hidden="true">↗</b></span><small>Chase your longest flight</small></button>
+            <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores"><span>Daily <b aria-hidden="true">↗</b></span><small>One route. A fresh challenge.</small></button>
+            <button id="weekly-btn" type="button" class="action-pill" title="This week's folded map — same seed, rotating sky"><span>Weekly <b aria-hidden="true">↗</b></span><small>A new map every Monday</small></button>
+            <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards"><span>Tutorial <b aria-hidden="true">↗</b></span><small>Learn to ride the wind</small></button>
+            <button id="hangar-btn" type="button" class="action-pill action-hangar" data-cta="secondary" title="Upgrades, skins, missions, achievements &amp; settings"><span>Hangar <b aria-hidden="true">↗</b></span><small>Make your next fold better · <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</small></button>
           </div>
 
           <div class="menu-section menu-setup">
@@ -167,16 +178,6 @@
               <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
             </div>
             <label class="name-row">Pilot <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
-          </div>
-
-          <button id="journey-btn" type="button" class="cta-main journey-main-cta" data-cta="primary" aria-label="Begin Journey — primary action">🗺️ Begin Journey</button>
-
-          <div class="menu-actions">
-            <button id="start-btn" type="button" class="action-pill" title="The original endless flight">✈️&nbsp;Classic</button>
-            <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores">📅&nbsp;Daily</button>
-            <button id="weekly-btn" type="button" class="action-pill" title="This week's folded map — same seed, rotating sky">📆&nbsp;Weekly</button>
-            <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓&nbsp;Tutorial</button>
-            <button id="hangar-btn" type="button" class="action-pill action-hangar" data-cta="secondary" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</button>
           </div>
 
           <div id="engine-status" class="engine-status hidden" role="status" aria-live="polite">
@@ -236,13 +237,13 @@
       <div id="hangar-panel" class="panel hangar hidden">
         <div class="menu-card hangar-card">
           <div class="hangar-top">
-            <h2>Hangar</h2>
+            <span class="chip-label">The workshop</span><h2>Hangar</h2>
             <p class="tagline hangar-wallet">
               Wallet <strong id="hangar-wallet">0</strong>★ · Lifetime <strong id="hangar-lifetime">0</strong>★
             </p>
             <div class="hangar-group-switch" role="group" aria-label="Hangar section group">
               <button type="button" id="hangar-group-progress" class="hangar-group-btn active" data-hangar-group="progress" aria-pressed="true">Progress</button>
-              <button type="button" id="hangar-group-meta" class="hangar-group-btn" data-hangar-group="meta" aria-pressed="false">Meta</button>
+              <button type="button" id="hangar-group-meta" class="hangar-group-btn" data-hangar-group="meta" aria-pressed="false">Logbook &amp; tools</button>
             </div>
             <div class="hangar-tabs" role="tablist" aria-label="Hangar sections">
               <button id="hangar-tab-upgrades" type="button" class="hangar-tab active" data-tab="upgrades" data-hangar-group="progress" role="tab" aria-controls="tab-upgrades" aria-selected="true" tabindex="0">🔧&nbsp;Upgrades</button>
@@ -259,7 +260,17 @@
           <div class="hangar-body">
             <section id="tab-upgrades" class="hangar-page" role="tabpanel" aria-labelledby="hangar-tab-upgrades">
               <p id="upgrades-intro" class="page-intro">Spend flight stars. Each rank sharpens the plane.</p>
+              <div id="upgrade-recommendation"></div>
+              <div class="upgrade-controls">
+                <div id="upgrade-groups" class="upgrade-tree-row" role="group" aria-label="Upgrade groups"></div>
+                <div class="hangar-search-row">
+                  <input id="upgrade-search" type="search" class="hangar-search-input" placeholder="Find your next fold…" aria-label="Search upgrades" />
+                  <button id="upgrade-clear" type="button" class="hangar-search-clear" aria-label="Clear search" hidden>Clear</button>
+                </div>
+                <p id="upgrade-count" class="result-count" role="status" aria-live="polite"></p>
+              </div>
               <div id="upgrades-grid" class="upgrade-grid"></div>
+              <div id="upgrade-empty" class="upgrade-empty" hidden><strong>No folds found.</strong><p>Try another name or open all upgrade groups.</p><button id="upgrade-reset" type="button" class="btn-secondary">Reset filters</button></div>
             </section>
             <section id="tab-skins" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-skins">
               <p class="page-intro">Meet lifetime milestones, then purchase with wallet stars. Seasonal planes are free claims.</p>
@@ -321,6 +332,33 @@
                   </select>
                 </label>
               </div>
+              <section class="progress-kit" aria-labelledby="progress-kit-title">
+                <h3 id="progress-kit-title">Take your progress with you.</h3>
+                <p>Your wallet, planes, folds, Journey, postcards, records and settings live on this device. Save a backup to carry them to another browser or keep a spare.</p>
+                <div class="btn-row">
+                  <button id="backup-export" type="button" class="btn-secondary">Export progress</button>
+                  <button id="backup-undo" type="button" class="btn-secondary" hidden>Undo last restore</button>
+                </div>
+                <div id="backup-export-panel" hidden>
+                  <label for="backup-export-text" class="chip-label">Your portable save · select and copy</label>
+                  <textarea id="backup-export-text" class="backup-text" readonly spellcheck="false"></textarea>
+                  <button id="backup-download" type="button" class="btn-secondary">Download backup</button>
+                </div>
+                <details class="backup-import">
+                  <summary>Restore a saved flight log</summary>
+                  <label for="backup-file" class="chip-label">Choose a backup file</label>
+                  <input id="backup-file" type="file" accept=".json,application/json" />
+                  <label for="backup-import-text" class="chip-label">Or paste a portable save</label>
+                  <textarea id="backup-import-text" class="backup-text" spellcheck="false" placeholder="Paste your Paper Plane Run backup here…"></textarea>
+                  <button id="backup-preview-btn" type="button" class="btn-secondary">Preview restore</button>
+                  <div id="backup-preview" class="backup-preview" hidden>
+                    <p id="backup-preview-summary"></p>
+                    <p>This replaces this device’s progress. Your current save stays available through “Undo last restore”.</p>
+                    <button id="backup-restore" type="button" class="cta-main cta-inline">Restore this progress</button>
+                  </div>
+                </details>
+                <p id="backup-status" role="status" aria-live="polite"></p>
+              </section>
             </section>
             <section id="tab-stats" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-stats">
               <div id="stats-body"></div>

@@ -1,0 +1,741 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #fffaf2;
+  --paper-strong: rgba(255,250,242,.94);
+  --ink: #243b53;
+  --ink-soft: #58708b;
+  --coral: #e76f51;
+  --gold: #f0b429;
+  --violet: #7357c9;
+  --paper-shadow: rgba(61,44,41,.16);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+}
+
+html, body, #game-root {
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: 'Nunito', system-ui, sans-serif;
+  background: #c8dff5; color: #243b53;
+  user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#c { display: block; width: 100%; height: 100%; touch-action: none; filter: saturate(0.72) brightness(1.04); }
+.hidden { display: none !important; }
+
+/* —— Speed streaks (opacity driven by JS from current flight speed) ——
+   Thin, faint rays that live only near the frame edge; earlier art ran
+   near-opaque white to the mid-screen and read as a rendering artifact. */
+html[data-boosting='1'] #speed-fx { opacity: 0.24 !important; }
+html[data-render-quality='low'] #speed-fx { display: none; }
+#speed-fx {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  opacity: 0;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 252, 244, 0.4) 0deg 0.55deg,
+    transparent 0.55deg 6.5deg
+  );
+  -webkit-mask-image: radial-gradient(circle at 50% 52%, transparent 46%, rgba(0, 0, 0, 0.8) 92%);
+  mask-image: radial-gradient(circle at 50% 52%, transparent 46%, rgba(0, 0, 0, 0.8) 92%);
+  transition: opacity 0.18s ease-out;
+}
+
+/* —— Combo Fever: golden vignette pulse while a fever score bonus is active —— */
+#fever-fx {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(251,191,36,.4) 100%);
+  transition: opacity 0.4s ease;
+}
+#fever-fx.fever-active {
+  opacity: 0.32;
+  animation: feverPulse 0.9s ease-in-out infinite;
+}
+@keyframes feverPulse {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 0.52; }
+}
+html.a11y-reduced-motion #fever-fx.fever-active { animation: none !important; opacity: 0.5; }
+
+/* —— Slow-mo: cool bullet-time vignette while the Slow Motion power runs —— */
+#slow-fx {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 42%, rgba(96,165,250,.32) 100%),
+    linear-gradient(180deg, rgba(147,197,253,.12), transparent 30%, transparent 70%, rgba(147,197,253,.12));
+  transition: opacity 0.45s ease;
+}
+#slow-fx.slowmo-active { opacity: 1; }
+html.a11y-reduced-motion #slow-fx.slowmo-active { opacity: 0.55; }
+
+/* —— Hazard telegraph warning flash —— */
+#warn-flash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 3; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(224,82,74,.35) 100%);
+}
+#warn-flash.warn-pulse { animation: warnPulse 0.55s ease-out; }
+#warn-flash.impact-pulse { animation: impactPulse 0.48s ease-out; }
+#warn-flash.impact-hazard { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(224,82,74,.48) 100%); }
+#warn-flash.impact-star { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(240,180,41,.46) 100%); }
+#warn-flash.impact-power { background: radial-gradient(circle at 50% 50%, transparent 48%, rgba(52,211,153,.42) 100%); }
+#warn-flash.paper-crease {
+  background:
+    radial-gradient(circle at 50% 50%, transparent 62%, rgba(255,250,242,.42) 100%),
+    repeating-linear-gradient(12deg, transparent 0 14px, rgba(61,44,41,.06) 14px 15px);
+  animation: paperCrease 0.42s ease-out;
+}
+@keyframes paperCrease { 0%{opacity:0} 18%{opacity:.9} 100%{opacity:0} }
+html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; opacity: .35; }
+#warn-flash.impact-route { background: radial-gradient(circle at 50% 50%, transparent 42%, rgba(124,58,237,.38) 100%); }
+@keyframes warnPulse {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes impactPulse {
+  0% { opacity: 0; }
+  28% { opacity: .95; }
+  100% { opacity: 0; }
+}
+
+/* —— Off-screen edge indicators —— */
+#edge-indicators { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.edge-arrow {
+  position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  display: none; will-change: transform;
+}
+.edge-arrow.visible { display: block; }
+.edge-arrow svg { width: 100%; height: 100%; filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+.edge-arrow.kind-hazard svg { color: #e0524a; }
+.edge-arrow.kind-star svg { color: #f0b429; }
+.edge-arrow.kind-power svg { color: #7eb8e8; }
+
+/* —— Gap moth trail (faint lane hint) —— */
+#gap-trail { position: absolute; left: 50%; top: 50%; width: 2px; height: 42%; background: linear-gradient(180deg, transparent, rgba(255,250,242,.18) 20%, rgba(255,250,242,.08) 80%, transparent); transform: translateX(-50%); pointer-events: none; z-index: 3; opacity: 0; transition: opacity .3s; }
+#gap-trail.visible { opacity: 1; }
+
+/* —— Flight focus + route strip ——
+   These are DOM overlays on purpose: the playfield remains a single canvas,
+   while crisp, readable state feedback stays independent of camera distance. */
+#flight-route {
+  /* Out of the centre lane. This is route context — which zone, how far to the
+     next — and it was parked directly above the plane at the top of the
+     corridor the player actually flies, at nearly the size of the whole HUD.
+     Anchored right and made small, it stays available without competing. */
+  position: absolute; top: max(62px, calc(env(safe-area-inset-top) + 52px));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 5; width: min(190px, 30vw);
+  padding: 6px 9px 7px; border: 1.5px solid rgba(36,59,83,.14);
+  border-radius: 12px; background: rgba(255,250,242,.8);
+  opacity: .92;
+  box-shadow: 0 8px 22px rgba(36,59,83,.14), 0 1px 0 rgba(255,255,255,.7) inset;
+  backdrop-filter: blur(12px); pointer-events: none;
+}
+.flight-route-copy { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.flight-route-labels { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.flight-route-kicker { display: flex; justify-content: space-between; gap: 6px; color: var(--ink-soft); font-size: 8px; font-weight: 1000; letter-spacing: .13em; text-transform: uppercase; }
+.flight-route-kicker b { color: var(--route-accent, var(--coral)); font-size: 8px; letter-spacing: .05em; white-space: nowrap; }
+.flight-route-copy strong { min-width: 0; color: var(--ink); font-size: clamp(10px, 2.2vh, 13px); font-weight: 1000; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flight-route-copy span:last-child { justify-self: end; color: var(--route-accent, var(--coral)); font-size: 10px; font-weight: 900; white-space: nowrap; }
+.flight-route-track { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: rgba(36,59,83,.12); }
+.flight-route-track span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--route-accent, var(--coral)), var(--gold)); transition: width .28s ease-out; }
+
+.zone-stamp {
+  display: inline-block; flex: none; width: 52px; height: 52px; border-radius: 15px;
+  background-color: #fff7e8; background-image: url('/assets/zone-stamp-sheet.webp');
+  background-size: 200% 200%; background-repeat: no-repeat;
+  box-shadow: 0 6px 14px rgba(61,44,41,.15), 0 1px 0 rgba(255,255,255,.8) inset;
+  border: 1.5px solid rgba(61,44,41,.12);
+}
+.zone-stamp[data-zone="city"] { background-position: 0 0; }
+.zone-stamp[data-zone="harbor"] { background-position: 100% 0; }
+.zone-stamp[data-zone="storm"] { background-position: 0 100%; }
+.zone-stamp[data-zone="aurora"] { background-position: 100% 100%; }
+#flight-route .zone-stamp { width: 34px; height: 34px; border-radius: 11px; }
+#flight-route .zone-stamp[data-earned="false"] { filter: saturate(.78) brightness(1.04); }
+#flight-route[data-zone="city"] { --route-accent: #e76f51; }
+#flight-route[data-zone="harbor"] { --route-accent: #2a70b8; }
+#flight-route[data-zone="storm"] { --route-accent: #7357c9; }
+#flight-route[data-zone="aurora"] { --route-accent: #c47b18; }
+#flight-route[data-zone="sunset"] { --route-accent: #d45a3c; }
+#flight-route[data-zone="midnight"] { --route-accent: #5d4698; }
+
+/* Flight target marker — rides the object it names (star line, hazard,
+   power-up), never the plane. Four corner brackets drawn with layered
+   gradients read as "this thing, right here" without wrapping the scene
+   in a hoop; --fc swaps the whole reticle color per cue state. */
+#flight-focus {
+  position: absolute; left: 0; top: 0; z-index: 4; width: 46px; height: 46px;
+  transform: translate(-50%, -50%); pointer-events: none;
+  transition: left .08s linear, top .08s linear, opacity .18s ease;
+}
+.flight-focus-ring {
+  position: absolute; inset: 2px;
+  --fc: rgba(255,253,245,.98);
+  filter: drop-shadow(0 1px 6px rgba(20,30,50,.78)) drop-shadow(0 0 12px rgba(255,255,255,.42));
+  outline: 1px solid rgba(255,255,255,.28); outline-offset: 1px;
+  background:
+    linear-gradient(var(--fc), var(--fc)) left top / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) left top / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) right top / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) right top / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) left bottom / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) left bottom / 2px 13px,
+    linear-gradient(var(--fc), var(--fc)) right bottom / 13px 2px,
+    linear-gradient(var(--fc), var(--fc)) right bottom / 2px 13px;
+  background-repeat: no-repeat;
+}
+/* Lock dot: a small filled center dot reads as "targeted", replacing the
+   old full crosshair that sat over the scene. */
+.flight-focus-ring::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%;
+  background: var(--fc); opacity: .75;
+}
+.flight-focus-cue {
+  position: absolute; left: 50%; top: 100%; transform: translate(-50%, 5px);
+  color: #fffaf2; font-size: 9px; font-weight: 1000; letter-spacing: .16em;
+  text-shadow: 0 1px 4px rgba(36,59,83,.65); white-space: nowrap;
+}
+#flight-focus[data-cue="hazard"] .flight-focus-ring { --fc: rgba(255,138,110,.98); }
+#flight-focus[data-cue="hazard"] .flight-focus-cue { color: #ffd9cc; }
+#flight-focus[data-cue="star"] .flight-focus-ring { --fc: rgba(255,214,92,.95); }
+#flight-focus[data-cue="power"] .flight-focus-ring { --fc: rgba(143,234,207,.95); }
+/* Pop on target change: brackets swing out a touch and settle, with a
+   softened falloff so it reads as a highlight rather than a bounce. */
+@keyframes focusPop {
+  0% { transform: scale(.82); opacity: .4; }
+  55% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+#flight-focus.focus-pop { animation: focusPop .22s ease-out; }
+html.a11y-reduced-motion #flight-focus { transition: none; }
+html.a11y-reduced-motion #flight-focus.focus-pop { animation: none; }
+html.a11y-reduced-motion .flight-route-track span { transition: none; }
+
+/* —— HUD ——
+   Every size in the flight HUD is viewport-relative. It used to be fixed px, so
+   on a short screen (phone landscape, a small window) five chips at 57px tall
+   plus the banner stack covered three quarters of the frame and the plane was
+   literally not visible behind its own interface. Chrome has to shrink when
+   there is less room, not hold its size and eat the game. */
+:root {
+  /* Sized against viewport height, because the short edge is what runs out
+     first: it is a short screen, not a narrow one, that turns the HUD into a
+     wall. Each is a clamp so there is a sane floor and ceiling — no amount of
+     screen makes the chrome grotesque, and no lack of it makes the game
+     unreadable. These are lengths, not a unitless scale factor: CSS cannot
+     divide a length by a length, so a `--hud-scale` number is not expressible
+     and every calc built on one is silently dropped. */
+  --hud-gap: clamp(4px, 0.9vh, 8px);
+  --hud-pad-y: clamp(3px, 0.7vh, 6px);
+  --hud-pad-x: clamp(7px, 1.5vh, 12px);
+  --hud-radius: clamp(9px, 1.9vh, 14px);
+  --hud-fs-label: clamp(7px, 1.2vh, 9px);
+  --hud-fs-value: clamp(12px, 2.4vh, 17px);
+  --banner-fs: clamp(11px, 2.1vh, 15px);
+  --banner-pad-y: clamp(5px, 1.3vh, 10px);
+  --banner-pad-x: clamp(11px, 2.4vh, 18px);
+  --cue-fs: clamp(8px, 1.5vh, 11px);
+  --btn-size: clamp(32px, 6vh, 44px);
+}
+#hud {
+  position: absolute; top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(56px, env(safe-area-inset-right));
+  display: flex; gap: var(--hud-gap); flex-wrap: wrap;
+  pointer-events: none; z-index: 5;
+}
+.hud-card {
+  background: rgba(255,250,242,.9); border: 1.5px solid rgba(61,44,41,.1);
+  border-radius: var(--hud-radius);
+  padding: var(--hud-pad-y) var(--hud-pad-x);
+  box-shadow: 0 6px 16px rgba(61,44,41,.08); backdrop-filter: blur(12px);
+  min-width: clamp(46px, 9vh, 64px);
+}
+.hud-card .label {
+  display: block; font-size: var(--hud-fs-label); font-weight: 900;
+  letter-spacing: .08em; text-transform: uppercase; color: #8a6f68;
+  line-height: 1.25;
+}
+.hud-card > span:nth-child(2) {
+  font-size: var(--hud-fs-value); font-weight: 900; color: #3d2c29;
+  line-height: 1.15;
+}
+/* Flight HUD hierarchy. The markup has always carried data-hud-priority, but no
+   rule consumed it, so static context (mode, control scheme) rendered at exactly
+   the same weight as live values and competed for attention mid-flight. */
+.hud-card[data-hud-priority='secondary'] { background: rgba(255,250,242,.62); border-color: rgba(61,44,41,.08); }
+.hud-card[data-hud-priority='secondary'] > span:nth-child(2) { font-size: calc(var(--hud-fs-value) * 0.86); }
+.hud-card[data-hud-priority='tertiary'] {
+  background: rgba(255,245,220,.82); border-color: rgba(245,158,11,.14);
+  box-shadow: none; padding: 3px 7px; min-width: 0;
+}
+.hud-card[data-hud-priority='tertiary'] .label { font-size: 9px; color: #8a6f68; }
+.hud-card[data-hud-priority='tertiary'] > span:nth-child(2) {
+  font-size: 12px; font-weight: 800; color: #6b5450;
+}
+@media (min-width: 720px) {
+  #hud:not(.hidden) .hud-card[data-hud-priority='tertiary'] { display: none; }
+}
+html[data-night='1'] .hud-card {
+  background: rgba(255,250,242,.94);
+  border-color: rgba(255,255,255,.55);
+}
+.hud-card.stars > span:nth-child(2) { color: #d97706; }
+.hud-card.combo-hud > span:nth-child(2) { color: #b45309; }
+.hud-card.combo-hud.combo-pulse { animation: comboPulse 0.4s cubic-bezier(.34,1.56,.64,1); }
+.hud-card.combo-hud.combo-tier-warm { border-color: rgba(245,158,11,.35); background: rgba(255,247,224,.88); }
+.hud-card.combo-hud.combo-tier-hot {
+  border-color: rgba(245,130,32,.55);
+  background: rgba(255,244,232,.95);
+}
+.hud-card.combo-hud.combo-tier-hot > span:nth-child(2) { color: #d45a09; }
+.hud-card.combo-hud.combo-tier-legend {
+  border-color: rgba(251,191,36,.7);
+  background: linear-gradient(135deg, rgba(255,247,224,.96), rgba(254,243,199,.98));
+}
+.hud-card.combo-hud.combo-tier-legend > span:nth-child(2) { color: #b45309; }
+
+/* Ground skim — shares the same warm amber as combo/fever so the whole flight HUD reads as one family. */
+.hud-card.skim-hud > span:nth-child(2) { color: #b45309; white-space: nowrap; }
+.hud-card.skim-hud.skim-tier-warm { border-color: rgba(245,158,11,.35); background: rgba(255,247,224,.88); }
+.hud-card.skim-hud.skim-tier-hot {
+  border-color: rgba(251,191,36,.55);
+  background: rgba(255,247,224,.94);
+}
+.hud-card.skim-hud.skim-tier-hot > span:nth-child(2) { color: #92400e; }
+.hud-card.skim-hud.skim-tier-legend {
+  border-color: rgba(251,191,36,.70);
+  background: linear-gradient(135deg, rgba(255,247,224,.96), rgba(254,243,199,.98));
+}
+.hud-card.skim-hud.skim-tier-legend > span:nth-child(2) { color: #92400e; }
+@keyframes comboPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.28); box-shadow: 0 8px 24px rgba(217,119,6,.32); }
+  100% { transform: scale(1); }
+}
+.hud-card.streak-hud { border-color: rgba(217,119,6,.4); background: rgba(255,247,224,.92); }
+.hud-card.streak-hud > span:nth-child(2) { color: #b45309; }
+.hud-card.streak-hud.combo-pulse { animation: comboPulse 0.4s cubic-bezier(.34,1.56,.64,1); }
+.hud-card.fever-hud {
+  border-color: rgba(251,191,36,.6); background: rgba(255,247,224,.95);
+  animation: feverHudPulse 0.7s ease-in-out infinite;
+}
+.hud-card.fever-hud > span:nth-child(2) { color: #b45309; font-weight: 900; }
+@keyframes feverHudPulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(217,119,6,.15); }
+  50% { box-shadow: 0 2px 16px rgba(251,191,36,.55); }
+}
+html.a11y-reduced-motion .hud-card.fever-hud { animation: none !important; }
+html.a11y-reduced-motion .hud-card.combo-hud.combo-pulse,
+html.a11y-reduced-motion .hud-card.streak-hud.combo-pulse,
+html.a11y-reduced-motion .next-zone-chip,
+html.a11y-reduced-motion .new-best-badge { animation: none !important; }
+.hud-card.mode-chip > span:nth-child(2),
+.hud-card.zone-chip > span:nth-child(2) { font-size: 13px !important; }
+.hud-card.journey-objective-chip {
+  border-color: rgba(127,106,200,.46); background: rgba(250,247,255,.94);
+  max-width: min(250px, 42vw);
+}
+.hud-card.journey-objective-chip > span:nth-child(2) {
+  color: #5d4698; font-size: 12px; white-space: nowrap;
+}
+.next-zone-chip {
+  border-color: rgba(240,149,106,.4); background: rgba(255,244,232,.92);
+  animation: nextZoneFade 0.3s ease-out;
+}
+.next-zone-chip > span:nth-child(2) { font-size: 12px !important; color: #9a3412; }
+@keyframes nextZoneFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ghost-delta-chip.ahead > span:nth-child(2) { color: #16a34a; }
+.ghost-delta-chip.behind > span:nth-child(2) { color: #dc2626; }
+.guardian-chip { border-color: rgba(56,189,248,.4); background: rgba(232,249,255,.92); }
+.guardian-chip > span:nth-child(2) { color: #0369a1; }
+.guardian-chip.guardian-save-flash {
+  animation: guardianSaveFlash 0.7s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes guardianSaveFlash {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(56,189,248,0); }
+  40% { transform: scale(1.18); box-shadow: 0 0 22px rgba(56,189,248,.55); }
+  100% { transform: scale(1); box-shadow: 0 0 0 rgba(56,189,248,0); }
+}
+html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !important; }
+#warn-flash.guardian-flash {
+  background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(56,189,248,.42) 100%);
+  animation: warnPulse 0.65s ease-out;
+}
+.power-hud { min-width: 108px; }
+.power-hud #power-label { font-size: 13px !important; display: block; }
+.power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
+#power-fill {
+  height: 100%; width: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, #7eb8e8, #a78bfa, #f0956a);
+  transition: width .08s linear;
+}
+
+.icon-btn {
+  position: absolute; top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right)); z-index: 20;
+  width: var(--btn-size); height: var(--btn-size);
+  border-radius: clamp(10px, 2vh, 14px);
+  border: 1.5px solid rgba(61,44,41,.1); background: rgba(255,250,242,.92);
+  font-size: calc(var(--hud-fs-value) * 1.05); cursor: pointer;
+  display: grid; place-items: center; padding: 0;
+  box-shadow: 0 6px 16px rgba(61,44,41,.1); backdrop-filter: blur(10px);
+}
+.icon-btn.pause-btn {
+  right: max(54px, calc(env(safe-area-inset-right) + 46px));
+  font-size: calc(var(--hud-fs-value) * 0.82); letter-spacing: -1px;
+}
+.icon-btn.install-btn { right: max(110px, calc(env(safe-area-inset-right) + 102px)); }
+
+#pause-overlay {
+  position: absolute; inset: 0; z-index: 26;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(40, 30, 28, 0.48);
+  backdrop-filter: blur(4px);
+}
+#pause-overlay.hidden { display: none; }
+.pause-card {
+  width: min(340px, 100%);
+  background: rgba(255, 250, 242, 0.98);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  border-radius: 24px;
+  padding: 22px 20px 18px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(61, 44, 41, 0.28);
+}
+.pause-card h2 { font-size: 1.45rem; font-weight: 900; color: #2c211f; margin-bottom: 6px; }
+.pause-card .detail { margin-bottom: 14px; }
+.pause-card .cta-main { width: 100%; margin-bottom: 10px; }
+.pause-actions { justify-content: center; }
+
+#game-root.ar-active #c { background: transparent; }
+#game-root.mouse-mode #c { cursor: crosshair; }
+#game-root.joystick-mode #c { cursor: default; }
+
+/* Sticks: hard hide in mouse mode */
+#game-root.mouse-mode #stick-zone,
+#stick-zone.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#game-root.joystick-mode:not(.mouse-mode) #stick-zone:not(.hidden) {
+  display: flex !important; visibility: visible !important; pointer-events: auto !important;
+}
+
+#stick-zone {
+  /* The touch area still spans the bottom of the screen — the pad floats to
+     wherever the thumb lands. Only its *resting* position moved, out of the
+     centre and into the corner: parked mid-screen it sat directly on the
+     flight path, so the one object the player must track was behind the
+     control they were tracking it with. */
+  position: absolute; left: 0; right: 0; bottom: 0; height: 42%; width: 100%;
+  z-index: 8; flex-direction: column; align-items: flex-start;
+  justify-content: flex-end;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+}
+#stick-base {
+  width: min(122px, 30vw); height: min(122px, 30vw); border-radius: 50%;
+  /* Idle, the pad is a hint rather than a component; it firms up under a
+     thumb (see .floating below). */
+  opacity: .45; transition: opacity .16s ease;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255,255,255,.7), rgba(255,250,242,.4) 60%, rgba(255,250,242,.22) 100%);
+  border: 2px dashed rgba(224,107,74,.45);
+  position: relative; touch-action: none;
+  box-shadow: 0 10px 26px rgba(61,44,41,.18), inset 0 0 22px rgba(255,255,255,.4);
+}
+/* Compass ticks at N/E/S/W so the pad reads as directional, not just a blob */
+#stick-base::before {
+  content: ''; position: absolute; inset: 10px; border-radius: 50%;
+  background:
+    linear-gradient(to bottom, rgba(61,44,41,.28) 0 4px, transparent 4px) top center / 2px 100% no-repeat,
+    linear-gradient(to bottom, rgba(61,44,41,.28) 0 4px, transparent 4px) bottom center / 2px 100% no-repeat,
+    linear-gradient(to right, rgba(61,44,41,.28) 0 4px, transparent 4px) left center / 100% 2px no-repeat,
+    linear-gradient(to right, rgba(61,44,41,.28) 0 4px, transparent 4px) right center / 100% 2px no-repeat;
+  background-repeat: no-repeat;
+  opacity: .55; pointer-events: none;
+}
+/* While a touch is active, the base floats to sit centered under the
+   finger wherever it first lands in the zone, instead of forcing players
+   to hunt for a small fixed circle. */
+#stick-base.floating {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  opacity: .82;
+}
+#fire-btn {
+  /* Parked in the corner, not a third of the way up the screen. The plane can
+     fly the full width of the corridor, so at 34vh this button sat squarely in
+     the flight path and hid the plane whenever the player steered right. */
+  position: absolute; z-index: 12; border: none; cursor: pointer;
+  right: max(14px, calc(env(safe-area-inset-right) + 10px));
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 12px));
+  opacity: .88;
+  width: clamp(46px, 9vh, 62px); height: clamp(46px, 9vh, 62px);
+  border-radius: 50%; font-size: clamp(19px, 3.8vh, 26px);
+  display: grid; place-items: center; padding: 0;
+  background: linear-gradient(180deg, #4c3d80, #2b2540); color: #fff;
+  box-shadow: 0 8px 20px rgba(43,37,64,.5), inset 0 0 0 2px rgba(255,255,255,.15);
+  touch-action: none; user-select: none;
+  transition: transform .08s ease;
+}
+/* Tucking: the button visibly compresses, so a touch player can see the move
+   is charging without looking away from the plane. */
+#fire-btn.firing { transform: scale(0.85); }
+#fire-btn[data-ready="true"] {
+  box-shadow: 0 8px 20px rgba(43,37,64,.5), inset 0 0 0 2px rgba(196,181,253,.85);
+}
+#fire-btn.cooling { opacity: .6; filter: saturate(.7); }
+#stick-knob {
+  width: 56px; height: 56px; border-radius: 50%;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  border: 3px solid rgba(255,250,242,.95);
+  display: grid; place-items: center;
+  transition: background .15s ease;
+}
+#stick-knob {
+  background: linear-gradient(180deg,#f0956a,#e06b4a);
+  box-shadow: 0 8px 18px rgba(224,107,74,.45);
+}
+/* Little paper-dart glyph on the knob so it reads as "this is the plane",
+   not a generic joystick nub. Points up by default (forward). */
+#stick-knob::after {
+  content: ''; width: 0; height: 0;
+  border-left: 7px solid transparent; border-right: 7px solid transparent;
+  border-bottom: 15px solid rgba(255,250,242,.95);
+  filter: drop-shadow(0 1px 1px rgba(61,44,41,.25));
+}
+html.a11y-large-stick #stick-base { width: min(160px, 42vw); height: min(160px, 42vw); }
+html.a11y-large-stick #stick-knob { width: 66px; height: 66px; }
+/* Tablets (iPad and similar): the 132px cap above was sized for phones —
+   on a touch device with real screen real estate to spare, a bigger pad
+   is comfortable, not cramped. Gated on pointer:coarse so mouse/trackpad
+   desktop users at a similar window width aren't affected. */
+@media (pointer: coarse) and (min-width: 700px) {
+  #stick-base { width: min(170px, 20vw); height: min(170px, 20vw); }
+  #stick-knob { width: 68px; height: 68px; }
+}
+.stick-hint {
+  margin-top: 6px; margin-left: 8px; font-size: var(--cue-fs);
+  font-weight: 900; color: rgba(61,44,41,.35);
+}
+
+/* Banners stack below the HUD's actual (possibly wrapped) height instead of
+   each guessing a fixed pixel offset — JS keeps --banner-top in sync with
+   the HUD's real rendered bottom edge so nothing overlaps on any layout. */
+#banner-stack {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: var(--banner-top, max(64px, calc(env(safe-area-inset-top) + 50px)));
+  z-index: 6; display: flex; flex-direction: column; align-items: center;
+  gap: var(--hud-gap); pointer-events: none;
+  transition: top .18s ease; width: min(90vw, 460px);
+}
+#wind-banner, #power-banner, #zone-banner {
+  font-weight: 900; font-size: var(--banner-fs);
+  background: rgba(255,250,242,.96);
+  padding: var(--banner-pad-y) var(--banner-pad-x);
+  border-radius: 999px; pointer-events: none;
+  box-shadow: 0 8px 22px rgba(42,90,138,.16); animation: pop .32s ease;
+  /* Never clipped: banner copy is written to be read, and `nowrap` with a
+     92vw cap silently cut the end off every long line on a narrow screen. */
+  max-width: min(90vw, 460px); text-align: center; text-wrap: balance;
+}
+/* Only one flight banner is ever on screen. The arbiter in flight-engine.js
+   picks the most important requested banner and suppresses the rest — three
+   independent elements each toggling their own visibility used to stack into a
+   wall of rounded rectangles down the middle of the screen. */
+#banner-stack .banner-suppressed { display: none !important; }
+#wind-banner { border: 2px solid #7eb8e8; color: #2a5a8a; }
+#power-banner { border: 2px solid #a78bfa; color: #5b21b6; }
+#zone-banner { border: 2px solid #f0956a; color: #9a3412; }
+#boost-safety-cue, #magnet-pull-trail {
+  border-radius: 999px; padding: calc(var(--banner-pad-y) * 0.6) calc(var(--banner-pad-x) * 0.6);
+  font-size: var(--cue-fs); font-weight: 900;
+  pointer-events: none; white-space: nowrap; align-self: center;
+}
+#boost-safety-cue {
+  color: #7c2d12; border: 1.5px solid #fb923c; background: rgba(255,247,237,.94);
+  box-shadow: 0 5px 14px rgba(194,65,12,.16);
+}
+#magnet-pull-trail {
+  color: #065f46; border: 1.5px solid #34d399; background: rgba(236,253,245,.94);
+}
+#magnet-pull-trail::before {
+  content: ''; display: inline-block; width: 28px; height: 3px; margin: 0 6px 2px 2px;
+  border-radius: 99px; vertical-align: middle;
+  background: linear-gradient(90deg,transparent,#34d399 45%,#fef3c7);
+  animation: magnetPull 0.7s linear infinite;
+}
+@keyframes magnetPull { from { transform: translateX(-4px); opacity: .45; } to { transform: translateX(4px); opacity: 1; } }
+#combo-float {
+  /* Sits above the flight line, not on it. At 38% this landed on top of the
+     plane — reward text covering the one object you have to keep your eyes on,
+     at exactly the moment you earned it by flying well. */
+  position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 6;
+  border: 2px solid #c4b5fd; color: #6d28d9;
+  font-size: clamp(14px, 3vh, 22px); font-weight: 900;
+  background: rgba(255,250,242,.96);
+  padding: var(--banner-pad-y) var(--banner-pad-x); border-radius: 999px;
+  pointer-events: none; box-shadow: 0 10px 28px rgba(42,90,138,.16);
+  white-space: nowrap; max-width: 92vw; animation: popCentered .32s ease;
+}
+#combo-float.combo-float-hot {
+  color: #c2410c;
+  text-shadow: 0 2px 0 rgba(255,255,255,.85), 0 0 18px rgba(249,115,22,.45);
+}
+#combo-float.fever-float {
+  border-color: #fbbf24; color: #92400e;
+  background: rgba(255,251,235,.97);
+  box-shadow: 0 10px 28px rgba(217,119,6,.3);
+  font-size: clamp(16px, 3.6vh, 26px);
+}
+#flight-feedback {
+  /* Pinned to the very bottom strip, between the stick and the Tuck button.
+     At 104px up it sat exactly where the plane renders at low altitude — so
+     every reward for flying low was announced by covering the plane flying
+     low. */
+  position: absolute; left: 50%; bottom: max(10px, calc(env(safe-area-inset-bottom) + 6px));
+  transform: translateX(-50%); z-index: 7; pointer-events: none;
+  padding: calc(var(--banner-pad-y) * 0.7) calc(var(--banner-pad-x) * 0.7);
+  border: 1.5px solid rgba(36,59,83,.16); border-radius: 999px;
+  background: rgba(255,250,242,.94); color: var(--ink);
+  font-size: var(--cue-fs); font-weight: 1000;
+  letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  box-shadow: 0 9px 24px rgba(36,59,83,.16); backdrop-filter: blur(10px);
+}
+#flight-feedback.feedback-pop { animation: feedbackPop .42s cubic-bezier(.2,.85,.25,1); }
+#flight-feedback[data-tone="hazard"] { border-color: rgba(224,82,74,.45); color: #a83b31; }
+#flight-feedback[data-tone="star"] { border-color: rgba(240,180,41,.58); color: #9a6505; }
+#flight-feedback[data-tone="power"] { border-color: rgba(52,211,153,.55); color: #087453; }
+#flight-feedback[data-tone="route"] { border-color: rgba(124,58,237,.48); color: #5b3fa6; }
+#flight-feedback[data-tone="hot"] { border-color: rgba(249,115,22,.62); color: #c2410c; }
+@keyframes feedbackPop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(7px) scale(.88); }
+  55% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+@keyframes pop {
+  from { transform: scale(.72); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes popCentered {
+  from { transform: translateX(-50%) scale(.72); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+html.a11y-reduced-motion #combo-float,
+html.a11y-reduced-motion #flight-feedback,
+html.a11y-reduced-motion #wind-banner,
+html.a11y-reduced-motion #power-banner,
+html.a11y-reduced-motion #zone-banner,
+html.a11y-reduced-motion #magnet-pull-trail::before { animation: none !important; }
+
+#tutorial-hint {
+  position: absolute; left: 50%; bottom: max(120px, calc(env(safe-area-inset-bottom) + 100px));
+  transform: translateX(-50%); z-index: 6;
+  background: rgba(61,44,41,.86); color: #fff8ef; font-weight: 800; font-size: 15px;
+  padding: 12px 20px; border-radius: 16px; pointer-events: none;
+  box-shadow: 0 10px 28px rgba(42,90,138,.2); animation: pop .32s ease;
+  max-width: min(86vw, 420px); text-align: center; line-height: 1.35;
+}
+html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
+
+#challenge-toast {
+  position: absolute; top: max(64px, calc(env(safe-area-inset-top) + 52px));
+  left: 50%; transform: translateX(-50%); z-index: 15;
+  max-width: min(360px,92vw); background: rgba(255,250,242,.97);
+  border: 2px solid #a78bfa; color: #5b21b6; font-weight: 800; font-size: 13px;
+  padding: 12px 16px; border-radius: 16px; text-align: center; pointer-events: none;
+  box-shadow: 0 12px 32px rgba(91,33,182,.12);
+}
+/* The toast is viewport-positioned, and a panel's card is pinned to the top of
+   the window whenever it is taller than the window — which is most of the time
+   on a laptop, not only on a phone. So the toast landed squarely on the menu's
+   logo and title. The previous fix reserved headroom inside the card and gated
+   it on viewport *width*, but the collision depends on where the card's top
+   edge is, so every desktop missed it. While any panel is open there is nothing
+   at the bottom of the screen, so the toast goes there and the collision stops
+   existing rather than being budgeted around. */
+#game-root:has(.panel:not(.hidden)) #challenge-toast {
+  top: auto;
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 14px));
+}
+/* Deliberately *no* matching padding on the panel. Reserving the docked
+   toast's room with a conditional `padding-bottom` reflowed every panel each
+   time a toast appeared or expired — and since a card is sized against the
+   panel's content box, its buttons moved 80px under the cursor mid-click, so a
+   mousedown and mouseup landed on different elements and no click fired at all.
+   The toast is transient and `pointer-events: none`, so the panel still scrolls
+   through it; a moving layout is the worse trade. */
+/* In flight the toast has to clear the HUD chip row, not sit on top of it.
+   Below 820px the HUD drops to ~58px to clear the icon buttons — exactly the
+   toast's own row — so a multi-line notification landed directly over the live
+   Distance/Stars/Skim values. The HUD is what the player is reading mid-run,
+   so the toast yields to it.
+
+   The offset can't be a constant: the chip row wraps to a different number of
+   lines per mode, viewport and safe-area inset. `--hud-bottom` carries the
+   HUD's measured bottom edge (see publishHudBottom), falling back to the
+   phone-layout top if it hasn't been measured yet. */
+#hud:not(.hidden) ~ #challenge-toast {
+  top: calc(var(--hud-bottom, 58px) + 12px);
+}
+
+/* —— Install prompt (custom, since iOS Safari has no beforeinstallprompt) —— */
+#install-hint {
+  position: absolute; inset: 0; z-index: 30; display: flex;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(40,30,28,.42); backdrop-filter: blur(2px);
+}
+.install-hint-card {
+  width: min(340px, 100%); background: rgba(255,250,242,.98);
+  border: 1.5px solid rgba(255,255,255,.7); border-radius: 24px;
+  padding: 24px 22px 20px; text-align: center;
+  box-shadow: 0 24px 60px rgba(61,44,41,.28);
+}
+.install-hint-icon { font-size: 34px; margin-bottom: 6px; }
+.install-hint-card h3 { font-size: 1.2rem; font-weight: 900; color: #2c211f; margin-bottom: 8px; }
+.install-hint-card p { font-size: 14px; color: #6b5a54; line-height: 1.5; margin-bottom: 16px; }
+.install-hint-btn { width: 100%; padding: 12px 16px; font-size: 15px; }
+
+/* —— PWA update prompt (menu only; never mid-flight) —— */
+#sw-update-banner {
+  position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 28;
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(420px, 94vw);
+  padding: 10px 12px 10px 16px;
+  border-radius: 999px;
+  background: rgba(44, 33, 31, 0.92);
+  color: #fffaf2;
+  font-size: 13px; font-weight: 800;
+  box-shadow: 0 14px 36px rgba(44, 33, 31, 0.28);
+  pointer-events: auto;
+}
+#sw-update-banner.hidden { display: none; }
+#sw-update-btn {
+  border: 0; border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit; font-weight: 900;
+  background: #fbbf24; color: #2c211f;
+  cursor: pointer;
+}
+#sw-update-btn:disabled { opacity: 0.7; cursor: wait; }

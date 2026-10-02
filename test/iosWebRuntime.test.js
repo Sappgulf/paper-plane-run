@@ -20,6 +20,13 @@ describe('iOS web runtime', () => {
     expect(gameViewSource).toContain('#selector(retryLoad)')
   })
 
+  it('reveals a recoverable loading panel after WebKit content termination', () => {
+    expect(gameViewSource).toContain('func webViewWebContentProcessDidTerminate')
+    expect(gameViewSource).toContain('loadingView.layer.removeAllAnimations()')
+    expect(gameViewSource).toContain('loadingView.isHidden = false')
+    expect(gameViewSource).toContain('loadingView.alpha = 1')
+  })
+
   it('forwards lifecycle, thermal, low-power, and memory-pressure signals to the renderer', () => {
     expect(gameViewSource).toContain('ProcessInfo.processInfo.thermalState')
     expect(gameViewSource).toContain('ProcessInfo.processInfo.isLowPowerModeEnabled')

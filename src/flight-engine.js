@@ -1,3 +1,4 @@
+import { createPaperLandscape } from './paper-landscape-renderer.js'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
@@ -1365,6 +1366,7 @@ const GROUND_LIFE_GEOMETRY = {
 }
 
 const groundLifeDummy = new THREE.Object3D()
+const paperLandscape = createPaperLandscape(scene)
 const groundLifeFields = []
 let groundLifeZoneId = null
 
@@ -1379,6 +1381,7 @@ function disposeGroundLife() {
 
 function buildGroundLife(zoneId) {
   disposeGroundLife()
+  paperLandscape.rebuild(zoneId, settings.lowPower ? 'low' : renderQuality.level)
   const budget = resolveGroundLifeBudget({
     level: renderQuality.level,
     secondaryEffects: renderQuality.secondaryEffects,
@@ -5869,6 +5872,7 @@ function scrollWorld(move, lateralDrift = 0) {
   ground.position.z -= move
   if (ground.position.z < -80) ground.position.z += 140
   scrollGroundLife(move)
+  paperLandscape.scroll(move)
   const pos = dust.geometry.attributes.position
   for (let i = 0; i < dustCount; i++) {
     pos.array[i * 3 + 2] -= move * 0.55
@@ -7998,6 +8002,28 @@ if (import.meta.env.DEV && devTestState === '#test-power-refresh') {
   // clearPower(). render_game_to_text().power exposes the proof.
   activatePower('magnet')
   simulationPaused = true
+}
+
+// Representative live-scene captures share the production renderer and zone assets.
+if (import.meta.env.DEV && devTestState.startsWith('#test-landscape-')) {
+  const zone = ZONES.find(item => item.id === devTestState.slice('#test-landscape-'.length))
+  if (zone) {
+    settings = saveSettings({ haptics: false })
+    hideAllPanels()
+    runKind = 'classic'
+    resetGame()
+    state = 'playing'
+    spawnUnfold = 1
+    distance = zone.from + 45
+    invuln = 999
+    windTimer = 999
+    applyZone(zone, false)
+    advanceTime(800)
+    simulationPaused = true
+    plane.visible = true
+    needsRender = true
+    hudEl?.classList.remove('hidden')
+  }
 }
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {

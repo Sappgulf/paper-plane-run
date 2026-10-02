@@ -1,0 +1,240 @@
+@media (max-width:700px) {
+  .journey-card { padding:16px 12px; }
+  .journey-route-choices { grid-template-columns:1fr; }
+  .journey-route-card { min-height:132px; }
+  .journey-stop { font-size:8px; }
+  .journey-stop-icon { width:38px;height:38px;font-size:17px; }
+  .journey-panel { justify-content:flex-start; }
+}
+
+/* Mobile */
+@media (max-width: 520px) {
+  .menu-card { padding: 14px 12px 12px; border-radius: 24px; }
+  .panel h1 { font-size: 1.75rem; }
+  .cta-main { font-size: 17px; padding: 15px 16px; }
+  .hud-card { min-width: 54px; padding: 5px 9px; }
+  .hud-card > span:nth-child(2) { font-size: 15px; }
+  #hud:not(.hidden) .hud-card[data-hud-priority="secondary"],
+  #hud:not(.hidden) .hud-card[data-hud-priority="tertiary"] { display: none !important; }
+  #combo-hud:not(.hidden) ~ #streak-hud:not(.hidden) { display: none !important; }
+  #journey-objective-hud { flex: 1 1 100%; max-width: 240px; }
+  .icon-btn { width: 42px; height: 42px; }
+  .hangar-body { max-height: min(52vh, 420px); }
+  .hangar-group-switch { display: flex; width: 100%; margin-bottom: 8px; }
+  .hangar-group-btn { flex: 1; }
+  .hangar-tabs {
+    flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: none; scroll-snap-type: x proximity; padding: 2px 1px 8px;
+  }
+  .hangar-tabs::-webkit-scrollbar { display: none; }
+  .hangar-tab { flex: 0 0 auto; scroll-snap-align: start; }
+  #gameover .gameover-actions-primary {
+    flex-direction: column; align-items: stretch;
+    order: 2;
+  }
+  #gameover .gameover-actions-primary .cta-main { width: 100%; min-width: 0; }
+  #gameover .menu-card {
+    display: flex; flex-direction: column;
+  }
+  #gameover #photo-wrap {
+    order: 5;
+    max-height: 42vh;
+    overflow: hidden;
+  }
+  #gameover .gameover-actions-secondary { order: 6; }
+  #gameover #share-status { order: 7; }
+  #gameover #menu-btn { order: 8; }
+  .skins-grid { gap: 8px; }
+  .plane-preview { grid-template-columns: 1fr; min-height: 238px; }
+  .plane-preview-copy { padding: 12px 14px 0; }
+  .plane-preview-copy h3 { margin: 3px 0 0; font-size: 17px; }
+  .plane-preview-stage { min-height: 178px; }
+  .plane-preview-stage canvas { height: 178px; }
+  .skin-card { padding: 8px; gap: 6px; }
+  .skin-card-heading { display: grid; }
+  .plane-state { justify-self: start; }
+  .plane-economy { grid-template-columns: 1fr; gap: 3px; }
+  #gameover { justify-content: flex-start; }
+  #gameover .menu-card { margin: auto 0; }
+  #gameover .polaroid { padding: 8px 8px 20px; }
+  #gameover .polaroid img { width: min(200px, 58vw); }
+  #gameover .photo-wrap { margin-bottom: 4px; }
+  #gameover .gameover-actions-primary { margin-top: 4px; }
+  #gameover .gameover-actions-primary .cta-main { min-width: 180px; }
+  #gameover .gameover-actions-secondary { margin-top: 2px; }
+}
+
+@media (max-width: 820px) {
+  #flight-route {
+    display: none;
+  }
+  #fire-btn {
+    width: 72px; height: 72px; font-size: 22px;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(28px, env(safe-area-inset-bottom));
+  }
+  .flight-route-copy { gap: 5px; }
+  .flight-route-copy strong { font-size: 11px; }
+  .flight-route-copy span:last-child { font-size: 9px; }
+  #flight-focus { width: 72px; height: 72px; }
+}
+/* Phones (portrait or landscape): the wrapped HUD row can run wide enough
+   to collide with the top-right icon buttons, so drop it below them instead
+   of squeezing it into a narrower column. */
+@media (max-width: 820px) {
+  #hud {
+    top: max(58px, calc(env(safe-area-inset-top) + 48px));
+    right: max(10px, env(safe-area-inset-right));
+  }
+  #hud:not(.hidden) .hud-card[data-hud-priority="tertiary"] { display: none !important; }
+}
+@media (max-height: 700px) {
+  .cta-main { margin: 4px 0 8px; padding: 13px 16px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Altitude and the Tuck.
+
+   Altitude is the run's currency, so its chip is always visible and its bar
+   changes colour rather than only shrinking — a bar that merely gets shorter
+   is not readable in peripheral vision at speed, and this is the one number
+   the player has to feel without looking at it.
+   --------------------------------------------------------------------------- */
+.hud-card.altitude-hud > span:nth-child(2) { color: #15803d; font-variant-numeric: tabular-nums; }
+.altitude-bar { background: rgba(21,128,61,.16); }
+#altitude-fill { background: #22c55e; transition: background-color .12s linear; }
+.hud-card.altitude-hud[data-alt="warn"] { border-color: rgba(234,88,12,.55); }
+.hud-card.altitude-hud[data-alt="warn"] > span:nth-child(2) { color: #9a3412; }
+.hud-card.altitude-hud[data-alt="warn"] #altitude-fill { background: #f97316; }
+.hud-card.altitude-hud[data-alt="critical"] {
+  border-color: rgba(220,38,38,.75);
+  animation: altitude-alarm .5s steps(2, end) infinite;
+}
+.hud-card.altitude-hud[data-alt="critical"] > span:nth-child(2) { color: #b91c1c; }
+.hud-card.altitude-hud[data-alt="critical"] #altitude-fill { background: #ef4444; }
+@keyframes altitude-alarm {
+  from { background: rgba(254,226,226,.92); }
+  to { background: rgba(255,255,255,.92); }
+}
+html.a11y-reduced-motion .hud-card.altitude-hud[data-alt="critical"] { animation: none !important; }
+
+.hud-card.tuck-hud > span:nth-child(2) { color: #7c3aed; white-space: nowrap; }
+.tuck-bar { background: rgba(124,58,237,.16); }
+#tuck-fill { background: #8b5cf6; }
+.hud-card.tuck-hud[data-tuck="deep"] { border-color: rgba(124,58,237,.6); }
+.hud-card.tuck-hud[data-tuck="deep"] #tuck-fill { background: #c026d3; }
+
+/* A chip that lost its slot in the HUD budget (game/hud-priority.js). Hidden
+   outright rather than shrunk: a chip too small to read is still one more
+   thing asking to be looked at. */
+.hud-card.hud-crowded-out { display: none !important; }
+@media (max-height: 470px) {
+  #challenge-toast:not(.hidden) ~ #menu .menu-card { padding-top: 56px; }
+}
+
+/* Field notes and flight controls share the same ink-on-stock material. */
+:root {
+  --focus-ink: #245d7a;
+  --paper-edge: #dccfb8;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visible {
+  outline: 3px solid var(--focus-ink);
+  outline-offset: 3px;
+}
+#c:focus { outline: none; }
+button, input, select { -webkit-tap-highlight-color: transparent; }
+kbd {
+  display: inline-block; padding: 1px 6px; border: 1px solid #c7bda9;
+  border-bottom-width: 2px; border-radius: 5px; background: #fffaf2;
+  color: var(--ink); font: 800 11px/1.5 'Nunito', system-ui, sans-serif;
+}
+.menu-card {
+  border-color: rgba(255,250,242,.9);
+  background: rgba(255,250,242,.95);
+  box-shadow: 7px 8px 0 rgba(57,49,37,.14), 0 24px 60px rgba(61,44,41,.12);
+}
+.chip-label { color: #6e5b4b; }
+.cta-main {
+  background: #b64a33; box-shadow: 3px 4px 0 #873c2e;
+  border: 1px solid #a0412e;
+}
+.cta-main:hover { background: #a3412e; filter: none; }
+.cta-main:active { box-shadow: 1px 1px 0 #873c2e; transform: translate(2px, 3px); }
+.hangar-top { border-bottom: 1px dashed #c6b79e; padding-bottom: 12px; margin-bottom: 4px; }
+.upgrade-card, .skin-card, .achievement-card {
+  border-color: #dacdb8; box-shadow: 2px 3px 0 rgba(103,82,50,.1);
+}
+.journey-brief { border-left: 3px solid #b64a33; }
+.journey-route-card { box-shadow: 3px 4px 0 rgba(103,82,50,.12); }
+.journey-route-card:hover { border-color: #94785c; }
+#gameover .menu-card { border-top: 4px solid var(--coral); }
+.manual-overlay {
+  position: absolute; inset: 0; z-index: 32; display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(31,45,53,.54); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.manual-card {
+  width: min(510px, 100%); max-height: 100%; overflow-y: auto;
+  padding: 28px; background: var(--paper); color: var(--ink);
+  border: 1px solid var(--paper-edge); border-radius: 5px 24px 5px 24px;
+  box-shadow: 6px 7px 0 rgba(20,30,35,.25); text-align: left;
+  touch-action: pan-y;
+}
+.manual-card h2 { font-size: clamp(22px, 4vw, 28px); line-height: 1.15; letter-spacing: -.025em; }
+.manual-card .chip-label { margin-bottom: 10px; }
+.manual-intro { font-size: 13px; color: var(--ink-soft); margin-top: 6px; }
+.manual-lessons { display: grid; gap: 18px; margin: 24px 0; }
+.manual-lessons article { display: flex; align-items: start; gap: 14px; }
+.manual-number {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+  background: #e8dfcc; border-radius: 3px 10px 3px 10px; color: #6b5740;
+  font-size: 11px; font-weight: 900;
+}
+.manual-lessons h3 { font-size: 16px; margin-bottom: 4px; }
+.manual-lessons p, .manual-modes p { font-size: 13px; line-height: 1.5; color: #50616c; }
+.manual-modes { padding: 14px; border: 1px dashed #c8baa1; border-radius: 8px; }
+.manual-modes b { display: block; font-size: 12px; margin-bottom: 5px; }
+.manual-keys { display: flex; gap: 7px; align-items: center; justify-content: center; margin: 18px 0 6px; font-size: 11px; }
+.manual-card .cta-main { margin-bottom: 0; }
+.pause-card { width: min(380px, 100%); border-radius: 5px 24px 5px 24px; }
+.pause-card .detail { color: var(--ink-soft); font-size: 13px; }
+.pause-flight-stats { display: flex; gap: 12px; justify-content: center; padding: 12px 0; border-block: 1px dashed #c8baa1; }
+.pause-flight-stats span { font-size: 11px; color: var(--ink-soft); }
+.pause-flight-stats b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pause-flight-tip { margin: 14px 0 8px; font-size: 12px; line-height: 1.5; color: #50616c; }
+.pause-key-hint { font-size: 10px; color: var(--ink-soft); margin-top: 12px; }
+#tutorial-hint { width: min(450px, 78vw); padding: 12px 16px; font-size: 13px; text-align: left; background: rgba(29,48,62,.95); }
+#tutorial-title { display: block; font-size: 11px; letter-spacing: .04em; color: #ffe1a8; margin-bottom: 5px; }
+#tutorial-copy { display: block; font-weight: 700; }
+#fire-btn { gap: 0; align-content: center; line-height: .8; }
+#fire-btn > span:first-child { font-size: 30px; }
+.tuck-button-label { font: 900 10px/1.4 'Nunito', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+#fire-btn[data-cue='release'] { background: #aa3e2b; box-shadow: 0 0 0 3px #ffdfae; }
+.hud-card.tuck-hud[data-tuck='release'] { border-color: #bd4b31; background: #fff0df; }
+.hud-card.tuck-hud[data-tuck='release'] > span:nth-child(2) { color: #a23b26; }
+.hud-card.tuck-hud[data-tuck='release'] #tuck-fill { background: #c34c30; }
+@media (max-width: 520px) {
+  .manual-card { padding: 22px 18px; }
+  #tutorial-hint { bottom: max(128px, calc(env(safe-area-inset-bottom) + 105px)); width: min(360px, 84vw); }
+}
+@media (max-height: 470px) {
+  .pause-card { padding: 12px 18px; }
+  .pause-card .chip-label, .pause-key-hint { display: none; }
+  .pause-flight-tip { margin: 8px 0 3px; }
+  .pause-card h2 { margin-bottom: 3px; }
+  #tutorial-hint { bottom: 12px; left: 50%; width: min(400px, 55vw); font-size: 11px; padding: 8px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+html.a11y-reduced-motion *, html.a11y-reduced-motion *::before, html.a11y-reduced-motion *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important;
+}
+/* Touch: keep small in-panel actions at a comfortable 44px tap height.
+   Desktop (pointer: fine) stays compact. */
+@media (pointer: coarse) {
+  .claim-btn { min-height: 44px; padding: 10px 16px; font-size: 13px; }
+  .upgrade-tree-chip { min-height: 44px; padding: 10px 16px; }
+  .hangar-tab { min-height: 44px; padding: 10px 14px; }
+}

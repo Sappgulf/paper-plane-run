@@ -21,6 +21,7 @@ export class GameAudio {
     this.sfx = null
     this.music = null
     this.windGain = null
+    this.paperNoise = null
     this.started = false
     this.musicOn = localStorage.getItem('paper-plane-run-music') !== '0'
     this._musicNodes = []
@@ -86,6 +87,7 @@ export class GameAudio {
     const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate)
     const data = noiseBuffer.getChannelData(0)
     for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1
+    this.paperNoise = noiseBuffer
     const noise = this.ctx.createBufferSource()
     noise.buffer = noiseBuffer
     noise.loop = true
@@ -158,15 +160,40 @@ export class GameAudio {
     osc.stop(t + dur + 0.02)
   }
 
+  /** Reuse the wind's noise buffer for short, filtered paper rustles. */
+  paperRustle(duration = 0.09, volume = 0.04) {
+    if (!this.ctx || this.muted || !this.paperNoise) return
+    const t = this._now()
+    const source = this.ctx.createBufferSource()
+    source.buffer = this.paperNoise
+    const filter = this.ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(1400, t)
+    filter.frequency.exponentialRampToValueAtTime(700, t + duration)
+    filter.Q.value = 0.7
+    const gain = this.ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, t)
+    gain.gain.exponentialRampToValueAtTime(volume, t + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration)
+    source.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.sfx || this.master)
+    source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect() }
+    source.start(t)
+    source.stop(t + duration + 0.01)
+  }
+
   uiClick() {
-    this._tone(660, 0.08, 'triangle', 0.12)
-    this._tone(990, 0.1, 'sine', 0.08)
+    this.paperRustle()
+    this._tone(330, 0.06, 'triangle', 0.07)
+    this._tone(660, 0.08, 'sine', 0.04)
   }
 
   startFlight() {
     this.intensity = 0
     this.altitudeTier = 0
     this.scale = ZONE_SCALES.city
+    this.paperRustle(0.24, 0.06)
     this._tone(392, 0.12, 'triangle', 0.15)
     this._tone(523, 0.14, 'triangle', 0.12)
     this._tone(659, 0.2, 'sine', 0.1)
@@ -234,6 +261,7 @@ export class GameAudio {
   /** Ascending resonant paper lift when releasing a charged tuck into a flare. */
   flare(charge = 1) {
     const intensity = Math.min(1, Math.max(0.3, charge))
+    this.paperRustle(0.16, 0.04 * intensity)
     this._tone(220, 0.18 * intensity, 'sine', 0.1 * intensity, 580)
     this._tone(440, 0.15 * intensity, 'triangle', 0.08 * intensity, 880)
   }

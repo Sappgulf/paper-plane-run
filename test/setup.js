@@ -3,6 +3,10 @@ import { beforeEach } from 'vitest'
 class MemoryStorage {
   #values = new Map()
 
+  get length() { return this.#values.size }
+
+  key(index) { return [...this.#values.keys()][index] ?? null }
+
   getItem(key) {
     return this.#values.has(String(key)) ? this.#values.get(String(key)) : null
   }

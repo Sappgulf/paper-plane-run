@@ -53,6 +53,8 @@ describe('GameAudio synthesizer', () => {
 
   test('audio cues execute safely without audio context', () => {
     expect(() => {
+      audio.paperRustle()
+      audio.uiClick()
       audio.collectStar()
       audio.goldenStar()
       audio.threadGap()
@@ -68,4 +70,22 @@ describe('GameAudio synthesizer', () => {
       audio.setPaused(false)
     }).not.toThrow()
   })
+  test('paper rustles respect mute and release their transient audio nodes', () => {
+    const parameter = () => ({ setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() })
+    const source = { connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() }
+    const filter = { frequency: parameter(), Q: {}, connect: vi.fn(), disconnect: vi.fn() }
+    const gain = { gain: parameter(), connect: vi.fn(), disconnect: vi.fn() }
+    audio.ctx = { currentTime: 3, createBufferSource: vi.fn(() => source), createBiquadFilter: () => filter, createGain: () => gain }
+    audio.paperNoise = {}
+    audio.muted = true
+    audio.paperRustle()
+    expect(audio.ctx.createBufferSource).not.toHaveBeenCalled()
+    audio.muted = false
+    audio.paperRustle()
+    expect(source.stop).toHaveBeenCalledOnce()
+    expect(source.stop.mock.calls[0][0]).toBeCloseTo(3.1, 8)
+    source.onended()
+    for (const node of [source, filter, gain]) expect(node.disconnect).toHaveBeenCalledOnce()
+  })
+
 })

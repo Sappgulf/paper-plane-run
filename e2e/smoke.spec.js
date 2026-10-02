@@ -38,13 +38,15 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 
   await expect(page).toHaveTitle('Paper Plane Run')
   await expect(page.getByRole('heading', { name: 'Paper Plane Run' })).toBeVisible()
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
   await expect(page.getByRole('heading', { name: 'Hangar' })).toBeVisible()
   await tap(page.getByRole('button', { name: '← Main menu' }))
   await expect(page.locator('#start-btn')).toBeVisible()
   await expect(page.locator('#weekly-btn')).toBeVisible()
-  await expect(page.locator('#weekly-hint')).toContainText('Weekly')
-  await expect(page.locator('.route-hints')).toBeVisible()
+  await expect(page.locator('#daily-btn small')).toBeVisible()
+  await expect(page.locator('#daily-btn small')).toHaveText('One route. A fresh challenge.')
+  await expect(page.locator('#weekly-btn small')).toBeVisible()
+  await expect(page.locator('#weekly-btn small')).toContainText('shared skies')
   expect(errors).toEqual([])
 })
 
@@ -121,7 +123,7 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
     }))
   })
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
 
   await expect(page.locator('.upgrade-card')).toHaveCount(UPGRADE_CARD_CONTRACTS.length)
   for (const contract of UPGRADE_CARD_CONTRACTS) {
@@ -153,7 +155,7 @@ test('Hangar purchases wallet-priced planes and claims free seasonal planes befo
     localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ forceSeason: 'halloween' }))
   })
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
   await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const mint = page.locator('.skin-card', { hasText: 'Mint Fold' })
@@ -196,7 +198,7 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
     }))
   })
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
   await tap(page.getByRole('tab', { name: '🎯 Missions' }))
 
   await page.getByRole('button', { name: 'Claim' }).evaluate((button) => {
@@ -222,7 +224,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
     localStorage.setItem('paper-plane-run-skins-version', '1')
   })
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
   await tap(page.getByRole('tab', { name: '🎨 Planes' }))
 
   const preview = page.locator('[data-plane-preview]')
@@ -275,7 +277,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
 test('Plane Collection releases each preview WebGL context without losing gameplay', async ({ page }) => {
   test.slow()
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
   await page.locator('#c').evaluate((canvas) => {
     window.__webglContextLosses = { gameplay: 0, preview: 0 }
     canvas.addEventListener('webglcontextlost', () => {
@@ -377,8 +379,8 @@ test('a preloaded engine applies shell graphics settings to the live runtime', a
 
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-low-power').check({ force: true })
@@ -405,8 +407,8 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   test.slow()
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await page.locator('#editor-import').fill('L1|First%20route|T0.0,8.0,40.0')
@@ -418,7 +420,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   })
 
   await page.locator('#hangar-btn').evaluate((button) => button.click())
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
   await page.locator('#editor-import').fill('L1|Current%20route|R1.0,9.0,35.0;P-2.0,7.0,55.0')
   await tap(page.locator('#editor-load'))
@@ -869,12 +871,12 @@ test('game-over summarizes banked rewards and the next action', async ({ page })
 
 test('Hangar Progress/Meta filter keeps only the active group tabs visible', async ({ page }) => {
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
 
   await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeVisible()
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeHidden()
 
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await expect(page.getByRole('tab', { name: /Board/ })).toBeVisible()
   await expect(page.getByRole('tab', { name: /Upgrades/ })).toBeHidden()
   await expect(page.getByRole('tab', { name: /Editor/ })).toBeVisible()
@@ -892,8 +894,8 @@ test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
     }]))
   })
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: /Board/ }))
   await expect(page.getByRole('button', { name: 'Weekly' })).toBeVisible()
 
@@ -905,13 +907,13 @@ test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
 
   const hangarBody = page.locator('.hangar-body')
   await hangarBody.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: '🛠 Editor' }))
 
   await expect(page.getByRole('button', { name: '🏢 Building' })).toBeVisible()
@@ -921,8 +923,8 @@ test('mobile Hangar tabs reset the shared scroll position', async ({ page }, tes
 test('Aim feel selection survives a Hangar tab round trip', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🏠 Hangar' }))
-  await tap(page.getByRole('button', { name: 'Meta' }))
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: '⚙️ Settings' }))
 
   await page.locator('#set-mouse-sens').selectOption('0.75')

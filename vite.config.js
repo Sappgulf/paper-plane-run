@@ -33,5 +33,10 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // Native build copies and test captures are outputs, not web sources.
+    // Watching their index.html files reloads active flights during verification.
+    watch: {
+      ignored: ['**/output/**', '**/ios/**', '**/ios-dist/**', '**/test-results/**', '**/playwright-report/**'],
+    },
   },
 })

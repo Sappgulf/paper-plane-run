@@ -91,6 +91,9 @@ test.describe('gameplay systems regression', () => {
       // two URLs differing only by a hash would reuse the running engine.
       await openApp(page, `/${query}`)
       await waitForGameText(page)
+      // Fixed-step reward accounting cannot also integrate wall-clock rAF
+      // while the browser is waiting on screenshots or another test worker.
+      await page.evaluate(() => window.__paperFreeze(true))
       return drive(page, { slices: 8, msPerSlice: 250 })
     }
 

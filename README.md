@@ -1,6 +1,6 @@
 # Paper Plane Run
 
-Full-featured Three.js endless flyer.
+A handcrafted Three.js paper-flight adventure, endless flyer, and route workshop.
 
 **Live:** https://paper-plane-run.vercel.app
 
@@ -80,13 +80,12 @@ combo total outranks the zone name. Context chips are not ranked at all while
 flying; they are simply not on screen
 ([`game/hud-priority.js`](src/game/hud-priority.js)).
 
-**Chrome is sized in viewport units, not pixels.** Every size in the flight UI
-is a `clamp()` against viewport height, because the short edge is what runs out
-first. Below 760px tall the menu's setup block goes two-up and the four modes
-share one row, and below 470px it drops its logo and tagline — a phone held
-sideways gets the buttons, not the poster. The reverse holds too: given a
-desktop's width the Hangar widens and its grids go two- and three-up, rather
-than scrolling a fourteen-node tree through a 480px column.
+**Chrome follows the available space.** Flight UI uses `clamp()` against
+viewport height, because the short edge is what runs out first. The launch
+poster explains each mode and leads with Journey; compact portrait screens
+reduce the heading and setup, while landscape places actions beside the
+heading. Desktop Hangar uses two upgrade columns and four plane columns.
+Longer journals and tools scroll within their panels.
 
 The plane and the hazards are the other half of legibility. A cream plane over
 a cream paper city was the least visible thing on screen, so it carries an
@@ -105,12 +104,23 @@ convention:
 3. Every plane of colour carries fibre grain and at least one fold crease.
 4. Depth is a hard offset shadow between layers, never a blur.
 
-Skies, grounds and hazard sprites are cut at runtime from each zone's palette
-([`src/game/paper-art.js`](src/game/paper-art.js)) rather than shipped as
-images, so they cannot drift out of the rule, and every plane skin flies on the
-same generated sheet tinted by its own colours. This replaced twenty-two
-unrelated photographic JPEGs and the cut-out product photos that used to stand
-in for birds and scissors.
+Zone skies and grounds are painted assets. Hazard sprites and plane paper
+stock are generated from each zone's palette
+([`src/game/paper-art.js`](src/game/paper-art.js)), and every plane skin flies
+on the same generated sheet tinted by its own colours. The shared palettes
+keep hazards readable beside the scenery.
+
+The launch illustration is an original generated cut-paper coast, shipped as
+a 137 kB WebP. Its prompt and source are recorded in
+[`docs/art-provenance.md`](docs/art-provenance.md). Live scenery adds folded
+ridges in one to three instanced layers per zone. These decorative layers use
+their own deterministic sequence and sit outside the flight corridor, so
+quality changes do not consume gameplay randomness or change collisions.
+
+[`src/style.css`](src/style.css) composes flight overlays, screen structure,
+Journey, adaptive layouts, and the shared Paper Flight Club theme. The launch
+poster, workshop, journal, settings, editor, guide, pause, postcards, records,
+and results share ivory stock, ink type, rust actions, and blue/sage cues.
 
 ## Features
 
@@ -137,6 +147,7 @@ in for birds and scissors.
 | Tutorial rings, haptics, generative music |
 | **Pilot’s field notes** and a six-lesson practice flight covering banking, height, updrafts, and Tuck/flare |
 | **Low-power mode**, adaptive quality |
+| **Portable progress** — validated export, restore preview, failed-write rollback, and undo |
 | **A11y** — reduced motion, large sticks, auto-level, colorblind powers |
 | **Analytics** — local funnel + `/api/analytics` |
 | **Living Journey** — Chapter 1 (City→Aurora) + Chapter 2 Desk After Dark, stamps, postcards, Red Dart / stapler finales |
@@ -188,6 +199,20 @@ stays inside dialogs and returns to the playfield when you resume.
 
 ## Settings
 
+In **Hangar → Logbook & tools → Settings**, the progress kit exports wallet,
+planes, upgrades, lifetime counters, missions, awards, Journey, mastery,
+postcards, local/seeded records, ghosts, and settings. Download the JSON backup
+in a browser, or select and copy its text in the offline iOS app. Restore by
+choosing a file or pasting the save, then preview it before applying.
+
+Backups use version 1, accept established game keys only, and are limited to
+2 MB and 300 records. Unsupported or invalid data is rejected before writing.
+The current profile is saved before restore; **Undo last restore** remains
+available after reload. A failed write rolls back the previous profile.
+Analytics, service-worker flags, unrelated storage, and the recovery copy are
+excluded. This is a portable local save; it does not add cloud sync. Custom
+editor routes continue to travel through their existing share codes.
+
 Menu → **⚙️ Settings** for season override, graphics, accessibility.
 
 ## APIs
@@ -221,8 +246,12 @@ checks run in development, while production checks real navigation, flight,
 pause/resume, and the built engine's loading/retry behavior.
 [`e2e/polish.spec.js`](e2e/polish.spec.js) checks typing with the engine loaded,
 native keyboard activation, dialog focus, pause/resume, fresh-flight input
-state, the full tutorial, and menus at 320×568, 390×844, and 844×390. CI runs
+state, the full tutorial, and menus at 320×568, 390×844, 844×390, and 1280×720. CI runs
 both development and production browser suites.
+[`e2e/redesign.spec.js`](e2e/redesign.spec.js) covers persistent upgrade search,
+group filtering, backup/restore/undo, and six-zone scene captures with renderer
+resource bounds. Generated native bundles and test outputs are excluded from
+Vite's source watcher so writing artifacts cannot reload a flight under test.
 
 In development, add `?seed=any-readable-label` to a URL to replay a classic
 or endless run with deterministic randomness; the active seed is included in

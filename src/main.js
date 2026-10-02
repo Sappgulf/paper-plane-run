@@ -81,6 +81,9 @@ import {
 } from './leaderboard.js'
 import { safeSetItem } from './game/safe-storage.js'
 import { bindDialogFocus } from './game/dialog-focus.js'
+import { initProgressKit } from './ui/progress-kit.js'
+
+initProgressKit()
 
 const engineLoader = createEngineLoader()
 const engineStatus = document.getElementById('engine-status')
@@ -968,45 +971,39 @@ function renderUpgrades() {
       pathEl.appendChild(recBtn)
     }
   }
-  grid.appendChild(pathEl)
-  const treeNav = document.createElement('div')
-  treeNav.className = 'upgrade-tree-row'
-  treeNav.setAttribute('role', 'tablist')
-  treeNav.setAttribute('aria-label', 'Upgrade groups')
-  const allChip = document.createElement('button')
-  allChip.type = 'button'
-  allChip.className = `upgrade-tree-chip${hangarUpgradeTree ? '' : ' active'}`
-  allChip.textContent = 'All'
-  allChip.onclick = () => { hangarUpgradeTree = null; renderUpgrades() }
-  treeNav.appendChild(allChip)
-  for (const tree of UPGRADE_TREES) {
-    const chip = document.createElement('button')
-    chip.type = 'button'
-    chip.className = `upgrade-tree-chip${hangarUpgradeTree === tree.id ? ' active' : ''}`
-    chip.textContent = tree.label
-    chip.onclick = () => { hangarUpgradeTree = tree.id; renderUpgrades() }
-    treeNav.appendChild(chip)
+  $('upgrade-recommendation').replaceChildren(pathEl)
+  const treeNav = $('upgrade-groups')
+  if (!treeNav.childElementCount) {
+    for (const tree of [{ id: '', label: 'All' }, ...UPGRADE_TREES]) {
+      const chip = document.createElement('button')
+      chip.type = 'button'
+      chip.className = 'upgrade-tree-chip'
+      chip.dataset.tree = tree.id
+      chip.textContent = tree.label
+      chip.onclick = () => { hangarUpgradeTree = tree.id || null; renderUpgrades() }
+      treeNav.appendChild(chip)
+    }
   }
-  const searchRow = document.createElement('div')
-  searchRow.className = 'hangar-search-row'
-  const searchInput = document.createElement('input')
-  searchInput.type = 'search'
-  searchInput.className = 'hangar-search-input'
-  searchInput.placeholder = 'Search upgrades…'
-  searchInput.value = hangarUpgradeSearch || ''
-  searchInput.setAttribute('aria-label', 'Search upgrades')
+  for (const chip of treeNav.children) {
+    const active = chip.dataset.tree === (hangarUpgradeTree || '')
+    chip.classList.toggle('active', active)
+    chip.setAttribute('aria-pressed', String(active))
+  }
+  const searchInput = $('upgrade-search')
+  searchInput.value = hangarUpgradeSearch
   searchInput.oninput = () => { hangarUpgradeSearch = searchInput.value; renderUpgrades() }
-  searchRow.appendChild(searchInput)
-  if (hangarUpgradeSearch) {
-    const clearBtn = document.createElement('button')
-    clearBtn.type = 'button'
-    clearBtn.className = 'hangar-search-clear'
-    clearBtn.textContent = '✕'
-    clearBtn.setAttribute('aria-label', 'Clear search')
-    clearBtn.onclick = () => { hangarUpgradeSearch = ''; renderUpgrades() }
-    searchRow.appendChild(clearBtn)
+  $('upgrade-clear').hidden = !hangarUpgradeSearch
+  $('upgrade-clear').onclick = () => {
+    hangarUpgradeSearch = ''
+    renderUpgrades()
+    searchInput.focus()
   }
-  grid.appendChild(searchRow)
+  $('upgrade-reset').onclick = () => {
+    hangarUpgradeSearch = ''
+    hangarUpgradeTree = null
+    renderUpgrades()
+    searchInput.focus()
+  }
   const synergyBanner = (() => {
     const gold = getAllUpgradeLevels()
     const goldReady = gold.wingspan >= 3 && gold.trail >= 3
@@ -1021,7 +1018,7 @@ function renderUpgrades() {
   if (synergyBanner) grid.appendChild(synergyBanner)
   const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).filter((u) => {
     if (!hangarUpgradeSearch) return true
-    const q = hangarUpgradeSearch.toLowerCase()
+    const q = hangarUpgradeSearch.trim().toLowerCase()
     return u.name.toLowerCase().includes(q) || u.blurb.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)
   }).sort((a, b) => {
     const recA = pathBanner.upgradeId === a.id ? 0 : 1
@@ -1034,6 +1031,8 @@ function renderUpgrades() {
     if (costA !== costB) return costA - costB
     return 0
   })
+  $('upgrade-count').textContent = `${upgrades.length} of ${UPGRADES.length} folds${hangarUpgradeTree ? ' in this group' : ''}`
+  $('upgrade-empty').hidden = upgrades.length > 0
   const affordableCount = upgrades.filter((u) => u.canAfford).length
   const intro = $('upgrades-intro')
   if (intro) {
@@ -1044,7 +1043,7 @@ function renderUpgrades() {
         : `You can buy ${affordableCount} upgrades right now — affordable cards are highlighted.`
     } else if (wallet >= 10 && allFresh) {
       intro.textContent = 'Tip: Fold Handling or Lift Crease first — sharper control makes longer runs.'
-    } else if (upgrades.every((u) => u.maxed)) {
+    } else if (upgrades.length && upgrades.every((u) => u.maxed)) {
       intro.textContent = 'Every fold maxed. The rest of the ladder is cosmetic now.'
     } else {
       intro.textContent = 'Spend flight stars. Each rank sharpens the plane.'
@@ -1843,6 +1842,12 @@ function refreshProgression() {
   mastery = loadMastery(localStorage).mastery
   refreshMissionBadge()
   refreshHangarWallet()
+  const launchCopy = $('journey-launch-copy')
+  if (launchCopy) launchCopy.textContent = journey?.status === 'active'
+    ? `Your map awaits · Chapter ${journey.chapter || 1} · ${journey.stepIndex} of 4 flights stamped`
+    : journey?.status === 'complete' ? 'Your Journey is stamped. Explore the next chapter.' : 'A story in four flights. Two chapters of sky.'
+  const weeklyCopy = $('weekly-btn')?.querySelector('small')
+  if (weeklyCopy) weeklyCopy.textContent = `${thisWeeksFold().name} · shared skies`
 }
 
 if (import.meta.env.DEV && location.hash === '#test-postcard') {

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
+import { createJourney } from '../src/journey.js'
 
 const snapshot = (page) => page.evaluate(() => JSON.parse(window.render_game_to_text()))
 
@@ -87,8 +88,12 @@ test('pause freezes the run, contains focus and resumes through native Space', a
 })
 
 test('menu actions fit phone portrait and landscape without horizontal overflow', async ({ page }, testInfo) => {
+  // Returning-player captions must fit too; their line is longer than the
+  // first-visit introduction on a 320px screen.
+  await page.addInitScript(journey => localStorage.setItem('paper-plane-run-journey-v1', JSON.stringify(journey)), createJourney({ seed: 17 }))
   await openApp(page)
-  for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 320, height: 568 }]) {
+  await expect(page.locator('#journey-launch-copy')).toContainText('Your map awaits')
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 320, height: 568 }]) {
     await page.setViewportSize(viewport)
     const bounds = await page.locator('#menu .menu-card').boundingBox()
     expect(bounds.x).toBeGreaterThanOrEqual(0)
@@ -97,6 +102,10 @@ test('menu actions fit phone portrait and landscape without horizontal overflow'
       await expect(page.locator(`#${id}`)).toBeInViewport({ ratio: 1 })
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    for (const button of await page.locator('#menu .diff-btn').all()) {
+      const label = await button.evaluate(node => ({ text: node.textContent, scroll: node.scrollWidth, width: node.clientWidth }))
+      expect(label.scroll, `${viewport.width}×${viewport.height}: ${label.text} must fit its button`).toBeLessThanOrEqual(label.width + 1)
+    }
     await page.screenshot({ path: `output/polish-${testInfo.project.name}-menu-${viewport.width}.png` })
   }
 })
@@ -113,9 +122,20 @@ test('a fresh flight clears a held tuck and starts with neutral momentum', async
   expect((await snapshot(page)).flight.tuckHeld).toBe(false)
   await page.keyboard.up('Space')
   await tap(page.locator('#pause-menu'))
-  await tap(page.locator('#tutorial-btn'))
-  await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
-  const fresh = await snapshot(page)
+  // Read the reset in the same browser task as the warm-engine start. Separate
+  // Playwright awaits allow ordinary sinking to borrow dive speed before the
+  // snapshot, so a valid reset can otherwise look like retained momentum.
+  const fresh = await page.evaluate(async () => {
+    document.getElementById('tutorial-btn').click()
+    let state
+    for (let step = 0; step < 50; step++) {
+      await Promise.resolve()
+      state = JSON.parse(window.render_game_to_text())
+      if (state.state === 'playing') return state
+    }
+    return state
+  })
+  expect(fresh.state).toBe('playing')
   expect(fresh.flight.tuckPhase).toBe('idle')
   expect(fresh.flight.tuckHeld).toBe(false)
   expect(fresh.flight.tuckCharge).toBe(0)
