@@ -75,6 +75,7 @@ import {
   normalizeLeaderboardName,
 } from './leaderboard.js'
 import { safeSetItem } from './game/safe-storage.js'
+import { bindDialogFocus } from './game/dialog-focus.js'
 
 const engineLoader = createEngineLoader()
 const engineStatus = document.getElementById('engine-status')
@@ -174,6 +175,17 @@ const isIos =
 const installHint = $('install-hint')
 const installHintBody = $('install-hint-body')
 let deferredInstall = null
+
+bindDialogFocus($('pause-overlay'), { onEscape: () => $('pause-resume')?.click(), returnFocus: () => $('c') })
+bindDialogFocus(installHint, { onEscape: () => installHint.classList.add('hidden') })
+bindDialogFocus($('flight-guide'), { onEscape: () => $('flight-guide').classList.add('hidden') })
+bindDialogFocus($('postcard-detail'), { restoreFocus: false, onEscape: () => closePostcardOverlay($('postcard-detail')) })
+bindDialogFocus($('postcard-reveal'), { restoreFocus: false })
+$('flight-guide-btn')?.addEventListener('click', () => $('flight-guide').classList.remove('hidden'))
+$('flight-guide-close')?.addEventListener('click', () => $('flight-guide').classList.add('hidden'))
+$('flight-guide')?.addEventListener('click', (event) => {
+  if (event.target === $('flight-guide')) $('flight-guide').classList.add('hidden')
+})
 
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault()
@@ -1455,6 +1467,7 @@ function setShellDifficulty(id, { persist = true } = {}) {
   if (persist) safeSetItem('paper-plane-run-diff', id)
   document.querySelectorAll('.diff-btn[data-diff]').forEach((item) => {
     item.classList.toggle('active', item.dataset.diff === id)
+    item.setAttribute('aria-pressed', String(item.dataset.diff === id))
   })
   if ($('diff-blurb')) $('diff-blurb').textContent = copy.blurb
   const twist = todaysTwist()
@@ -1483,6 +1496,7 @@ function syncShellControlUi() {
   const mode = settings.controlMode === 'joystick' ? 'joystick' : 'mouse'
   document.querySelectorAll('.ctrl-btn').forEach((item) => {
     item.classList.toggle('active', item.dataset.ctrl === mode)
+    item.setAttribute('aria-pressed', String(item.dataset.ctrl === mode))
   })
   const mouseButton = document.querySelector('.ctrl-btn[data-ctrl="mouse"]')
   if (mouseButton) mouseButton.textContent = isTouchPrimary ? '👆 Touch Aim' : '🖱 Mouse'
@@ -1494,12 +1508,12 @@ function syncShellControlUi() {
         : 'Stick, arrows, or WASD · Mouse mode hides it'
     } else if (isTouchPrimary) {
       blurb.textContent = settings.invertY
-        ? 'Drag anywhere — plane tracks your finger · Y inverted'
-        : 'Drag anywhere — plane tracks your finger'
+        ? 'Drag to bank · Y inverted'
+        : 'Drag to bank · gentle turns save height'
     } else {
       blurb.textContent = settings.invertY
-        ? 'Move cursor — plane tracks it · Y inverted'
-        : 'Move cursor — plane tracks left/right & up/down'
+        ? 'Move cursor to bank · Y inverted'
+        : 'Move cursor to bank · arrows work too'
     }
   }
   const menuInvert = $('menu-invert-y')

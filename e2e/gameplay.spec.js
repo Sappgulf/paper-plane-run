@@ -74,6 +74,7 @@ test.describe('gameplay systems regression', () => {
     expect(paidBanner, 'crossing in-lane should surface the gauntlet banner').toBe(true)
     const final = samples.at(-1)
     expect(final.stars).toBeGreaterThanOrEqual(3)
+    expect(await page.evaluate(() => Number(localStorage.getItem('paper-plane-run-lifetime-gauntlets')))).toBeGreaterThanOrEqual(1)
     // Endless mode re-runs gauntlets every 250m by design, so the entity may
     // legitimately reappear — what matters is that the wallet only ever grows.
     await page.evaluate(() => window.advanceTime(1200))
@@ -181,7 +182,7 @@ test.describe('gameplay systems regression', () => {
     await waitForGameText(page)
     await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
     await page.keyboard.down('ArrowUp')
-    for (let i = 0; i < 24 && (await snapshot(page)).state === 'playing'; i += 1) {
+    for (let i = 0; i < 60 && (await snapshot(page)).state === 'playing'; i += 1) {
       await page.evaluate(() => window.advanceTime(500))
     }
     await page.keyboard.up('ArrowUp')

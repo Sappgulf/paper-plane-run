@@ -27,27 +27,27 @@ describe('clean-run mission type', () => {
   })
 })
 
-describe('sharpshooter mission type', () => {
+describe('gauntlet mission type', () => {
   beforeEach(() => {
     localStorage.setItem(
       'paper-plane-run-missions',
       JSON.stringify({
         day: dailyKey(),
         missions: [
-          { id: 'sharpshooter-0', type: 'popped', target: 5, progress: 0, done: false, claimed: false },
+          { id: 'gauntlet_runner-0', type: 'gauntlets', target: 2, progress: 0, done: false, claimed: false },
         ],
         claimStars: 0,
       }),
     )
   })
 
-  test('tracks Ink Blast pops for the run', () => {
-    let missions = updateMissionsFromRun({ stars: 0, distance: 50, maxCombo: 0, powers: 0, winds: 0, popped: 2, mode: 'normal' })
-    expect(missions[0].progress).toBe(2)
+  test('tracks clean gauntlet clears for the run', () => {
+    let missions = updateMissionsFromRun({ stars: 0, distance: 50, maxCombo: 0, powers: 0, winds: 0, gauntlets: 1, mode: 'normal' })
+    expect(missions[0].progress).toBe(1)
     expect(missions[0].done).toBe(false)
 
-    missions = updateMissionsFromRun({ stars: 0, distance: 60, maxCombo: 0, powers: 0, winds: 0, popped: 5, mode: 'normal' })
-    expect(missions[0].progress).toBe(5)
+    missions = updateMissionsFromRun({ stars: 0, distance: 60, maxCombo: 0, powers: 0, winds: 0, gauntlets: 2, mode: 'normal' })
+    expect(missions[0].progress).toBe(2)
     expect(missions[0].done).toBe(true)
   })
 })

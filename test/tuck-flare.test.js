@@ -7,6 +7,7 @@ import {
   createTuckState,
   tuckCharge,
   tuckFlightModifiers,
+  tuckReleaseCue,
 } from '../src/game/tuck-flare.js'
 
 const hold = (state, seconds, dt = 1 / 60, options = {}) => {
@@ -18,6 +19,14 @@ const hold = (state, seconds, dt = 1 / 60, options = {}) => {
 }
 
 describe('tuck and flare', () => {
+  test('release guidance warns before the clean-flare floor and only while tucking', () => {
+    expect(tuckReleaseCue(createTuckState(), 2)).toBeNull()
+    const state = hold(createTuckState(), TUCK_FULL_SECONDS)
+    expect(tuckReleaseCue(state, 12)).toBe('full')
+    expect(tuckReleaseCue(state, FLARE_FLOOR + 3)).toBe('release')
+    expect(tuckReleaseCue({ ...state, charge: 0.3 }, 10)).toBe('charge')
+    expect(tuckReleaseCue({ ...state, phase: 'flaring' }, 2)).toBeNull()
+  })
   test('charge is superlinear, so the last moment of a tuck is worth the most', () => {
     expect(tuckCharge(0)).toBe(0)
     expect(tuckCharge(TUCK_FULL_SECONDS)).toBeCloseTo(1, 5)

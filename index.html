@@ -22,7 +22,7 @@
   </head>
   <body>
     <div id="game-root" class="mouse-mode">
-      <canvas id="c"></canvas>
+      <canvas id="c" tabindex="-1" aria-label="Flight playfield. Steer with arrows or WASD. Hold Space to tuck; release to flare. Escape pauses."></canvas>
       <div id="speed-fx" aria-hidden="true"></div>
       <div id="fever-fx" aria-hidden="true"></div>
       <div id="slow-fx" aria-hidden="true"></div>
@@ -113,7 +113,7 @@
         <div id="boost-safety-cue" class="hidden" role="status"></div>
         <div id="magnet-pull-trail" class="hidden" data-active="false">🧲 Pulling a star</div>
       </div>
-      <div id="tutorial-hint" class="hidden"></div>
+      <div id="tutorial-hint" class="hidden" role="status" aria-live="polite"><strong id="tutorial-title"></strong><span id="tutorial-copy"></span></div>
       <div id="combo-float" class="hidden">Near miss!</div>
       <div id="flight-feedback" class="hidden" role="status" aria-live="polite"></div>
       <div id="challenge-toast" class="hidden" role="status"></div>
@@ -122,15 +122,16 @@
         <div id="stick-base"><div id="stick-knob"></div></div>
         <p class="stick-hint">Fly</p>
       </div>
-      <button id="fire-btn" type="button" class="hidden" title="Tuck — hold to dive, release to flare (Space)">🪁</button>
+      <button id="fire-btn" type="button" class="hidden" title="Tuck — hold to dive, release to flare (Space)"><span aria-hidden="true">⌄</span><span class="tuck-button-label">Tuck</span></button>
 
       <!-- MAIN MENU -->
       <div id="menu" class="panel menu-panel">
         <div class="menu-card">
           <div class="menu-hero">
+            <span class="menu-eyebrow">A little paper. A big sky.</span>
             <img class="logo" src="/assets/logo.jpg" alt="Paper plane" width="120" height="120" />
             <h1>Paper Plane Run</h1>
-            <p class="tagline">Soar the paper skies · dodge · collect · upgrade</p>
+            <p class="tagline">Find your line. Ride the wind. Make every fold count.</p>
           </div>
 
           <div class="menu-section menu-setup">
@@ -149,7 +150,7 @@
                 <button type="button" class="diff-btn ctrl-btn active" data-ctrl="mouse">Mouse</button>
                 <button type="button" class="diff-btn ctrl-btn" data-ctrl="joystick">Stick</button>
               </div>
-              <p id="ctrl-blurb" class="diff-blurb">Plane follows your cursor</p>
+              <p id="ctrl-blurb" class="diff-blurb">Move cursor to bank · arrows work too</p>
               <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
             </div>
             <label class="name-row">Pilot <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
@@ -174,7 +175,24 @@
             <p id="daily-hint" class="mini-hint">📅 Daily route races a ghost of your best fold</p>
             <p id="weekly-hint" class="mini-hint">📆 Weekly Fold rotates the opening sky</p>
           </div>
+          <button id="flight-guide-btn" type="button" class="linkish flight-guide-link">How to fly <span aria-hidden="true">↗</span></button>
           <button id="landscape-hint" type="button" class="landscape-hint hidden">📱↔️ Tip: rotate to landscape for a wider view — tap to dismiss</button>
+        </div>
+      </div>
+
+      <div id="flight-guide" class="manual-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="flight-guide-title">
+        <div class="manual-card">
+          <span class="chip-label">The pilot’s field notes</span>
+          <h2 id="flight-guide-title">A good fold goes further.</h2>
+          <p class="manual-intro">One plane. A sky full of choices.</p>
+          <div class="manual-lessons">
+            <article><span class="manual-number">01</span><div><h3>Bank into the gap</h3><p>Mouse, touch, arrows or WASD steer your wings. Commit early: turning takes time and spends height.</p></div></article>
+            <article><span class="manual-number">02</span><div><h3>Keep some sky beneath you</h3><p>You always sink. Striped updrafts restore height. Low flight earns skim rewards, but hazards patrol the deck too.</p></div></article>
+            <article><span class="manual-number">03</span><div><h3>Tuck. Release. Flare.</h3><p>Hold <kbd>Space</kbd> or <b>Tuck</b> for a dive. Release above the ground to climb, burst forward and bank meters. Start with short holds.</p></div></article>
+          </div>
+          <div class="manual-modes"><b>Pick your sky</b><p>Journey tells a four-flight story. Classic goes as far as you can. Daily and Weekly share a seeded route. Tutorial gives you a gentle practice flight.</p></div>
+          <p class="manual-keys"><kbd>Esc</kbd> Pause <span>·</span> <kbd>M</kbd> Mute <span>·</span> <kbd>Shift</kbd> Steady flight</p>
+          <button id="flight-guide-close" type="button" class="cta-main">Ready to fly</button>
         </div>
       </div>
 
@@ -318,13 +336,17 @@
 
       <div id="pause-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Flight paused">
         <div class="pause-card">
+          <span class="chip-label">Flight on hold</span>
           <h2>Paused</h2>
-          <p class="detail">Take a breath — the paper sky can wait.</p>
+          <p id="pause-context" class="detail">Take a breath — the paper sky can wait.</p>
+          <div class="pause-flight-stats"><span><b id="pause-distance">0m</b> flown</span><span><b id="pause-stars">0★</b> collected</span></div>
+          <p class="pause-flight-tip">Hold <kbd>Space</kbd> or <b>Tuck</b> to dive. Release while you have height to flare.</p>
           <button id="pause-resume" type="button" class="cta-main">▶ Resume</button>
           <div class="btn-row wrap pause-actions">
             <button id="pause-mute" type="button" class="btn-secondary">Mute</button>
             <button id="pause-menu" type="button" class="btn-secondary">Main menu</button>
           </div>
+          <p class="pause-key-hint"><kbd>Esc</kbd> returns to the sky</p>
         </div>
       </div>
 

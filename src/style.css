@@ -1705,3 +1705,147 @@ html.a11y-reduced-motion .hud-card.altitude-hud[data-alt="critical"] { animation
      it shrinks to what the toast actually needs. */
   #challenge-toast:not(.hidden) ~ #menu .menu-card { padding-top: 56px; }
 }
+
+/* Field notes and flight controls share the same ink-on-stock material. */
+:root {
+  --focus-ink: #245d7a;
+  --paper-edge: #dccfb8;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+summary:focus-visible, [tabindex]:not(canvas):focus-visible {
+  outline: 3px solid var(--focus-ink);
+  outline-offset: 3px;
+}
+#c:focus { outline: none; }
+button, input, select { -webkit-tap-highlight-color: transparent; }
+kbd {
+  display: inline-block; padding: 1px 6px; border: 1px solid #c7bda9;
+  border-bottom-width: 2px; border-radius: 5px; background: #fffaf2;
+  color: var(--ink); font: 800 11px/1.5 'Nunito', system-ui, sans-serif;
+}
+.menu-eyebrow {
+  display: block; margin: 0 0 8px; color: #665545;
+  font-size: 10px; font-weight: 900; letter-spacing: .18em; text-transform: uppercase;
+}
+.menu-card {
+  border-color: rgba(255,250,242,.9);
+  background: rgba(255,250,242,.95);
+  box-shadow: 7px 8px 0 rgba(57,49,37,.14), 0 24px 60px rgba(61,44,41,.12);
+}
+#menu .menu-card { border-radius: 26px 8px 26px 8px; }
+#menu .menu-hero .logo { box-shadow: 3px 4px 0 var(--paper-edge); }
+#menu h1 { color: var(--ink); }
+#menu .menu-section { background: #f1ece1; border-color: #e3d8c6; }
+.chip-label { color: #6e5b4b; }
+.diff-blurb { color: #6c5c52; }
+.diff-btn.active { background: #316c91; box-shadow: 2px 3px 0 #b9cddb; }
+.diff-btn[data-diff=easy].active { background: #2f7354; box-shadow: 2px 3px 0 #bfd2b9; }
+.diff-btn[data-diff=hard].active { background: #ad4630; box-shadow: 2px 3px 0 #e5b9a5; }
+.ctrl-btn.active { background: #65518e !important; box-shadow: 2px 3px 0 #cbc2dc !important; }
+.cta-main {
+  background: #b64a33; box-shadow: 3px 4px 0 #873c2e;
+  border: 1px solid #a0412e;
+}
+.cta-main:hover { background: #a3412e; filter: none; }
+.cta-main:active { box-shadow: 1px 1px 0 #873c2e; transform: translate(2px, 3px); }
+.flight-guide-link { color: #315f78; font-size: 12px; margin: 6px 0 0; padding: 6px 12px; }
+.action-pill { border-color: #dbcfbc; box-shadow: 1px 2px 0 #e4d9c7; }
+.hangar-top { border-bottom: 1px dashed #c6b79e; padding-bottom: 12px; margin-bottom: 4px; }
+.upgrade-card, .skin-card, .achievement-card {
+  border-color: #dacdb8; box-shadow: 2px 3px 0 rgba(103,82,50,.1);
+}
+.journey-brief { border-left: 3px solid #b64a33; }
+.journey-route-card { box-shadow: 3px 4px 0 rgba(103,82,50,.12); }
+.journey-route-card:hover { border-color: #94785c; }
+#gameover .menu-card { border-top: 4px solid var(--coral); }
+.manual-overlay {
+  position: absolute; inset: 0; z-index: 32; display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(31,45,53,.54); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.manual-card {
+  width: min(510px, 100%); max-height: 100%; overflow-y: auto;
+  padding: 28px; background: var(--paper); color: var(--ink);
+  border: 1px solid var(--paper-edge); border-radius: 5px 24px 5px 24px;
+  box-shadow: 6px 7px 0 rgba(20,30,35,.25); text-align: left;
+  touch-action: pan-y;
+}
+.manual-card h2 { font-size: clamp(22px, 4vw, 28px); line-height: 1.15; letter-spacing: -.025em; }
+.manual-card .chip-label { margin-bottom: 10px; }
+.manual-intro { font-size: 13px; color: var(--ink-soft); margin-top: 6px; }
+.manual-lessons { display: grid; gap: 18px; margin: 24px 0; }
+.manual-lessons article { display: flex; align-items: start; gap: 14px; }
+.manual-number {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+  background: #e8dfcc; border-radius: 3px 10px 3px 10px; color: #6b5740;
+  font-size: 11px; font-weight: 900;
+}
+.manual-lessons h3 { font-size: 16px; margin-bottom: 4px; }
+.manual-lessons p, .manual-modes p { font-size: 13px; line-height: 1.5; color: #50616c; }
+.manual-modes { padding: 14px; border: 1px dashed #c8baa1; border-radius: 8px; }
+.manual-modes b { display: block; font-size: 12px; margin-bottom: 5px; }
+.manual-keys { display: flex; gap: 7px; align-items: center; justify-content: center; margin: 18px 0 6px; font-size: 11px; }
+.manual-card .cta-main { margin-bottom: 0; }
+.pause-card { width: min(380px, 100%); border-radius: 5px 24px 5px 24px; }
+.pause-card .detail { color: var(--ink-soft); font-size: 13px; }
+.pause-flight-stats { display: flex; gap: 12px; justify-content: center; padding: 12px 0; border-block: 1px dashed #c8baa1; }
+.pause-flight-stats span { font-size: 11px; color: var(--ink-soft); }
+.pause-flight-stats b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pause-flight-tip { margin: 14px 0 8px; font-size: 12px; line-height: 1.5; color: #50616c; }
+.pause-key-hint { font-size: 10px; color: var(--ink-soft); margin-top: 12px; }
+#tutorial-hint { width: min(450px, 78vw); padding: 12px 16px; font-size: 13px; text-align: left; background: rgba(29,48,62,.95); }
+#tutorial-title { display: block; font-size: 11px; letter-spacing: .04em; color: #ffe1a8; margin-bottom: 5px; }
+#tutorial-copy { display: block; font-weight: 700; }
+#fire-btn { gap: 0; align-content: center; line-height: .8; }
+#fire-btn > span:first-child { font-size: 30px; }
+.tuck-button-label { font: 900 10px/1.4 'Nunito', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+#fire-btn[data-cue='release'] { background: #aa3e2b; box-shadow: 0 0 0 3px #ffdfae; }
+.hud-card.tuck-hud[data-tuck='release'] { border-color: #bd4b31; background: #fff0df; }
+.hud-card.tuck-hud[data-tuck='release'] > span:nth-child(2) { color: #a23b26; }
+.hud-card.tuck-hud[data-tuck='release'] #tuck-fill { background: #c34c30; }
+@media (min-width: 560px) and (max-height: 760px) {
+  .menu-panel .menu-eyebrow { margin-bottom: 4px; font-size: 9px; }
+  .menu-panel .flight-guide-link { grid-column: 1 / -1; margin: 0; padding: 2px 10px; }
+  .menu-panel .menu-hero .logo { width: 56px; }
+}
+@media (max-width: 520px) {
+  .manual-card { padding: 22px 18px; }
+  .menu-eyebrow { font-size: 9px; margin-bottom: 6px; }
+  #menu .menu-hero { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 0 12px; text-align: left; }
+  #menu .menu-eyebrow { grid-column: 1 / -1; }
+  #menu .menu-hero .logo { grid-row: 2 / 4; width: 56px; margin: 0; align-self: center; }
+  #menu h1 { font-size: clamp(22px, 6.7vw, 28px); }
+  #menu .tagline { margin: 0; font-size: 11px; }
+  #tutorial-hint { bottom: max(128px, calc(env(safe-area-inset-bottom) + 105px)); width: min(360px, 84vw); }
+}
+@media (max-width: 520px) and (max-height: 720px) {
+  #menu .menu-hero { display: block; margin-bottom: 8px; text-align: center; }
+  #menu .menu-hero .logo, #menu .menu-eyebrow, #menu .tagline, #menu .route-hints { display: none; }
+  #menu .menu-setup { grid-template-columns: 1fr; gap: 8px; }
+  #menu .menu-setup-col { display: grid; grid-template-columns: 70px minmax(0, 1fr); align-items: center; gap: 4px; }
+  #menu .chip-label { font-size: 9px; margin: 0; text-align: left; }
+  #menu .diff-row { margin: 0; gap: 4px; }
+  #menu .diff-btn { font-size: 11px; padding: 7px 2px; }
+  #menu .diff-blurb { display: none; }
+  #menu .inline-check { grid-column: 2; justify-self: start; margin: 0; font-size: 11px; }
+  #menu .name-row { padding: 6px 8px; margin: 0; }
+  #menu .name-row input { padding: 6px 8px; }
+  #menu .cta-main { padding: 12px 14px; margin: 4px 0 10px; }
+  #menu .menu-actions { gap: 6px; margin-bottom: 6px; }
+  #menu .flight-guide-link { margin: 0; }
+}
+@media (max-height: 470px) {
+  .menu-panel .menu-eyebrow { display: none; }
+  .pause-card { padding: 12px 18px; }
+  .pause-card .chip-label, .pause-key-hint { display: none; }
+  .pause-flight-tip { margin: 8px 0 3px; }
+  .pause-card h2 { margin-bottom: 3px; }
+  #tutorial-hint { bottom: 12px; left: 50%; width: min(400px, 55vw); font-size: 11px; padding: 8px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+html.a11y-reduced-motion *, html.a11y-reduced-motion *::before, html.a11y-reduced-motion *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important;
+}

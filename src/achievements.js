@@ -9,6 +9,7 @@ const DIST_KEY = 'paper-plane-run-lifetime-distance'
 const RUNS_KEY = 'paper-plane-run-total-runs'
 const POPPED_KEY = 'paper-plane-run-lifetime-popped'
 const FEVER_KEY = 'paper-plane-run-lifetime-fever'
+const GAUNTLETS_KEY = 'paper-plane-run-lifetime-gauntlets'
 const CLAIMED_KEY = 'paper-plane-run-achievements-claimed'
 
 function parseNonNegativeInt(value) {
@@ -42,6 +43,13 @@ export function getLifetimeFever() {
 export function addLifetimeFever(n) {
   if (!(n > 0)) return
   safeSetItem(FEVER_KEY, String(getLifetimeFever() + parseNonNegativeInt(n)))
+}
+export function getLifetimeGauntlets() {
+  return parseNonNegativeInt(localStorage.getItem(GAUNTLETS_KEY))
+}
+export function addLifetimeGauntlets(n) {
+  if (!(n > 0)) return
+  safeSetItem(GAUNTLETS_KEY, String(getLifetimeGauntlets() + parseNonNegativeInt(n)))
 }
 
 function loadClaimed() {
@@ -96,8 +104,22 @@ export const ACHIEVEMENTS = [
     ],
   },
   {
+    id: 'gauntlets',
+    name: 'Gauntlet Runner',
+    icon: '🎯',
+    getValue: getLifetimeGauntlets,
+    unit: ' clears',
+    tiers: [
+      { threshold: 3, reward: 10 },
+      { threshold: 15, reward: 20 },
+      { threshold: 50, reward: 40 },
+      { threshold: 150, reward: 80 },
+    ],
+  },
+  {
     id: 'popped',
-    name: 'Sharpshooter',
+    name: 'Sharpshooter · Legacy',
+    retired: true,
     icon: '🎯',
     getValue: getLifetimePopped,
     unit: ' popped',
@@ -126,7 +148,7 @@ export const ACHIEVEMENTS = [
 /** @param {number} lifetimeStars — passed in from skins.js's getLifetimeStars() */
 export function getAchievementProgress(lifetimeStars) {
   const claimed = loadClaimed()
-  return ACHIEVEMENTS.map((a) => {
+  return ACHIEVEMENTS.filter((a) => !a.retired || a.getValue() > 0 || (claimed[a.id] ?? -1) >= 0).map((a) => {
     const value = a.id === 'stars' ? lifetimeStars : a.getValue()
     const claimedTier = claimed[a.id] ?? -1
     const tiers = a.tiers.map((t, i) => ({

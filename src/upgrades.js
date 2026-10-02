@@ -18,7 +18,7 @@ export const UPGRADES = [
     id: 'handling',
     name: 'Fold Handling',
     icon: '🕹️',
-    blurb: 'The plane snaps to your aim — visible sharper bank',
+    blurb: 'Roll into each bank faster — sharper control',
     max: 5,
     costs: FUTURE_PRICE_TABLE.upgrades.handling,
   },

@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
+import { isGameShortcut, isUiKeyboardTarget } from './game/input-boundary.js'
+import { TUTORIAL_LENGTH, TUTORIAL_LESSONS, tutorialLessonAt } from './game/tutorial-lessons.js'
 import { Haptic } from './haptics.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
 import { todaysTwist } from './twists.js'
@@ -59,6 +61,7 @@ import { track } from './analytics.js'
 import {
   addLifetimeDistance,
   addLifetimeFever,
+  addLifetimeGauntlets,
   getRunCount,
   incrementRunCount,
   addLifetimePopped,
@@ -167,6 +170,7 @@ import {
   advanceTuck,
   createTuckState,
   tuckFlightModifiers,
+  tuckReleaseCue,
 } from './game/tuck-flare.js'
 import {
   chooseGapCenter,
@@ -820,6 +824,8 @@ const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches && navig
 // ---------------------------------------------------------------------------
 // Three.js setup
 // ---------------------------------------------------------------------------
+// Covered menus and paused flights reuse the last frame until the surface changes.
+let needsRender = true
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: !settings.lowPower,
@@ -851,6 +857,7 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
   })
   renderer.setPixelRatio(renderQuality.pixelRatio)
   renderer.setSize(innerWidth, innerHeight, false)
+  needsRender = true
   renderer.shadowMap.enabled = renderQuality.shadows
   if (typeof sun !== 'undefined' && sun) sun.castShadow = renderQuality.shadows
   if (typeof dust !== 'undefined' && dust) dust.visible = renderQuality.secondaryEffects
@@ -3620,10 +3627,9 @@ function spawnLayoutItems() {
 
 function spawnTutorial() {
   tutorialHintsShown = new Set()
-  tutorialHintTimer = 0
   tutorialHintEl?.classList.add('hidden')
   const rings = [
-    [0, 8, 25], [2, 10, 45], [-2, 7, 65], [0, 12, 90], [3, 9, 115], [-3, 11, 140], [0, 8, 170],
+    [0, 8, 25], [2, 10, 65], [-2, 7, 110], [0, 12, 165], [3, 9, 235], [-3, 11, 310], [0, 8, TUTORIAL_LENGTH],
   ]
   for (const [x, y, z] of rings) {
     const ring = createRing()
@@ -3632,7 +3638,7 @@ function spawnTutorial() {
     entities.push({ mesh: ring, type: 'ring', radius: 1.5 })
   }
   // gentle side buildings
-  for (let z = 30; z < 200; z += 40) {
+  for (let z = 30; z < TUTORIAL_LENGTH; z += 60) {
     for (const side of [-1, 1]) {
       const b = createBuilding(3, 6, 3, buildingMats[0])
       b.position.set(side * 14, 0, z)
@@ -3649,35 +3655,24 @@ function spawnTutorial() {
   boost.position.set(-3, 9, 128)
   scene.add(boost)
   entities.push({ mesh: boost, type: 'power', radius: 1.35, kind: 'boost' })
+  for (const [x, z] of [[0, 180], [3, 250], [0, 365]]) {
+    const column = createUpdraftColumn()
+    column.position.set(x, UPDRAFT_BASE_Y, z)
+    scene.add(column)
+    entities.push({ mesh: column, type: 'updraft', radius: UPDRAFT_RADIUS, strength: UPDRAFT_STRENGTH })
+  }
 }
 
-// One-time contextual tips shown as a first-time player progresses through the tutorial.
-const TUTORIAL_HINTS = [
-  { at: 0, text: 'Steer with your mouse, arrow keys, or drag — thread the glowing rings!' },
-  { at: 40, text: 'Nice flying! Keep chasing the rings ahead.' },
-  { at: 55, text: '⭐ Stars add to your score — fly through them.' },
-  { at: 110, text: 'Fly close past a building without hitting it for a near-miss combo!' },
-  { at: 125, text: 'Chain near-misses to ignite Combo Fever — a short score multiplier burst!' },
-  { at: 128, text: '⚡ Power-ups give you a special boost — grab one!' },
-  { at: 160, text: 'Almost there — line up the last ring!' },
-]
 let tutorialHintsShown = new Set()
 const tutorialHintEl = $('tutorial-hint')
-let tutorialHintTimer = 0
-function checkTutorialHints(dt) {
+function checkTutorialHints() {
   if (runKind !== 'tutorial' || !tutorialHintEl) return
-  for (const hint of TUTORIAL_HINTS) {
-    if (!tutorialHintsShown.has(hint.at) && distance >= hint.at) {
-      tutorialHintsShown.add(hint.at)
-      tutorialHintEl.textContent = hint.text
-      tutorialHintEl.classList.remove('hidden')
-      tutorialHintTimer = 3.6
-      break
-    }
-  }
-  if (tutorialHintTimer > 0) {
-    tutorialHintTimer -= dt
-    if (tutorialHintTimer <= 0) tutorialHintEl.classList.add('hidden')
+  const lesson = tutorialLessonAt(distance)
+  if (!tutorialHintsShown.has(lesson.at)) {
+    tutorialHintsShown.add(lesson.at)
+    $('tutorial-title').textContent = `${TUTORIAL_LESSONS.indexOf(lesson) + 1} / ${TUTORIAL_LESSONS.length} · ${lesson.title}`
+    $('tutorial-copy').textContent = lesson.text
+    tutorialHintEl.classList.remove('hidden')
   }
 }
 
@@ -3799,10 +3794,30 @@ const UPDRAFT_STRENGTH = 9.5
 const UPDRAFT_BASE_Y = 5.2
 
 const updraftGeo = new THREE.CylinderGeometry(1.5, 2.6, 9, 12, 1, true)
+const updraftCanvas = document.createElement('canvas')
+updraftCanvas.width = 128
+updraftCanvas.height = 128
+const updraftInk = updraftCanvas.getContext('2d')
+updraftInk.fillStyle = 'rgba(213,244,224,.25)'
+updraftInk.fillRect(0, 0, 128, 128)
+updraftInk.strokeStyle = '#d4ffe3'
+updraftInk.lineWidth = 4
+for (let y = 16; y < 128; y += 32) {
+  for (let x = 16; x < 128; x += 32) {
+    updraftInk.beginPath()
+    updraftInk.moveTo(x - 9, y + 5)
+    updraftInk.lineTo(x, y - 5)
+    updraftInk.lineTo(x + 9, y + 5)
+    updraftInk.stroke()
+  }
+}
+const updraftMap = new THREE.CanvasTexture(updraftCanvas)
+updraftMap.colorSpace = THREE.SRGBColorSpace
 const updraftMat = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
+  map: updraftMap,
+  color: 0x75bfa0,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.68,
   side: THREE.DoubleSide,
   depthWrite: false,
 })
@@ -4041,6 +4056,7 @@ function applyUpgradeVisuals(fx = activeUpgradeEffects) {
 }
 
 function resetGame() {
+  needsRender = true
   const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
   clearPower()
@@ -4059,6 +4075,14 @@ function resetGame() {
   planeY = 8
   velY = 0
   velX = 0
+  keys.clear()
+  resetStick()
+  tuckPointerHeld = false
+  tuckState = createTuckState()
+  tuckFxForFrame = tuckFlightModifiers(null)
+  bankState = createBankState()
+  diveSpeed = 0
+  altitudeStatus = evaluateAltitude(planeY)
   pitch = 0
   roll = 0
   windTimer = 7
@@ -4229,8 +4253,9 @@ function resetGame() {
   const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 8 : 16
   for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
-    cl.position.set((rng() - 0.5) * 85, 9 + rng() * 22, 45 + rng() * 185)
-    cl.scale.setScalar(3.4 + rng() * 4.6)
+    // Scenery frames the corridor; it must never mask an approaching hazard.
+    cl.position.set((i % 2 ? -1 : 1) * (24 + rng() * 25), 23 + rng() * 13, 45 + rng() * 185)
+    cl.scale.setScalar(2.4 + rng() * 2.4)
     scene.add(cl)
     clouds.push(cl)
   }
@@ -4325,6 +4350,8 @@ function updateTuckButton(playing = state === 'playing') {
   fireBtn.dataset.ready = String(ready)
   fireBtn.classList.toggle('cooling', !ready && tuckState.phase !== 'tucking')
   fireBtn.classList.toggle('firing', tuckState.phase === 'tucking')
+  if (tuckState.phase !== 'tucking') fireBtn.dataset.cue = ''
+  fireBtn.setAttribute('aria-pressed', String(tuckState.phase === 'tucking'))
   fireBtn.setAttribute(
     'aria-label',
     tuckState.phase === 'tucking' ? 'Tucking — release to flare' : 'Tuck — hold to dive, release to flare',
@@ -4340,6 +4367,7 @@ function updateControlUI() {
   const m = settings.controlMode === 'joystick' ? 'joystick' : 'mouse'
   document.querySelectorAll('.ctrl-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.ctrl === m)
+    b.setAttribute('aria-pressed', String(b.dataset.ctrl === m))
   })
   const mouseBtn = document.querySelector('.ctrl-btn[data-ctrl="mouse"]')
   if (mouseBtn) mouseBtn.textContent = isTouchPrimary ? '👆 Touch Aim' : '🖱 Mouse'
@@ -4351,12 +4379,12 @@ function updateControlUI() {
         : 'Stick, arrows, or WASD · Mouse mode hides it'
     } else if (isTouchPrimary) {
       blurb.textContent = settings.invertY
-        ? 'Drag anywhere — plane tracks your finger · Y inverted'
-        : 'Drag anywhere — plane tracks your finger'
+        ? 'Drag to bank · Y inverted'
+        : 'Drag to bank · gentle turns save height'
     } else {
       blurb.textContent = settings.invertY
-        ? 'Move cursor — plane tracks it · Y inverted'
-        : 'Move cursor — plane tracks left/right & up/down'
+        ? 'Move cursor to bank · Y inverted'
+        : 'Move cursor to bank · arrows work too'
     }
   }
   const invMenu = $('menu-invert-y')
@@ -4560,6 +4588,11 @@ function syncPauseUi() {
   if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(manualPause && state === 'playing'))
   const muteLabel = $('pause-mute')
   if (muteLabel) muteLabel.textContent = audio.muted ? 'Unmute' : 'Mute'
+  if (manualPause && state === 'playing') {
+    $('pause-context').textContent = `${activeZoneAt(distance).name} · ${runKind === 'journey' ? 'Journey' : runKind[0].toUpperCase() + runKind.slice(1)}`
+    $('pause-distance').textContent = `${Math.floor(distance)}m`
+    $('pause-stars').textContent = `${stars}★`
+  }
   // The install shortcut belongs to the menus, not the flight corner row.
   const installEl = $('install-btn')
   if (installEl) {
@@ -4575,6 +4608,8 @@ function applyPauseState({ banner = true } = {}) {
   simulationPaused = transition.paused
   if (simulationPaused) {
     keys.clear()
+    resetStick()
+    tuckPointerHeld = false
     audio.ctx?.suspend().catch(() => {})
   } else {
     timer?.reset?.()
@@ -4600,24 +4635,30 @@ function setManualPause(on) {
 }
 
 window.addEventListener('keydown', (e) => {
-  keys.add(e.code)
+  if (!isGameShortcut(e)) return
   if (e.code === 'Escape') {
-    if (state === 'playing') {
+    if (state === 'playing' && !e.repeat) {
       e.preventDefault()
       setManualPause(!manualPause)
     }
     return
   }
+  if (isUiKeyboardTarget(e.target)) return
   if (manualPause && state === 'playing') return
+  if (state === 'playing') {
+    keys.add(e.code)
+    if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault()
+  }
   if (e.code === 'Space') {
     e.preventDefault()
     // In flight Space is the Tuck, which `advanceTuck` reads straight off the
     // key set — so the keydown must not also be a restart.
     if (state === 'playing') return
-    if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
-    else if (state === 'dead' && crashT <= 0) retryCurrentRun()
+    if (e.repeat) return
+    if (state === 'menu' && !menuEl.classList.contains('hidden')) startGame(runKind === 'layout' ? 'layout' : 'classic')
+    else if (state === 'dead' && crashT <= 0 && !gameoverEl.classList.contains('hidden')) retryCurrentRun()
   }
-  if (e.code === 'KeyM') {
+  if (e.code === 'KeyM' && !e.repeat) {
     muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
     syncPauseUi()
   }
@@ -4631,7 +4672,18 @@ window.addEventListener('blur', () => keys.clear())
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
-  tuckPointerHeld = true
+  if (state === 'playing' && !simulationPaused) tuckPointerHeld = true
+})
+fireBtn?.addEventListener('keydown', (event) => {
+  if (!['Space', 'Enter'].includes(event.code) || !isGameShortcut(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (state === 'playing' && !simulationPaused) tuckPointerHeld = true
+})
+fireBtn?.addEventListener('keyup', (event) => {
+  if (!['Space', 'Enter'].includes(event.code)) return
+  event.preventDefault()
+  tuckPointerHeld = false
 })
 const releaseTuckPointer = () => { tuckPointerHeld = false }
 fireBtn?.addEventListener('pointerup', releaseTuckPointer)
@@ -4640,16 +4692,12 @@ fireBtn?.addEventListener('pointerleave', releaseTuckPointer)
 window.addEventListener('pointerup', releaseTuckPointer)
 window.addEventListener('blur', releaseTuckPointer)
 window.addEventListener('pointerdown', (e) => {
+  if (state !== 'playing' || simulationPaused) return
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
   mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
-  // Start game from canvas click on menu/dead
-  if (state === 'menu' || (state === 'dead' && crashT <= 0)) {
-    if (!e.target.closest('button')) {
-      /* panels handle their own; canvas play area starts */
-    }
-  }
 })
 window.addEventListener('pointermove', (e) => {
+  if (state !== 'playing' || simulationPaused || e.target.closest('button, [role="dialog"]')) return
   if (stick.active) return
   // Always track cursor for mouse-aim (and invert-aware axes for reference)
   mouseWorldTarget(e.clientX, e.clientY, e.pointerType === 'touch')
@@ -4658,6 +4706,7 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener(
   'touchmove',
   (e) => {
+    if (state !== 'playing' || simulationPaused || e.target.closest('button, [role="dialog"]')) return
     if (stick.active || settings.controlMode === 'joystick') return
     const t = e.touches[0]
     if (t) mouseWorldTarget(t.clientX, t.clientY, true)
@@ -4862,6 +4911,7 @@ async function startGame(kind = 'classic', opts = {}) {
     manualPause = false
     resetGame()
     state = 'playing'
+    canvas.focus({ preventScroll: true })
     // Hydrate the route strip immediately so the shell never exposes an
     // empty risk/stamp label during the first lazy-engine frame.
     updateFlightReadability(runKind === 'journey' ? { zone: activeZoneAt(0), t: 1, next: null } : null)
@@ -5505,7 +5555,11 @@ function updateTuckHud() {
   if (!tucking) return
   tuckVal.textContent = `${Math.round(tuckState.charge * 100)}%`
   tuckFill.style.width = `${tuckState.charge * 100}%`
-  tuckHud.dataset.tuck = tuckState.charge > 0.75 ? 'deep' : 'shallow'
+  const cue = tuckReleaseCue(tuckState, planeY)
+  tuckHud.dataset.tuck = cue === 'release' ? 'release' : tuckState.charge > 0.75 ? 'deep' : 'shallow'
+  if (cue === 'release') tuckVal.textContent = 'Release!'
+  else if (cue === 'full') tuckVal.textContent = 'Full · release'
+  fireBtn.dataset.cue = cue || ''
 }
 
 function updateGroundSkim(dt) {
@@ -5564,7 +5618,7 @@ function scrollWorld(move, lateralDrift = 0) {
     cl.position.z -= move * 0.35
     if (cl.position.z < -30) {
       cl.position.z = 180 + rng() * 50
-      cl.position.x = (rng() - 0.5) * 55
+      cl.position.x = Math.sign(cl.position.x) * (24 + rng() * 25)
     }
   }
   ground.position.z -= move
@@ -6652,11 +6706,11 @@ function update(dt) {
     if (e.type === 'updraft') {
       const shell = m.userData.shell
       if (shell) {
-        shell.rotation.y += dt * 0.8
+        if (!settings.reducedMotion) shell.rotation.y += dt * 0.8
         const inside = Math.hypot(m.position.x - p.x, m.position.y - p.y) < (e.radius || 3.4) &&
           Math.abs(m.position.z - p.z) < 6
         shell.material = updraftMat
-        shell.scale.y = 1 + Math.sin(elapsed * 3 + m.position.z) * 0.06
+        shell.scale.y = settings.reducedMotion ? 1 : 1 + Math.sin(elapsed * 3 + m.position.z) * 0.06
         shell.scale.x = shell.scale.z = inside ? 1.08 : 1
       }
       continue
@@ -6777,6 +6831,7 @@ function update(dt) {
           starsEl.textContent = String(stars)
           distance += reward.bonusMeters
           runStats.gauntlets = (runStats.gauntlets || 0) + 1
+          addLifetimeGauntlets(1)
           lastRewardTag = 'gauntlet'
           hitStopTimer = Math.max(hitStopTimer, 0.06)
           audio.gateClear()
@@ -6962,8 +7017,7 @@ function update(dt) {
 
   updateMagnetPullFeedback(magnetTarget, magnet)
 
-  if (runKind === 'tutorial' && ringsLeft === 0 && entities.every((e) => e.type === 'building' || e.type === 'ring')) {
-    // only buildings left (or empty of rings)
+  if (runKind === 'tutorial' && ringsLeft === 0 && distance >= TUTORIAL_LENGTH) {
     const stillRings = entities.some((e) => e.type === 'ring')
     if (!stillRings) {
       die('Tutorial complete!')
@@ -6982,7 +7036,7 @@ document.addEventListener('visibilitychange', () => {
   applyPauseState()
 })
 function frame() {
-  if (!simulationPaused) {
+  if (!simulationPaused && state !== 'menu') {
     try {
       timer.update()
       const rawDt = Math.min(timer.getDelta(), 0.05)
@@ -6999,10 +7053,13 @@ function frame() {
       console.error('update error', err)
     }
   }
-  try {
-    renderer.render(scene, camera)
-  } catch (err) {
-    console.error('render error', err)
+  if (needsRender || (!simulationPaused && state !== 'menu')) {
+    try {
+      renderer.render(scene, camera)
+      needsRender = false
+    } catch (err) {
+      console.error('render error', err)
+    }
   }
   requestAnimationFrame(frame)
 }
@@ -7115,6 +7172,8 @@ window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
   mode: runKind,
+  paused: simulationPaused,
+  tutorialLesson: runKind === 'tutorial' ? tutorialLessonAt(distance).title : null,
   seed: devSeedLabel,
   runSeed: activeRunSeed,
   weeklyFold: activeFold?.id || null,
@@ -7133,6 +7192,12 @@ window.render_game_to_text = () => JSON.stringify({
     velX: Number(velX.toFixed(2)),
     velY: Number(velY.toFixed(2)),
     bank: Number(bankState.bank.toFixed(3)),
+  },
+  flight: {
+    tuckPhase: tuckState.phase,
+    tuckCharge: Number(tuckState.charge.toFixed(3)),
+    tuckHeld: tuckPointerHeld || keys.has('Space'),
+    diveSpeed: Number(diveSpeed.toFixed(2)),
   },
   power: activePower
     ? { kind: activePower.kind, timeLeft: Math.round(activePower.timeLeft * 10) / 10 }
@@ -7264,6 +7329,7 @@ if (import.meta.env.DEV) {
   window.advanceTime = (ms) => {
     const steps = Math.min(3600, Math.max(0, Math.ceil(Number(ms) / (1000 / 60))))
     for (let index = 0; index < steps; index += 1) update(1 / 60)
+    needsRender = true
     return window.render_game_to_text()
   }
 }
@@ -7599,6 +7665,7 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
+  needsRender = true
 })
 
 if (import.meta.env.DEV) {

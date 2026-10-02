@@ -82,6 +82,14 @@ export function describeTuck(charge = 0) {
   return ''
 }
 
+/** Warn early enough to release before a clean flare becomes a ground save. */
+export function tuckReleaseCue(state, height) {
+  if (state?.phase !== 'tucking') return null
+  return finite(height, 99) <= FLARE_FLOOR + 3
+    ? 'release'
+    : state.charge >= 0.98 ? 'full' : 'charge'
+}
+
 /**
  * Advance one frame.
  *

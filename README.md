@@ -129,11 +129,13 @@ in for birds and scissors.
 | **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
 | Daily missions, achievements |
+| **Gauntlet Runner** lifetime award; unfinished missions for retired mechanics migrate without resetting other progress |
 | Ghost best-run race + packed **challenge links** (`?c=`) so a friend races your actual path |
 | Device / daily / weekly / global leaderboard |
 | **Route editor** + share codes |
 | Crash polaroid photo share |
 | Tutorial rings, haptics, generative music |
+| **Pilot’s field notes** and a six-lesson practice flight covering banking, height, updrafts, and Tuck/flare |
 | **Low-power mode**, adaptive quality |
 | **A11y** — reduced motion, large sticks, auto-level, colorblind powers |
 | **Analytics** — local funnel + `/api/analytics` |
@@ -174,8 +176,15 @@ Completing a chapter unfolds an illustrated destination postcard. **Hangar → P
 |--------|--------|
 | Mouse / touch drag | Steer — the cursor commands a bank, same as the stick |
 | Arrows / WASD / left stick | Steer |
-| **Space**, or the 🪁 button | **Tuck** — hold to dive, release to flare |
+| **Space**, or the **Tuck** button | **Tuck** — hold to dive, release to flare; release early when the low-height cue appears |
 | Esc | Pause |
+| Shift | Steady flight / auto-level |
+| M | Toggle sound |
+
+Choose **How to fly** for the field notes or **Tutorial** for a gentle 420m
+practice route. Tutorial lessons stay visible until the next lesson. The pause
+card shows the current route, distance, and collected stars; keyboard focus
+stays inside dialogs and returns to the playfield when you resume.
 
 ## Settings
 
@@ -208,6 +217,10 @@ npm run test:e2e:prod   # the real production bundle; skips the dev-hook suite
 `window.advanceTime` and boots from `#test-*` states, both of which Vite strips
 from a production build — so it skips itself under `test:e2e:prod` rather than
 failing forty times on a missing hook. `smoke.spec.js` runs in both.
+[`e2e/polish.spec.js`](e2e/polish.spec.js) checks typing with the engine loaded,
+native keyboard activation, dialog focus, pause/resume, fresh-flight input
+state, the full tutorial, and menus at 320×568, 390×844, and 844×390. CI runs
+both development and production browser suites.
 
 In development, add `?seed=any-readable-label` to a URL to replay a classic
 or endless run with deterministic randomness; the active seed is included in

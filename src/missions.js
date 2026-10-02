@@ -13,7 +13,6 @@ const TEMPLATES = [
   { id: 'no_crash_easy', label: (n) => `Fly ${n}m on Easy without crashing early`, type: 'easy_distance', min: 120, max: 300 },
   { id: 'daily', label: (n) => `Score ${n}m on today's Daily Route`, type: 'daily_distance', min: 70, max: 250 },
   { id: 'clean_run', label: (n) => `Fly ${n}m without a single power-up`, type: 'clean_distance', min: 90, max: 280 },
-  { id: 'sharpshooter', label: (n) => `Pop ${n} hazards with Ink Blast in one run`, type: 'popped', min: 2, max: 8 },
   { id: 'fever_once', label: (n) => `Trigger Combo Fever ${n} time${n > 1 ? 's' : ''} in one run`, type: 'fever', min: 1, max: 2 },
   { id: 'gauntlet_runner', label: (n) => `Clear ${n} hazard gauntlet${n > 1 ? 's' : ''} in one run`, type: 'gauntlets', min: 1, max: 3 },
   { id: 'gap_threader', label: (n) => `Thread ${n} tower gap${n > 1 ? 's' : ''} in one run`, type: 'threads', min: 1, max: 2 },
@@ -21,7 +20,8 @@ const TEMPLATES = [
 
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}')
+    const value = JSON.parse(localStorage.getItem(KEY) || '{}')
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   } catch {
     return {}
   }
@@ -31,37 +31,49 @@ function saveState(s) {
   safeSetItem(KEY, JSON.stringify(s))
 }
 
+function createMission(template, index, rand) {
+  const target = Math.floor(template.min + rand() * (template.max - template.min + 1))
+  return {
+    id: `${template.id}-${index}`, type: template.type, target,
+    label: template.label(target), progress: 0, done: false, claimed: false,
+  }
+}
+
 export function getDailyMissions() {
   const day = dailyKey()
   let state = loadState()
-  if (state.day !== day || !state.missions?.length) {
+  if (state.day !== day || !Array.isArray(state.missions) || !state.missions.length) {
     const rand = mulberry32(dailySeed('missions'))
     const pool = [...TEMPLATES]
     const missions = []
     for (let i = 0; i < 3 && pool.length; i++) {
       const idx = (rand() * pool.length) | 0
       const t = pool.splice(idx, 1)[0]
-      const n = Math.floor(t.min + rand() * (t.max - t.min + 1))
-      missions.push({
-        id: `${t.id}-${i}`,
-        type: t.type,
-        target: n,
-        label: t.label(n),
-        progress: 0,
-        done: false,
-        claimed: false,
-      })
+      missions.push(createMission(t, i, rand))
     }
-    state = { day, missions, claimStars: 0 }
+    state = { ...state, day, missions, claimStars: 0 }
     saveState(state)
+  } else {
+    // Preserve earned rewards and other progress when retiring the Ink Blast.
+    const assigned = new Set(state.missions.map((mission) => mission.type))
+    let changed = false
+    state.missions = state.missions.map((mission, index) => {
+      if (mission.type !== 'popped' || mission.done || mission.claimed) return mission
+      const rand = mulberry32(dailySeed(`mission-replacement-${index}`))
+      const pool = TEMPLATES.filter((template) => !assigned.has(template.type))
+      const template = pool[Math.floor(rand() * pool.length)]
+      if (!template) return mission
+      assigned.add(template.type)
+      changed = true
+      return createMission(template, index, rand)
+    })
+    if (changed) saveState(state)
   }
   return state.missions
 }
 
 export function updateMissionsFromRun(stats) {
-  const day = dailyKey()
-  const state = loadState()
-  if (state.day !== day) getDailyMissions()
+  getDailyMissions()
   const s = loadState()
   let changed = false
   for (const m of s.missions) {
