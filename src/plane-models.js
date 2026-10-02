@@ -7,10 +7,10 @@ const PLANE_GEOMETRY = Object.freeze({
     label: 'Classic Fold',
     dimensions: Object.freeze({ width: 1, length: 0.85, height: 0.18 }),
     collisionRadius: PLANE_COLLISION_RADIUS,
-    wingL: Object.freeze([[0, 0], [-1.4, -0.15], [0, 0.35]]),
-    wingR: Object.freeze([[0, 0], [1.4, -0.15], [0, 0.35]]),
-    creaseL: Object.freeze([[0, 0], [-0.55, -0.07], [0, 0.14]]),
-    creaseR: Object.freeze([[0, 0], [0.55, -0.07], [0, 0.14]]),
+    wingL: Object.freeze([[0, -.92], [-1.4, .72], [-.14, .45], [0, .76]]),
+    wingR: Object.freeze([[0, -.92], [1.4, .72], [.14, .45], [0, .76]]),
+    creaseL: Object.freeze([[0, -.92], [-.55, .65], [0, .76]]),
+    creaseR: Object.freeze([[0, -.92], [.55, .65], [0, .76]]),
     body: Object.freeze({ size: [0.12, 0.08, 1.6], position: [0, 0.04, -0.1] }),
     nose: Object.freeze({ radius: 0.08, length: 0.35, position: [0, 0.02, 0.85] }),
     tail: Object.freeze({ size: [0.06, 0.28, 0.28], position: [0, 0.16, -0.7] }),
@@ -21,10 +21,10 @@ const PLANE_GEOMETRY = Object.freeze({
     label: 'Dart',
     dimensions: Object.freeze({ width: 0.74, length: 1, height: 0.16 }),
     collisionRadius: PLANE_COLLISION_RADIUS,
-    wingL: Object.freeze([[0, -0.3], [-1.02, -0.42], [0, 0.66]]),
-    wingR: Object.freeze([[0, -0.3], [1.02, -0.42], [0, 0.66]]),
-    creaseL: Object.freeze([[0, -0.2], [-0.48, -0.28], [0, 0.38]]),
-    creaseR: Object.freeze([[0, -0.2], [0.48, -0.28], [0, 0.38]]),
+    wingL: Object.freeze([[0, -1.15], [-1.02, .85], [-.1, .58], [0, .94]]),
+    wingR: Object.freeze([[0, -1.15], [1.02, .85], [.1, .58], [0, .94]]),
+    creaseL: Object.freeze([[0, -1.15], [-.4, .77], [0, .94]]),
+    creaseR: Object.freeze([[0, -1.15], [.4, .77], [0, .94]]),
     body: Object.freeze({ size: [0.1, 0.07, 2.05], position: [0, 0.035, -0.02] }),
     nose: Object.freeze({ radius: 0.07, length: 0.42, position: [0, 0.015, 1.18] }),
     tail: Object.freeze({ size: [0.05, 0.22, 0.38], position: [0, 0.13, -0.92] }),
@@ -35,10 +35,10 @@ const PLANE_GEOMETRY = Object.freeze({
     label: 'Glider',
     dimensions: Object.freeze({ width: 1, length: 0.68, height: 0.15 }),
     collisionRadius: PLANE_COLLISION_RADIUS,
-    wingL: Object.freeze([[0, -0.2], [-1.7, -0.06], [-1.52, 0.3], [0, 0.5]]),
-    wingR: Object.freeze([[0, -0.2], [1.7, -0.06], [1.52, 0.3], [0, 0.5]]),
-    creaseL: Object.freeze([[0, -0.11], [-0.76, -0.04], [-0.65, 0.16], [0, 0.28]]),
-    creaseR: Object.freeze([[0, -0.11], [0.76, -0.04], [0.65, 0.16], [0, 0.28]]),
+    wingL: Object.freeze([[0, -.78], [-1.7, .24], [-1.52, .78], [0, .65]]),
+    wingR: Object.freeze([[0, -.78], [1.7, .24], [1.52, .78], [0, .65]]),
+    creaseL: Object.freeze([[0, -.78], [-.76, .32], [-.65, .6], [0, .65]]),
+    creaseR: Object.freeze([[0, -.78], [.76, .32], [.65, .6], [0, .65]]),
     body: Object.freeze({ size: [0.14, 0.07, 1.45], position: [0, 0.035, -0.08] }),
     nose: Object.freeze({ radius: 0.09, length: 0.3, position: [0, 0.02, 0.78] }),
     tail: Object.freeze({ size: [0.08, 0.23, 0.34], position: [0, 0.14, -0.62] }),
@@ -49,10 +49,10 @@ const PLANE_GEOMETRY = Object.freeze({
     label: 'Stunt Fold',
     dimensions: Object.freeze({ width: 0.88, length: 0.78, height: 0.28 }),
     collisionRadius: PLANE_COLLISION_RADIUS,
-    wingL: Object.freeze([[0, -0.2], [-1.28, -0.24], [-1.03, 0.08], [-1.34, 0.38], [0, 0.5]]),
-    wingR: Object.freeze([[0, -0.2], [1.28, -0.24], [1.03, 0.08], [1.34, 0.38], [0, 0.5]]),
-    creaseL: Object.freeze([[0, -0.1], [-0.62, -0.12], [-0.5, 0.08], [-0.72, 0.2], [0, 0.27]]),
-    creaseR: Object.freeze([[0, -0.1], [0.62, -0.12], [0.5, 0.08], [0.72, 0.2], [0, 0.27]]),
+    wingL: Object.freeze([[0, -.86], [-1.28, .3], [-1.03, .52], [-1.34, .8], [0, .65]]),
+    wingR: Object.freeze([[0, -.86], [1.28, .3], [1.03, .52], [1.34, .8], [0, .65]]),
+    creaseL: Object.freeze([[0, -.86], [-.62, .3], [-.5, .52], [-.72, .6], [0, .65]]),
+    creaseR: Object.freeze([[0, -.86], [.62, .3], [.5, .52], [.72, .6], [0, .65]]),
     body: Object.freeze({ size: [0.13, 0.1, 1.55], position: [0, 0.05, -0.05] }),
     nose: Object.freeze({ radius: 0.09, length: 0.34, position: [0, 0.025, 0.86] }),
     tail: Object.freeze({ size: [0.08, 0.4, 0.32], position: [0, 0.22, -0.66] }),
@@ -102,12 +102,19 @@ function makeMaterial(THREE, provided, color) {
 }
 
 function makeWing({ THREE, points, creasePoints, bodyMaterial, accentMaterial, name }) {
-  const wing = new THREE.Mesh(new THREE.ShapeGeometry(makeShape(THREE, points)), bodyMaterial)
+  const foldedGeometry = coordinates => {
+    const geometry = new THREE.ShapeGeometry(makeShape(THREE, coordinates))
+    const position = geometry.getAttribute('position')
+    for (let i = 0; i < position.count; i++) position.setZ(i,Math.abs(position.getX(i))*.15)
+    geometry.computeVertexNormals()
+    return geometry
+  }
+  const wing = new THREE.Mesh(foldedGeometry(points), bodyMaterial)
   wing.rotation.x = -Math.PI / 2
   wing.castShadow = true
   wing.name = name
 
-  const crease = new THREE.Mesh(new THREE.ShapeGeometry(makeShape(THREE, creasePoints)), accentMaterial)
+  const crease = new THREE.Mesh(foldedGeometry(creasePoints), accentMaterial)
   crease.position.z = 0.004
   crease.name = `${name}Crease`
   wing.add(crease)

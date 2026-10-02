@@ -53,7 +53,7 @@ import { resolvePowerPickup } from './game/power-pickup.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
 import { pollFirstActiveGamepad } from './game/gamepad.js'
-import { bankRoll as computeBankRoll, cameraLean, cameraTarget, shadowForPlane } from './game/camera-rig.js'
+import { bankRoll as computeBankRoll, cameraLean, cameraTarget, cameraFlightDistance, cameraLateralPosition, shadowForPlane } from './game/camera-rig.js'
 
 import { normalizeLeaderboardName } from './game/leaderboard-contract.js'
 import {
@@ -154,6 +154,12 @@ import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-sta
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
+import { buildFlightDebrief } from './game/flight-debrief.js'
+import { renderFlightDebrief } from './ui/flight-debrief.js'
+import { createWorldCanvas } from './game/paper-world-art.js'
+import { createStreetCanvas, STREET_BLOCK_SIZE, STREET_WIDTH } from './game/paper-streets.js'
+import { createPaperCarGeometry, roadVehicleVariant } from './paper-car-models.js'
+import { PICKUP_LABELS, createPickupCanvas, createPickupLabelCanvas } from './game/pickup-art.js'
 import { createBannerState, resolveBanner } from './game/flight-banners.js'
 import { selectHudChips } from './game/hud-priority.js'
 import {
@@ -165,9 +171,9 @@ import {
   advanceBank,
   bankSinkPerSecond,
   bankTurnAcceleration,
+  bankDrag,
   bankVisualRoll,
   createBankState,
-  LATERAL_DRAG,
 } from './game/banking.js'
 import {
   advanceDiveSpeed,
@@ -574,6 +580,7 @@ function updateFlightReadability(routeState = null) {
 const finalScoreEl = $('final-score')
 const finalDetailEl = $('final-detail')
 const runSummaryEl = $('run-summary')
+const flightDebriefEl = $('flight-debrief')
 const journeyResultProgressEl = $('journey-result-progress')
 const postcardRevealEl = $('postcard-reveal')
 const postcardDetailEl = $('postcard-detail')
@@ -581,15 +588,27 @@ const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
 
+let scoreCountFrame = null
+function stopScoreCountUp() {
+  if (scoreCountFrame !== null) cancelAnimationFrame(scoreCountFrame)
+  scoreCountFrame = null
+}
+
 function animateCountUp(el, target, suffix, ms = 700) {
+  stopScoreCountUp()
+  if (settings.reducedMotion) {
+    el.textContent = `${target}${suffix}`
+    return
+  }
   const start = performance.now()
   const step = (now) => {
+    scoreCountFrame = null
     const t = Math.min(1, (now - start) / ms)
     const eased = 1 - Math.pow(1 - t, 3)
     el.textContent = `${Math.round(target * eased)}${suffix}`
-    if (t < 1) requestAnimationFrame(step)
+    if (t < 1) scoreCountFrame = requestAnimationFrame(step)
   }
-  requestAnimationFrame(step)
+  scoreCountFrame = requestAnimationFrame(step)
 }
 const challengeToast = $('challenge-toast')
 const notifications = createNotificationQueue({
@@ -802,6 +821,7 @@ let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
 let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
+let lastFlightDebrief = null
 let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
 let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
@@ -969,7 +989,7 @@ const CAM_AIM_Z = 13
 // Lateral/depth smoothing stays loose so steering reads as momentum. The
 // vertical axis settles far faster: a lagging camera rides above a sinking
 // plane and pushes it off-screen exactly when the player needs to see it.
-const CAM_FOLLOW_X = 0.62
+const CAM_FOLLOW_X = 1
 const CAM_EASE_LATERAL = 0.0005
 const CAM_EASE_VERTICAL = 1e-7
 
@@ -1003,21 +1023,22 @@ const texCache = {}
 
 /**
  * `paper:<kind>:<zone>[:<variant>]` textures are cut at runtime from the zone
- * palette in game/paper-art.js rather than loaded from disk: the paper stock
- * every plane skin flies on, and the hazard sprites. Skies and grounds stay
- * painted assets — routing the generated ones through the same cache as file
- * textures means both kinds work identically everywhere downstream.
+ * palette rather than loaded from disk. World plates, plane stock and hazards
+ * share the same cache and material contract as file textures.
  */
 function createPaperTexture(spec) {
   const [, kind, zoneId, variant] = spec.split(':')
   const palette = getPaperPalette(zoneId)
-  const canvas = kind === 'hazard'
+  const canvas = ['sky', 'ground', 'wall'].includes(kind)
+    ? createWorldCanvas({ kind, zoneId, size: kind === 'sky' ? 1024 : 512 })
+    : kind === 'hazard'
     ? createHazardCanvas({ kind: variant, palette })
     : createPaperSheetCanvas({ palette })
   if (!canvas) return new THREE.Texture()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() ?? 4)
   texture.needsUpdate = true
   return texture
 }
@@ -1227,8 +1248,8 @@ function loadCutoutTex(rawUrl, growThreshold = 20, maxDistance = 70) {
   return tex
 }
 const paperTex = loadTex('paper:sheet:city')
-const buildingTex = loadTex('/assets/buildings.jpg')
-const skyTex = loadTex('/assets/sky-city.jpg')
+const buildingTex = loadTex('paper:wall:city')
+const skyTex = loadTex('paper:sky:city')
 
 // Dual sky spheres for crossfade between zones
 const skyGeo = new THREE.SphereGeometry(300, 32, 16)
@@ -1245,27 +1266,34 @@ const skyA = new THREE.Mesh(skyGeo, skyMatA)
 const skyB = new THREE.Mesh(new THREE.SphereGeometry(298, 32, 16), skyMatB)
 skyA.name = 'sky'
 skyB.name = 'skyB'
+// Their centers ride the camera, so depth sorting alone puts these transparent
+// backgrounds last and paints over pickup cards above the ground horizon.
+skyA.renderOrder = skyB.renderOrder = -1000
 scene.add(skyA, skyB)
 let skyFade = 1 // 1 = show A, 0 = show B
 let skyFadeTarget = 1
 let activeSkyIsA = true
-let currentSkyUrl = '/assets/sky-city.jpg'
+let currentSkyUrl = 'paper:sky:city'
 
-const groundMap = loadTex('/assets/ground-city.jpg')
-// ~15m square tiles: dense enough that the painted detail stays crisp under
-// the camera instead of smearing into a pastel blur, and the repeat keeps the
-// texture's aspect ratio square so nothing stretches.
-if (groundMap.repeat) groundMap.repeat.set(6, 46)
+const groundMap = loadTex('paper:ground:city')
+// City blocks share the roads' 35-unit scroll period; other plates stay square.
+function configureGroundPattern(texture,url,groundZ = 120) {
+  const city = url === 'paper:ground:city'
+  texture.repeat.set(city ? 260/STREET_BLOCK_SIZE : 8,city ? 900/STREET_BLOCK_SIZE : 28)
+  texture.offset.set(city ? .5-(130/STREET_BLOCK_SIZE)%1 : 0,
+    city ? .5-((450+groundZ+20)/STREET_BLOCK_SIZE)%1 : 0)
+}
+configureGroundPattern(groundMap,'paper:ground:city')
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(90, 700),
-  // A warm mid tone — near-white tints pushed the fogged floor into a wash.
-  new THREE.MeshStandardMaterial({ map: groundMap, color: 0xcbb79c, roughness: 0.95 }),
+  new THREE.PlaneGeometry(260, 900),
+  // Unlit paper stock preserves each zone's painted palette.
+  new THREE.MeshBasicMaterial({ map: groundMap, color: 0xffffff }),
 )
 ground.rotation.x = -Math.PI / 2
 ground.position.set(0, 0, 120)
-ground.receiveShadow = true
+ground.receiveShadow = false
 scene.add(ground)
-let currentGroundUrl = '/assets/ground-city.jpg'
+let currentGroundUrl = 'paper:ground:city'
 
 // Contact shadow — the pale fuselage dissolves into bright paper streets at
 // distance, so an altitude-scaled blob keeps it anchored to the world.
@@ -1333,13 +1361,9 @@ const GROUND_LIFE_GEOMETRY = {
   // cross under the flight path.
   decal: () => new THREE.PlaneGeometry(1, 2.6),
   // A road segment. Length is set per-field so segments tile without gaps.
-  road: () => new THREE.PlaneGeometry(5.2, 1),
-  // Chassis plus a smaller cabin set back and up — enough silhouette to read
-  // as a car at this distance rather than as a floating brick.
-  car: () => mergeParts([
-    { geometry: new THREE.BoxGeometry(1.5, 0.5, 3.1), at: [0, 0, 0] },
-    { geometry: new THREE.BoxGeometry(1.2, 0.52, 1.4), at: [0, 0.48, -0.15] },
-  ]),
+  road: () => new THREE.PlaneGeometry(STREET_WIDTH,1),
+  crossroad: () => new THREE.PlaneGeometry(64,STREET_WIDTH),
+  car: (zoneId,speciesDef) => createPaperCarGeometry({variant:roadVehicleVariant(zoneId,speciesDef.id),bodyColor:speciesDef.palette.primary}),
   // A folded paper figure: body wedge, head, and a hint of shoulders.
   person: () => mergeParts([
     { geometry: new THREE.ConeGeometry(0.34, 0.9, 4), at: [0, 0, 0] },
@@ -1366,6 +1390,17 @@ const GROUND_LIFE_GEOMETRY = {
 }
 
 const groundLifeDummy = new THREE.Object3D()
+const streetTextureCache = new Map()
+function streetTexture(zoneId,crossStreet) {
+  const key = `${zoneId}:${crossStreet}`
+  if (!streetTextureCache.has(key)) {
+    const texture = new THREE.CanvasTexture(createStreetCanvas({zoneId,crossStreet}))
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = Math.min(8,renderer.capabilities.getMaxAnisotropy())
+    streetTextureCache.set(key,texture)
+  }
+  return streetTextureCache.get(key)
+}
 const paperLandscape = createPaperLandscape(scene)
 const groundLifeFields = []
 let groundLifeZoneId = null
@@ -1390,36 +1425,43 @@ function buildGroundLife(zoneId) {
   })
   groundLifeZoneId = zoneId
   if (!budget.enabled) return
+  const sceneryRng = mulberry32(hashString(`ground-life:${zoneId}`))
 
   for (const speciesDef of getGroundLifeSpecies(zoneId)) {
     const count = groundLifeCount(speciesDef, budget)
     if (count <= 0) continue
-    const geometry = (GROUND_LIFE_GEOMETRY[speciesDef.shape] || GROUND_LIFE_GEOMETRY.box)()
+    const geometry = (GROUND_LIFE_GEOMETRY[speciesDef.shape] || GROUND_LIFE_GEOMETRY.box)(zoneId,speciesDef)
     if (speciesDef.shape === 'road') {
-      // Stretch each segment to exactly the tiling length so the two road
+      // Stretch each segment to exactly the tiling length so the four road
       // ribbons are continuous rather than a dashed line of quads.
       geometry.scale(1, roadSegmentLength(count), 1)
     }
     const glow = speciesDef.motion === 'pulse'
-    const material = new THREE.MeshStandardMaterial({
+    const street = ['road','crossroad'].includes(speciesDef.shape), car = speciesDef.shape === 'car'
+    const Material = street || car ? THREE.MeshBasicMaterial : THREE.MeshStandardMaterial
+    const material = new Material({
       // White base: the per-instance tint below multiplies into this, so any
       // colour here would darken the whole field.
       color: 0xffffff,
-      roughness: 0.92,
+      ...(street || car ? {} : {roughness: .92}),
+      vertexColors: car,
+      map: street ? streetTexture(zoneId,speciesDef.shape === 'crossroad') : null,
       side: THREE.DoubleSide,
       // Decals sit millimetres above the ground plane; bias them so they do
       // not z-fight with it at distance.
       // Roads are a surface, not a wash: fully opaque so they read against a
       // busy paper ground. The softer decal bands stay translucent texture.
-      transparent: speciesDef.flat && speciesDef.shape !== 'road',
-      opacity: speciesDef.flat && speciesDef.shape !== 'road' ? 0.55 : 1,
-      depthWrite: !speciesDef.flat || speciesDef.shape === 'road',
+      transparent: speciesDef.flat && !street,
+      opacity: speciesDef.flat && !street ? 0.55 : 1,
+      depthWrite: !speciesDef.flat || street,
       polygonOffset: speciesDef.flat,
       polygonOffsetFactor: speciesDef.flat ? -2 : 0,
       polygonOffsetUnits: speciesDef.flat ? -2 : 0,
       // Aurora crystals and desk lamps read as light sources, not paper.
-      emissive: glow ? new THREE.Color(speciesDef.palette.accent) : new THREE.Color(0x000000),
-      emissiveIntensity: glow ? 0.55 : 0,
+      ...(street || car ? {} : {
+        emissive: glow ? new THREE.Color(speciesDef.palette.accent) : new THREE.Color(0x000000),
+        emissiveIntensity: glow ? .55 : 0,
+      }),
     })
     const mesh = new THREE.InstancedMesh(geometry, material, count)
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
@@ -1429,6 +1471,7 @@ function buildGroundLife(zoneId) {
     // Scenery must never be mistaken for something the ink blast can pop or
     // the plane can hit — nothing here is registered as an entity.
     mesh.userData.decorative = true
+    mesh.name = `paper-ground-${zoneId}-${speciesDef.id}`
 
     // Tint each instance somewhere between the species' primary and accent so
     // a field of forty reads as handmade paper rather than forty clones.
@@ -1439,16 +1482,18 @@ function buildGroundLife(zoneId) {
     const instances = []
     for (let i = 0; i < count; i++) {
       instances.push({
-        x: groundLifeSlotX(i, rng(), speciesDef),
-        z: groundLifeSlotZ(i, count, rng(), speciesDef),
-        phase: rng() * Math.PI * 2,
+        x: groundLifeSlotX(i, sceneryRng(), speciesDef),
+        z: groundLifeSlotZ(i, count, sceneryRng(), speciesDef),
+        phase: sceneryRng() * Math.PI * 2,
         // Roads and traffic keep a uniform size; organic scatter varies.
-        scale: speciesDef.align === 'road'
+        scale: ['road','junction'].includes(speciesDef.align)
           ? speciesDef.scale
-          : speciesDef.scale * (0.8 + rng() * 0.45),
+          : speciesDef.scale * (0.8 + sceneryRng() * 0.45),
       })
       // A road is one continuous surface — per-segment tint would stripe it.
-      tint.copy(primary).lerp(accent, speciesDef.shape === 'road' ? 0 : rng() * 0.7)
+      if (street) tint.setHex(0xffffff)
+      else if (car) tint.setScalar(.92+sceneryRng()*.08)
+      else tint.copy(primary).lerp(accent,sceneryRng()*.7)
       mesh.setColorAt(i, tint)
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -1483,9 +1528,11 @@ function updateGroundLife(time) {
       for (let i = 0; i < instances.length; i++) {
         const instance = instances[i]
         groundLifeDummy.position.set(instance.x, speciesDef.y, instance.z)
-        if (speciesDef.shape === 'road') {
+        if (['road','crossroad'].includes(speciesDef.shape)) {
           // Flat on the ground and running down the field, not fanned out.
           groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0)
+        } else if (speciesDef.shape === 'car') {
+          groundLifeDummy.rotation.set(0,speciesDef.zSpeedMul > 1 ? Math.PI : 0,0)
         } else if (speciesDef.flat) {
           groundLifeDummy.rotation.set(-Math.PI / 2, instance.phase, 0)
         } else {
@@ -1642,8 +1689,11 @@ function attachPlaneOutline(model) {
   if (!model || model.userData.outlineShell) return model
   const shell = new THREE.Group()
   shell.name = 'planeOutline'
-  model.traverse((child) => {
-    if (!child.isMesh || child.name === 'shieldBubble') return
+  // Creases are nested in the rotated wing; copying their local transform to
+  // the model root turns them into upright ink sails. Only outline the outer
+  // surfaces, and keep the two wing copies in step with their animated pose.
+  for (const child of model.children) {
+    if (!child.isMesh || child.name === 'shieldBubble') continue
     const copy = new THREE.Mesh(child.geometry, planeOutlineMat)
     copy.position.copy(child.position)
     copy.rotation.copy(child.rotation)
@@ -1651,8 +1701,9 @@ function attachPlaneOutline(model) {
     // rather than an offset drop shadow.
     copy.scale.copy(child.scale).multiplyScalar(1.085)
     copy.renderOrder = -1
+    if (child.name === 'wingL' || child.name === 'wingR') child.userData.outline = copy
     shell.add(copy)
-  })
+  }
   if (shell.children.length === 0) return model
   model.add(shell)
   model.userData.outlineShell = shell
@@ -1749,10 +1800,10 @@ const planeTrailMat = new THREE.PointsMaterial({
   color: 0xfff0c0, size: 0.27, transparent: true, opacity: 0.75, depthWrite: false,
 })
 const buildingMats = [
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5ab93, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0x96c4b0, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xf5d489, roughness: 0.9 }),
-  new THREE.MeshStandardMaterial({ map: buildingTex, color: 0xbfaae0, roughness: 0.9 }),
+  new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xf1c7b2 }),
+  new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xb6d0ba }),
+  new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xe8d4a4 }),
+  new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xc6bfd8 }),
 ]
 const birdMat = new THREE.MeshStandardMaterial({
   map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
@@ -1787,10 +1838,13 @@ function applySeasonVisuals() {
   }
   refreshUnlocks(season.id)
 }
-const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfffaf5, roughness: 1, transparent: true, opacity: 0.9 })
-const cloudShadeMat = new THREE.MeshStandardMaterial({
-  color: 0xd8dde8, roughness: 1, transparent: true, opacity: 0.55,
-})
+const cloudMat = new THREE.MeshBasicMaterial({ color: 0xfffaf5, side: THREE.DoubleSide })
+const cloudShadeMat = new THREE.MeshBasicMaterial({ color: 0xd8dde8, side: THREE.DoubleSide })
+const cloudShape = new THREE.Shape()
+;[[-2,-.3],[-2.4,.1],[-1.8,.6],[-1,.6],[-.6,1.1],[.3,1.2],[.9,.65],[1.7,.7],[2.3,.1],[1.9,-.3]].forEach(([x,y],i) => i ? cloudShape.lineTo(x,y) : cloudShape.moveTo(x,y))
+cloudShape.closePath()
+const cloudGeometry = new THREE.ShapeGeometry(cloudShape)
+let cloudRng = mulberry32(hashString('paper-clouds'))
 const riverMat = new THREE.MeshStandardMaterial({
   color: 0x6fb0d8, roughness: 0.25, metalness: 0.15, transparent: true, opacity: 0.9,
 })
@@ -1918,10 +1972,8 @@ let POWER_KINDS = Object.keys(POWER_META)
 function rebuildPowerPalette() {
   POWER_META = buildPowerMeta()
   POWER_KINDS = Object.keys(POWER_META)
-  // Cached power-up materials are keyed by kind and colored from the old
-  // palette — drop them so the next spawn of each kind rebuilds with the
-  // new (e.g. colorblind-safe) colors.
-  powerMatCache = {}
+  // Material cache includes the palette color, so returning to a palette
+  // reuses its textures without abandoning old GPU resources.
 }
 
 let plane = null
@@ -1937,7 +1989,7 @@ function disposeFlightPlane(model, trail) {
         disposedGeometries.add(child.geometry)
         child.geometry.dispose()
       }
-      if (child.name === 'shieldBubble' && child.material !== planeBodyMat && child.material !== planeAccentMat && !disposedGeometries.has(child.material)) {
+      if (['shieldBubble','boostFlame','magnetHalo','guardianStitch'].includes(child.name) && child.material !== planeBodyMat && child.material !== planeAccentMat && !disposedGeometries.has(child.material)) {
         disposedGeometries.add(child.material)
         child.material.dispose()
       }
@@ -1987,12 +2039,13 @@ function attachPlaneAccents() {
   if (!plane) return
   boostFlame = plane.getObjectByName('boostFlame')
   if (!boostFlame) {
-    boostFlame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.2, 0.85, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff7a3c, transparent: true, opacity: 0.88 }),
-    )
+    const ribbon = new THREE.Shape()
+    ribbon.moveTo(-.22,0); ribbon.lineTo(.22,0); ribbon.lineTo(.1,-1.55)
+    ribbon.lineTo(0,-1.25); ribbon.lineTo(-.1,-1.55); ribbon.closePath()
+    boostFlame = new THREE.Mesh(new THREE.ShapeGeometry(ribbon),
+      new THREE.MeshBasicMaterial({ color: 0xffa347, side: THREE.DoubleSide }))
     boostFlame.name = 'boostFlame'
-    boostFlame.rotation.x = Math.PI
+    boostFlame.rotation.x = Math.PI / 2
     boostFlame.position.set(0, -0.04, -0.88)
     boostFlame.visible = false
     plane.add(boostFlame)
@@ -2045,7 +2098,7 @@ function syncPlanePowerLook(dt = 0.016) {
   }
   if (boostFlame) {
     boostFlame.visible = boosting
-    if (boosting) boostFlame.scale.setScalar(0.88 + Math.sin(elapsed * 24) * 0.22)
+    if (boosting) boostFlame.scale.set(1,settings.reducedMotion ? 1 : .95 + Math.sin(elapsed * 12) * .12,1)
   }
   if (magnetHalo) {
     magnetHalo.visible = (fx.magnetBonus || 0) > 0 && state === 'playing'
@@ -2479,7 +2532,7 @@ function attachLethalOutline(group, radius = 0.85) {
 let hazardPaletteZone = 'city'
 
 function hazardTexture(kind) {
-  return loadTex(`paper:hazard:${hazardPaletteZone}:${kind === 'scissors' ? 'scissors' : 'flyer'}`)
+  return loadTex(`paper:hazard:${hazardPaletteZone}:${kind}`)
 }
 
 // Gauntlet lane marker: one shared additive ribbon geometry/material, tinted
@@ -2600,7 +2653,7 @@ function createFlyer(kindId) {
   g.userData.pattern = patternForFlyer(def)
 
   if (def.tex) {
-    const bill = createBillboardFlyer(def.tex, def.scale || 1.5, !!def.alpha)
+    const bill = createBillboardFlyer(def.tex, def.scale || 1.5, !!def.alpha, def.id)
     g.add(bill)
     g.userData.billboard = bill.userData.billboard
     return g
@@ -2785,170 +2838,63 @@ function createScissors() {
   return g
 }
 
-// Stars are by far the most frequently spawned entity in the game (every
-// chunk rolls 1-2), so building fresh geometry + material per spawn was
-// pure per-frame GC churn for an object that never changes shape or color.
-const starCoreGeo = new THREE.PlaneGeometry(1.55, 1.55)
-const starCoreMat = new THREE.MeshBasicMaterial({
-  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18, side: THREE.DoubleSide, depthWrite: false,
-})
-const starGlowGeo = new THREE.SphereGeometry(0.72, 12, 12)
-const starGlowMat = new THREE.MeshBasicMaterial({
-  color: 0xfbbf24, transparent: true, opacity: 0.28, depthWrite: false,
-})
-// Golden variant — a rare tier-transition drop worth 5★. Bigger, hotter,
-// and self-lit so it reads as an event, not another pickup.
-const starCoreMatGold = new THREE.MeshBasicMaterial({
-  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18,
-  side: THREE.DoubleSide, depthWrite: false, color: 0xffd54a,
-})
-const starGlowMatGold = new THREE.MeshBasicMaterial({
-  color: 0xfde68a, transparent: true, opacity: 0.5, depthWrite: false,
-})
-const starGlowGeoGold = new THREE.SphereGeometry(1.15, 14, 14)
-// Wealth / Gold Rush 3-star cluster: gold tint so the payout reads as currency,
-// but keeps the normal 1★ value (unlike the tier golden 5★). Distinct material
-// so the cluster is instantly recognizable even mid-wave.
-const starCoreMatWealth = new THREE.MeshBasicMaterial({
-  map: loadCutoutTex('/assets/pickup-orb.webp'), transparent: true, alphaTest: 0.18,
-  side: THREE.DoubleSide, depthWrite: false, color: 0xffe9a8,
-})
-const starGlowMatWealth = new THREE.MeshBasicMaterial({
-  color: 0xfcd34d, transparent: true, opacity: 0.38, depthWrite: false,
-})
-const starGlowGeoWealth = new THREE.SphereGeometry(0.86, 12, 12)
-
+// Shared paper cards keep pickup geometry and textures constant across waves.
+function pickupTexture(canvas) {
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+const starCoreGeo = new THREE.PlaneGeometry(1.75, 1.75)
+const starMaterials = Object.fromEntries(['star','golden'].map(kind => [kind,
+  new THREE.MeshBasicMaterial({ map: pickupTexture(createPickupCanvas({ kind })),
+    transparent: true, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false }),
+]))
 function createStar({ golden = false, wealth = false } = {}) {
-  const g = new THREE.Group()
-  const mat = golden ? starCoreMatGold : wealth ? starCoreMatWealth : starCoreMat
-  const core = new THREE.Mesh(starCoreGeo, mat)
+  const group = new THREE.Group()
+  const core = new THREE.Mesh(starCoreGeo,starMaterials[golden ? 'golden' : 'star'])
   core.rotation.y = Math.PI
   core.scale.setScalar(golden ? 1.35 : wealth ? 1.18 : 1)
-  g.add(core)
-  // Soft glow shell for readability
-  const glow = golden
-    ? new THREE.Mesh(starGlowGeoGold, starGlowMatGold)
-    : wealth
-      ? new THREE.Mesh(starGlowGeoWealth, starGlowMatWealth)
-      : new THREE.Mesh(starGlowGeo, starGlowMat)
-  g.add(glow)
-  g.userData.core = core
-  g.userData.billboard = core
-  g.userData.wealth = wealth
-  g.userData.golden = golden
-  return g
+  group.add(core)
+  Object.assign(group.userData,{ core, billboard: core, wealth, golden })
+  return group
 }
 
-// Shared geometry across every power-up kind — only material color varies.
-// Power-ups spawn often enough over a run that per-spawn geometry/material
-// construction was avoidable GC churn, same fix as stars/bird/scissors.
-const powerGlowGeo = new THREE.SphereGeometry(0.95, 20, 16)
-const powerCoreGeoBoost = new THREE.ConeGeometry(0.38, 0.95, 6)
-const powerCoreGeoDefault = new THREE.IcosahedronGeometry(0.48, 0)
-const powerRingGeo = new THREE.TorusGeometry(0.78, 0.11, 10, 32)
-const powerIconGeoBoost = new THREE.PlaneGeometry(1.3, 1.3)
-const powerIconGeoDefault = new THREE.PlaneGeometry(0.85, 0.85)
-// Materials DO depend on kind (color), but that color is otherwise fixed
-// per kind for the session — cache one material set per kind instead of
-// rebuilding on every spawn. Cleared on colorblind-palette changes below.
-let powerMatCache = {}
-
+const powerCardGeo = new THREE.PlaneGeometry(2.25,2.25)
+const pickupLabelGeo = new THREE.PlaneGeometry(3.3,.825)
+const powerMatCache = new Map()
 function createPowerUp(kind) {
-  const meta = POWER_META[kind] || buildPowerMeta()[kind]
-  const g = new THREE.Group()
-  g.userData.kind = kind
-  const col = meta.color
-  const isBoostHero = kind === 'boost'
-
-  let mats = powerMatCache[kind]
+  const meta = POWER_META[kind]
+  if (!meta) throw new RangeError(`Unknown power pickup: ${kind}`)
+  const key = `${kind}:${meta.color}`
+  let mats = powerMatCache.get(key)
   if (!mats) {
+    const options = { transparent: true, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false }
     mats = {
-      glowMat: new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false }),
-      coreMat: new THREE.MeshStandardMaterial({
-        color: col, emissive: col, emissiveIntensity: 0.9, roughness: 0.22, metalness: 0.35,
-      }),
-      ringMat: new THREE.MeshStandardMaterial({
-        color: 0xfffaf2, emissive: col, emissiveIntensity: 0.55, roughness: 0.3, metalness: 0.4,
-      }),
-      iconMat: null, // built lazily below since texture load can throw
+      icon: new THREE.MeshBasicMaterial({ ...options, map: pickupTexture(createPickupCanvas({ kind, color: `#${meta.color.toString(16).padStart(6,'0')}` })) }),
+      label: new THREE.MeshBasicMaterial({ ...options, map: pickupTexture(createPickupLabelCanvas({ label: PICKUP_LABELS[kind] })) }),
     }
-    powerMatCache[kind] = mats
+    powerMatCache.set(key,mats)
   }
-
-  // Outer soft glow shell
-  const glow = new THREE.Mesh(powerGlowGeo, mats.glowMat)
-  g.add(glow)
-
-  // Crystal core
-  const core = new THREE.Mesh(isBoostHero ? powerCoreGeoBoost : powerCoreGeoDefault, mats.coreMat)
-  if (isBoostHero) {
-    core.rotation.x = Math.PI
-    core.position.y = 0.05
-  }
-  core.castShadow = true
-  g.add(core)
-
-  // Spinning halo ring
-  const ring = new THREE.Mesh(powerRingGeo, mats.ringMat)
-  ring.rotation.x = Math.PI / 2
-  g.add(ring)
-
-  // Icon sprite facing player. Paper-craft cutouts for boost / shield / magnet;
-  // remaining kinds keep the flat icon sheet. Phase has no matching asset.
-  const NO_ICON_KINDS = new Set(['phase'])
-  const PAPER_ICON = {
-    boost: '/assets/pickup-boost.webp',
-    shield: '/assets/power-shield.webp',
-    magnet: '/assets/power-magnet.webp',
-    slow: '/assets/power-slow.webp',
-  }
-  const iconUrl = PAPER_ICON[kind] || `/assets/power-${kind}.webp`
-  const paperIcon = Boolean(PAPER_ICON[kind])
-  try {
-    if (NO_ICON_KINDS.has(kind)) throw new Error('no icon asset')
-    if (!mats.iconMat) {
-      const tex = paperIcon ? loadCutoutTex(iconUrl) : loadTex(iconUrl)
-      mats.iconMat = new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, alphaTest: paperIcon ? 0.16 : 0, depthWrite: false, side: THREE.DoubleSide,
-      })
-    }
-    const icon = new THREE.Mesh(paperIcon ? powerIconGeoBoost : powerIconGeoDefault, mats.iconMat)
-    icon.position.z = 0.55
-    icon.rotation.y = Math.PI
-    g.add(icon)
-    g.userData.billboard = icon
-  } catch {
-    /* icons optional */
-  }
-
-  g.userData.ring = ring
-  g.userData.core = core
-  g.userData.glow = glow
-  g.scale.setScalar(1.32)
-  return g
+  const group = new THREE.Group()
+  const card = new THREE.Mesh(powerCardGeo,mats.icon)
+  const label = new THREE.Mesh(pickupLabelGeo,mats.label)
+  card.rotation.y = label.rotation.y = Math.PI
+  label.position.y = -1.4
+  group.add(card,label)
+  group.userData.kind = kind
+  group.userData.billboard = card
+  return group
 }
 
 function createCloud() {
   const g = new THREE.Group()
-  // Soft gray underside lumps first (slightly lower/behind) for a hint of
-  // volume, then bright puffs on top — randomized per-cloud so the sky
-  // doesn't read as one shape copy-pasted everywhere.
-  const lowPower = settings.lowPower
-  const lumpCount = lowPower ? 2 : 4 + ((rng() * 3) | 0)
-  const segs = lowPower ? 6 : 10
-  for (let i = 0; i < lumpCount; i++) {
-    const t = i / Math.max(1, lumpCount - 1)
-    const x = (t - 0.5) * 2.6 + (rng() - 0.5) * 0.3
-    const s = 0.75 + rng() * 0.7
-    if (!lowPower) {
-      const shade = new THREE.Mesh(new THREE.SphereGeometry(s * 0.92, segs - 2, segs - 2), cloudShadeMat)
-      shade.position.set(x, -s * 0.22, (rng() - 0.5) * 0.25 - 0.1)
-      g.add(shade)
-    }
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(s, segs, segs), cloudMat)
-    puff.position.set(x, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3)
-    g.add(puff)
-  }
+  // Two shared paper cuts replace disposable sphere clusters. The hard offset
+  // shows thickness, while both geometry and randomness stay outside gameplay.
+  const shade = new THREE.Mesh(cloudGeometry, cloudShadeMat)
+  shade.position.set(.12,-.16,.04)
+  g.add(shade, new THREE.Mesh(cloudGeometry, cloudMat))
+  g.scale.y = .65 + cloudRng() * .3
+  g.rotation.z = (cloudRng()-.5)*.12
   return g
 }
 
@@ -3947,7 +3893,8 @@ function activatePower(kind) {
   }
   audio.powerUp(kind)
   if (settings.haptics) Haptic.power()
-  powerLabel.textContent = meta.label
+  powerLabel.textContent = `${meta.label} · ${duration.toFixed(1)}s`
+  powerHud.dataset.power = kind
   powerFill.style.width = '100%'
   powerHud.classList.remove('hidden')
   powerBanner.textContent = meta.banner
@@ -3971,14 +3918,14 @@ function activatePower(kind) {
     // doesn't outrun the hazard density and cause an unavoidable crash.
     speedBoost = Math.max(speedBoost, 18)
     fovPunch = 12
-    shake = Math.max(shake, 0.3)
+    if (!settings.reducedMotion) shake = Math.max(shake, 0.3)
     velY += 3
     const safety = getBoostSafety(fx)
     invuln = Math.max(invuln, safety.graceSeconds)
     if (boostSafetyCue) {
       boostSafetyCue.textContent = fx.boostGraceSeconds > 0
-        ? `🚀 Turbo Fold · +${fx.boostGraceSeconds.toFixed(2)}s safety · ${safety.collisionScale.toFixed(2)}× hitbox`
-        : `🚀 Boost safety · ${safety.collisionScale.toFixed(2)}× hitbox`
+        ? `🚀 Turbo Fold · +${fx.boostGraceSeconds.toFixed(2)}s protection`
+        : '🚀 Boost · smaller crash target'
       boostSafetyCue.classList.remove('hidden')
     }
     spawnConfetti(planeX, planeY, 0)
@@ -3997,13 +3944,12 @@ const UPDRAFT_RADIUS = 3.4
 const UPDRAFT_STRENGTH = 9.5
 const UPDRAFT_BASE_Y = 5.2
 
-const updraftGeo = new THREE.CylinderGeometry(1.5, 2.6, 9, 12, 1, true)
+const updraftGeo = new THREE.CylinderGeometry(2.2, 3.2, 9, 12, 1, true)
 const updraftCanvas = document.createElement('canvas')
 updraftCanvas.width = 128
 updraftCanvas.height = 128
 const updraftInk = updraftCanvas.getContext('2d')
-updraftInk.fillStyle = 'rgba(213,244,224,.25)'
-updraftInk.fillRect(0, 0, 128, 128)
+// Transparent arrow ribbons leave the route visible through rising air.
 updraftInk.strokeStyle = '#d4ffe3'
 updraftInk.lineWidth = 4
 for (let y = 16; y < 128; y += 32) {
@@ -4021,20 +3967,29 @@ const updraftMat = new THREE.MeshBasicMaterial({
   map: updraftMap,
   color: 0x75bfa0,
   transparent: true,
-  opacity: 0.68,
+  opacity: 0.6,
   side: THREE.DoubleSide,
   depthWrite: false,
 })
 
-/**
- * A rising column of paper scraps. Drawn as an open cylinder rather than a
- * particle system so it costs one draw call and still reads instantly as
- * "go here" from the far end of a chunk.
- */
+const updraftHoopGeo = new THREE.RingGeometry(3.08,3.16,32)
+const updraftHoopMat = new THREE.MeshBasicMaterial({ color: 0x75bfa0, transparent: true, opacity: .6, side: THREE.DoubleSide, depthWrite: false })
+const updraftLabelMat = new THREE.MeshBasicMaterial({ map: pickupTexture(createPickupLabelCanvas({ label: 'UPDRAFT ↑ · LIFT' })), transparent: true, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false })
+/** Arrow ribbons, footprint hoops and a named lift cue share four draw calls. */
 function createUpdraftColumn() {
   const group = new THREE.Group()
-  const shell = new THREE.Mesh(updraftGeo, updraftMat)
-  group.add(shell)
+  const shell = new THREE.Mesh(updraftGeo,updraftMat)
+  const label = new THREE.Mesh(pickupLabelGeo,updraftLabelMat)
+  label.name = 'liftLabel'
+  label.rotation.y = Math.PI
+  label.position.y = 3.9
+  group.add(shell,label)
+  for (const y of [-4,0]) {
+    const hoop = new THREE.Mesh(updraftHoopGeo,updraftHoopMat)
+    hoop.rotation.x = Math.PI/2
+    hoop.position.y = y
+    group.add(hoop)
+  }
   group.userData.shell = shell
   return group
 }
@@ -4120,7 +4075,7 @@ function setGroundTexture(url, tint = 0xf2e6d8) {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping
   // Keep the density set on the tiles so zone crossfades don't snap back to
   // the old coarse repeat and blur the painted detail.
-  tex.repeat.set(6, 46)
+  configureGroundPattern(tex,url,ground.position.z)
   ground.material.map = tex
   ground.material.color.setHex(tint)
   ground.material.needsUpdate = true
@@ -4134,10 +4089,6 @@ function applyNightReadability(enabled) {
   hemi.intensity = night ? 1.55 : 0.92
   sun.intensity = night ? 1.7 : 1.25
   sun.color.setHex(night ? 0xffe9b8 : 0xfff0e0)
-  for (const mat of buildingMats) {
-    mat.emissive.setHex(night ? 0x3a3358 : 0x000000)
-    mat.emissiveIntensity = night ? 0.28 : 0
-  }
   birdMat.emissive.setHex(night ? 0xff8a65 : 0x000000)
   birdMat.emissiveIntensity = night ? 0.35 : 0
   birdAccentMat.emissive.setHex(night ? 0xffcc80 : 0x000000)
@@ -4161,6 +4112,10 @@ function applyZone(z, announce) {
   }
   applyNightReadability(z.nightReadability)
   hazardPaletteZone = z.id
+  const palette = getPaperPalette(z.id)
+  cloudMat.color.set(palette.paper)
+  cloudShadeMat.color.set(palette.mid)
+  for (const material of buildingMats) material.map = loadTex(`paper:wall:${z.id}`)
   if (z.sky) setSkyTexture(z.sky, announce)
   if (z.ground) setGroundTexture(z.ground, z.groundTint ?? 0xf2e6d8)
   if (z.id !== groundLifeZoneId) buildGroundLife(z.id)
@@ -4264,6 +4219,11 @@ function applyUpgradeVisuals(fx = activeUpgradeEffects) {
 }
 
 function resetGame() {
+  stopScoreCountUp()
+  lastFlightDebrief = null
+  renderFlightDebrief(flightDebriefEl, null)
+  runSummaryEl?.classList.add('hidden')
+  $('practice-again-btn')?.classList.add('hidden')
   needsRender = true
   const upgradeEffects = refreshUpgradeEffects()
   clearEntities()
@@ -4456,14 +4416,14 @@ function resetGame() {
     }
   }
 
-  // Bigger, spread cushions give the open sky depth without a fog cost —
-  // they parallax at 0.35x world speed so altitude still reads.
+  // Paper clouds parallax at 0.35x speed and never consume route randomness.
+  cloudRng = mulberry32(hashString(`paper-clouds:${currentZoneId}`))
   const cloudCount = settings.lowPower || !renderQuality.secondaryEffects ? 4 : 7
   for (let i = 0; i < cloudCount; i++) {
     const cl = createCloud()
     // Scenery frames the corridor; it must never mask an approaching hazard.
-    cl.position.set((i % 2 ? -1 : 1) * (24 + rng() * 25), 23 + rng() * 13, 45 + rng() * 185)
-    cl.scale.setScalar(2.4 + rng() * 2.4)
+    cl.position.set((i % 2 ? -1 : 1) * (24 + cloudRng() * 25), 23 + cloudRng() * 13, 45 + cloudRng() * 185)
+    cl.scale.multiplyScalar(2.4 + cloudRng() * 2.4)
     scene.add(cl)
     clouds.push(cl)
   }
@@ -4783,6 +4743,10 @@ function ghostStorageKey() {
 }
 
 function retryCurrentRun() {
+  if (runKind === 'tutorial' && crashReason === 'Tutorial complete!') {
+    startGame('classic')
+    return
+  }
   if (runKind === 'journey') journey = loadJourney(localStorage).journey
   if (runKind === 'journey' && !journey?.selectedRouteId) {
     openJourney()
@@ -4947,6 +4911,8 @@ function openJourney() {
 }
 
 function showMenu() {
+  stopScoreCountUp()
+  clearFlightBanners()
   state = 'menu'
   launchChallenge = null
   manualPause = false
@@ -4986,6 +4952,17 @@ function showMenu() {
   applyPauseState({ banner: false })
 }
 
+function clearFlightBanners() {
+  bannerTimer = 0
+  zoneBannerTimer = 0
+  bannerSlot = createBannerState()
+  for (const element of [windBanner, powerBanner, zoneBanner]) {
+    element.classList.add('hidden')
+    element.classList.remove('banner-suppressed')
+    element.textContent = ''
+  }
+}
+
 function showPostcardReveal(card) {
   shellBridge?.showPostcardReveal?.(card)
 }
@@ -5000,6 +4977,7 @@ const bindClick = (id, fn) => {
 }
 
 bindClick('retry-btn', () => retryCurrentRun())
+bindClick('practice-again-btn', () => startGame('tutorial'))
 bindClick('hangar-from-gameover', () => {
   gameoverEl?.classList.add('hidden')
   const focusId = $('hangar-from-gameover')?.dataset?.focusUpgrade || null
@@ -5323,6 +5301,8 @@ function die(reason) {
   }
 
   const isWin = isCleanEnd
+  // Capture the actual ending before the crash cleanup resets the held Tuck.
+  lastFlightDebrief = buildFlightDebrief({ reason, tucking: tuckState.phase === 'tucking', stats: runStats })
   state = 'dead'
   // A dead run is not skimming or tucking. `updateGroundSkim` and `advanceTuck`
   // only run while playing, so without this the last live frame's chain would
@@ -5401,6 +5381,8 @@ function finalizeDeath() {
     gameoverEl.classList.remove('hidden')
   }
   crashT = -1
+  clearFlightBanners()
+  if (!gameoverEl.classList.contains('hidden')) retryBtn?.focus({ preventScroll: true })
 }
 
 const HANGAR_ONBOARD_KEY = 'paper-plane-run-hangar-onboard'
@@ -5430,14 +5412,10 @@ function maybeShowHangarOnboarding(reason, summary) {
 function renderRunSummary(summary) {
   if (!runSummaryEl || !summary) return
   runSummaryEl.innerHTML = ''
-  const items = [
-    { label: 'Banked', value: `+${summary.bankedStars}★`, emphasis: summary.bankedStars > 0 },
-    {
-      label: summary.improvementMeters > 0 ? 'Personal best' : 'Best combo',
-      value: summary.improvementMeters > 0 ? `+${summary.improvementMeters}m` : `${summary.maxCombo}x`,
-    },
-    { label: 'Next', value: summary.nextAction, next: true },
-  ]
+  const items = [{ label: 'Banked', value: `+${summary.bankedStars}★`, emphasis: summary.bankedStars > 0 }]
+  if (summary.improvementMeters > 0) items.push({ label: 'Personal best', value: `+${summary.improvementMeters}m` })
+  else if (summary.maxCombo > 1) items.push({ label: 'Best combo', value: `${summary.maxCombo}x` })
+  items.push({ label: 'Next', value: summary.nextAction, next: true })
   for (const item of items) {
     const row = document.createElement('div')
     if (item.next) row.classList.add('run-summary-next')
@@ -5588,7 +5566,8 @@ function finalizeDeathUnsafe() {
     }
   }
   const walletAfterRun = getWallet()
-  const affordableUpgrades = listUpgrades()
+  const shopUpgrades = listUpgrades()
+  const affordableUpgrades = shopUpgrades
     .filter((upgrade) => upgrade.canAfford)
     .map((upgrade) => ({ id: upgrade.id, name: upgrade.name, cost: upgrade.cost }))
   const runSummary = buildRunSummary({
@@ -5599,8 +5578,10 @@ function finalizeDeathUnsafe() {
     previousBest: previousBestDistance,
     maxCombo,
     reason,
+    recordEligible: isDistanceRun && !isWin,
     walletAfterRun,
     affordableUpgrades,
+    remainingUpgrades: shopUpgrades.filter(upgrade => !upgrade.maxed),
   })
   refreshUnlocks(season.id)
   updateMissionsFromRun({
@@ -5647,9 +5628,11 @@ function finalizeDeathUnsafe() {
   if (retryBtn) {
     retryBtn.textContent = runKind === 'journey'
       ? (completedJourneyRoute ? (journey.status === 'complete' ? 'View Journey' : 'Continue Journey') : 'Retry Route')
-      : 'Fly Again'
+      : reason === 'Tutorial complete!' ? 'Fly Classic' : 'Fly Again'
   }
+  $('practice-again-btn')?.classList.toggle('hidden', reason !== 'Tutorial complete!')
   renderRunSummary(runSummary)
+  renderFlightDebrief(flightDebriefEl, lastFlightDebrief)
   maybeShowHangarOnboarding(reason, runSummary)
 
   renderJourneyResultProgress(journeyResultProgressEl, runKind === 'journey' ? lastJourneyResult : null)
@@ -5865,8 +5848,8 @@ function scrollWorld(move, lateralDrift = 0) {
   for (const cl of clouds) {
     cl.position.z -= move * 0.35
     if (cl.position.z < -30) {
-      cl.position.z = 180 + rng() * 50
-      cl.position.x = Math.sign(cl.position.x) * (24 + rng() * 25)
+      cl.position.z = 180 + cloudRng() * 50
+      cl.position.x = Math.sign(cl.position.x) * (24 + cloudRng() * 25)
     }
   }
   ground.position.z -= move
@@ -5948,7 +5931,7 @@ function animateHazards(dt) {
       if (e.mesh.userData.glow) {
         e.mesh.userData.glow.material.opacity = 0.12 + Math.sin(hazardClock * 5 + e.mesh.position.z) * 0.06
       }
-      if (e.mesh.userData.core) e.mesh.userData.core.rotation.y += dt * 2.2
+      // Power symbols stay face-on; a gentle bob conveys collectibility.
     }
     if (e.type === 'scissors') {
       e.mesh.rotation.z += dt * 1.2
@@ -6056,10 +6039,11 @@ function animateHazards(dt) {
       }
     }
     // Spin the billboard card in-plane (not around Y) so it keeps facing the camera
-    if (e.type === 'star' && e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.z += dt * 1.6
+    if (e.type === 'star' && !e.golden && !settings.reducedMotion && e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.z += dt * 1.6
     if (e.type === 'power') {
-      e.mesh.rotation.y += dt * 1.8
-      e.mesh.userData.ring && (e.mesh.userData.ring.rotation.z += dt * 2)
+      if (!settings.reducedMotion && e.mesh.userData.billboard) {
+        e.mesh.userData.billboard.rotation.z = Math.sin(elapsed * 2 + e.mesh.position.z) * .06
+      }
     }
     if (e.type === 'ring') e.mesh.rotation.z += dt * 1.5
   }
@@ -6251,7 +6235,7 @@ function update(dt) {
     // FOV settle
     if (fovPunch !== 0) {
       fovPunch = THREE.MathUtils.lerp(fovPunch, 0, 1 - Math.pow(0.001, dt))
-      camera.fov = baseFov + fovPunch
+      camera.fov = baseFov + (settings.reducedMotion ? 0 : fovPunch)
       camera.updateProjectionMatrix()
     }
     scrollWorld(Math.max(4, speed * 0.15) * dt)
@@ -6301,8 +6285,8 @@ function update(dt) {
   if (activePower) {
     activePower.timeLeft -= dt
     powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
+    powerLabel.textContent = `${POWER_META[activePower.kind]?.label || activePower.kind} · ${Math.max(0, activePower.timeLeft).toFixed(1)}s`
     if (activePower.kind === 'shield' && shieldBubble) {
-      powerLabel.textContent = `🛡 Shield · ${Math.max(0, activePower.timeLeft).toFixed(1)}s`
       if (settings.reducedMotion) {
         shieldBubble.material.opacity = 0.19
         shieldBubble.visible = true
@@ -6354,7 +6338,7 @@ function update(dt) {
     if (activePower?.kind !== 'boost') {
       fovPunch = THREE.MathUtils.lerp(fovPunch, targetFov, 1 - Math.pow(0.0008, dt))
     }
-    camera.fov = baseFov + fovPunch
+    camera.fov = baseFov + (settings.reducedMotion ? 0 : fovPunch)
     camera.updateProjectionMatrix()
   }
 
@@ -6639,7 +6623,7 @@ function update(dt) {
     dt,
     acceleration: controlAcceleration,
     sinkPerSecond: sinkPerSecond - lift,
-    dragX: LATERAL_DRAG,
+    dragX: bankDrag(steerInput),
     dragY: activePower?.kind === 'boost' ? 0.15 : 0.1,
     maxVel: MAX_VEL,
     extraForceX: extraForceX + bankTurnAcceleration(bankState.bank),
@@ -6870,6 +6854,8 @@ function update(dt) {
   const wingR = plane.userData.wingR
   if (wingL) wingL.rotation.z = flightPose.wingFlex
   if (wingR) wingR.rotation.z = -flightPose.wingFlex
+  if (wingL?.userData.outline) wingL.userData.outline.quaternion.copy(wingL.quaternion)
+  if (wingR?.userData.outline) wingR.userData.outline.quaternion.copy(wingR.quaternion)
 
   // Invuln blink
   if (invuln > 0) {
@@ -6969,14 +6955,19 @@ function update(dt) {
   camera.position.x += (_camTarget.x - camera.position.x) * lateralEase
   camera.position.z += (_camTarget.z - camera.position.z) * lateralEase
   camera.position.y += (_camTarget.y - camera.position.y) * verticalEase
-  const { leanX, leanY } = cameraLean({ velX, velY })
-  const camRoll = computeBankRoll({ bank: bankState?.bank ?? 0 })
-  camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, camRoll, 1 - Math.pow(0.01, dt))
-  camera.lookAt(planeX * 0.2 + leanX, planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
+  const { leanX, leanY } = cameraLean({ velX, velY, reducedMotion: settings.reducedMotion })
+  const camRoll = computeBankRoll({ bank: bankState?.bank ?? 0, reducedMotion: settings.reducedMotion })
+  camera.position.x = cameraLateralPosition({ current: camera.position.x, planeX, aspect: camera.aspect })
+  camera.position.z = Math.min(camera.position.z,-cameraFlightDistance({ aspect: camera.aspect, fov: camera.fov, planeScale: plane.scale.x }))
+  camera.lookAt(planeX + leanX * Math.min(1,camera.aspect), planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
+  // lookAt owns the base orientation; bank belongs after it or it is erased.
+  camera.rotation.z += camRoll
   if (shake > 0) {
     shake = Math.max(0, shake - dt * 1.2)
-    camera.position.x += (Math.random() - 0.5) * shake * 0.45
-    camera.position.y += (Math.random() - 0.5) * shake * 0.25
+    if (!settings.reducedMotion) {
+      camera.position.x += (Math.random() - 0.5) * shake * 0.45
+      camera.position.y += (Math.random() - 0.5) * shake * 0.25
+    }
   }
   // Contact shadow tracks the plane's lane; it tightens and fades with
   // altitude so height stays readable against the patterned ground.
@@ -7605,8 +7596,12 @@ window.render_game_to_text = () => JSON.stringify({
     // the flight corridor fails a test instead of confusing a player.
     draws: groundLifeFields.length,
     instances: groundLifeFields.reduce((total, field) => total + field.instances.length, 0),
-    species: groundLifeFields.map(({ speciesDef, instances }) => ({
+    species: groundLifeFields.map(({ speciesDef, mesh, instances }) => ({
       id: speciesDef.id,
+      shape: speciesDef.shape,
+      vehicle: mesh.geometry.userData.variant || null,
+      modelVertices: mesh.geometry.attributes.position.count,
+      textured: Boolean(mesh.material.map),
       motion: speciesDef.motion,
       count: instances.length,
       minAbsX: Number(Math.min(...instances.map((i) => Math.abs(i.x))).toFixed(2)),
@@ -7716,6 +7711,7 @@ if (import.meta.env.DEV && devTestState === '#test-gameover') {
     walletAfterRun: 3,
     affordableUpgrades: [],
   }))
+  renderFlightDebrief(flightDebriefEl, buildFlightDebrief({ reason: 'Hit a paper skyscraper', stats: { threads: 2, flares: 3 } }))
 }
 
 if (import.meta.env.DEV && devTestState === '#test-obstacles') {
@@ -7745,6 +7741,51 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  needsRender = true
+}
+
+if (import.meta.env.DEV && ['#test-items','#test-item-boost','#test-item-lift'].includes(devTestState)) {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  nextSpawnZ = 1e9
+  windTimer = 999
+  elapsed = 2
+  planeY = devTestState === '#test-item-lift' ? 5.2 : 10
+  plane.position.set(0,planeY,0)
+  camera.position.set(0,planeY+CAM_HEIGHT,-cameraFlightDistance({aspect:camera.aspect}))
+  camera.lookAt(0,planeY+CAM_AIM_LIFT,CAM_AIM_Z)
+  const powers = devTestState === '#test-items' ? ['shield','boost','magnet'] : devTestState === '#test-item-boost' ? ['boost'] : []
+  powers.forEach((kind,index) => {
+    const mesh = createPowerUp(kind)
+    mesh.position.set(powers.length === 3 ? (index-1)*3.3 : 0,10, powers.length === 3 ? 22 : 8)
+    scene.add(mesh)
+    entities.push({mesh,type:'power',kind,radius:1.35})
+  })
+  if (devTestState !== '#test-item-boost') {
+    const column = createUpdraftColumn()
+    column.position.set(0,UPDRAFT_BASE_Y,devTestState === '#test-item-lift' ? 8 : 38)
+    scene.add(column)
+    entities.push({mesh:column,type:'updraft',radius:UPDRAFT_RADIUS,strength:UPDRAFT_STRENGTH})
+  }
+  if (devTestState === '#test-items') {
+    for (const golden of [false,true]) {
+      const mesh = createStar({golden})
+      mesh.position.set(golden ? 2 : -2,8,14)
+      scene.add(mesh)
+      entities.push({mesh,type:'star',golden,radius:golden ? 1.2 : .9})
+    }
+  }
+  hudEl?.classList.remove('hidden')
+  showStick(true)
+  applyUpgradeVisuals()
+  update(1/60)
+  simulationPaused = true
+  needsRender = true
 }
 
 if (import.meta.env.DEV && devTestState.startsWith('#test-upgrades-')) {
@@ -8004,6 +8045,24 @@ if (import.meta.env.DEV && devTestState === '#test-power-refresh') {
   simulationPaused = true
 }
 
+// A close street view uses the actual instanced city fields and cached plates.
+if (import.meta.env.DEV && devTestState === '#test-streets') {
+  settings = saveSettings({haptics:false})
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  applyZone(ZONES[0],false)
+  plane.visible = false
+  camera.position.set(13,9,-10)
+  camera.lookAt(22,0,14)
+  skyA.position.copy(camera.position)
+  skyB.position.copy(camera.position)
+  simulationPaused = true
+  needsRender = true
+}
+
 // Representative live-scene captures share the production renderer and zone assets.
 if (import.meta.env.DEV && devTestState.startsWith('#test-landscape-')) {
   const zone = ZONES.find(item => item.id === devTestState.slice('#test-landscape-'.length))
@@ -8056,11 +8115,38 @@ if (import.meta.env.DEV) {
   // instance that owns window.advanceTime, so probes can never race or
   // double-boot the engine. Freeze holds the sim while a frame renders,
   // so captures can't race the invuln blink.
-  window.__paperPose = () => ({
+  window.__paperPose = () => {
+    const wingBounds = new THREE.Box3()
+    plane?.updateMatrixWorld(true)
+    camera.updateMatrixWorld(true)
+    for (const wing of [plane?.userData.wingL,plane?.userData.wingR]) {
+      if (!wing) continue
+      const vertices = wing.geometry.attributes.position
+      for (let index=0;index<vertices.count;index++) {
+        wingBounds.expandByPoint(wing.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices,index)).project(camera))
+      }
+    }
+    const liftLabelBounds = []
+    for (const entity of entities.filter(item=>item.type === 'updraft')) {
+      const label = entity.mesh.getObjectByName('liftLabel')
+      if (!label) continue
+      label.updateWorldMatrix(true,false)
+      const bounds = new THREE.Box3()
+      const vertices = label.geometry.attributes.position
+      for (let index=0;index<vertices.count;index++) {
+        bounds.expandByPoint(label.localToWorld(new THREE.Vector3().fromBufferAttribute(vertices,index)).project(camera))
+      }
+      liftLabelBounds.push({min:bounds.min.toArray(),max:bounds.max.toArray()})
+    }
+    return {
     planePos: plane?.position.toArray(),
     planeScale: plane?.scale.x,
     planeVisible: plane?.visible,
     camPos: camera.position.toArray(),
+    camFov: camera.fov,
+    wingBounds: { min: wingBounds.min.toArray(),max: wingBounds.max.toArray() },
+    liftLabelBounds,
+    boostStreamerVisible: Boolean(boostFlame?.visible),
     shadowVisible: planeShadow.visible,
     shadowScale: planeShadow.scale.x,
     unfold: spawnUnfold,
@@ -8070,7 +8156,8 @@ if (import.meta.env.DEV) {
     groundMapWidth: ground?.material?.map?.image?.width ?? null,
     groundColor: ground?.material?.color?.getHex?.() ?? null,
     skyUrl: currentSkyUrl,
-  })
+    }
+  }
   window.__paperFreeze = (frozen) => {
     simulationPaused = Boolean(frozen)
     return window.__paperPose()

@@ -20,6 +20,7 @@ test('workshop search keeps focus through a complete query and group filters rec
 })
 
 test('progress export, invalid preview, restore and undo preserve the complete flight log', async ({ page }, testInfo) => {
+  test.slow()
   await page.addInitScript(() => {
     if (localStorage.getItem('redesign-seeded')) return
     localStorage.setItem('redesign-seeded', '1')
@@ -103,4 +104,41 @@ test('all six paper landscapes render with readable flight UI and bounded scener
   }
   expect(errors).toEqual([])
   await testInfo.attach('scene-cost', { body: JSON.stringify(readings, null, 2), contentType: 'application/json' })
+})
+
+test('every active hazard paints a distinct transparent paper silhouette', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'source art generator is checked in development')
+  await openApp(page)
+  const silhouettes = await page.evaluate(async () => {
+    const { createHazardCanvas } = await import('/src/game/paper-art.js')
+    const { FLYER_DEFS } = await import('/src/game/flyers.js')
+    const gallery = document.createElement('section')
+    gallery.style.cssText = 'position:fixed;inset:0;z-index:99999;display:grid;grid-template-columns:repeat(4,1fr);align-content:center;background:#f4edde;color:#221a1c;text-align:center;gap:12px;padding:12px;overflow:auto'
+    document.body.append(gallery)
+    return [...FLYER_DEFS,{id:'scissors',label:'scissors'}].map(def => {
+      const canvas = createHazardCanvas({kind:def.id})
+      canvas.style.cssText = 'width:min(100%,128px);height:auto;display:block;margin:auto'
+      const card = document.createElement('figure')
+      card.style.margin = '0'
+      const label = document.createElement('figcaption')
+      label.textContent = def.label
+      card.append(canvas,label); gallery.append(card)
+      const pixels = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data
+      let occupied = 0, edgePixels = 0, hash = 2166136261
+      for (let i=3;i<pixels.length;i+=4) {
+        if (pixels[i]) occupied++
+        const index = (i-3)/4, x = index%canvas.width, y = Math.floor(index/canvas.width)
+        if (pixels[i] && (x === 0 || y === 0 || x === canvas.width-1 || y === canvas.height-1)) edgePixels++
+        hash = Math.imul(hash ^ pixels[i],16777619) >>> 0
+      }
+      return {id:def.id,occupied,edgePixels,coverage:occupied/(canvas.width*canvas.height),hash}
+    })
+  })
+  expect(new Set(silhouettes.map(item=>item.hash)).size).toBe(8)
+  for (const silhouette of silhouettes) {
+    expect(silhouette.coverage,silhouette.id).toBeGreaterThan(.1)
+    expect(silhouette.coverage,silhouette.id).toBeLessThan(.8)
+    expect(silhouette.edgePixels,`${silhouette.id} is clipped at the sprite boundary`).toBe(0)
+  }
+  await page.screenshot({path:`output/round-two-${testInfo.project.name}-hazards.png`})
 })

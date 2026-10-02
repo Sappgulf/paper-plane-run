@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { existsSync } from 'node:fs'
 import { ZONES, nextZone, zoneAt } from '../src/zones.js'
 import { PAPER_PALETTES } from '../src/game/paper-art.js'
+import { createWorldCanvas } from '../src/game/paper-world-art.js'
 
 describe('zones', () => {
   test('includes Midnight Origami after Aurora', () => {
@@ -16,17 +16,31 @@ describe('zones', () => {
     expect(nextZone(1700)).toBeNull()
   })
 
-  // Skies and grounds are painted art that ships with the build; hazards are
-  // cut at runtime from the zone's own palette. Both halves have to hold for a
-  // zone to be complete, and a zone added without either would otherwise only
-  // show up as a missing texture in a screenshot nobody takes.
-  test('every zone ships its painted sky and ground', () => {
+  test('every zone resolves complete, distinct sky and ground plates without network assets', () => {
+    const skyDraws = new Set(), groundDraws = new Set()
     for (const zone of ZONES) {
-      expect(zone.sky, zone.id).toBe(`/assets/sky-${zone.id}.jpg`)
-      expect(zone.ground, zone.id).toBe(`/assets/ground-${zone.id}.jpg`)
-      expect(existsSync(new URL(`../public${zone.sky}`, import.meta.url)), zone.sky).toBe(true)
-      expect(existsSync(new URL(`../public${zone.ground}`, import.meta.url)), zone.ground).toBe(true)
+      for (const kind of ['sky','ground','wall']) {
+        if (kind !== 'wall') expect(zone[kind]).toBe(`paper:${kind}:${zone.id}`)
+        const commands = []
+        // Record the real generator's complete draw stream, including paints
+        // and coordinates. The browser suite verifies its visible rendering.
+        const context = new Proxy({}, {
+          get: (_,name) => (...args) => { commands.push([name,...args]) },
+          set: (_,name,value) => { commands.push([name,value]); return true },
+        })
+        const canvas = createWorldCanvas({ kind,zoneId:zone.id,canvasFactory:()=>({getContext:()=>context}) })
+        expect(canvas.width).toBe(512)
+        expect(canvas.height).toBe(kind === 'sky' ? 256 : 512)
+        expect(commands.length).toBeGreaterThan(100)
+        expect(commands.flat().filter(value=>typeof value === 'number').every(Number.isFinite)).toBe(true)
+        const signature = JSON.stringify(commands)
+        if (kind === 'sky') skyDraws.add(signature)
+        if (kind === 'ground') groundDraws.add(signature)
+      }
     }
+    expect(skyDraws.size).toBe(ZONES.length)
+    expect(groundDraws.size).toBe(ZONES.length)
+    expect(createWorldCanvas({canvasFactory:()=>null})).toBeNull()
   })
 
   test('every zone backs its runtime-cut hazards with a full palette', () => {

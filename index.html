@@ -201,7 +201,7 @@
           <p class="manual-intro">One plane. A sky full of choices.</p>
           <div class="manual-lessons">
             <article><span class="manual-number">01</span><div><h3>Bank into the gap</h3><p>Mouse, touch, arrows or WASD steer your wings. Commit early: turning takes time and spends height.</p></div></article>
-            <article><span class="manual-number">02</span><div><h3>Keep some sky beneath you</h3><p>You always sink. Striped updrafts restore height. Low flight earns skim rewards, but hazards patrol the deck too.</p></div></article>
+            <article><span class="manual-number">02</span><div><h3>Keep some sky beneath you</h3><p>You always sink. Green arrow columns marked UPDRAFT restore height. Low flight earns skim rewards, but hazards patrol the deck too.</p></div></article>
             <article><span class="manual-number">03</span><div><h3>Tuck. Release. Flare.</h3><p>Hold <kbd>Space</kbd> or <b>Tuck</b> for a dive. Release above the ground to climb, burst forward and bank meters. Start with short holds.</p></div></article>
           </div>
           <div class="manual-modes"><b>Pick your sky</b><p>Journey tells a four-flight story. Classic goes as far as you can. Daily and Weekly share a seeded route. Tutorial gives you a gentle practice flight.</p></div>
@@ -410,6 +410,7 @@
           <p id="final-score" class="final"></p>
           <p id="final-detail" class="detail"></p>
           <div id="run-summary" class="run-summary hidden" aria-label="Run summary"></div>
+          <section id="flight-debrief" class="flight-debrief hidden" aria-label="Flight notes"></section>
           <div id="journey-result-progress" class="hidden" aria-live="polite"></div>
           <p id="challenge-result" class="challenge-result hidden"></p>
           <div class="btn-row wrap gameover-actions gameover-actions-primary">
@@ -427,9 +428,10 @@
             </div>
           </div>
           <div class="btn-row wrap gameover-actions gameover-actions-secondary">
+            <button id="practice-again-btn" type="button" class="btn-secondary hidden">Practice again</button>
             <button id="share-btn" type="button" class="btn-secondary">Share ghost</button>
           </div>
-          <p id="share-status" class="share-status"></p>
+          <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
           <button id="menu-btn" type="button" class="linkish">Main menu</button>
         </div>
       </div>

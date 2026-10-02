@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { landscapeLayers, scrollLandscapeZ } from './game/paper-landscape.js'
+import { landscapeLayers, vistaLayers, scrollLandscapeZ } from './game/paper-landscape.js'
+import { createVistaGeometry } from './paper-vista-models.js'
 
 export function createPaperLandscape(scene) {
   const fields = []
@@ -30,17 +31,19 @@ export function createPaperLandscape(scene) {
   return {
     rebuild(zoneId, quality) {
       clear()
-      for (const layer of landscapeLayers(zoneId, quality)) {
-        const geometry = new THREE.BufferGeometry()
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-        geometry.computeVertexNormals()
+      for (const layer of [...landscapeLayers(zoneId, quality), ...vistaLayers(zoneId, quality)]) {
+        const geometry = layer.kind ? createVistaGeometry(layer.kind) : new THREE.BufferGeometry()
+        if (!layer.kind) {
+          geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+          geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+          geometry.computeVertexNormals()
+        }
         const material = new THREE.MeshBasicMaterial({ color: layer.color, vertexColors: true, side: THREE.DoubleSide })
         const mesh = new THREE.InstancedMesh(geometry, material, layer.slots.length)
         mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
         mesh.frustumCulled = false
         mesh.userData.decorative = true
-        mesh.name = `paper-landscape-${zoneId}`
+        mesh.name = layer.kind ? `paper-vista-${zoneId}-${layer.kind}` : `paper-landscape-${zoneId}`
         const field = { mesh, slots: layer.slots }
         fields.push(field)
         writeMatrices(field)

@@ -17,9 +17,8 @@
  *      crease, because that is what says "paper" rather than "flat shading".
  *   4. Depth comes from hard offset shadows between layers, never from blur.
  *
- * Zone skies and grounds are painted assets. What is generated here is what
- * has to stay in lockstep with the palette at runtime: the paper stock every
- * plane skin flies on, and the hazard sprites, which are cut in the zone's
+ * World plates, plane stock and hazard sprites share this palette. Hazards
+ * are cut in the zone's
  * reserved accent so danger is one learnable colour. The canvas factory is
  * injected so the palettes stay testable outside a browser.
  */
@@ -161,18 +160,19 @@ function outlinedPath(ctx, size, fill, draw) {
 /** Crossed blades and two finger rings — read as scissors at any distance. */
 function drawScissors(ctx, size, fill) {
   const c = size / 2
-  const s = size / 100
+  const cy = size * .45
+  const s = size / 100 * .85
   outlinedPath(ctx, size, fill, (context) => {
     context.beginPath()
-    context.moveTo(c - 26 * s, c + 34 * s)
-    context.lineTo(c + 22 * s, c - 38 * s)
-    context.moveTo(c + 26 * s, c + 34 * s)
-    context.lineTo(c - 22 * s, c - 38 * s)
+    context.moveTo(c - 26 * s, cy + 34 * s)
+    context.lineTo(c + 22 * s, cy - 38 * s)
+    context.moveTo(c + 26 * s, cy + 34 * s)
+    context.lineTo(c - 22 * s, cy - 38 * s)
   })
   for (const side of [-1, 1]) {
     outlinedPath(ctx, size, fill, (context) => {
       context.beginPath()
-      context.arc(c + side * 20 * s, c + 40 * s, 13 * s, 0, Math.PI * 2)
+      context.arc(c + side * 20 * s, cy + 40 * s, 13 * s, 0, Math.PI * 2)
     })
   }
 }
@@ -191,6 +191,34 @@ function drawFlyer(ctx, size, fill) {
     context.lineTo(c - 42 * s, c + 26 * s)
     context.closePath()
   })
+}
+
+// Coordinates are paper cuts in a 100-unit sheet. Each active flyer keeps a
+// recognizable silhouette even when its texture is only a few pixels tall.
+export const HAZARD_PROFILES = Object.freeze({
+  bird: [[[-42,-12],[-13,-7],[0,7],[13,-7],[42,-12],[26,10],[9,18],[0,11],[-9,18],[-26,10]]],
+  hawk: [[[-43,-24],[-24,-10],[-6,-4],[0,-18],[6,-4],[24,-10],[43,-24],[34,13],[12,21],[5,15],[0,35],[-5,15],[-12,21],[-34,13]]],
+  kite: [[[0,-37],[28,0],[0,26],[-28,0]],[[0,24],[6,30],[-5,35],[5,40],[0,41],[-10,35]]],
+  biplane: [[[-40,-19],[40,-19],[40,-9],[-40,-9]],[[-37,8],[37,8],[37,18],[-37,18]],[[-6,-30],[6,-30],[9,31],[-9,31]],[[-19,25],[19,25],[19,33],[-19,33]]],
+  dragonfly: [[[-4,-18],[-39,-30],[-42,-12],[-7,-2]],[ [4,-18],[39,-30],[42,-12],[7,-2]],[[-5,0],[-35,5],[-28,23],[-4,12]],[[5,0],[35,5],[28,23],[4,12]],[[-4,-25],[4,-25],[5,30],[0,39],[-5,30]]],
+  wasp: [[[-4,-10],[-29,-29],[-35,-12],[-9,5]],[[4,-10],[29,-29],[35,-12],[9,5]],[[0,-20],[12,-6],[10,18],[0,34],[-10,18],[-12,-6]]],
+  balloon: [Array.from({length:12},(_,i)=>{ const a=i*Math.PI/6; return [Math.cos(a)*27,Math.sin(a)*31-10] }),[[-4,20],[4,20],[7,27],[-7,27]],[[0,27],[3,34],[-1,41],[-3,40],[0,34],[-2,28]]],
+})
+
+function drawProfile(ctx, size, fill, profile) {
+  const center = size / 2, scale = size / 100
+  for (const points of profile) outlinedPath(ctx, size, fill, context => {
+    context.beginPath()
+    points.forEach(([x,y], index) => {
+      const method = index ? 'lineTo' : 'moveTo'
+      context[method](center+x*scale,center+y*scale)
+    })
+    context.closePath()
+  })
+  // A narrow crease differentiates the two sides without changing danger ink.
+  ctx.strokeStyle = HAZARD_INK
+  ctx.lineWidth = Math.max(1, size * .012)
+  ctx.beginPath(); ctx.moveTo(center,center-size*.12); ctx.lineTo(center,center+size*.12); ctx.stroke()
 }
 
 /**
@@ -213,6 +241,7 @@ export function createHazardCanvas({
   if (!ctx) return null
   const fill = palette.accent || DEFAULT_PALETTE.accent
   if (kind === 'scissors') drawScissors(ctx, width, fill)
+  else if (HAZARD_PROFILES[kind]) drawProfile(ctx, width, fill, HAZARD_PROFILES[kind])
   else drawFlyer(ctx, width, fill)
   return canvas
 }

@@ -35,6 +35,20 @@ describe('flight focus lane scoring', () => {
       label: 'FLY',
     })
   })
+
+  test('names lift columns in reach and ignores an updraft across the corridor', () => {
+    expect(pickFlightFocus([{ type: 'updraft',x: 1,y: 5.2,z: 22 }],{planeX:0,planeY:5}))
+      .toMatchObject({ cue: 'lift',label: 'UPDRAFT · LIFT' })
+    expect(pickFlightFocus([{ type: 'updraft',x: 1,y: 5.2,z: 22 }],{planeX:0,planeY:5,teachStars:true}))
+      .toMatchObject({ cue: 'lift',label: 'UPDRAFT · LIFT' })
+    expect(pickFlightFocus([{ type: 'updraft',x: 12,y: 5.2,z: 22 }],{planeX:0,planeY:5}).target).toBeNull()
+  })
+
+  test('identifies the approaching power by its actual effect', () => {
+    for (const [kind,label] of [['boost','BOOST · SPEED'],['shield','SHIELD · PROTECT'],['magnet','MAGNET · STARS']]) {
+      expect(pickFlightFocus([{type:'power',kind,x:0,y:10,z:24}]).label).toBe(label)
+    }
+  })
 })
 
 describe('hazard telegraph lane filter', () => {

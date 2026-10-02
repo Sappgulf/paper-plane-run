@@ -16,7 +16,8 @@ in the project exists to give them somewhere to happen.
 **Altitude is the resource.** A paper plane only ever falls. You always sink;
 banking hard and holding the nose up both make you sink faster; diving trades
 height for forward speed and climbing spends that speed back out of the same
-pool. Updrafts are the only free height in a run, which is what makes their
+pool. Green arrow columns marked **UPDRAFT · LIFT** restore height as you fly
+through them. Updrafts are the only free height in a run, which is what makes their
 placement a route rather than decoration. Touching the ground ends the run — the
 floor is the fail state, not a wall you bounce off. See
 [`src/game/glide.js`](src/game/glide.js).
@@ -27,7 +28,9 @@ through wings-level first, so every lateral decision is one you are still paying
 for a moment later, and committing early to a gap beats reacting late to it. A
 hard bank also spills lift, so you turn by spending height. Mouse and stick both
 drive this same model — there is no longer a separate, easier aim-mode plane.
-See [`src/game/banking.js`](src/game/banking.js).
+Releasing the stick now damps sideways drift more quickly while keeping the
+roll-and-reverse model. The camera follows your lane and fits upgraded wings
+on portrait screens. See [`src/game/banking.js`](src/game/banking.js).
 
 **The Tuck is the one deep move.** Hold to tuck: the nose drops, drag falls
 away, and you trade height for speed far faster than an ordinary dive. Release
@@ -61,6 +64,14 @@ wave as a three-way multiple choice. Asserted as a property over many seeds in
 [`test/gap-weave.test.js`](test/gap-weave.test.js).
 
 ## Reading the screen
+
+Stars, gold stars (+5), boost rockets, shield cuts and magnets have distinct
+original paper silhouettes. Power pickups carry effect labels and active powers
+show remaining seconds. Boost leaves a tapered paper streamer; reduced motion
+keeps its field of view and horizon steady. All six maps use original paper
+plates and instanced landmarks. City streets have continuous lanes, aligned
+intersections and crosswalks; folded sedans, vans, pickups and sleds carry roof,
+window, wheel and lamp details in one draw per vehicle group. See the [flight and world upgrade evidence](docs/flight-world-upgrade-2026-10-02.md).
 
 A game you cannot read is a game you cannot play, and this one had grown a
 HUD chip per system and a banner per event with nothing arbitrating between

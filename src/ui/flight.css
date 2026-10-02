@@ -211,6 +211,8 @@ html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; 
 #flight-focus[data-cue="hazard"] .flight-focus-cue { color: #ffd9cc; }
 #flight-focus[data-cue="star"] .flight-focus-ring { --fc: rgba(255,214,92,.95); }
 #flight-focus[data-cue="power"] .flight-focus-ring { --fc: rgba(143,234,207,.95); }
+#flight-focus[data-cue="lift"] .flight-focus-ring { --fc: #b8f5cf; }
+#flight-focus[data-cue="lift"] .flight-focus-cue { color: #d4ffe3; background: #244b3c; padding: 4px 6px; border-radius: 3px; }
 /* Pop on target change: brackets swing out a touch and settle, with a
    softened falloff so it reads as a highlight rather than a bounce. */
 @keyframes focusPop {
@@ -379,6 +381,10 @@ html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !i
 }
 .power-hud { min-width: 108px; }
 .power-hud #power-label { font-size: 13px !important; display: block; }
+.power-hud[data-power="boost"] { border-color: #dc7443; }
+.power-hud[data-power="boost"] #power-fill { background: #e98940; }
+.power-hud[data-power="shield"] #power-fill { background: #60a8d1; }
+.power-hud[data-power="magnet"] #power-fill { background: #a489ce; }
 .power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
 #power-fill {
   height: 100%; width: 100%; border-radius: 99px;

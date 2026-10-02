@@ -71,6 +71,7 @@ test('Journey route cards and the live HUD expose stamps and shortcut risk', asy
   // evaluation that is only valid while the run is still playing.
   await expect.poll(
     async () => page.evaluate(() => {
+      if (typeof window.render_game_to_text !== 'function') return { playing: false }
       const state = JSON.parse(window.render_game_to_text())
       if (state.mode !== 'journey' || state.state !== 'playing') return { playing: false }
       const visible = (id) => {

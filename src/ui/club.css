@@ -164,9 +164,18 @@ button { touch-action: manipulation; }
 .manual-number { border-radius: 3px; background: #e4e8d7; color: var(--club-sage); }
 .manual-modes { border-radius: 4px; border-color: #aab9a4; }
 #gameover .menu-card { border-top: 4px solid var(--coral); }
+#gameover { justify-content: flex-start; overscroll-behavior: contain; }
+#gameover .menu-card { flex-shrink: 0; margin-block: auto; }
 .run-summary { border-radius: 4px; background: #f0eedf; border-color: var(--club-rule); }
 .run-summary strong { color: var(--ink); }
 .run-summary-next strong { color: var(--club-blue); }
+.flight-debrief { margin: 0 0 14px; padding: 12px 14px; text-align: left; border-left: 3px solid var(--club-blue); background: #e5ece6; border-radius: 0 4px 4px 0; }
+.flight-debrief .chip-label { font-size: 9px; color: var(--club-blue); }
+.flight-debrief h3 { margin: 5px 0; font: 700 19px/1.15 Georgia, serif; color: var(--ink); }
+.flight-debrief p { margin: 0; color: #34494b; font-size: 12px; line-height: 1.5; }
+.debrief-highlights { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.debrief-highlights li { padding: 5px 7px; border: 1px solid #a3b7ae; border-radius: 3px; background: #fffaf2; color: #34494b; font-size: 10px; }
+.debrief-highlights b { color: var(--club-blue); font-variant-numeric: tabular-nums; }
 .hangar-spend-cta { background: var(--club-blue) !important; box-shadow: 2px 3px 0 #244e5c !important; }
 .new-best-badge { background: #edce79; box-shadow: none; border-radius: 3px; }
 /* Instrument strip: quieter paper, clear warning states, open centre sky. */

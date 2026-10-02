@@ -4,8 +4,11 @@ import {
   advanceBank,
   bankSinkPerSecond,
   bankTurnAcceleration,
+  bankDrag,
+  LATERAL_DRAG,
   createBankState,
 } from '../src/game/banking.js'
+import { integrateRelativeFlight } from '../src/game/paper-flight.js'
 
 const step = (state, inputX, seconds, dt = 1 / 60) => {
   let current = state
@@ -14,6 +17,23 @@ const step = (state, inputX, seconds, dt = 1 / 60) => {
 }
 
 describe('banking', () => {
+  test.each([1 / 20, 1 / 60, 1 / 120])('a short bank settles within half a lane at dt=%s', dt => {
+    let bank = createBankState()
+    let flight = { x: 0, y: 8, velX: 0, velY: 0 }
+    for (let t = 0; t < 0.35; t += dt) {
+      bank = advanceBank(bank, { inputX: 1, dt })
+      flight = integrateRelativeFlight({ ...flight, dt, dragX: bankDrag(1), extraForceX: bankTurnAcceleration(bank.bank) })
+    }
+    const releasedAt = flight.x
+    for (let t = 0; t < 1; t += dt) {
+      bank = advanceBank(bank, { inputX: 0, dt })
+      flight = integrateRelativeFlight({ ...flight, dt, dragX: bankDrag(0), extraForceX: bankTurnAcceleration(bank.bank) })
+    }
+    expect(flight.x - releasedAt).toBeLessThan(3)
+    expect(Math.abs(flight.velX)).toBeLessThan(0.3)
+    expect(bankDrag(1)).toBe(LATERAL_DRAG)
+    expect(bankDrag(-1)).toBe(LATERAL_DRAG)
+  })
   test('a full deflection takes real time to reach full bank', () => {
     const oneFrame = advanceBank(createBankState(), { inputX: 1, dt: 1 / 60 })
     expect(oneFrame.bank).toBeGreaterThan(0)

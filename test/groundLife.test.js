@@ -9,6 +9,7 @@ import {
   FIELD_RECYCLE_Z,
   FIELD_SPAN_Z,
   PAVEMENT_OFFSET_X,
+  ROAD_TRAVEL_OFFSET_X,
   ROAD_LANES_X,
   roadSegmentLength,
   GROUND_LIFE_ZONES,
@@ -69,7 +70,7 @@ describe('ground life placement', () => {
     for (let index = 0; index < 24; index++) {
       const carX = Math.abs(groundLifeSlotX(index, 0.5, traffic))
       const walkX = Math.abs(groundLifeSlotX(index, 0.5, walkers))
-      expect(ROAD_LANES_X).toContain(carX)
+      expect(ROAD_LANES_X.flatMap(lane=>[lane-ROAD_TRAVEL_OFFSET_X,lane+ROAD_TRAVEL_OFFSET_X])).toContain(carX)
       expect(ROAD_LANES_X.map((lane) => lane + PAVEMENT_OFFSET_X)).toContain(walkX)
       // Pavement is always outside its own road, never in the traffic lane.
       expect(walkX).toBeGreaterThan(carX - PAVEMENT_OFFSET_X - 0.001)
@@ -78,18 +79,48 @@ describe('ground life placement', () => {
     const lanes = new Set(
       Array.from({ length: 24 }, (_, i) => Math.abs(groundLifeSlotX(i, 0.5, traffic))),
     )
-    expect(lanes.size).toBe(ROAD_LANES_X.length)
+    expect(lanes.size).toBe(ROAD_LANES_X.length*2)
   })
 
   test('tiles road segments end to end so the surface has no gaps', () => {
     const roads = byId('roads')
     const length = roadSegmentLength(roads.count)
-    const perLane = Math.floor(roads.count / 2)
+    const perLane = roads.count/(ROAD_LANES_X.length*2)
     expect(length * perLane).toBeCloseTo(FIELD_SPAN_Z)
     // Consecutive segments on one lane sit exactly one segment apart.
     const first = groundLifeSlotZ(0, roads.count, 0, roads)
-    const second = groundLifeSlotZ(2, roads.count, 0, roads)
+    const second = groundLifeSlotZ(4, roads.count, 0, roads)
     expect(second - first).toBeCloseTo(length)
+  })
+
+  test('cross streets meet all four longitudinal tracks without random junction drift', () => {
+    const cross = byId('cross-streets'), roads = byId('roads')
+    const centers = new Set(Array.from({length:roads.count},(_,index)=>groundLifeSlotZ(index,roads.count,0,roads)))
+    for (let index=0;index<cross.count;index++) for (const random of [0,.5,1]) {
+      expect(centers.has(groundLifeSlotZ(index,cross.count,random,cross))).toBe(true)
+      expect(groundLifeSlotX(index,random,cross)).toBe(0)
+    }
+  })
+
+  test('every actual road track covers the scrolling span without gaps at its seam', () => {
+    for (const road of everySpecies.filter(item=>item.shape === 'road')) {
+      const tracks = new Map()
+      for (let index=0;index<road.count;index++) {
+        const x = groundLifeSlotX(index,0,road)
+        const positions = tracks.get(x) || []
+        positions.push(wrapGroundLifeZ(groundLifeSlotZ(index,road.count,0,road),42))
+        tracks.set(x,positions)
+      }
+      expect(tracks.size).toBe(ROAD_LANES_X.length*2)
+      const length = roadSegmentLength(road.count)
+      for (const [x,positions] of tracks) {
+        positions.sort((a,b)=>a-b)
+        for (let index=0;index<positions.length;index++) {
+          const next = index === positions.length-1 ? positions[0]+FIELD_SPAN_Z : positions[index+1]
+          expect(next-positions[index],`${road.id} at x=${x} leaves exposed ground`).toBeCloseTo(length)
+        }
+      }
+    }
   })
 
   test('keeps the road surface at full density even on a thinned field', () => {

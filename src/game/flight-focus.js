@@ -19,12 +19,13 @@ function finite(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback
 }
 
-export function describeFocusCue(type) {
+export function describeFocusCue(type, kind) {
   if (type === 'boss') return { cue: 'hazard', label: 'GATE AHEAD' }
   if (type === 'building' || type === 'bird' || type === 'scissors') {
     return { cue: 'hazard', label: 'DODGE' }
   }
-  if (type === 'power') return { cue: 'power', label: 'POWER' }
+  if (type === 'power') return { cue: 'power', label: ({ boost: 'BOOST · SPEED', shield: 'SHIELD · PROTECT', magnet: 'MAGNET · STARS' })[kind] || 'POWER' }
+  if (type === 'updraft') return { cue: 'lift', label: 'UPDRAFT · LIFT' }
   if (type === 'star' || type === 'ring') return { cue: 'star', label: 'STAR LINE' }
   return { cue: 'clear', label: 'FLY' }
 }
@@ -33,10 +34,11 @@ export function focusScore({ z, dx = 0, dy = 0, type, teachStars = false } = {})
   const ahead = finite(z, Infinity)
   if (ahead < FOCUS_Z_MIN || ahead > FOCUS_Z_MAX) return Infinity
   if (teachStars && type !== 'star' && type !== 'ring') return Infinity
-  const isPickup = type === 'star' || type === 'power' || type === 'ring'
+  const isPickup = type === 'star' || type === 'power' || type === 'ring' || type === 'updraft'
   const isHazard = type === 'building' || type === 'bird' || type === 'scissors' || type === 'boss'
   if (!teachStars && !isPickup && !isHazard) return Infinity
   const lateral = Math.hypot(finite(dx), finite(dy) * 0.55)
+  if (type === 'updraft' && Math.abs(finite(dx)) > 6) return Infinity
   const bossBias = type === 'boss' ? -8 : 0
   return ahead + lateral * LANE_WEIGHT + bossBias
 }
@@ -58,11 +60,14 @@ export function pickFlightFocus(candidates, { planeX = 0, planeY = 10, teachStar
     })
     if (score < bestScore) {
       bestScore = score
-      best = { type, score, x: finite(x), y: finite(y), z: finite(z) }
+      best = { type, kind: item.kind, score, x: finite(x), y: finite(y), z: finite(z) }
     }
   }
+  // Prefer the teaching star line when one exists; do not suppress useful
+  // lift or power cues merely because the early corridor has no stars.
+  if (!best && teachStars) return pickFlightFocus(candidates,{planeX,planeY,teachStars:false})
   if (!best) return { cue: 'clear', label: 'FLY', type: null, score: Infinity, target: null }
-  return { ...describeFocusCue(best.type), type: best.type, score: best.score, target: { x: best.x, y: best.y, z: best.z } }
+  return { ...describeFocusCue(best.type,best.kind), type: best.type, score: best.score, target: { x: best.x, y: best.y, z: best.z } }
 }
 
 export function isTelegraphHazardType(type, { dive = false } = {}) {

@@ -23,14 +23,20 @@ export function buildRunSummary({
   previousBest = 0,
   maxCombo = 0,
   reason = '',
+  recordEligible = true,
   walletAfterRun = null,
   affordableUpgrades = null,
+  remainingUpgrades = null,
 } = {}) {
   const bankedStars = nonNegative(stars) + nonNegative(journeyBonus) + nonNegative(weeklyBonus)
-  const improvementMeters = Math.max(0, Math.floor(nonNegative(distance) - nonNegative(previousBest)))
+  const improvementMeters = recordEligible
+    ? Math.max(0, Math.floor(nonNegative(distance) - nonNegative(previousBest)))
+    : 0
   const wallet = walletAfterRun == null ? Math.floor(bankedStars) : Math.floor(nonNegative(walletAfterRun))
   const affordable = normalizeAffordable(affordableUpgrades)
   const cheapest = affordable?.[0] || null
+  const nextFold = normalizeAffordable(remainingUpgrades)?.[0] || null
+  const workshopComplete = Array.isArray(remainingUpgrades) && remainingUpgrades.length === 0
 
   let nextActionKind = 'fly'
   let ctaLabel = 'Fly Again'
@@ -42,6 +48,13 @@ export function buildRunSummary({
     focusUpgradeId = cheapest.id
     ctaLabel = `Buy ${cheapest.name} · ${cheapest.cost}★`
     nextAction = `Buy ${cheapest.name} for ${cheapest.cost}★ or fly again`
+  } else if (workshopComplete) {
+    nextAction = 'Every fold mastered · chase your next record'
+  } else if (nextFold) {
+    nextActionKind = 'hangar'
+    focusUpgradeId = nextFold.id
+    ctaLabel = `Hangar · ${wallet}★`
+    nextAction = `${Math.max(0, nextFold.cost - wallet)}★ to ${nextFold.name} · keep flying`
   } else if (affordable) {
     // Wallet known but nothing buyable yet — still open Hangar when stars landed.
     if (bankedStars > 0 || wallet > 0) {

@@ -67,4 +67,31 @@ describe('post-run summary', () => {
       nextAction: 'Banked 3★ · keep flying toward an upgrade',
     })
   })
+
+  test('practice and authored routes cannot claim a distance personal best', () => {
+    expect(buildRunSummary({ distance: 550, previousBest: 90, recordEligible: false }).improvementMeters).toBe(0)
+    expect(buildRunSummary({ distance: 550, previousBest: 90, recordEligible: true }).improvementMeters).toBe(460)
+  })
+
+  test('names the next attainable fold and its exact wallet shortfall', () => {
+    expect(buildRunSummary({
+      stars: 3, walletAfterRun: 6, affordableUpgrades: [],
+      remainingUpgrades: [{ id: 'lift', name: 'Lift Crease', cost: 12 }, { id: 'handling', name: 'Fold Handling', cost: 10 }],
+    })).toMatchObject({
+      focusUpgradeId: 'handling',
+      nextAction: '4★ to Fold Handling · keep flying',
+      ctaLabel: 'Hangar · 6★',
+    })
+  })
+
+  test('a complete workshop points toward records rather than nonexistent upgrades', () => {
+    expect(buildRunSummary({
+      stars: 5, walletAfterRun: 80, affordableUpgrades: [], remainingUpgrades: [],
+    })).toMatchObject({
+      nextActionKind: 'fly',
+      focusUpgradeId: null,
+      ctaLabel: 'Fly Again',
+      nextAction: 'Every fold mastered · chase your next record',
+    })
+  })
 })

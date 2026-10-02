@@ -31,6 +31,13 @@ export const ROLL_RECOVER_RATE = 6.8
 export const TURN_POWER = 54
 /** Sideways drag. Lower than the old model: bank now does the arresting. */
 export const LATERAL_DRAG = 0.12
+/** Releasing the bank should settle on the chosen line instead of skating past it. */
+export const RECENTER_DRAG = 0.01
+
+export function bankDrag(inputX = 0) {
+  const authority = Math.min(1, Math.abs(finite(inputX)))
+  return RECENTER_DRAG + (LATERAL_DRAG - RECENTER_DRAG) * authority
+}
 /** Altitude bled per second at full bank. */
 export const BANK_SINK = 4.6
 

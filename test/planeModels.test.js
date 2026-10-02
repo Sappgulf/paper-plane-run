@@ -11,6 +11,21 @@ import {
 const EXPECTED_FAMILIES = ['classic', 'dart', 'glider', 'stunt']
 
 describe('fair plane silhouette registry', () => {
+  test.each(EXPECTED_FAMILIES)('%s has substantial swept wings with raised folds', silhouette => {
+    const plane = createPaperPlane({ THREE, silhouette, materials: {}, withShield: false })
+    const wing = plane.userData.wingL.geometry
+    wing.computeBoundingBox()
+    const span = wing.boundingBox.getSize(new THREE.Vector3())
+    expect(span.x).toBeGreaterThan(1)
+    expect(span.y).toBeGreaterThan(1.4)
+    expect(span.z).toBeGreaterThan(.14)
+    const coordinates = getPlaneGeometrySpec(silhouette).wingL
+    const area = Math.abs(coordinates.reduce((sum,[x,y],i) => {
+      const next = coordinates[(i+1)%coordinates.length]
+      return sum+x*next[1]-next[0]*y
+    },0))/2
+    expect(area).toBeGreaterThan(.7)
+  })
   test('derives bank, pitch, and subtle fold flex from live flight motion', () => {
     const pose = getPaperFlightPose({
       horizontalVelocity: 18,

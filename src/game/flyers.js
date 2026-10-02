@@ -1,8 +1,8 @@
 const OBSTACLE_ASSET = '/assets/obstacles/obstacle-'
 
 /**
- * Core roster — 7 silhouettes with distinct motion/read. The 6 niche types
- * (butterfly/swarm/pinwheel/meteor/clothespinDragonfly + hawk as rare) are
+ * Core roster — 7 silhouettes with distinct motion/read. The 5 niche types
+ * (butterfly/swarm/pinwheel/meteor/clothespinDragonfly) are
  * retired to cut visual noise; their art stays on disk but never spawns.
  * Each survivor has a unique movement + size signature so the player can
  * name the threat at a glance instead of parsing a wall of similar birds.

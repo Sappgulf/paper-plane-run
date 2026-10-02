@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   HAZARD_INK,
+  HAZARD_PROFILES,
   HAZARD_OUTLINE,
   PAPER_PALETTES,
   createHazardCanvas,
@@ -8,6 +9,7 @@ import {
   getPaperPalette,
   paperShadowSpec,
 } from '../src/game/paper-art.js'
+import { FLYER_DEFS } from '../src/game/flyers.js'
 
 describe('paper art direction', () => {
   test('every palette is three tones plus one accent', () => {
@@ -45,6 +47,22 @@ describe('paper art direction', () => {
 })
 
 describe('hazard sprites', () => {
+  test('every active flyer has a unique bounded paper cut instead of sharing a dart', () => {
+    const shapes = new Set()
+    for (const {id} of FLYER_DEFS) {
+      const profile = HAZARD_PROFILES[id]
+      expect(profile, id).toBeTruthy()
+      shapes.add(JSON.stringify(profile))
+      for (const polygon of profile) {
+        expect(polygon.length).toBeGreaterThanOrEqual(3)
+        for (const point of polygon) for (const coordinate of point) {
+          expect(Number.isFinite(coordinate)).toBe(true)
+          expect(Math.abs(coordinate)).toBeLessThanOrEqual(44)
+        }
+      }
+    }
+    expect(shapes.size).toBe(FLYER_DEFS.length)
+  })
   // Danger has exactly one colour per zone, and nothing else may use it: that
   // is what lets a player learn "accent means it kills me" once rather than
   // per zone. Hazards used to be cut-out product photographs, which shared no

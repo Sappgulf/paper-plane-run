@@ -40,9 +40,11 @@ export const FLAT_MAX_Y = 0.12
  * look organised — traffic, pedestrians, the road surface itself — hangs off
  * these two lanes so the zone reads as laid out rather than sprinkled.
  */
-export const ROAD_LANES_X = Object.freeze([16, 26])
+export const ROAD_LANES_X = Object.freeze([18, 28])
 /** Pedestrians walk this far outside their road, on the "pavement". */
-export const PAVEMENT_OFFSET_X = 2.6
+export const PAVEMENT_OFFSET_X = 3.7
+export const ROAD_TRAVEL_OFFSET_X = 1.2
+const ROAD_TRACK_COUNT = ROAD_LANES_X.length * 2
 
 function species(id, {
   count,
@@ -80,17 +82,22 @@ function species(id, {
 export const GROUND_LIFE_ZONES = Object.freeze({
   city: Object.freeze([
     species('roads', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#9c9184', accent: '#bdb3a4' }, shape: 'road',
       flat: true, align: 'road',
     }),
+    species('cross-streets', {
+      count: 4, motion: 'none', amplitude: 0, speed: 0, y: 0.035, scale: 1,
+      palette: { primary: '#687580', accent: '#fff1d6' }, shape: 'crossroad',
+      flat: true, align: 'junction',
+    }),
     species('traffic', {
-      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.15,
+      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.15,
       palette: { primary: '#e96957', accent: '#f0b429' }, shape: 'car',
       align: 'road', zSpeedMul: 0.55,
     }),
     species('oncoming', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.15,
+      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.15,
       palette: { primary: '#7eb8e8', accent: '#fff7e8' }, shape: 'car',
       align: 'road', zSpeedMul: 1.5,
     }),
@@ -118,7 +125,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
   ]),
   harbor: Object.freeze([
     species('docks', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#a8916c', accent: '#c8b48c' }, shape: 'road',
       flat: true, align: 'road',
     }),
@@ -155,12 +162,12 @@ export const GROUND_LIFE_ZONES = Object.freeze({
   ]),
   storm: Object.freeze([
     species('haul-roads', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#6d6284', accent: '#8e82a8' }, shape: 'road',
       flat: true, align: 'road',
     }),
     species('scrap-trucks', {
-      count: 18, motion: 'none', amplitude: 0, speed: 0, y: 0.45, scale: 1.25,
+      count: 18, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.25,
       palette: { primary: '#8e7fa8', accent: '#e8d8f4' }, shape: 'car',
       align: 'road', zSpeedMul: 0.6,
     }),
@@ -192,12 +199,12 @@ export const GROUND_LIFE_ZONES = Object.freeze({
   ]),
   sunset: Object.freeze([
     species('farm-tracks', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#b07c4c', accent: '#cf9d6c' }, shape: 'road',
       flat: true, align: 'road',
     }),
     species('hay-carts', {
-      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.15,
+      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.15,
       palette: { primary: '#e08b5a', accent: '#fff0d8' }, shape: 'car',
       align: 'road', zSpeedMul: 0.5,
     }),
@@ -229,12 +236,12 @@ export const GROUND_LIFE_ZONES = Object.freeze({
   ]),
   aurora: Object.freeze([
     species('ice-roads', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#6fa8c4', accent: '#9ccbe0' }, shape: 'road',
       flat: true, align: 'road',
     }),
     species('sled-runners', {
-      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.1,
+      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.1,
       palette: { primary: '#8fd8e8', accent: '#fff7e8' }, shape: 'car',
       align: 'road', zSpeedMul: 0.65,
     }),
@@ -266,12 +273,12 @@ export const GROUND_LIFE_ZONES = Object.freeze({
   ]),
   midnight: Object.freeze([
     species('desk-runners', {
-      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
       palette: { primary: '#1e2848', accent: '#33406b' }, shape: 'road',
       flat: true, align: 'road',
     }),
     species('pencil-cars', {
-      count: 18, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.1,
+      count: 18, motion: 'none', amplitude: 0, speed: 0, y: 0.52, scale: 1.1,
       palette: { primary: '#f0b429', accent: '#fff0c0' }, shape: 'car',
       align: 'road', zSpeedMul: 0.58,
     }),
@@ -331,7 +338,7 @@ export function groundLifeCount(speciesDef, budget) {
   if (!budget?.enabled) return 0
   // Roads are a continuous ribbon, not a scatter — thinning them would leave
   // visible gaps in the surface, so they keep their full segment count.
-  if (speciesDef.align === 'road' && speciesDef.flat) return speciesDef.count
+  if (speciesDef.flat && ['road','junction'].includes(speciesDef.align)) return speciesDef.count
   return Math.max(0, Math.floor(speciesDef.count * budget.countScale))
 }
 
@@ -348,8 +355,10 @@ export function groundLifeSlotX(index, rand = 0.5, speciesDef = {}) {
   if (align === 'road') {
     // Alternate down the road lanes so both roads are populated evenly.
     const lane = ROAD_LANES_X[Math.floor(index / 2) % ROAD_LANES_X.length]
-    return side * lane
+    const travelOffset = speciesDef.shape === 'car' ? (speciesDef.zSpeedMul > 1 ? -1 : 1) * ROAD_TRAVEL_OFFSET_X : 0
+    return side * lane + travelOffset
   }
+  if (align === 'junction') return 0
   if (align === 'pavement') {
     const lane = ROAD_LANES_X[Math.floor(index / 2) % ROAD_LANES_X.length]
     return side * (lane + PAVEMENT_OFFSET_X)
@@ -364,11 +373,12 @@ export function groundLifeSlotX(index, rand = 0.5, speciesDef = {}) {
  */
 export function groundLifeSlotZ(index, count, rand = 0, speciesDef = {}) {
   if (count <= 0) return FIELD_RECYCLE_Z
+  if (speciesDef.align === 'junction') return FIELD_RECYCLE_Z + index * FIELD_SPAN_Z/count
   if (speciesDef.align === 'road' && speciesDef.flat) {
-    // Two lanes share the count, so each lane tiles half the segments.
-    const perLane = Math.max(1, Math.floor(count / 2))
+    // Four physical tracks (two per flank) each need an unbroken ribbon.
+    const perLane = Math.max(1, Math.floor(count / ROAD_TRACK_COUNT))
     const step = FIELD_SPAN_Z / perLane
-    return FIELD_RECYCLE_Z + ((Math.floor(index / 2) * step) % FIELD_SPAN_Z)
+    return FIELD_RECYCLE_Z + ((Math.floor(index / ROAD_TRACK_COUNT) * step) % FIELD_SPAN_Z)
   }
   const step = FIELD_SPAN_Z / count
   return FIELD_RECYCLE_Z + (((index + rand) * step) % FIELD_SPAN_Z)
@@ -376,7 +386,7 @@ export function groundLifeSlotZ(index, count, rand = 0, speciesDef = {}) {
 
 /** Length of one road segment, so flight-engine can size the quad to tile. */
 export function roadSegmentLength(count) {
-  const perLane = Math.max(1, Math.floor(Math.max(0, count) / 2))
+  const perLane = Math.max(1, Math.floor(Math.max(0, count) / ROAD_TRACK_COUNT))
   return FIELD_SPAN_Z / perLane
 }
 
