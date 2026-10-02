@@ -1,5 +1,7 @@
 export const MASTERY_VERSION = 1
 
+export const DESTINATION_IDS = Object.freeze(['city', 'harbor', 'storm', 'aurora', 'sunset', 'midnight'])
+
 export const PILOT_MASTERY = Object.freeze({
   navigator: Object.freeze({
     levels: Object.freeze([
@@ -65,9 +67,7 @@ export function normalizeMasteryState(value) {
   const navigator = value.pilots.navigator?.counters
   const daredevil = value.pilots.daredevil?.counters
   if (!navigator || !daredevil || !Array.isArray(navigator.destinations)) return null
-  const destinations = [...new Set(navigator.destinations.filter((id) => [
-    'city', 'harbor', 'storm', 'aurora', 'sunset', 'midnight',
-  ].includes(id)))]
+  const destinations = [...new Set(navigator.destinations.filter((id) => DESTINATION_IDS.includes(id)))]
   const navigatorCounters = {
     routesCompleted: integer(navigator.routesCompleted),
     shortcutGatesCleared: integer(navigator.shortcutGatesCleared),
@@ -100,7 +100,7 @@ export function resolveMasteryOutcome(state, outcome = {}) {
     counters.shortcutGatesCleared += integer(outcome.shortcutGatesCleared, 20)
     if (outcome.completed) {
       counters.routesCompleted += 1
-      if (['city', 'harbor', 'storm', 'aurora'].includes(outcome.destinationId) && !counters.destinations.includes(outcome.destinationId)) {
+      if (DESTINATION_IDS.includes(outcome.destinationId) && !counters.destinations.includes(outcome.destinationId)) {
         counters.destinations.push(outcome.destinationId)
       }
     }

@@ -37,6 +37,16 @@ describe('Journey encounter director', () => {
     expect(getEncounterEventsAtDistance(timeline, event.distance, event.distance + 1)).toEqual([])
   })
 
+  it('matches the shortcut-gate objective target to the zone gate count', () => {
+    const harbor = buildEncounterTimeline({ seed: 42, zone: 'harbor', modifier: 'shortcut-gates', routeId: 'harbor-risky' })
+    expect(harbor.objective.kind).toBe('shortcut-gates')
+    expect(harbor.objective.target).toBe(3)
+    expect(harbor.events.filter((event) => event.type === 'shortcut-gate').reduce((total, event) => total + event.params.count, 0)).toBe(3)
+
+    const sunset = buildEncounterTimeline({ seed: 42, zone: 'sunset', modifier: 'shortcut-gates', routeId: 'sunset-risky' })
+    expect(sunset.objective.target).toBe(2)
+  })
+
   it('resolves objectives at exact boundary values', () => {
     expect(resolveJourneyObjective({ id: 'gates', kind: 'shortcut-gates', target: 3 }, { shortcutGatesCleared: 2 }).completed).toBe(false)
     expect(resolveJourneyObjective({ id: 'gates', kind: 'shortcut-gates', target: 3 }, { shortcutGatesCleared: 3 }).completed).toBe(true)

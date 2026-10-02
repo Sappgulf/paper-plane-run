@@ -35,13 +35,35 @@ describe('haptics native bridge', () => {
     expect(navigator.vibrate).toHaveBeenCalledWith([40, 30, 60, 30, 80])
   })
 
-  test('respects the haptics-disabled setting for both paths', () => {
+  // The enabled flag is cached at module load, so a fresh module instance
+  // is needed to observe a settings value written before first use.
+  test('respects the haptics-disabled setting for both paths', async () => {
     localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ haptics: false }))
+    vi.resetModules()
+    const { Haptic: freshHaptic } = await import('../src/haptics.js')
     const postMessage = vi.fn()
     window.webkit = { messageHandlers: { haptics: { postMessage } } }
 
-    Haptic.tap()
+    freshHaptic.tap()
 
     expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  test('re-reads the cached flag when a settings-changed event fires', async () => {
+    // A real EventTarget stands in for `window` so the module can register
+    // its invalidation listeners at import time, as it does in the browser.
+    globalThis.window = new EventTarget()
+    vi.resetModules()
+    const { Haptic: freshHaptic } = await import('../src/haptics.js')
+    navigator.vibrate = vi.fn()
+
+    freshHaptic.tap()
+    expect(navigator.vibrate).toHaveBeenCalledTimes(1)
+
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ haptics: false }))
+    window.dispatchEvent(new Event('paperplane:settings-changed'))
+
+    freshHaptic.tap()
+    expect(navigator.vibrate).toHaveBeenCalledTimes(1)
   })
 })

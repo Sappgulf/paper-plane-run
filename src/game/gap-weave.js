@@ -25,7 +25,7 @@ export const CORRIDOR_HALF_WIDTH = 11
 /** Spare room beyond the plane's own radius that a gap must offer. */
 export const GAP_MARGIN = 1.5
 /** How far the gap centre may travel between consecutive waves. */
-export const MAX_GAP_DRIFT = 7.5
+export const MAX_GAP_DRIFT = 5.8
 
 function finite(value, fallback = 0) {
   const number = Number(value)
@@ -54,12 +54,18 @@ export function chooseGapCenter({
   halfWidth = CORRIDOR_HALF_WIDTH,
   gapWidth = 3,
   maxDrift = MAX_GAP_DRIFT,
-  minDrift = 2.4,
+  minDrift = 1.2,
+  tier = 0,
 } = {}) {
+  // Tier scales drift down slightly so late speed doesn't demand precognition
+  const tierScale = Math.max(0.72, 1 - Math.max(0, tier) * 0.035)
+  maxDrift = maxDrift * tierScale
   const bound = Math.max(0, finite(halfWidth, CORRIDOR_HALF_WIDTH) - finite(gapWidth) * 0.5)
   const previous = clamp(finite(previousCenter), -bound, bound)
+  // 20% breathing room — occasionally hold the line so player can lock in
+  if (sample(random) < 0.20) return previous
   const drift = Math.max(0, finite(maxDrift, MAX_GAP_DRIFT))
-  const floor = Math.min(drift, Math.max(0, finite(minDrift, 2.4)))
+  const floor = Math.min(drift, Math.max(0, finite(minDrift, 1.2)))
   // Choose a signed offset in [minDrift, maxDrift], preferring the side with
   // room; if neither side has room for the minimum, fall back to the widest.
   const roll = sample(random)
@@ -122,18 +128,55 @@ export function planWaveGaps({
     return Object.freeze({ xs: Object.freeze([]), gapCenter: center, gapWidth: half * 2 })
   }
 
-  for (let i = 0; i < wanted; i += 1) {
-    // Walk a jittered position through the concatenated spans so both sides
-    // are filled in proportion to how much room they actually have.
-    const t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
-    let cursor = clamp(t, 0, 1) * total
-    for (const span of spans) {
-      const width = span.max - span.min
-      if (cursor <= width || span === spans[spans.length - 1]) {
-        xs.push(clamp(span.min + cursor, span.min, span.max))
-        break
+  // Archetype: 45% balanced wall, 35% clustered (heavy/light split), 20% single-sided wall
+  // Each archetype is visually distinct so the gap reads at a glance rather than
+  // as a uniform picket fence: balanced spreads evenly, clustered pushes 70% to
+  // the side with more room, single stacks everything on one side for the
+  // strongest possible gap signal.
+  const archetypeRoll = sample(random)
+  const archetype = archetypeRoll < 0.45 ? 'balanced' : archetypeRoll < 0.8 ? 'clustered' : 'single'
+  if (archetype === 'single' && spans.length === 2) {
+    // Single wall: all hazards on one side, other side empty — strongest gap read.
+    // Side chosen once per wave so the wall actually reads as a single mass.
+    const side = sample(random) < 0.5 ? 0 : 1
+    const span = spans[side]
+    const width = span.max - span.min
+    for (let i = 0; i < wanted; i += 1) {
+      const t = (i + 0.5) / wanted + (sample(random) - 0.5) * (0.8 / wanted)
+      xs.push(clamp(span.min + clamp(t, 0, 1) * width, span.min, span.max))
+    }
+  } else if (archetype === 'clustered' && spans.length === 2) {
+    // Clustered: 70% to the heavier side (more room), remainder to light side.
+    const leftWidth = spans[0].max - spans[0].min
+    const rightWidth = spans[1].max - spans[1].min
+    const heavyIdx = leftWidth >= rightWidth ? 0 : 1
+    const lightIdx = 1 - heavyIdx
+    const heavyCount = Math.max(1, Math.min(wanted - 1, Math.round(wanted * 0.7)))
+    const lightCount = wanted - heavyCount
+    const heavySpan = spans[heavyIdx]
+    const lightSpan = spans[lightIdx]
+    for (let i = 0; i < heavyCount; i += 1) {
+      const t = (i + 0.5) / heavyCount + (sample(random) - 0.5) * (0.7 / heavyCount)
+      const width = heavySpan.max - heavySpan.min
+      xs.push(clamp(heavySpan.min + clamp(t, 0, 1) * width, heavySpan.min, heavySpan.max))
+    }
+    for (let i = 0; i < lightCount; i += 1) {
+      const t = (i + 0.5) / lightCount + (sample(random) - 0.5) * (0.7 / lightCount)
+      const width = lightSpan.max - lightSpan.min
+      xs.push(clamp(lightSpan.min + clamp(t, 0, 1) * width, lightSpan.min, lightSpan.max))
+    }
+  } else {
+    for (let i = 0; i < wanted; i += 1) {
+      let t = ((i + 0.5) / wanted + (sample(random) - 0.5) * (0.9 / wanted))
+      let cursor = clamp(t, 0, 1) * total
+      for (const span of spans) {
+        const width = span.max - span.min
+        if (cursor <= width || span === spans[spans.length - 1]) {
+          xs.push(clamp(span.min + cursor, span.min, span.max))
+          break
+        }
+        cursor -= width
       }
-      cursor -= width
     }
   }
 
@@ -164,7 +207,7 @@ export function clampAmplitudeToGap({
     Math.max(0, finite(gapWidth, 3)) * 0.5 -
     Math.max(0, finite(damageRadius))
   if (edge <= 0) return 0
-  return Math.min(requested, edge / span)
+  return Math.min(requested, (edge * 0.72) / span)
 }
 
 /** Smallest clearance between a point and every hazard's damage envelope. */
@@ -182,7 +225,7 @@ export function gapClearanceAt({ x = 0, hazards = [], damageRadius = 1.2 } = {})
 /** Share of stars deliberately placed off the guaranteed gap. */
 export const OFF_GAP_STAR_CHANCE = 0.45
 /** Spare room a star needs beyond a hazard's envelope to be worth going for. */
-export const STAR_CLEARANCE = 1.1
+export const STAR_CLEARANCE = 2.6
 
 /**
  * Where a star goes.
@@ -208,7 +251,7 @@ export function chooseStarX({
 } = {}) {
   const center = finite(gapCenter)
   const half = Math.max(0, finite(gapWidth, 3)) * 0.5
-  const inGap = () => center + (sample(random) - 0.5) * Math.max(0.4, half * 1.2)
+  const inGap = () => center + (sample(random) - 0.5) * Math.max(0.35, half * 0.9)
   if (telegraph || sample(random) > clamp(finite(offGapChance, OFF_GAP_STAR_CHANCE), 0, 1)) {
     return inGap()
   }

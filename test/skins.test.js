@@ -53,18 +53,16 @@ describe('plane collection purchases', () => {
 
   test('migrates every legacy unlocked and equipped plane into permanent ownership', () => {
     localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic', 'mint']))
-    localStorage.setItem('paper-plane-run-skin', 'coral')
+    localStorage.setItem('paper-plane-run-skin', 'mint')
 
     const planes = listSkins()
 
-    expect(planes.find((plane) => plane.id === 'mint')).toMatchObject({ state: 'owned' })
-    expect(planes.find((plane) => plane.id === 'coral')).toMatchObject({ state: 'equipped' })
+    expect(planes.find((plane) => plane.id === 'mint')).toMatchObject({ state: 'equipped' })
     expect(isUnlocked('mint')).toBe(true)
-    expect(isUnlocked('coral')).toBe(true)
     expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(
-      expect.arrayContaining(['classic', 'mint', 'coral']),
+      expect.arrayContaining(['classic', 'mint']),
     )
-    expect(localStorage.getItem('paper-plane-run-skin')).toBe('coral')
+    expect(localStorage.getItem('paper-plane-run-skin')).toBe('mint')
     expect(localStorage.getItem('paper-plane-run-skins-version')).toBe('1')
   })
 
@@ -169,15 +167,25 @@ describe('plane collection purchases', () => {
     expect(listSkins().find((plane) => plane.id === 'goldenfold')).toMatchObject({ state: 'owned' })
   })
 
-  test('recovers from corrupt legacy ownership JSON and retains the equipped plane', () => {
+  test('recovers from corrupt legacy ownership JSON without granting the equipped plane', () => {
     localStorage.setItem('paper-plane-run-skins', '{bad json')
     localStorage.setItem('paper-plane-run-skin', 'night')
 
-    expect(listSkins().find((plane) => plane.id === 'classic')).toMatchObject({ state: 'owned' })
-    expect(listSkins().find((plane) => plane.id === 'night')).toMatchObject({ state: 'equipped' })
-    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(
-      expect.arrayContaining(['classic', 'night']),
-    )
+    expect(listSkins().find((plane) => plane.id === 'classic')).toMatchObject({ state: 'equipped' })
+    expect(getEquippedSkinId()).toBe('classic')
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
+  })
+
+  test('resets an unowned equipped plane to classic without granting ownership', () => {
+    localStorage.setItem('paper-plane-run-skins', JSON.stringify(['classic']))
+    localStorage.setItem('paper-plane-run-skin', 'night')
+
+    const planes = listSkins()
+
+    expect(planes.find((plane) => plane.id === 'night')).toMatchObject({ state: 'locked' })
+    expect(planes.find((plane) => plane.id === 'classic')).toMatchObject({ state: 'equipped' })
+    expect(JSON.parse(localStorage.getItem('paper-plane-run-skins'))).toEqual(['classic'])
+    expect(localStorage.getItem('paper-plane-run-skin')).toBe('classic')
   })
 
   test('treats malformed lifetime-stars storage as zero and still accepts runtime lifetime rewards', () => {

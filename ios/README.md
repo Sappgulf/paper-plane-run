@@ -31,7 +31,7 @@ From the **repo root**:
 
 ```bash
 npm run ios:generate                    # builds, syncs the web bundle, generates Xcode project
-open PaperPlaneRun.xcodeproj            # or: xcodebuild -scheme PaperPlaneRun ...
+open ios/PaperPlaneRun.xcodeproj        # or: xcodebuild -project ios/PaperPlaneRun.xcodeproj -scheme PaperPlaneRun ...
 ```
 
 Re-run `npm run build:ios` after any change to `src/`, `index.html`, or

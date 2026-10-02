@@ -216,7 +216,9 @@ npm run test:e2e:prod   # the real production bundle; skips the dev-hook suite
 [`e2e/gameplay.spec.js`](e2e/gameplay.spec.js) steps the simulation with
 `window.advanceTime` and boots from `#test-*` states, both of which Vite strips
 from a production build — so it skips itself under `test:e2e:prod` rather than
-failing forty times on a missing hook. `smoke.spec.js` runs in both.
+failing on a missing hook. `smoke.spec.js` runs in both; its fixture-only
+checks run in development, while production checks real navigation, flight,
+pause/resume, and the built engine's loading/retry behavior.
 [`e2e/polish.spec.js`](e2e/polish.spec.js) checks typing with the engine loaded,
 native keyboard activation, dialog focus, pause/resume, fresh-flight input
 state, the full tutorial, and menus at 320×568, 390×844, and 844×390. CI runs

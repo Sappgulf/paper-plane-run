@@ -51,7 +51,7 @@ export function getDailyMissions() {
       const t = pool.splice(idx, 1)[0]
       missions.push(createMission(t, i, rand))
     }
-    state = { ...state, day, missions, claimStars: 0 }
+    state = { ...state, day, missions }
     saveState(state)
   } else {
     // Preserve earned rewards and other progress when retiring the Ink Blast.
@@ -142,7 +142,6 @@ export function claimMission(id) {
   if (!m || !m.done || m.claimed) return 0
   m.claimed = true
   const reward = 8 + Math.floor(m.target / 10)
-  s.claimStars = (s.claimStars || 0) + reward
   saveState(s)
   return reward
 }

@@ -51,7 +51,7 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 test('Journey route cards and the live HUD expose stamps and shortcut risk', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
 
   await expect(page.locator('.journey-route-card')).toHaveCount(2)
   await expect(page.locator('.journey-route-card .zone-stamp')).toHaveCount(2)
@@ -193,7 +193,6 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
         done: true,
         claimed: false,
       }],
-      claimStars: 0,
     }))
   })
   await openApp(page)
@@ -207,7 +206,7 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
   await expect(page.locator('#hangar-wallet')).toHaveText('10')
   await expect(page.locator('#hangar-lifetime')).toHaveText('10')
   await expect(page.getByRole('button', { name: 'Claim' })).toHaveCount(0)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).claimStars)).toBe(10)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-missions')).missions[0].claimed)).toBe(true)
   expect(errors).toEqual([])
 })
 
@@ -326,7 +325,7 @@ test('a delayed engine chunk shows preparation before flight starts', async ({ p
   const engineGate = new Promise((resolve) => {
     releaseEngine = resolve
   })
-  await page.route('**/src/flight-engine.js*', async (route) => {
+  await page.route(/\/(?:src\/flight-engine\.js|assets\/flight-engine-[^/]+\.js)(?:\?.*)?$/, async (route) => {
     engineRequests += 1
     await engineGate
     await route.continue()
@@ -351,7 +350,7 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
     }
   })
   let engineRequests = 0
-  await page.route('**/src/flight-engine.js*', async (route) => {
+  await page.route(/\/(?:src\/flight-engine\.js|assets\/flight-engine-[^/]+\.js)(?:\?.*)?$/, async (route) => {
     engineRequests += 1
     if (engineRequests === 1) await route.abort('failed')
     else await route.continue()
@@ -433,7 +432,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
 test('starting a new Journey records journey_restarted analytics', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   await tap(page.getByRole('button', { name: 'Start a new Journey' }))
 
   const restarted = await page.evaluate(() => {
@@ -455,6 +454,7 @@ test('first flight starts with launch protection', async ({ page }) => {
 })
 
 test('max upgrades expose deterministic in-flight feedback on desktop and mobile', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   const errors = collectConsoleErrors(page)
   await openApp(page, '/?upgrade-proof=max#test-upgrades-shield')
@@ -513,6 +513,7 @@ test('max upgrades expose deterministic in-flight feedback on desktop and mobile
 })
 
 test('live flight loop wires seeded upgrade spawning and gap fairness', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -618,6 +619,7 @@ test('live flight loop wires seeded upgrade spawning and gap fairness', async ({
 })
 
 test('flight ticks reuse cached upgrade effects instead of reading storage every frame', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
   await page.addInitScript(() => {
     const originalGetItem = Storage.prototype.getItem
@@ -636,6 +638,7 @@ test('flight ticks reuse cached upgrade effects instead of reading storage every
 })
 
 test('reduced motion keeps shield and phase feedback stable in the live loop', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ reducedMotion: true, haptics: false }))
@@ -654,6 +657,7 @@ test('reduced motion keeps shield and phase feedback stable in the live loop', a
 })
 
 test('existing bosses expose deterministic readable phases and accessibility cues', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
   test.slow()
   test.setTimeout(240_000)
@@ -698,7 +702,8 @@ test('existing bosses expose deterministic readable phases and accessibility cue
 
 test('native performance pressure lowers visual cost without changing gameplay state', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
-  await openApp(page, '/#test-upgrade-live-cooldown')
+  await openApp(page)
+  await tap(page.locator('#start-btn'))
   await waitForGameText(page)
   const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   await page.evaluate(() => {
@@ -719,7 +724,7 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   const errors = collectConsoleErrors(page)
   await openApp(page)
 
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   await expect(page.getByRole('heading', { name: 'Across the Paper Skies' })).toBeVisible()
   await expect(page.locator('.journey-stop')).toHaveCount(4)
   await expect(page.locator('.journey-pilot')).toHaveCount(2)
@@ -732,6 +737,13 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await expect(page.locator('#journey-objective-hud')).toBeVisible()
   await expect(page.locator('#hud-mode')).not.toHaveText('Normal')
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3000 })
+  if (process.env.PLAYWRIGHT_PREVIEW === '1') {
+    const live = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    expect(live.mode).toBe('journey')
+    expect(live.journey.objective).toBeTruthy()
+    expect(errors).toEqual([])
+    return
+  }
   // Changing only the hash can keep the live flight document. A query change
   // guarantees a fresh boot into the deterministic Journey test state.
   await openApp(page, '/?e2e=journey#test-journey-city')
@@ -751,6 +763,7 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
 })
 
 test('postcard reveal opens details and keeps share fallback visible', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', { configurable: true, value: undefined })
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copiedPostcard = text } } })
@@ -768,6 +781,7 @@ test('postcard reveal opens details and keeps share fallback visible', async ({ 
 })
 
 test('postcard reveal respects reduced motion and compact scrolling', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   await page.addInitScript(() => localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ reducedMotion: true })))
   await openApp(page, '/#test-postcard')
   await expect(page.locator('html')).toHaveClass(/a11y-reduced-motion/)
@@ -777,11 +791,11 @@ test('postcard reveal respects reduced motion and compact scrolling', async ({ p
 
 test('Living Journey selection survives a reload', async ({ page }) => {
   await openApp(page)
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
   const routeId = await page.locator('.journey-route-card').first().getAttribute('data-route-id')
   await tap(page.locator('.journey-route-card').first())
   await page.reload()
-  await tap(page.getByRole('button', { name: '🗺️ Begin Journey' }))
+  await tap(page.getByRole('button', { name: /Begin Journey/ }))
 
   await expect(page.locator(`[data-route-id="${routeId}"]`)).toHaveClass(/selected/)
 })
@@ -823,6 +837,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
 })
 
 test('mobile game-over puts retry before sharing and inside the viewport', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'mobile')
   await openApp(page, '/#test-gameover')
   await waitForGameText(page)
@@ -840,6 +855,7 @@ test('mobile game-over puts retry before sharing and inside the viewport', async
 })
 
 test('game-over summarizes banked rewards and the next action', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   await openApp(page, '/#test-gameover')
   await waitForGameText(page)
 
@@ -1167,6 +1183,7 @@ async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempt
 }
 
 test('endless tiers keep escalating the run past the point every other dial caps', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1219,6 +1236,7 @@ test('endless tiers keep escalating the run past the point every other dial caps
 })
 
 test('the endless route cycles zones instead of freezing on the final one', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1315,6 +1333,7 @@ test('a cold load shows the banked wallet, not the markup placeholder', async ({
 })
 
 test('hazard motion never carries a hazard into the guaranteed passage gap', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1370,6 +1389,7 @@ test('hazard motion never carries a hazard into the guaranteed passage gap', asy
 })
 
 test('stars spread across the corridor instead of stacking in the guaranteed gap', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)

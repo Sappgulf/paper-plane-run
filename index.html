@@ -14,7 +14,18 @@
     <meta name="apple-mobile-web-app-title" content="Paper Plane" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#c8dff5" />
-    <meta name="description" content="Paper Plane Run — soar through a paper world." />
+    <meta name="description" content="Paper Plane Run — fold your plane and soar through a living paper world. Dodge birds and scissors, chase stars, ride the wind and upgrade your hangar. Free, plays in your browser." />
+    <link rel="canonical" href="https://paper-plane-run.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Paper Plane Run" />
+    <meta property="og:title" content="Paper Plane Run" />
+    <meta property="og:description" content="Soar through a paper world: dodge, collect stars, upgrade your plane. Free in your browser." />
+    <meta property="og:url" content="https://paper-plane-run.vercel.app/" />
+    <meta property="og:image" content="https://paper-plane-run.vercel.app/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Paper Plane Run" />
+    <meta name="twitter:description" content="Soar through a paper world: dodge, collect stars, upgrade your plane." />
+    <meta name="twitter:image" content="https://paper-plane-run.vercel.app/icon-512.png" />
     <title>Paper Plane Run</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,12 +33,14 @@
   </head>
   <body>
     <div id="game-root" class="mouse-mode">
-      <canvas id="c" tabindex="-1" aria-label="Flight playfield. Steer with arrows or WASD. Hold Space to tuck; release to flare. Escape pauses."></canvas>
+      <canvas id="c" role="img" tabindex="-1" aria-label="Flight playfield. Steer with arrows or WASD. Hold Space to tuck; release to flare. Escape pauses."></canvas>
+      <noscript><p style="position:absolute;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center;font:700 18px system-ui,sans-serif;color:#2b1d1a">Paper Plane Run needs JavaScript to fly. Please enable it and reload.</p></noscript>
       <div id="speed-fx" aria-hidden="true"></div>
       <div id="fever-fx" aria-hidden="true"></div>
       <div id="slow-fx" aria-hidden="true"></div>
       <div id="edge-indicators" aria-hidden="true"></div>
       <div id="warn-flash" aria-hidden="true"></div>
+      <div id="gap-trail" aria-hidden="true"></div>
       <div id="flight-route" class="hidden" aria-hidden="true">
         <div class="flight-route-copy">
           <span id="flight-route-stamp" class="zone-stamp" data-zone="city" role="img" aria-label="Paper City stamp"></span>
@@ -156,14 +169,14 @@
             <label class="name-row">Pilot <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
           </div>
 
-          <button id="journey-btn" type="button" class="cta-main journey-main-cta">🗺️ Begin Journey</button>
+          <button id="journey-btn" type="button" class="cta-main journey-main-cta" data-cta="primary" aria-label="Begin Journey — primary action">🗺️ Begin Journey</button>
 
           <div class="menu-actions">
             <button id="start-btn" type="button" class="action-pill" title="The original endless flight">✈️&nbsp;Classic</button>
             <button id="daily-btn" type="button" class="action-pill" title="Same seeded route as everyone today — compare scores">📅&nbsp;Daily</button>
             <button id="weekly-btn" type="button" class="action-pill" title="This week's folded map — same seed, rotating sky">📆&nbsp;Weekly</button>
             <button id="tutorial-btn" type="button" class="action-pill" title="Learn the controls with tutorial rings, no hazards">🎓&nbsp;Tutorial</button>
-            <button id="hangar-btn" type="button" class="action-pill action-hangar" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</button>
+            <button id="hangar-btn" type="button" class="action-pill action-hangar" data-cta="secondary" title="Upgrades, skins, missions, achievements &amp; settings">🏠&nbsp;Hangar <span id="wallet-stars" class="hangar-wallet-chip">0</span>★</button>
           </div>
 
           <div id="engine-status" class="engine-status hidden" role="status" aria-live="polite">
@@ -234,7 +247,7 @@
             <div class="hangar-tabs" role="tablist" aria-label="Hangar sections">
               <button id="hangar-tab-upgrades" type="button" class="hangar-tab active" data-tab="upgrades" data-hangar-group="progress" role="tab" aria-controls="tab-upgrades" aria-selected="true" tabindex="0">🔧&nbsp;Upgrades</button>
               <button id="hangar-tab-skins" type="button" class="hangar-tab" data-tab="skins" data-hangar-group="progress" role="tab" aria-controls="tab-skins" aria-selected="false" tabindex="-1">🎨&nbsp;Planes</button>
-              <button id="hangar-tab-missions" type="button" class="hangar-tab" data-tab="missions" data-hangar-group="progress" role="tab" aria-controls="tab-missions" aria-selected="false" tabindex="-1">🎯&nbsp;Missions</button>
+              <button id="hangar-tab-missions" type="button" class="hangar-tab" data-tab="missions" data-hangar-group="progress" role="tab" aria-controls="tab-missions" aria-selected="false" tabindex="-1">🎯&nbsp;Missions<span id="mission-badge" class="pill-badge" hidden></span></button>
               <button id="hangar-tab-achievements" type="button" class="hangar-tab" data-tab="achievements" data-hangar-group="progress" role="tab" aria-controls="tab-achievements" aria-selected="false" tabindex="-1">🎖️&nbsp;Awards</button>
               <button id="hangar-tab-board" type="button" class="hangar-tab hangar-tab-meta" data-tab="board" data-hangar-group="meta" role="tab" aria-controls="tab-board" aria-selected="false" tabindex="-1">🏆&nbsp;Board</button>
               <button id="hangar-tab-settings" type="button" class="hangar-tab hangar-tab-meta" data-tab="settings" data-hangar-group="meta" role="tab" aria-controls="tab-settings" aria-selected="false" tabindex="-1">⚙️&nbsp;Settings</button>
@@ -294,6 +307,7 @@
                 <label class="set-row"><input type="checkbox" id="set-auto-level" /> Auto-level (Shift)</label>
                 <label class="set-row"><input type="checkbox" id="set-colorblind" /> Colorblind powers</label>
                 <label class="set-row"><input type="checkbox" id="set-low-power" /> Low-power graphics</label>
+                <label class="set-row"><input type="checkbox" id="set-music" /> Music</label>
                 <label class="set-row"><input type="checkbox" id="set-haptics" /> Haptics</label>
                 <label class="set-row">Season
                   <select id="set-season">

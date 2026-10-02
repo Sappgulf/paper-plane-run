@@ -6,13 +6,40 @@ function nativeHapticBridge() {
   return typeof window !== 'undefined' ? window.webkit?.messageHandlers?.haptics : undefined
 }
 
-export function haptic(pattern = 10, nativeName = 'tap') {
+// The enabled flag is cached at module load: near-miss chains fire haptic()
+// many times per second across dozens of call sites, and a localStorage
+// read + JSON.parse on every hit showed up as real overhead. The cache is
+// invalidated by the `storage` event (writes from other tabs) and by the
+// 'paperplane:settings-changed' DOM event — the settings writer lives in
+// src/settings.js (saveSettings), so it (or the shell) should dispatch that
+// event after a haptics toggle to refresh this flag in the same tab.
+function readHapticsEnabled() {
   try {
     const raw = localStorage.getItem('paper-plane-run-settings-v1')
     if (raw) {
       const s = JSON.parse(raw)
-      if (s.haptics === false) return
+      if (s.haptics === false) return false
     }
+  } catch {
+    /* ignore */
+  }
+  return true
+}
+
+let hapticsEnabled = readHapticsEnabled()
+
+function refreshHapticsEnabled() {
+  hapticsEnabled = readHapticsEnabled()
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', refreshHapticsEnabled)
+  window.addEventListener('paperplane:settings-changed', refreshHapticsEnabled)
+}
+
+export function haptic(pattern = 10, nativeName = 'tap') {
+  try {
+    if (!hapticsEnabled) return
     const bridge = nativeHapticBridge()
     if (bridge) {
       bridge.postMessage(nativeName)

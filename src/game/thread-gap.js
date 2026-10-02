@@ -7,7 +7,7 @@
  */
 
 /** Inner-face gaps wider than this are just "the open sky", not a thread. */
-export const THREAD_GAP_MAX_WIDTH = 5
+export const THREAD_GAP_MAX_WIDTH = 7
 
 /** Reward paid once when the run passes cleanly through a marked gap. */
 export const THREAD_REWARD_METERS = 20

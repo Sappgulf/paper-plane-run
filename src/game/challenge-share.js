@@ -14,7 +14,8 @@ export const CHALLENGE_KINDS = Object.freeze([
 ])
 export const CHALLENGE_MODES = Object.freeze(['easy', 'normal', 'hard'])
 
-const VERSION = 1
+const VERSION = 2
+const LEGACY_VERSION = 1
 const MAX_SAMPLES = 220
 const MAX_NAME = 16
 const MAX_CODE_CHARS = 1600
@@ -117,20 +118,20 @@ export function encodeChallenge(input, { includePath = true } = {}) {
   const foldBytes = new TextEncoder().encode(foldId.slice(0, 24))
   const packed = includePath ? packGhostPath(input.path, distance) : { step: 8, samples: [] }
 
-  const bytes = new Uint8Array(16 + nameBytes.length + 1 + foldBytes.length + packed.samples.length * 2)
+  const bytes = new Uint8Array(17 + nameBytes.length + 1 + foldBytes.length + packed.samples.length * 2)
   bytes[0] = VERSION
   bytes[1] = kindIndex
   bytes[2] = modeIndex
   writeU32(bytes, 3, seed)
   writeU16(bytes, 7, distance)
   writeU16(bytes, 9, stars)
-  bytes[11] = packed.step & 0xff
-  writeU16(bytes, 12, packed.samples.length)
-  bytes[14] = nameBytes.length
-  bytes[15] = foldBytes.length
-  bytes.set(nameBytes, 16)
-  bytes.set(foldBytes, 16 + nameBytes.length)
-  let offset = 16 + nameBytes.length + foldBytes.length
+  writeU16(bytes, 11, packed.step)
+  writeU16(bytes, 13, packed.samples.length)
+  bytes[15] = nameBytes.length
+  bytes[16] = foldBytes.length
+  bytes.set(nameBytes, 17)
+  bytes.set(foldBytes, 17 + nameBytes.length)
+  let offset = 17 + nameBytes.length + foldBytes.length
   for (const sample of packed.samples) {
     bytes[offset] = sample[0] & 0xff
     bytes[offset + 1] = sample[1] & 0xff
@@ -147,21 +148,24 @@ export function decodeChallenge(code) {
   if (!code || typeof code !== 'string' || code.length > MAX_CODE_CHARS + 200) return null
   try {
     const bytes = fromUrl64(code)
-    if (bytes.length < 16 || bytes[0] !== VERSION) return null
+    const version = bytes[0]
+    if (bytes.length < 16 || (version !== VERSION && version !== LEGACY_VERSION)) return null
     const kind = CHALLENGE_KINDS[bytes[1]]
     const mode = CHALLENGE_MODES[bytes[2]]
     if (!kind || !mode) return null
     const seed = readU32(bytes, 3) || 1
     const distance = readU16(bytes, 7)
     const stars = readU16(bytes, 9)
-    const step = Math.max(1, bytes[11] || 8)
-    const sampleCount = readU16(bytes, 12)
-    const nameLen = bytes[14]
-    const foldLen = bytes[15]
-    const headerEnd = 16 + nameLen + foldLen
+    const legacy = version === LEGACY_VERSION
+    const step = legacy ? Math.max(1, bytes[11] || 8) : Math.max(1, readU16(bytes, 11) || 8)
+    const sampleCount = legacy ? readU16(bytes, 12) : readU16(bytes, 13)
+    const nameLen = legacy ? bytes[14] : bytes[15]
+    const foldLen = legacy ? bytes[15] : bytes[16]
+    const headerStart = legacy ? 16 : 17
+    const headerEnd = headerStart + nameLen + foldLen
     if (headerEnd + sampleCount * 2 > bytes.length || nameLen > MAX_NAME || foldLen > 24) return null
-    const name = new TextDecoder().decode(bytes.slice(16, 16 + nameLen)).trim() || 'Pilot'
-    const foldId = foldLen ? new TextDecoder().decode(bytes.slice(16 + nameLen, headerEnd)) : ''
+    const name = new TextDecoder().decode(bytes.slice(headerStart, headerStart + nameLen)).trim() || 'Pilot'
+    const foldId = foldLen ? new TextDecoder().decode(bytes.slice(headerStart + nameLen, headerEnd)) : ''
     const packedSamples = []
     for (let i = 0; i < sampleCount; i++) {
       const at = headerEnd + i * 2

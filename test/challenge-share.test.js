@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { decodeChallenge, describeChallenge, encodeChallenge, packGhostPath } from '../src/game/challenge-share.js'
+import { CHALLENGE_KINDS, CHALLENGE_MODES, decodeChallenge, describeChallenge, encodeChallenge, packGhostPath } from '../src/game/challenge-share.js'
 
 function samplePath(distance = 400) {
   const path = []
@@ -75,5 +75,62 @@ describe('challenge share codec', () => {
       path: [],
     })
     expect(decodeChallenge(code).name).toBe('A <b>')
+  })
+
+  test('round-trips a 60 km run without wrapping the step', () => {
+    const distance = 60000
+    const code = encodeChallenge({
+      kind: 'classic',
+      mode: 'normal',
+      seed: 424242,
+      distance,
+      stars: 9,
+      name: 'Long Hauler',
+      path: samplePath(distance),
+    })
+    expect(code).toBeTruthy()
+    const decoded = decodeChallenge(code)
+    expect(decoded.distance).toBe(60000)
+    const stride = decoded.path[1][0] - decoded.path[0][0]
+    expect(stride).toBe(Math.ceil(distance / 220))
+    expect(stride).toBeGreaterThan(255)
+    expect(decoded.path[decoded.path.length - 1][0]).toBeLessThan(distance)
+  })
+
+  test('still decodes legacy version-1 payloads with a single-byte step', () => {
+    const nameBytes = new TextEncoder().encode('Retro')
+    const samples = [10, -20, 30, 40]
+    const bytes = new Uint8Array(16 + nameBytes.length + samples.length)
+    bytes[0] = 1
+    bytes[1] = CHALLENGE_KINDS.indexOf('classic')
+    bytes[2] = CHALLENGE_MODES.indexOf('hard')
+    bytes[3] = 7
+    bytes[7] = 300
+    bytes[8] = 1
+    bytes[9] = 5
+    bytes[11] = 16
+    bytes[12] = 2
+    bytes[14] = nameBytes.length
+    bytes[15] = 0
+    bytes.set(nameBytes, 16)
+    bytes.set(samples, 16 + nameBytes.length)
+
+    let bin = ''
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    const code = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+    const decoded = decodeChallenge(code)
+    expect(decoded).toMatchObject({
+      kind: 'classic',
+      mode: 'hard',
+      seed: 7,
+      distance: 300,
+      stars: 5,
+      name: 'Retro',
+    })
+    expect(decoded.path).toEqual([
+      [0, 2.5, -5, 0],
+      [16, 7.5, 10, 0.38],
+    ])
   })
 })

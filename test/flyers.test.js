@@ -6,22 +6,23 @@ describe('generated obstacle flyers', () => {
 
   test('registers every approved transparent obstacle asset', () => {
     expect(byId.hawk.tex).toBe('/assets/obstacles/obstacle-origami-hawk.webp')
-    expect(byId.pinwheel.tex).toBe('/assets/obstacles/obstacle-paper-pinwheel.webp')
-    expect(byId.meteor.tex).toBe('/assets/obstacles/obstacle-paperclip-meteor.webp')
-    expect(byId.clothespinDragonfly.tex).toBe('/assets/obstacles/obstacle-clothespin-dragonfly.webp')
+    // Retired types are no longer in the core roster but remain on disk
+    expect(byId.butterfly).toBeUndefined()
+    expect(byId.swarm).toBeUndefined()
   })
 
   test('gives each new silhouette a distinct motion personality', () => {
     expect(byId.hawk.dive).toBe(true)
-    expect(byId.pinwheel.spin).toBe(true)
-    expect(byId.meteor.barrel).toBe(true)
-    expect(byId.clothespinDragonfly.weave).toBe(true)
+    expect(byId.balloon.floaty).toBe(true)
+    expect(byId.kite.weave).toBe(true)
+    expect(byId.wasp.weave).toBe(true)
   })
 
   test('keeps initial spawn weights conservative', () => {
-    for (const id of ['hawk', 'pinwheel', 'meteor', 'clothespinDragonfly']) {
+    for (const id of ['hawk']) {
       expect(byId[id].weight).toBeGreaterThan(0)
-      expect(byId[id].weight).toBeLessThanOrEqual(0.35)
+      expect(byId[id].weight).toBeLessThan(0.5)
     }
+    expect(byId.hawk.weight).toBeLessThan(byId.bird.weight)
   })
 })

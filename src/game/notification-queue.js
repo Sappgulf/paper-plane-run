@@ -45,6 +45,8 @@ export function createNotificationQueue({
     },
     clear() {
       version += 1
+      lastMessage = ''
+      lastMessageAt = 0
       cancelTimer()
       hide?.()
     },

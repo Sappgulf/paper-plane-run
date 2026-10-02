@@ -26,7 +26,7 @@ const SPEED_PER_TIER = 1.6
 // Tuned so spacing is still tightening at MAX_TIER rather than pinning to the
 // floor early and making the last tiers a no-op on wave density.
 const SPACING_PER_TIER = 0.022
-const MIN_SPACING_SCALE = 0.82
+const MIN_SPACING_SCALE = 0.84
 const HAZARD_PER_TIER = 0.07
 const MAX_HAZARD_BONUS = 0.5
 
@@ -52,6 +52,15 @@ export function endlessTierAt(distance = 0) {
   const meters = Math.max(0, Number(distance) || 0)
   if (meters < TIER_START) return 0
   return tierIndexFrom(Math.floor((meters - TIER_START) / TIER_SPAN) + 1)
+}
+
+export function endlessTierProgress(distance = 0) {
+  const meters = Math.max(0, Number(distance) || 0)
+  if (meters < TIER_START) return 0
+  const tier = endlessTierAt(meters)
+  const tierStart = TIER_START + (tier - 1) * TIER_SPAN
+  const into = Math.max(0, Math.min(1, (meters - tierStart) / TIER_SPAN))
+  return into
 }
 
 /** Distance at which a given tier begins, for HUD "next tier in Nm" readouts. */
@@ -92,9 +101,21 @@ export function getTierSpeedBonus(tier = 0) {
   return tierIndexFrom(tier) * SPEED_PER_TIER
 }
 
+export function getTierSpeedBonusSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return tier * SPEED_PER_TIER + progress * SPEED_PER_TIER * 0.5
+}
+
 /** Multiplier applied to wave spacing. Floored so waves never become unreadable. */
 export function getTierSpacingScale(tier = 0) {
   return Math.max(MIN_SPACING_SCALE, 1 - tierIndexFrom(tier) * SPACING_PER_TIER)
+}
+
+export function getTierSpacingScaleSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return Math.max(MIN_SPACING_SCALE, 1 - (tier + progress * 0.5) * SPACING_PER_TIER)
 }
 
 /**
@@ -103,6 +124,12 @@ export function getTierSpacingScale(tier = 0) {
  */
 export function getTierHazardBonus(tier = 0) {
   return Math.min(MAX_HAZARD_BONUS, tierIndexFrom(tier) * HAZARD_PER_TIER)
+}
+
+export function getTierHazardBonusSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return Math.min(MAX_HAZARD_BONUS, (tier + progress * 0.5) * HAZARD_PER_TIER)
 }
 
 /** Per-tier hazard-type weighting, folded on top of the zone's own bias. */
@@ -116,6 +143,12 @@ export function getTierHazardBias(tier = 0) {
  */
 export function getTierScoreMultiplier(tier = 0) {
   return 1 + tierIndexFrom(tier) * 0.06
+}
+
+export function getTierScoreMultiplierSmooth(distance = 0) {
+  const tier = endlessTierAt(distance)
+  const progress = endlessTierProgress(distance)
+  return 1 + (tier + progress * 0.5) * 0.06
 }
 
 /** Everything the run loop needs for one tier, resolved once per tier change. */

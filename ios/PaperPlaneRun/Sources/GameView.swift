@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
@@ -54,6 +55,24 @@ final class GameBundleSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {}
 }
 
+/// WKUserContentController strongly retains its registered handlers, so
+/// registering the view controller directly creates a retain cycle
+/// (controller → webView → configuration → contentController → controller)
+/// that leaks the whole webview. This proxy breaks it: the content controller
+/// retains only the proxy, which references its delegate weakly.
+final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: (any WKScriptMessageHandler)?
+
+    init(delegate: any WKScriptMessageHandler) {
+        self.delegate = delegate
+        super.init()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
 /// Hosts the exact same web build that ships at paper-plane-run.vercel.app,
 /// bundled locally so the game runs fully offline. This is a deliberate
 /// choice over a from-scratch native rewrite: it guarantees the iOS app is
@@ -79,16 +98,26 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         view.backgroundColor = UIColor(red: 0xC8 / 255, green: 0xDF / 255, blue: 0xF5 / 255, alpha: 1)
         configureLoadingView()
 
+        // WebAudio game: .ambient silences with the Ring/Silent switch and
+        // mixes with (rather than interrupts) other apps' audio.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("[AudioSession] setup failed: \(error)")
+        }
+
         let contentController = WKUserContentController()
         // Bridges for browser APIs WKWebView doesn't support (navigator.vibrate
         // never shipped in any iOS WebKit), so the same game code that already
         // calls Haptic.* on the web gets real Taptic Engine feedback here.
-        contentController.add(self, name: "haptics")
+        let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
+        contentController.add(scriptMessageHandler, name: "haptics")
         #if DEBUG
         // Forwards the web build's console.* calls to Xcode's console, since
         // there's no attached Safari Web Inspector session by default. Debug
         // builds only — no reason to pay the JS override cost in release.
-        contentController.add(self, name: "consoleLog")
+        contentController.add(scriptMessageHandler, name: "consoleLog")
         let consoleScript = """
         (function() {
           const send = (level, args) => {
@@ -163,6 +192,17 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
             queue: .main
         ) { [weak self] _ in
             self?.sendNativeRuntimeSignal(memoryPressure: true)
+        })
+        // While backgrounded/resigned, stop gameplay audio and rendering so the
+        // game doesn't keep playing or burning battery off-screen.
+        let pauseNotifications: [Notification.Name] = [
+            UIApplication.willResignActiveNotification,
+            UIApplication.didEnterBackgroundNotification,
+        ]
+        runtimeObservers.append(contentsOf: pauseNotifications.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.webView?.pauseAllMediaPlayback()
+            }
         })
     }
 
@@ -323,6 +363,18 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     // MARK: - WKNavigationDelegate
+
+    // The bundle is a self-contained offline game; the only reachable origin is
+    // our own scheme. Cancelling everything else means a stray https link (in
+    // fetched content, console, etc.) can never navigate the webview away.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.request.url?.scheme == "paper-plane" {
+            decisionHandler(.allow)
+        } else {
+            print("[Nav] blocked navigation to: \(navigationAction.request.url?.absoluteString ?? "<nil>")")
+            decisionHandler(.cancel)
+        }
+    }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         print("[Nav] provisional navigation failed: \(error)")

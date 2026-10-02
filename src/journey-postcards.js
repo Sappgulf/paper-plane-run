@@ -1,3 +1,5 @@
+import { safeSetItem } from './game/safe-storage.js'
+
 export const POSTCARD_STORAGE_KEY = 'paper-plane-run-postcards-v1'
 
 const DESTINATIONS = new Set(['city', 'harbor', 'storm', 'aurora'])
@@ -33,7 +35,7 @@ export function savePostcardOnce(storage = localStorage, postcard) {
   if (!normalized) return false
   const cards = loadPostcardAlbum(storage)
   if (cards.some((card) => card.id === normalized.id)) return false
-  storage.setItem(POSTCARD_STORAGE_KEY, JSON.stringify([normalized, ...cards].slice(0, 50)))
+  safeSetItem(POSTCARD_STORAGE_KEY, JSON.stringify([normalized, ...cards].slice(0, 50)))
   return true
 }
 

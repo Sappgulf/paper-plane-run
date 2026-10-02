@@ -39,6 +39,9 @@ export function loadSettings() {
 export function saveSettings(partial) {
   const next = { ...loadSettings(), ...partial }
   safeSetItem(KEY, JSON.stringify(next))
+  // Single writer for the settings blob — hot-path consumers (haptics) cache
+  // their flag, so every save must announce the change.
+  window?.dispatchEvent?.(new Event('paperplane:settings-changed'))
   return next
 }
 

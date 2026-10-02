@@ -1,0 +1,11 @@
+node_modules/
+dist/
+ios/
+ios-dist/
+output/
+test-results/
+playwright-report/
+.claude/
+.worktrees/
+.superpowers/
+.superdesign/

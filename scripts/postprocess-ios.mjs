@@ -13,12 +13,23 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 const path = 'ios-dist/index.html'
 const html = readFileSync(path, 'utf8')
+// /g is essential: Vite can emit multiple module scripts/stylesheets, and a
+// partial strip leaves later crossorigin loads silently rejected by WebKit.
 const fixed = html
-  .replace(/(<script type="module") crossorigin(\s+src=)/, '$1$2')
-  .replace(/(<link rel="stylesheet") crossorigin(\s+href=)/, '$1$2')
+  .replace(/(<script type="module") crossorigin(\s+src=)/g, '$1$2')
+  .replace(/(<link rel="stylesheet") crossorigin(\s+href=)/g, '$1$2')
 
 if (fixed === html) {
   console.warn('postprocess-ios: no crossorigin attributes found to strip — check if Vite output changed shape')
 }
+
+const leftoverCrossorigin = fixed.match(/<(script type="module"|link rel="stylesheet")[^>]*crossorigin[^>]*>/g) ?? []
+if (leftoverCrossorigin.length > 0) {
+  console.error(`postprocess-ios: ${leftoverCrossorigin.length} local module/stylesheet tag(s) still carry crossorigin:\n${leftoverCrossorigin.join('\n')}`)
+  process.exitCode = 1
+}
+
 writeFileSync(path, fixed)
-console.log('postprocess-ios: stripped crossorigin from local module/stylesheet tags')
+if (process.exitCode !== 1) {
+  console.log('postprocess-ios: stripped crossorigin from local module/stylesheet tags')
+}

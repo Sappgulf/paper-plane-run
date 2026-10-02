@@ -32,11 +32,11 @@ export const DECK_CEILING = 4.6
  */
 export const DECK_FLOOR = 2.1
 /** No deck hazards before this — the opening still teaches the cushion for free. */
-export const DECK_INTRO_METERS = 240
+export const DECK_INTRO_METERS = 340
 /** Distance at which the deck is contested as often as it ever will be. */
 export const DECK_FULL_METERS = 1400
 /** Ceiling on how often a wave carries the lane, before difficulty and tier. */
-export const DECK_MAX_CHANCE = 0.55
+export const DECK_MAX_CHANCE = 0.28
 /** Most deck hazards one wave may carry. */
 export const DECK_MAX_COUNT = 2
 

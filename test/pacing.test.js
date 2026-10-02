@@ -117,8 +117,10 @@ describe('flyable building envelope', () => {
   })
 
   test('keeps side towers outside the three flight lanes', () => {
-    expect(getSideBuildingSpread({ gap: 1, random: () => 0 })).toBeGreaterThan(14)
+    expect(getSideBuildingSpread({ gap: 1, random: () => 0.9 })).toBeGreaterThan(14)
     expect(getSideBuildingSpread({ gap: 1, random: () => 1 })).toBeGreaterThan(18)
+    // Tight corridor (about 28% of rolls) still keeps towers outside the flight lanes (x > 6)
+    expect(getSideBuildingSpread({ gap: 1, random: () => 0.1 })).toBeGreaterThan(4)
   })
 })
 

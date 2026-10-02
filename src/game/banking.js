@@ -28,11 +28,11 @@ export const ROLL_RATE = 5.2
 /** Rolling back toward level is faster than rolling into a turn. */
 export const ROLL_RECOVER_RATE = 6.8
 /** Lateral acceleration at full bank, units/second². */
-export const TURN_POWER = 46
+export const TURN_POWER = 54
 /** Sideways drag. Lower than the old model: bank now does the arresting. */
 export const LATERAL_DRAG = 0.12
 /** Altitude bled per second at full bank. */
-export const BANK_SINK = 5.4
+export const BANK_SINK = 4.6
 
 function finite(value, fallback = 0) {
   const number = Number(value)

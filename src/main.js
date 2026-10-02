@@ -5,8 +5,15 @@ import { Haptic } from './haptics.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
 import { getFunnelSummary, track } from './analytics.js'
-import { claimAchievementTier, getAchievementProgress } from './achievements.js'
-import { claimMission, getDailyMissions, unclaimedRewards } from './missions.js'
+import {
+  claimAchievementTier,
+  getAchievementProgress,
+  getLifetimeDistance,
+  getLifetimeFever,
+  getLifetimeGauntlets,
+  getRunCount,
+} from './achievements.js'
+import { claimMission, getDailyMissions, getPlayStreak, unclaimedRewards } from './missions.js'
 import { createNotificationQueue } from './game/notification-queue.js'
 import {
   addLifetimeStars,
@@ -29,7 +36,6 @@ import {
 } from './upgrades.js'
 import {
   buildRunConfiguration,
-  chapterMeta,
   createJourney,
   getRouteChoices,
   selectJourneyPilot,
@@ -39,7 +45,6 @@ import {
   clearJourney,
   isChapterUnlocked,
   loadJourney,
-  loadUnlockedChapters,
   saveJourney,
   unlockJourneyChapter,
 } from './journey-storage.js'
@@ -158,10 +163,15 @@ if (pilotNameInput) {
 
 if (muteBtn) {
   muteBtn.textContent = shellAudio.muted ? '🔇' : '🔊'
+  muteBtn.setAttribute('aria-pressed', String(shellAudio.muted))
+  muteBtn.setAttribute('aria-label', shellAudio.muted ? 'Unmute' : 'Mute')
   muteBtn.addEventListener('click', async (event) => {
     event.stopPropagation()
-    await shellAudio.unlock()
-    muteBtn.textContent = shellAudio.toggleMute() ? '🔇' : '🔊'
+    try { await shellAudio.unlock() } catch {}
+    const muted = shellAudio.toggleMute()
+    muteBtn.textContent = muted ? '🔇' : '🔊'
+    muteBtn.setAttribute('aria-pressed', String(muted))
+    muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute')
   })
 }
 
@@ -175,6 +185,7 @@ const isIos =
 const installHint = $('install-hint')
 const installHintBody = $('install-hint-body')
 let deferredInstall = null
+let installHintFocusReturn = null
 
 bindDialogFocus($('pause-overlay'), { onEscape: () => $('pause-resume')?.click(), returnFocus: () => $('c') })
 bindDialogFocus(installHint, { onEscape: () => installHint.classList.add('hidden') })
@@ -202,8 +213,10 @@ if (isIos && !isStandalone) {
 installBtn?.addEventListener('click', async (event) => {
   event.stopPropagation()
   if (deferredInstall) {
-    deferredInstall.prompt()
-    await deferredInstall.userChoice
+    try {
+      deferredInstall.prompt()
+      await deferredInstall.userChoice
+    } catch {}
     deferredInstall = null
     installBtn.classList.add('hidden')
     return
@@ -214,10 +227,18 @@ installBtn?.addEventListener('click', async (event) => {
       : 'Open your browser menu and choose <b>Install app</b> or <b>Add to Home Screen</b>.'
   }
   installHint?.classList.remove('hidden')
+  installHintFocusReturn = document.activeElement
+  $('install-hint-close')?.focus()
 })
-$('install-hint-close')?.addEventListener('click', () => installHint?.classList.add('hidden'))
+
+function closeInstallHint() {
+  installHint?.classList.add('hidden')
+  installHintFocusReturn?.focus?.()
+  installHintFocusReturn = null
+}
+$('install-hint-close')?.addEventListener('click', closeInstallHint)
 installHint?.addEventListener('click', (event) => {
-  if (event.target === installHint) installHint.classList.add('hidden')
+  if (event.target === installHint) closeInstallHint()
 })
 
 function swScriptUrl() {
@@ -240,6 +261,7 @@ function showSwUpdateBanner(worker) {
     btn.disabled = true
     btn.textContent = 'Updating…'
     worker.postMessage({ type: 'SKIP_WAITING' })
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Retry update' }, 8000)
   }
 }
 
@@ -284,9 +306,11 @@ function stopPlanePreview() {
   activePlanePreview = null
 }
 
+const PANEL_IDS = ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']
+
 function hideAllPanels() {
   stopPlanePreview()
-  for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel']) {
+  for (const id of PANEL_IDS) {
     $(id)?.classList.add('hidden')
   }
 }
@@ -318,30 +342,6 @@ function startJourneyChapter(chapter = 1) {
   saveJourney(localStorage, journey)
   track('journey_chapter_started', { chapter: chapterId, journeyId: journey.id })
   return true
-}
-
-function renderJourneyChapterPicker(root) {
-  if (!root) return
-  const unlocked = loadUnlockedChapters(localStorage)
-  const chapter2Open = unlocked.includes(2) || getJourneyStampCount() >= 4
-  root.innerHTML = `
-    <div class="journey-chapter-picker">
-      <button type="button" class="journey-chapter-card" data-chapter="1">
-        <strong>${chapterMeta(1).title}</strong>
-        <span>${chapterMeta(1).subtitle}</span>
-        <small>Four flights · Red Dart finale</small>
-      </button>
-      <button type="button" class="journey-chapter-card${chapter2Open ? '' : ' locked'}" data-chapter="2" ${chapter2Open ? '' : 'disabled'}>
-        <strong>${chapterMeta(2).title}</strong>
-        <span>${chapterMeta(2).subtitle}</span>
-        <small>${chapter2Open ? 'Four flights · Stapler finale' : 'Complete Chapter 1 to unlock'}</small>
-      </button>
-    </div>`
-  root.onclick = (event) => {
-    const button = event.target.closest?.('[data-chapter]')
-    if (!button || button.disabled) return
-    if (startJourneyChapter(Number(button.dataset.chapter))) renderJourney()
-  }
 }
 
 function renderJourney() {
@@ -430,6 +430,22 @@ function closePostcardOverlay(root) {
   postcardFocusReturn = null
 }
 
+// Escape closes the shell overlays that otherwise only dismiss via pointer,
+// matching the click-outside/close-button paths (and their focus restore).
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return
+  if (installHint && !installHint.classList.contains('hidden')) {
+    event.preventDefault()
+    closeInstallHint()
+    return
+  }
+  const detail = $('postcard-detail')
+  if (detail && !detail.classList.contains('hidden')) {
+    event.preventDefault()
+    closePostcardOverlay(detail)
+  }
+})
+
 async function sharePostcard(card, root) {
   const model = buildPostcardShareModel(card, location.origin + location.pathname)
   if (!model) return
@@ -473,6 +489,7 @@ function showPostcardReveal(card) {
   })
   root.classList.remove('hidden')
   root.querySelector('button')?.focus()
+  shellAudio.missionComplete()
   track('journey_postcard_revealed', { postcardId: card.id })
 }
 
@@ -918,6 +935,7 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
 
 let hangarFocusUpgradeId = null
 let hangarUpgradeTree = null
+let hangarUpgradeSearch = ''
 
 function renderUpgrades() {
   refreshHangarWallet()
@@ -969,8 +987,43 @@ function renderUpgrades() {
     chip.onclick = () => { hangarUpgradeTree = tree.id; renderUpgrades() }
     treeNav.appendChild(chip)
   }
-  grid.appendChild(treeNav)
-  const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).sort((a, b) => {
+  const searchRow = document.createElement('div')
+  searchRow.className = 'hangar-search-row'
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.className = 'hangar-search-input'
+  searchInput.placeholder = 'Search upgrades…'
+  searchInput.value = hangarUpgradeSearch || ''
+  searchInput.setAttribute('aria-label', 'Search upgrades')
+  searchInput.oninput = () => { hangarUpgradeSearch = searchInput.value; renderUpgrades() }
+  searchRow.appendChild(searchInput)
+  if (hangarUpgradeSearch) {
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.className = 'hangar-search-clear'
+    clearBtn.textContent = '✕'
+    clearBtn.setAttribute('aria-label', 'Clear search')
+    clearBtn.onclick = () => { hangarUpgradeSearch = ''; renderUpgrades() }
+    searchRow.appendChild(clearBtn)
+  }
+  grid.appendChild(searchRow)
+  const synergyBanner = (() => {
+    const gold = getAllUpgradeLevels()
+    const goldReady = gold.wingspan >= 3 && gold.trail >= 3
+    const feverReady = gold.fever >= 3 && gold.streak >= 3
+    const text = goldReady && feverReady ? '✨ Double synergy active: Gold trail + Fever/Streak bonus' : goldReady ? '✨ Gold synergy active (Wide Wings + Paper Trail maxed)' : feverReady ? '🔥 Fever synergy active (Fever Focus + Steady Hands maxed)' : null
+    if (!text) return null
+    const el = document.createElement('div')
+    el.className = 'upgrade-path-banner synergy'
+    el.innerHTML = `<strong>${text}</strong><span>Keep both trees maxed for the bonus to stay.</span>`
+    return el
+  })()
+  if (synergyBanner) grid.appendChild(synergyBanner)
+  const upgrades = filterUpgradesByTree([...listUpgrades()], hangarUpgradeTree).filter((u) => {
+    if (!hangarUpgradeSearch) return true
+    const q = hangarUpgradeSearch.toLowerCase()
+    return u.name.toLowerCase().includes(q) || u.blurb.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)
+  }).sort((a, b) => {
     const recA = pathBanner.upgradeId === a.id ? 0 : 1
     const recB = pathBanner.upgradeId === b.id ? 0 : 1
     if (recA !== recB) return recA - recB
@@ -1000,6 +1053,9 @@ function renderUpgrades() {
   const wingspan = upgrades.find((u) => u.id === 'wingspan')
   const trail = upgrades.find((u) => u.id === 'trail')
   const synergyGold = !!(wingspan?.maxed && trail?.maxed)
+  const fever = upgrades.find((u) => u.id === 'fever')
+  const streak = upgrades.find((u) => u.id === 'streak')
+  const synergyFever = !!(fever?.maxed && streak?.maxed)
   for (const u of upgrades) {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
@@ -1031,9 +1087,12 @@ function renderUpgrades() {
         }
       }
     }
-    const blurb = synergyGold && (u.id === 'trail' || u.id === 'wingspan')
-      ? `${u.blurb} · Gold synergy trail active`
-      : u.blurb
+    let blurb = u.blurb
+    if (synergyGold && (u.id === 'trail' || u.id === 'wingspan')) blurb += ' · ✨ Gold synergy active'
+    if (synergyFever && (u.id === 'fever' || u.id === 'streak')) blurb += ' · 🔥 Fever synergy active'
+    // Surface stacking synergy for wealth/luck even before max
+    if (u.id === 'wealth') blurb += ' · Stacks with Lucky Scrap'
+    if (u.id === 'luck') blurb += ' · Stacks with Gold Rush'
     card.innerHTML = `
       <div>
         <div class="u-title">${u.icon} ${u.name}</div>
@@ -1111,14 +1170,40 @@ function renderSettings() {
   bind('set-low-power', 'lowPower')
   bind('set-haptics', 'haptics')
   bind('set-season', 'forceSeason')
+  // Music lives in GameAudio's own pref (audio.js), not settings.js — mirror
+  // how boot reads it and persist through the same toggle as the mute button.
+  const musicToggle = $('set-music')
+  if (musicToggle) {
+    musicToggle.checked = shellAudio.musicOn
+    musicToggle.onchange = () => {
+      musicToggle.checked = shellAudio.toggleMusic()
+    }
+  }
   const activeSeason = seasonInfo(settings.forceSeason)
   if ($('season-now')) $('season-now').textContent = `${activeSeason.name} (${activeSeason.id})`
 }
 
 function renderStats() {
-  const f = getFunnelSummary()
   const box = $('stats-body')
   if (!box) return
+
+  const lifetimeDist = getLifetimeDistance()
+  const lifetimeStars = getLifetimeStars()
+  const totalRuns = getRunCount()
+  const totalGauntlets = getLifetimeGauntlets()
+  const totalFever = getLifetimeFever()
+  const streak = getPlayStreak()
+  const postcards = loadPostcardAlbum(localStorage).length
+  const skins = listSkins()
+  const ownedSkins = skins.filter((s) => s.owned).length
+  const localTop = getLocalTop(1)
+  const bestRecord = localTop.length ? `${localTop[0].score}m` : '0m'
+
+  const formattedDist = lifetimeDist >= 1000
+    ? `${(lifetimeDist / 1000).toFixed(1)} km`
+    : `${lifetimeDist} m`
+
+  const f = getFunnelSummary()
   const reasons = Object.entries(f.reasons)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
@@ -1128,17 +1213,106 @@ function renderStats() {
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `<li>${k}: <strong>${v}</strong></li>`)
     .join('')
+
+  const wallet = getWallet()
+  const nextMilestones = []
+  const affordableUpgrades = listUpgrades().filter((u) => !u.maxed).sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity)).slice(0, 2)
+  for (const u of affordableUpgrades) {
+    const est = estimateRunsToAfford({ wallet, cost: u.cost })
+    nextMilestones.push({ icon: u.icon, label: u.name, detail: `${u.cost}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / u.cost) * 100) })
+  }
+  const nextPlane = listSkins().filter((s) => s.state === 'available' && s.price).sort((a, b) => (a.price.value ?? Infinity) - (b.price.value ?? Infinity))[0]
+  if (nextPlane) {
+    const est = estimateRunsToAfford({ wallet, cost: nextPlane.price.value })
+    nextMilestones.push({ icon: '🎨', label: nextPlane.name, detail: `${nextPlane.price.value}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / nextPlane.price.value) * 100) })
+  }
+  while (nextMilestones.length < 3) {
+    nextMilestones.push({ icon: '✅', label: 'All in reach', detail: 'Keep flying for endgame cosmetics', progress: 100 })
+    if (nextMilestones.length >= 3) break
+  }
+  const milestonesHtml = nextMilestones.slice(0, 3).map((m) => `
+    <div class="milestone-card">
+      <span class="milestone-icon">${m.icon}</span>
+      <div class="milestone-copy">
+        <strong>${m.label}</strong>
+        <span>${m.detail}</span>
+        <div class="mission-bar" style="margin-top:4px;height:5px"><div class="mission-fill" style="width:${m.progress}%"></div></div>
+      </div>
+    </div>`).join('')
+
   box.innerHTML = `
-    <p class="tagline">Anonymous events on this device (+ optional server). Session ${f.session.slice(0, 10)}…</p>
-    <h3>Funnel</h3>
-    <ul class="list-card">${counts || '<li>No events yet</li>'}</ul>
-    <h3>Death reasons</h3>
-    <ul class="list-card">${reasons || '<li>—</li>'}</ul>
+    <p class="page-intro">Pilot Dossier · Lifetime flight records &amp; accomplishments.</p>
+    <h3 style="text-align:left;font-size:13px;margin:10px 0 6px;color:var(--ink)">Next on the runway</h3>
+    <div class="milestones-row">${milestonesHtml}</div>
+    <p class="tagline" style="text-align:left;margin:2px 0 10px">Wallet ${wallet}★ · ~${estimateRunsToAfford({ wallet, cost: 10 }).runs || 1} run to your cheapest fold · Lifetime ${lifetimeStars}★ gates your hangar</p>
+    <div class="pilot-logbook-grid">
+      <div class="logbook-card">
+        <span class="logbook-icon">🌍</span>
+        <strong class="logbook-num">${formattedDist}</strong>
+        <span class="logbook-label">Lifetime Airtime</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">⭐</span>
+        <strong class="logbook-num">${lifetimeStars.toLocaleString()}★</strong>
+        <span class="logbook-label">Lifetime Stars</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🏆</span>
+        <strong class="logbook-num">${bestRecord}</strong>
+        <span class="logbook-label">Best Record</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🛫</span>
+        <strong class="logbook-num">${totalRuns.toLocaleString()}</strong>
+        <span class="logbook-label">Total Flights</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🔥</span>
+        <strong class="logbook-num">${totalFever.toLocaleString()}</strong>
+        <span class="logbook-label">Fever Bursts</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🎯</span>
+        <strong class="logbook-num">${totalGauntlets.toLocaleString()}</strong>
+        <span class="logbook-label">Gauntlets Cleared</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">🎨</span>
+        <strong class="logbook-num">${ownedSkins}/${skins.length}</strong>
+        <span class="logbook-label">Planes Owned</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">💌</span>
+        <strong class="logbook-num">${postcards}</strong>
+        <span class="logbook-label">Postcards</span>
+      </div>
+      <div class="logbook-card">
+        <span class="logbook-icon">📅</span>
+        <strong class="logbook-num">${streak} ${streak === 1 ? 'day' : 'days'}</strong>
+        <span class="logbook-label">Daily Streak</span>
+      </div>
+    </div>
+    <details class="stats-diagnostics">
+      <summary>Technical Diagnostics</summary>
+      <div class="stats-diagnostics-body">
+        <p class="tagline">Session ${f.session.slice(0, 10)}…</p>
+        <h4 style="margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);">Event Funnel</h4>
+        <ul class="list-card">${counts || '<li>No events yet</li>'}</ul>
+        <h4 style="margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);">Hazard Incidents</h4>
+        <ul class="list-card">${reasons || '<li>—</li>'}</ul>
+      </div>
+    </details>
   `
 }
 
+// Generation token: a slow remote fetch (Global/Weekly) must never overwrite
+// a leaderboard rendered after it started, so every render captures a token
+// and bails before touching the DOM if a newer render has run since.
+let boardRenderToken = 0
+
 async function renderBoard(tab = 'local') {
   const list = $('board-list')
+  const token = ++boardRenderToken
   list.innerHTML = ''
   document.querySelectorAll('[data-board]').forEach((t) =>
     t.classList.toggle('active', t.dataset.board === tab),
@@ -1156,15 +1330,14 @@ async function renderBoard(tab = 'local') {
   else {
     const remote = await fetchRemoteTop(difficulty.id, false)
     rows = remote?.scores || []
-    if (!rows.length) {
-      list.innerHTML = '<li>No global scores yet — be the first!</li>'
-      return
-    }
   }
+  if (token !== boardRenderToken) return
   if (!rows.length) {
     if (tab === 'weekly') {
       const fold = thisWeeksFold()
       list.innerHTML = `<li>No scores for ${weeklyKey()} · ${fold.name} yet — go fly!</li>`
+    } else if (tab === 'remote') {
+      list.innerHTML = '<li>No global scores yet — be the first!</li>'
     } else {
       list.innerHTML = '<li>No scores yet — go fly!</li>'
     }
@@ -1206,33 +1379,122 @@ async function renderBoard(tab = 'local') {
 let editorLayout = emptyLayout()
 let editorTool = 'building'
 const editorCanvas = $('editor-canvas')
-const ectx = editorCanvas.getContext('2d')
+const ectx = editorCanvas?.getContext?.('2d')
+
+function drawEditorStar(ctx, cx, cy, r, color) {
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.beginPath()
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5 - Math.PI / 2
+    const x = cx + Math.cos(a) * r
+    const y = cy + Math.sin(a) * r
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+    const a2 = a + Math.PI / 5
+    ctx.lineTo(cx + Math.cos(a2) * (r * 0.45), cy + Math.sin(a2) * (r * 0.45))
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
 
 function drawEditor() {
+  if (!editorCanvas || !ectx) return
   const w = editorCanvas.width
   const h = editorCanvas.height
-  ectx.fillStyle = '#e8f0f8'
+  ectx.fillStyle = '#f8fafc'
   ectx.fillRect(0, 0, w, h)
-  ectx.strokeStyle = '#c5d4e0'
-  for (let i = 0; i < 10; i++) {
-    const y = (i / 10) * h
+
+  // Minor grid lines
+  ectx.strokeStyle = 'rgba(203, 213, 225, 0.45)'
+  ectx.lineWidth = 1
+  for (let x = 0; x < w; x += 18) {
+    ectx.beginPath()
+    ectx.moveTo(x, 0)
+    ectx.lineTo(x, h)
+    ectx.stroke()
+  }
+  for (let y = 0; y < h; y += 20) {
     ectx.beginPath()
     ectx.moveTo(0, y)
     ectx.lineTo(w, y)
     ectx.stroke()
   }
-  ectx.fillStyle = '#94a3b8'
-  ectx.fillRect(w / 2 - 2, 0, 4, 12)
-  ectx.font = '11px Nunito'
-  ectx.fillText('→ flight', w / 2 - 18, 22)
-  const colors = { building: '#f0956a', bird: '#4a3f3a', scissors: '#94a3b8', star: '#fbbf24', power: '#a78bfa' }
+
+  // Major flight axis
+  ectx.strokeStyle = 'rgba(148, 163, 184, 0.55)'
+  ectx.lineWidth = 1.5
+  ectx.setLineDash([4, 4])
+  ectx.beginPath()
+  ectx.moveTo(w / 2, 0)
+  ectx.lineTo(w / 2, h)
+  ectx.stroke()
+  ectx.setLineDash([])
+
+  // Distance markers along the edge
+  ectx.fillStyle = '#64748b'
+  ectx.font = '9px Nunito, sans-serif'
+  ectx.textAlign = 'left'
+  for (let d = 0; d <= 200; d += 50) {
+    const y = (d / 200) * (h - 20) + 12
+    ectx.fillText(`${d}m`, 4, y)
+  }
+
+  ectx.fillStyle = '#475569'
+  ectx.textAlign = 'center'
+  ectx.font = 'bold 10px Nunito, sans-serif'
+  ectx.fillText('▲ START (0m)', w / 2, 12)
+  ectx.fillText('FINISH (200m) ▼', w / 2, h - 3)
+
+  const colors = { building: '#ea580c', bird: '#0284c7', scissors: '#dc2626', star: '#f59e0b', power: '#8b5cf6' }
   for (const it of editorLayout.items) {
     const px = ((it.x + 14) / 28) * w
-    const py = (it.z / 200) * h
-    ectx.fillStyle = colors[it.t] || '#333'
-    ectx.beginPath()
-    ectx.arc(px, py, 6, 0, Math.PI * 2)
-    ectx.fill()
+    const py = (it.z / 200) * (h - 20) + 10
+
+    ectx.save()
+    ectx.shadowColor = 'rgba(0,0,0,0.18)'
+    ectx.shadowBlur = 4
+    ectx.shadowOffsetY = 2
+
+    const col = colors[it.t] || '#333'
+    if (it.t === 'star') {
+      drawEditorStar(ectx, px, py, 7, col)
+    } else if (it.t === 'power') {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.moveTo(px, py - 6)
+      ectx.lineTo(px + 6, py)
+      ectx.lineTo(px, py + 6)
+      ectx.lineTo(px - 6, py)
+      ectx.closePath()
+      ectx.fill()
+    } else if (it.t === 'building') {
+      ectx.fillStyle = col
+      ectx.fillRect(px - 6, py - 6, 12, 12)
+      ectx.fillStyle = 'rgba(255,255,255,0.7)'
+      ectx.fillRect(px - 3, py - 3, 6, 6)
+    } else if (it.t === 'scissors') {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.arc(px - 3, py + 3, 3, 0, Math.PI * 2)
+      ectx.arc(px + 3, py + 3, 3, 0, Math.PI * 2)
+      ectx.fill()
+      ectx.strokeStyle = col
+      ectx.lineWidth = 2
+      ectx.beginPath()
+      ectx.moveTo(px - 3, py + 3)
+      ectx.lineTo(px + 4, py - 5)
+      ectx.moveTo(px + 3, py + 3)
+      ectx.lineTo(px - 4, py - 5)
+      ectx.stroke()
+    } else {
+      ectx.fillStyle = col
+      ectx.beginPath()
+      ectx.arc(px, py, 5.5, 0, Math.PI * 2)
+      ectx.fill()
+    }
+    ectx.restore()
   }
 }
 
@@ -1337,9 +1599,13 @@ const shellBridge = Object.freeze({
 })
 
 function showEngineStatus(message, { retry = false } = {}) {
-  if (engineStatusMessage) engineStatusMessage.textContent = message
+  if (engineStatusMessage) {
+    engineStatusMessage.textContent = message
+    engineStatusMessage.setAttribute('aria-live', 'assertive')
+  }
   engineRetry?.classList.toggle('hidden', !retry)
   engineStatus?.classList.remove('hidden')
+  engineStatus?.setAttribute('aria-live', 'assertive')
 }
 
 function hideEngineStatus() {
@@ -1352,9 +1618,13 @@ function restoreActionableMenu() {
 }
 
 async function startMode(kind, options = {}) {
+  // Snapshot which panel the user is on when the start is requested — if the
+  // engine fails we should only yank them back to the menu if they never
+  // navigated elsewhere during the await (e.g. opened the Hangar).
+  const panelAtStart = PANEL_IDS.find((id) => !$(id)?.classList.contains('hidden'))
   pendingStart = { kind, options }
   settings = loadSettings()
-  void shellAudio.unlock()
+  void shellAudio.unlock().catch(()=>{})
   showEngineStatus('Preparing your plane...')
   try {
     const result = await engineLoader.start(kind, {
@@ -1369,7 +1639,7 @@ async function startMode(kind, options = {}) {
   } catch (error) {
     engineFailed = true
     reportFlightEngineWarning('Flight engine unavailable', error)
-    restoreActionableMenu()
+    if (!panelAtStart || panelAtStart === 'menu') restoreActionableMenu()
     showEngineStatus('Couldn’t prepare your plane. Check your connection and retry.', { retry: true })
     return undefined
   }
@@ -1417,6 +1687,12 @@ document.addEventListener('click', (event) => {
     showHangarTab(button.dataset.tab)
     return
   }
+  if (button?.matches('[data-board]')) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    void renderBoard(button.dataset.board)
+    return
+  }
   if (button?.matches('[data-hangar-group]')) {
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -1442,7 +1718,7 @@ document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
 engineRetry?.addEventListener('click', () => {
   if (engineFailed) {
     if (pendingStart) {
-      sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart))
+      try { sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart)) } catch {}
     }
     location.reload()
     return
@@ -1485,7 +1761,7 @@ function setShellDifficulty(id, { persist = true } = {}) {
 document.querySelectorAll('.diff-btn[data-diff]').forEach((button) => {
   button.addEventListener('click', () => {
     setShellDifficulty(button.dataset.diff)
-    void shellAudio.unlock().then(() => shellAudio.uiClick())
+    void shellAudio.unlock().catch(()=>{}).then(() => shellAudio.uiClick())
   })
 })
 setShellDifficulty(difficulty.id, { persist: false })
@@ -1525,7 +1801,7 @@ document.querySelectorAll('.ctrl-btn').forEach((button) => {
     settings = saveSettings({ controlMode: button.dataset.ctrl })
     syncShellControlUi()
     void syncSettingsWithEngine(settings)
-    void shellAudio.unlock().then(() => shellAudio.uiClick())
+    void shellAudio.unlock().catch(()=>{}).then(() => shellAudio.uiClick())
   })
 })
 

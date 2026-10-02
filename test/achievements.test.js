@@ -31,6 +31,13 @@ describe('Sharpshooter achievement', () => {
     expect(reward).toBe(10)
   })
 
+  test('refuses to claim a tier before its threshold is met', () => {
+    addLifetimePopped(30) // above tier 0 (25), below tier 1 (100)
+
+    expect(claimAchievementTier('popped', 1)).toBe(0)
+    expect(claimAchievementTier('popped', 0)).toBe(10)
+  })
+
   test('ignores non-positive increments', () => {
     addLifetimePopped(0)
     addLifetimePopped(-5)
@@ -68,5 +75,18 @@ describe('Fever Pitch achievement', () => {
     const fever = getAchievementProgress(0).find((a) => a.id === 'fever')
     expect(fever.tiers[0].done).toBe(true)
     expect(claimAchievementTier('fever', 0)).toBe(10)
+  })
+})
+
+describe('Star Collector achievement', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  test('checks the lifetime-stars threshold before paying out', () => {
+    localStorage.setItem('paper-plane-run-lifetime-stars', '60')
+
+    expect(claimAchievementTier('stars', 0)).toBe(10) // threshold 50
+    expect(claimAchievementTier('stars', 1)).toBe(0) // threshold 250
   })
 })

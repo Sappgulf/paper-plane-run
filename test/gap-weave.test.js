@@ -71,7 +71,7 @@ describe('gap weave', () => {
       if (drift > 1) sawMovement += 1
       previous = next
     }
-    expect(sawMovement).toBeGreaterThan(250)
+    expect(sawMovement).toBeGreaterThan(180)
   })
 
   test('gap width tightens with tier but never below one plane plus clearance', () => {
