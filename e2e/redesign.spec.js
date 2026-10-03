@@ -39,6 +39,7 @@ test('progress export, invalid preview, restore and undo preserve the complete f
   await openApp(page)
   await openKit()
   await tap(page.locator('#backup-export'))
+  await expect(page.locator('#backup-share')).toBeHidden()
   const original = await page.locator('#backup-export-text').inputValue()
   const saved = JSON.parse(original)
   expect(saved.entries['paper-plane-run-wallet']).toBe('42')
@@ -81,6 +82,34 @@ test('progress export, invalid preview, restore and undo preserve the complete f
   expect(await page.evaluate(() => localStorage.getItem('paper-plane-run-upgrades'))).toBe('{"handling":1}')
   expect(await page.evaluate(() => localStorage.getItem('redesign-seeded'))).toBe('1')
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('paper-plane-run-settings-v1')).arDesk)).toBe(false)
+})
+
+test('native iOS progress export sends the portable save to the share bridge', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    window.__nativeBackupShares = []
+    Object.defineProperty(window, 'webkit', {
+      configurable: true,
+      value: { messageHandlers: { shareBackup: { postMessage: text => window.__nativeBackupShares.push(text) } } },
+    })
+  })
+  await openApp(page)
+  await tap(page.locator('#hangar-btn'))
+  await tap(page.locator('#hangar-group-meta'))
+  await tap(page.locator('#hangar-tab-settings'))
+  await tap(page.locator('#backup-export'))
+
+  const text = await page.locator('#backup-export-text').inputValue()
+  await expect(page.locator('#backup-share')).toBeVisible()
+  await expect(page.locator('#backup-download')).toBeHidden()
+  await expect(page.locator('#backup-export-label')).toHaveText('Your portable save · save or share the file')
+  await tap(page.locator('#backup-share'))
+  await expect(page.locator('#backup-status')).toHaveText('Choose where to save or share your progress backup.')
+  const shared = await page.evaluate(() => window.__nativeBackupShares[0])
+  expect(JSON.parse(shared)).toEqual(JSON.parse(text))
+  expect(JSON.parse(shared)).toMatchObject({ format: 'paper-plane-run-save', version: 1 })
+  if (testInfo.project.name === 'mobile') {
+    await page.screenshot({ path: 'output/progress-share-mobile.png' })
+  }
 })
 
 

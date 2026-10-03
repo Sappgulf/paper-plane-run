@@ -340,8 +340,9 @@
                   <button id="backup-undo" type="button" class="btn-secondary" hidden>Undo last restore</button>
                 </div>
                 <div id="backup-export-panel" hidden>
-                  <label for="backup-export-text" class="chip-label">Your portable save · select and copy</label>
+                  <label id="backup-export-label" for="backup-export-text" class="chip-label">Your portable save · select and copy</label>
                   <textarea id="backup-export-text" class="backup-text" readonly spellcheck="false"></textarea>
+                  <button id="backup-share" type="button" class="btn-secondary" hidden>Save backup file</button>
                   <button id="backup-download" type="button" class="btn-secondary">Download backup</button>
                 </div>
                 <details class="backup-import">

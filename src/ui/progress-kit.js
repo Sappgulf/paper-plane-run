@@ -27,7 +27,10 @@ export function initProgressKit() {
     } catch (error) { status(error.message, true) }
   }
   try { element('backup-undo').hidden = !localStorage.getItem(RECOVERY_KEY) } catch { /* Export reports unavailable storage on use. */ }
-  element('backup-download').hidden = location.protocol === 'paper-plane:'
+  const nativeBackupShare = window.webkit?.messageHandlers?.shareBackup
+  element('backup-share').hidden = !nativeBackupShare
+  element('backup-download').hidden = location.protocol === 'paper-plane:' || Boolean(nativeBackupShare)
+  if (nativeBackupShare) element('backup-export-label').textContent = 'Your portable save · save or share the file'
   element('backup-export').onclick = () => {
     try {
       element('backup-export-text').value = createProgressBackup(localStorage)
@@ -46,6 +49,14 @@ export function initProgressKit() {
     link.download = `paper-plane-progress-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  element('backup-share').onclick = () => {
+    const text = element('backup-export-text').value
+    if (!text || !nativeBackupShare) return
+    try {
+      nativeBackupShare.postMessage(text)
+      status('Choose where to save or share your progress backup.')
+    } catch (error) { status(`Could not share backup: ${error.message}`, true) }
   }
   element('backup-import-text').oninput = () => {
     fileRequest++

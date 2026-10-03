@@ -13,7 +13,9 @@ re-deriving every formula in a separate native engine.
 - **Native (Swift)**: app shell, launch screen, icon, haptics bridge
   (WKWebView never implemented `navigator.vibrate`, so `Haptic.*` calls are
   forwarded to `UIImpactFeedbackGenerator`/`UINotificationFeedbackGenerator`
-  via a `WKScriptMessageHandler`), lifecycle and performance signals.
+  via a `WKScriptMessageHandler`), lifecycle and performance signals, and a
+  progress-backup share sheet that exports a temporary JSON file to Files,
+  AirDrop, or another iOS share target.
 - **Web (unchanged game code)**: everything else — flight physics, all
   modes, upgrades, missions, achievements, the route editor, leaderboards.
   `navigator.share` and the clipboard API work natively in WKWebView on

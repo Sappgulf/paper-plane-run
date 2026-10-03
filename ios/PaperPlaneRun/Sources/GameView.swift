@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import WebKit
 
@@ -113,6 +114,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         // calls Haptic.* on the web gets real Taptic Engine feedback here.
         let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
         contentController.add(scriptMessageHandler, name: "haptics")
+        contentController.add(scriptMessageHandler, name: "shareBackup")
         #if DEBUG
         // Forwards the web build's console.* calls to Xcode's console, since
         // there's no attached Safari Web Inspector session by default. Debug
@@ -350,6 +352,11 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
             print("[JS] \(message.body)")
             return
         }
+        if message.name == "shareBackup" {
+            guard let backup = message.body as? String else { return }
+            DispatchQueue.main.async { [weak self] in self?.presentBackupShareSheet(backup) }
+            return
+        }
         guard message.name == "haptics", let pattern = message.body as? String else { return }
         switch pattern {
         case "tap":
@@ -367,6 +374,38 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         default:
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
+    }
+
+    private func presentBackupShareSheet(_ backup: String) {
+        guard viewIfLoaded?.window != nil,
+              let data = backup.data(using: .utf8),
+              data.count <= 2 * 1024 * 1024,
+              (try? JSONSerialization.jsonObject(with: data)) != nil
+        else {
+            print("[BackupShare] rejected invalid or oversized progress export")
+            return
+        }
+
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("paper-plane-progress-\(UUID().uuidString).json")
+        do {
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            print("[BackupShare] could not stage progress export: \(error)")
+            return
+        }
+
+        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        controller.title = "Paper Plane Run Progress"
+        controller.completionWithItemsHandler = { _, _, _, _ in
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        present(controller, animated: true)
     }
 
     // MARK: - WKNavigationDelegate
