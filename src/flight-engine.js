@@ -3,7 +3,13 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GameAudio } from './audio.js'
 import { isGameShortcut, isUiKeyboardTarget } from './game/input-boundary.js'
-import { TUTORIAL_LENGTH, TUTORIAL_LESSONS, tutorialLessonAt } from './game/tutorial-lessons.js'
+import {
+  TUTORIAL_LENGTH,
+  TUTORIAL_LESSONS,
+  TUTORIAL_LESSON_MIN_SECONDS,
+  nextReadableTutorialLessonIndex,
+  tutorialLessonAt,
+} from './game/tutorial-lessons.js'
 import { Haptic } from './haptics.js'
 import { createPool } from './pool.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
@@ -3776,7 +3782,8 @@ function spawnLayoutItems() {
 }
 
 function spawnTutorial() {
-  tutorialHintsShown = new Set()
+  tutorialLessonIndex = -1
+  tutorialLessonShownAt = 0
   tutorialHintEl?.classList.add('hidden')
   const rings = [
     [0, 8, 25], [2, 10, 65], [-2, 7, 110], [0, 12, 165], [3, 9, 235], [-3, 11, 310], [0, 8, TUTORIAL_LENGTH],
@@ -3813,17 +3820,24 @@ function spawnTutorial() {
   }
 }
 
-let tutorialHintsShown = new Set()
+let tutorialLessonIndex = -1
+let tutorialLessonShownAt = 0
 const tutorialHintEl = $('tutorial-hint')
 function checkTutorialHints() {
   if (runKind !== 'tutorial' || !tutorialHintEl) return
-  const lesson = tutorialLessonAt(distance)
-  if (!tutorialHintsShown.has(lesson.at)) {
-    tutorialHintsShown.add(lesson.at)
-    $('tutorial-title').textContent = `${TUTORIAL_LESSONS.indexOf(lesson) + 1} / ${TUTORIAL_LESSONS.length} · ${lesson.title}`
-    $('tutorial-copy').textContent = lesson.text
-    tutorialHintEl.classList.remove('hidden')
-  }
+  const nextIndex = nextReadableTutorialLessonIndex({
+    distance,
+    elapsed,
+    currentIndex: tutorialLessonIndex,
+    shownAt: tutorialLessonShownAt,
+  })
+  if (nextIndex === tutorialLessonIndex) return
+  tutorialLessonIndex = nextIndex
+  tutorialLessonShownAt = elapsed
+  const lesson = TUTORIAL_LESSONS[tutorialLessonIndex]
+  $('tutorial-title').textContent = `${tutorialLessonIndex + 1} / ${TUTORIAL_LESSONS.length} · ${lesson.title}`
+  $('tutorial-copy').textContent = lesson.text
+  tutorialHintEl.classList.remove('hidden')
 }
 
 function clearPower() {
@@ -6943,7 +6957,7 @@ function update(dt) {
   } else if (gapTrailEl) gapTrailEl.classList.remove('visible')
   checkHazardTelegraph()
   updateWeatherFx(dt)
-  checkTutorialHints(dt)
+  checkTutorialHints()
 
   // Camera: pull back slightly during boost
   const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10 : -8
@@ -7368,7 +7382,9 @@ function update(dt) {
 
   updateMagnetPullFeedback(magnetTarget, magnet)
 
-  if (runKind === 'tutorial' && ringsLeft === 0 && distance >= TUTORIAL_LENGTH) {
+  const finalTutorialHintRead = tutorialLessonIndex === TUTORIAL_LESSONS.length - 1
+    && elapsed - tutorialLessonShownAt >= TUTORIAL_LESSON_MIN_SECONDS
+  if (runKind === 'tutorial' && finalTutorialHintRead && ringsLeft === 0 && distance >= TUTORIAL_LENGTH) {
     const stillRings = entities.some((e) => e.type === 'ring')
     if (!stillRings) {
       die('Tutorial complete!')
