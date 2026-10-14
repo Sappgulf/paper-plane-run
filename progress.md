@@ -2,6 +2,24 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Fair boost, gauntlet sheet and random confetti removed
+
+- **Boost is a surge, not a jump:** the speed bonus used to land almost at once, +18 on top of a ×1.22 cruise. On a normal run that put the world at about 52 against a 28 base, and it dropped sharply at the end. The bonus now eases in over 0.45s, holds at +7 with a 1.1× cruise multiplier (about 38 against 28 at the start of a normal run), and drains over the last 0.8s (`getBoostSurge` in `src/game/power-pickup.js`). A same-kind refresh keeps the surge up, so grabbing a second boost never dips the speed.
+- **No free lift:** boost no longer kicks the plane up 3 units/s. Updrafts remain the only free height in the run.
+- **Boost spawns less:** about one power orb in six is boost, down from roughly 45% (the old forced 18% roll plus an even third of the rest). Shield and magnet split the remainder evenly (`POWER_SPAWN_WEIGHTS` and `pickPowerSpawnKind`). Turbo Fold's grace and smaller crash target are unchanged.
+- **Gauntlet sheet removed:** each gauntlet stood an amber 26×18 colour panel in the air ahead of the gap. It had no art and no collision, so it read as a blank sheet you could fly through. The gap banner and the invisible payout tripwire remain.
+- **Random boost confetti removed:** boost sprayed confetti at random along its trail, eight times a second. Event bursts (pickups, near misses, clears, fever) are unchanged.
+- Verification: Vitest 625 tests passed (89 files; 8 new for spawn odds and the surge envelope); production build passed; bundle budget 912,783 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed. The gauntlet fixture was stepped in the browser and the lane sheet is gone from the frame.
+- Still open: the cream cloud shapes in the sky and the event confetti from pickups, near misses and clears are unchanged.
+
+## 2026-10-14 — Fog warnings, menu rhythm, and iOS parity
+
+- **Hazards hidden by fog:** the daily "Foggy Morning" twist, the low-visibility Journey route, and the storm and midnight visibility pockets all shorten draw distance to roughly 90–175 units. Birds and scissors were invisible until close, and their warning ring only appeared inside 36 units, or not at all when secondary effects were off (Low Power Mode, thermal or memory pressure, low quality). The rings are now always attached, ignore fog, and appear as a hazard enters a thick-fog band (`fogIsThick` in `src/flight-engine.js`). A crash under thick fog says "hidden by the fog". Normal fog is unchanged. A DEV fixture, `#test-fog-warning`, shows the case.
+- **Ghost replay:** the ghost plane is visual only. It is never registered as a collider, so it cannot end a run.
+- **Menu rhythm:** every gap between menu items is 10px on both axes. Mode pills share one height, with captions reserving two lines. Difficulty and control buttons are equal columns with equal gaps, and selected buttons no longer shift off their row. The game-over actions are one centred column of equal-width buttons. The Hangar pill keeps its row layout.
+- **iOS parity:** the install shortcut no longer shows inside the app, because the WebView counts as the installed shell (`src/native-shell.js`, `src/main.js`). Flights post a `screenAwake` message, so the native shell keeps the screen on during play, and the home indicator steps back during play (`ios/PaperPlaneRun/Sources/GameView.swift`). The app was built and run on the iPhone 18 Pro simulator through a Classic flight.
+- Verification so far: Vitest 617 tests passed; iOS web parity 41 files; native Debug build succeeded and ran a full Classic flight on the simulator.
+
 ## 2026-10-14 — Ground props: street pennants and decal patches
 
 - **Street flags:** the city's rooftop-flag species floated as blank white panels 3.4 units up. They are now short paper pennants on poles standing on the pavement, and the sway is reduced so the poles don't swing like masts (`GROUND_LIFE_GEOMETRY.flag` in `src/flight-engine.js`, species data in `src/game/ground-life.js`).

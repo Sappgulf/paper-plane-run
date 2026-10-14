@@ -2,6 +2,7 @@ import './style.css'
 
 import { GameAudio } from './audio.js'
 import { Haptic } from './haptics.js'
+import { isNativeShell } from './native-shell.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
 import { getFunnelSummary, track } from './analytics.js'
@@ -180,8 +181,10 @@ if (muteBtn) {
 
 // Install and offline startup belong to the always-loaded shell. Deferring
 // these listeners with Three.js can miss both beforeinstallprompt and load.
+// The iOS app is already installed: its WebView is never "standalone" to the
+// browser, so without this the Add to Home Screen shortcut shows inside the app.
 const isStandalone =
-  window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
+  isNativeShell || window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
 const isIos =
   (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)

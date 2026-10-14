@@ -115,6 +115,9 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
         contentController.add(scriptMessageHandler, name: "haptics")
         contentController.add(scriptMessageHandler, name: "shareBackup")
+        // The web build posts true while a flight is on screen; the idle timer
+        // stays off for that stretch so the screen never sleeps mid-flight.
+        contentController.add(scriptMessageHandler, name: "screenAwake")
         #if DEBUG
         // Forwards the web build's console.* calls to Xcode's console, since
         // there's no attached Safari Web Inspector session by default. Debug
@@ -171,6 +174,10 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
         loadGame()
     }
+
+    // A flight is full-bleed, so the home indicator steps back and edge swipes
+    // never land on the HUD or the plane. The status bar is hidden in Info.plist.
+    override var prefersHomeIndicatorAutoHidden: Bool { true }
 
     deinit {
         runtimeObservers.forEach(NotificationCenter.default.removeObserver)
@@ -348,6 +355,10 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "screenAwake" {
+            UIApplication.shared.isIdleTimerDisabled = (message.body as? Bool) ?? false
+            return
+        }
         if message.name == "consoleLog" {
             print("[JS] \(message.body)")
             return

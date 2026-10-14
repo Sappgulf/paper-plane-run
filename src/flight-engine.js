@@ -55,7 +55,7 @@ import {
 } from './game/hazard-patterns.js'
 import { confettiColors } from './game/confetti-palette.js'
 import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/star-value.js'
-import { resolvePowerPickup } from './game/power-pickup.js'
+import { getBoostSurge, pickPowerSpawnKind, resolvePowerPickup } from './game/power-pickup.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
 import { pollFirstActiveGamepad } from './game/gamepad.js'
@@ -92,6 +92,7 @@ import {
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS, flyerPoolForSeason } from './game/flyers.js'
+import { setScreenAwake } from './native-shell.js'
 import { createBossArtOverlay, getBossBadgeLayout } from './game/boss-art.js'
 import {
   bossBannerEmoji,
@@ -949,10 +950,7 @@ function applyPerformanceSettings(status = frameHealth.snapshot().status) {
   if (typeof sun !== 'undefined' && sun) sun.castShadow = renderQuality.shadows
   if (typeof dust !== 'undefined' && dust) dust.visible = renderQuality.secondaryEffects
   try {
-    for (const entity of entities) {
-      const outline = entity.mesh?.userData?.lethalOutline
-      if (outline) outline.visible = Boolean(renderQuality.secondaryEffects && outline.visible)
-    }
+    // Warning rings stay on whatever the quality tier (see attachLethalOutline).
     // Scenery density follows the same signal — it is the cheapest thing to
     // drop when frames get expensive, and dropping it changes no hitboxes.
     refreshGroundLife()
@@ -2535,29 +2533,37 @@ function createBuilding(w, h, d, mat) {
 // danger claims space instead of a thin hairline that vanishes into the sky.
 const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.12, 6, 20)
 const lethalGlowGeo = new THREE.TorusGeometry(1.16, 0.05, 6, 20)
+// The warning rings ignore fog: when thick fog hides a hazard, its ring is the
+// one thing that still shows the player where the danger is.
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false,
+  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false, fog: false,
 })
 const lethalGlowMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false,
+  color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false, fog: false,
 })
+/**
+ * The warning ring is the only cue for a hazard that thick fog or a low-power
+ * device is hiding, so it is always attached. The soft halo around it is a
+ * secondary effect and only exists while those are on.
+ */
 function attachLethalOutline(group, radius = 0.85) {
   if (!group || group.userData.lethalOutline) return group
-  if (!renderQuality.secondaryEffects) return group
   const outline = new THREE.Mesh(lethalOutlineGeo, lethalOutlineMat)
   outline.name = 'lethalOutline'
   outline.rotation.y = Math.PI / 2
   outline.scale.setScalar(radius)
   outline.visible = false
   group.add(outline)
-  const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
-  glow.name = 'lethalGlow'
-  glow.rotation.y = Math.PI / 2
-  glow.scale.setScalar(radius)
-  glow.visible = false
-  group.add(glow)
   group.userData.lethalOutline = outline
-  group.userData.lethalGlow = glow
+  if (renderQuality.secondaryEffects) {
+    const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
+    glow.name = 'lethalGlow'
+    glow.rotation.y = Math.PI / 2
+    glow.scale.setScalar(radius)
+    glow.visible = false
+    group.add(glow)
+    group.userData.lethalGlow = glow
+  }
   return group
 }
 
@@ -2571,15 +2577,6 @@ let hazardPaletteZone = 'city'
 function hazardTexture(kind) {
   return loadTex(`paper:hazard:${hazardPaletteZone}:${kind}`)
 }
-
-// Gauntlet lane marker: one shared additive ribbon geometry/material, tinted
-// like the ring-glow accent, so the promised lane renders without a per-
-// spawn allocation.
-const gauntletLaneGeo = new THREE.PlaneGeometry(26, 18)
-const gauntletLaneMat = new THREE.MeshBasicMaterial({
-  color: 0xf59e0b, transparent: true, opacity: 0.13, depthWrite: false,
-  side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-})
 
 function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false, kind = 'flyer') {
   const g = new THREE.Group()
@@ -2950,6 +2947,10 @@ const keys = new Set()
 const mouse = { nx: 0, ny: 0 }
 const stick = { x: 0, y: 0, active: false, pointerId: null }
 /** Co-op player 2 wind stick */
+/** Boost's own speed at full surge, and its cruise multiplier. Both sit well under
+ *  the old +18 impulse and ×1.22 so the world never jumps to about double speed. */
+const BOOST_PEAK_SPEED = 7
+const BOOST_SPEED_MUL = 1.1
 /** Temporary speed impulse from boost, the flare and skim release (decays) */
 let speedBoost = 0
 /** Post-hit invulnerability (shield break, etc.) */
@@ -3457,11 +3458,9 @@ function spawnChunk(z) {
   if (starPlan.cluster && starPlan.starCount > 0 && ufx.doubleStarBonus > 0) {
     showPowerBanner(wealthCluster ? '💰 Gold Rush — 3-star cluster!' : '💰 Gold Rush cluster!', 1.4, 'power')
   }
-  // Powers — boosted chance; boost is more common early in pool
+  // Powers — which orb comes out is weighted in power-pickup.js, so boost is a minority
   if (starPlan.powerSpawn) {
-    // Boost stays weighted higher than the rest; the pool is otherwise flat.
-    const pool = rng() < 0.18 ? ['boost'] : POWER_KINDS
-    const kind = pool[(rng() * pool.length) | 0]
+    const kind = pickPowerSpawnKind(rng(), POWER_KINDS)
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
     pu.position.set(safePickupX(), 5.4 + rng() * 8.2, z + 1 + rng() * 5)
@@ -3649,18 +3648,6 @@ function spawnMiniGauntlet(z = 60) {
   // wave's gap centre rather than a fixed lane, since the passage moves.
   const marker = new THREE.Object3D()
   marker.position.set(gapCenter, 9, z - 2)
-  // Ribbon always visible — the lane promise must read on low-power too.
-  {
-    const ribbon = new THREE.Mesh(gauntletLaneGeo, gauntletLaneMat)
-    ribbon.rotation.y = Math.PI / 2
-    ribbon.position.set(0, 0, 9)
-    if (!renderQuality.secondaryEffects) {
-      ribbon.material = ribbon.material.clone()
-      ribbon.material.opacity = 0.18
-    }
-    marker.add(ribbon)
-    marker.userData.ribbon = ribbon
-  }
   scene.add(marker)
   entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX: gapCenter, cleared: false })
   zoneBannerKind = 'gauntlet'
@@ -3920,7 +3907,7 @@ function activatePower(kind) {
   clearPower()
   // clearPower nulls activePower — restore wings/shield already handled
 
-  activePower = { kind, timeLeft: duration, duration }
+  activePower = { kind, timeLeft: duration, duration, age: 0 }
   if (pickup.mode === 'replace') {
     // Small consolation for the timer the swapped-out power had left.
     distance += pickup.refundMeters
@@ -3948,13 +3935,11 @@ function activatePower(kind) {
 
   if (kind === 'boost') {
     audio.boostRoar()
-    // Strong, readable boost — additive impulse + sustained cruise.
-    // Kept modest (not a flat multiplier stack) so the sudden speed jump
-    // doesn't outrun the hazard density and cause an unavoidable crash.
-    speedBoost = Math.max(speedBoost, 18)
+    // No instant speed jump or free lift here: the surge builds over its opening
+    // moments (getBoostSurge) and updrafts stay the only free height in the run.
+    // Grace below covers the ramp-in.
     fovPunch = 12
     if (!settings.reducedMotion) shake = Math.max(shake, 0.3)
-    velY += 3
     const safety = getBoostSafety(fx)
     invuln = Math.max(invuln, safety.graceSeconds)
     if (boostSafetyCue) {
@@ -4958,6 +4943,7 @@ function openJourney() {
 function showMenu() {
   stopScoreCountUp()
   clearFlightBanners()
+  setScreenAwake(false)
   state = 'menu'
   launchChallenge = null
   manualPause = false
@@ -5124,6 +5110,7 @@ async function shareScore() {
 }
 
 async function startGame(kind = 'classic', opts = {}) {
+  setScreenAwake(true)
   function resolveJourneyRunConfig(proposedConfig, fallbackJourney) {
     if (
       proposedConfig
@@ -5916,6 +5903,15 @@ function scrollWorld(move, lateralDrift = 0) {
   nextSpawnZ -= move
 }
 
+/**
+ * True when fog draws the world in closer than normal: a foggy twist, a
+ * low-visibility Journey route or a visibility pocket. Normal fog is far
+ * (320, or 260 with reduced motion), so this only fires when visibility is cut.
+ */
+function fogIsThick() {
+  return scene.fog.far < (settings.reducedMotion ? 260 : 320) * 0.9
+}
+
 function animateHazards(dt) {
   for (const e of entities) {
     if (e.journeyMotion) {
@@ -5986,13 +5982,16 @@ function animateHazards(dt) {
     if (outline && (e.type === 'bird' || e.type === 'scissors')) {
       // Start ringing earlier (z<36) so the approach reads as pressure; the
       // shared glow mesh mirrors the pulse without a second draw call.
-      const near = e.mesh.position.z < 36
+      // Thick fog hides hazards until they are close, so the ring also shows as a
+      // hazard enters the fog band. The ring ignores fog, so it reads through haze.
+      const foggy = fogIsThick() && e.mesh.position.z < scene.fog.far
+      const near = e.mesh.position.z < 36 || foggy
       const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
       outline.visible = near
       outline.material.opacity = pulse
       const glow = e.mesh.userData.lethalGlow
       if (glow) {
-        glow.visible = near
+        glow.visible = near && renderQuality.secondaryEffects
         glow.material.opacity = pulse * 0.38
       }
     }
@@ -6329,6 +6328,7 @@ function update(dt) {
 
   if (activePower) {
     activePower.timeLeft -= dt
+    activePower.age += dt
     powerFill.style.width = `${(100 * Math.max(0, activePower.timeLeft)) / activePower.duration}%`
     powerLabel.textContent = `${POWER_META[activePower.kind]?.label || activePower.kind} · ${Math.max(0, activePower.timeLeft).toFixed(1)}s`
     if (activePower.kind === 'shield' && shieldBubble) {
@@ -6356,25 +6356,21 @@ function update(dt) {
       }
     }
     if (activePower.kind === 'boost') {
-      // Sustain a strong (but not overwhelming) boost for the full duration
-      speedBoost = Math.max(speedBoost, 10 + activePower.timeLeft * 1.6)
+      // Speed follows the surge envelope: it builds in, holds, then drains out
+      speedBoost = Math.max(speedBoost, BOOST_PEAK_SPEED * getBoostSurge(activePower))
       fovPunch = THREE.MathUtils.lerp(fovPunch, 9, 1 - Math.pow(0.001, dt))
-      if (Math.random() < dt * 8) spawnConfetti(planeX, planeY - 0.2, -0.5)
     }
     syncPlanePowerLook(dt)
     if (activePower.timeLeft <= 0) {
-      if (activePower.kind === 'boost') {
-        speedBoost = Math.max(speedBoost * 0.5, 6)
-        fovPunch = 2
-      }
       clearPower()
     }
   }
   if (!activePower || activePower.kind !== 'boost') syncPlanePowerLook(dt)
 
-  // Decay temporary boost (slower while boost power is active)
+  // Decay temporary boost. Boost drains with its surge envelope, so decay only
+  // has to keep pace with the ramp-out rather than lingering as a tail.
   if (speedBoost > 0) {
-    const decay = activePower?.kind === 'boost' ? 2.5 : 16
+    const decay = activePower?.kind === 'boost' ? 10 : 16
     speedBoost = Math.max(0, speedBoost - dt * decay)
   }
   // FOV punch
@@ -6727,7 +6723,7 @@ function update(dt) {
 
   let speedMul = ufx.speedMul
   if (activePower?.kind === 'slow') speedMul *= 0.55
-  if (activePower?.kind === 'boost') speedMul *= 1.22
+  if (activePower?.kind === 'boost') speedMul *= 1 + (BOOST_SPEED_MUL - 1) * getBoostSurge(activePower)
   if (activeTwist?.speedMul) speedMul *= activeTwist.speedMul
   if (journeyRunConfig?.pilotId === 'daredevil' && comboTimer > 0) {
     speedMul *= 1 + getPilotEffect('daredevil', journeyTelemetry || {}).momentum
@@ -7193,7 +7189,6 @@ function update(dt) {
     if (e.type === 'gauntlet') {
       if (!e.cleared && m.position.z < -1.2) {
         e.cleared = true
-        if (m.userData.ribbon) m.userData.ribbon.visible = false
         const reward = resolveGauntletReward({
           inLane: isInsideGauntletLane({ playerX: p.x, laneX: e.gauntletLaneX }),
         })
@@ -7392,7 +7387,8 @@ function update(dt) {
           e.type === 'scissors'
             ? 'Snipped by scissors'
             : `Tangled with ${e.label || 'paper birds'}`
-        die(label)
+        // Thick fog hides hazards until late, so say so rather than blaming the pilot.
+        die(fogIsThick() ? `${label} · hidden by the fog` : label)
         return
       }
       const graze = getNearMissRadius({
@@ -7788,6 +7784,29 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  needsRender = true
+}
+
+// A visibility pocket in miniature: fog draws the world in close, so each hazard
+// shows only through its warning ring until it is near. Invulnerable so the capture
+// shows the approach rather than the crash.
+if (import.meta.env.DEV && devTestState === '#test-fog-warning') {
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  scene.fog.far = 95
+  hudEl?.classList.add('hidden')
+  camera.position.set(0, 11, -11)
+  camera.lookAt(0, 11, 18)
+  FLYER_DEFS.forEach((def, index) => {
+    const flyer = createFlyer(def.id)
+    flyer.position.set((index % 2 ? 3 : -3) + (index - 3) * 0.6, 8, 40 + index * 22)
+    scene.add(flyer)
+    entities.push({ mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius })
+  })
   needsRender = true
 }
 
