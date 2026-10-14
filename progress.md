@@ -2,6 +2,15 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Plane traits, live preview, iOS cold start, rebuilt iOS app
+
+- **Plane traits:** each silhouette flies differently (`PLANE_TRAITS` in `src/plane-models.js`). Dart snaps (handling +10%, sink +4%), Glider glides (sink −10%, speed −2%), Stunt pays more from a flare (+12%), and Classic is the balanced baseline. The equipped plane scales the run's upgrade effects when the run starts (`refreshUpgradeEffects` in `src/flight-engine.js`), so the same upgrades feel different on each plane. The Planes tab caption names the trait, for example "Classic Fold · Balanced".
+- **Live preview:** the Planes-tab model sits on a cut-paper plate with a hard shadow, and the camera is closer, so the plane fills the card.
+- **iOS cold start:** the menu waited on the Nunito stylesheet, and the page's `load` event held back on that request on a slow network. The font now loads after `load` (`src/main.js`). In the iOS simulator the first menu frame moved from about 21 s to about 10 s after launch. The remaining delay is WebKit and simulator startup. The native loading card still does not appear in the simulator, so that remains open.
+- **iOS rebuild:** `npm run build:ios` regenerated the bundled web app (parity 24 files), and the Debug simulator build succeeded and launched.
+- Verification: Vitest 635 tests passed (91 files, 3 new for plane traits); production build passed; bundle budget 917,646 of 921,600 total bytes; iOS web parity 24 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed.
+- Not done: the loading card in the iOS simulator, and a test on a physical device, since none is connected.
+
 ## 2026-10-14 — Cut-paper plane portraits and upgrade rank counts
 
 - **Plane portraits:** the Hangar portraits were one photograph per skin, which broke the cut-paper rule the flight follows. Each portrait is now drawn from its plane's own flight silhouette (`src/game/plane-portrait.js`): a lit and a shaded wing face split by the fold, accent creases, a hard offset shadow and an ink edge. The seventeen photo files moved to `docs/retired-art/planes/`, and the service worker no longer precaches one of them.

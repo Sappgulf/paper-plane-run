@@ -159,7 +159,7 @@ import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
 import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-stamps.js'
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
-import { PLANE_COLLISION_RADIUS, createPaperPlane, getPaperFlightPose } from './plane-models.js'
+import { PLANE_COLLISION_RADIUS, applyPlaneTraits, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
 import { buildFlightDebrief } from './game/flight-debrief.js'
 import { renderFlightDebrief } from './ui/flight-debrief.js'
@@ -663,7 +663,9 @@ const frameHealth = createFrameHealthMonitor({
 })
 let activeUpgradeEffects = getUpgradeEffects()
 function refreshUpgradeEffects() {
-  activeUpgradeEffects = getUpgradeEffects()
+  // The equipped plane's trait scales the run's effects, so a Dart and a Glider
+  // fly differently even with the same upgrades bought.
+  activeUpgradeEffects = applyPlaneTraits(getUpgradeEffects(), getSkin(getEquippedSkinId()).silhouette)
   return activeUpgradeEffects
 }
 applyDocumentA11y(settings)
@@ -2160,9 +2162,18 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
   previewRenderer.setPixelRatio(Math.min(devicePixelRatio, 1.5))
 
   const previewScene = new THREE.Scene()
-  const previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 50)
-  previewCamera.position.set(3.2, 2.5, 4.5)
+  const previewCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 50)
+  // Closer framing, so the plane fills the card instead of floating in it.
+  previewCamera.position.set(2.5, 2.05, 3.5)
   previewCamera.lookAt(0, 0, 0)
+  // A cut-paper plate under the plane, with a hard offset shadow on the same plane.
+  const plateGeometry = new THREE.CircleGeometry(1.3, 48)
+  const plateShadow = new THREE.Mesh(plateGeometry, new THREE.MeshBasicMaterial({ color: 0xb9ab8f }))
+  const plate = new THREE.Mesh(plateGeometry, new THREE.MeshBasicMaterial({ color: 0xf3e9d6 }))
+  plateShadow.rotation.x = plate.rotation.x = -Math.PI / 2
+  plateShadow.position.set(0.07, -0.46, 0.06)
+  plate.position.y = -0.44
+  previewScene.add(plateShadow, plate)
   previewScene.add(new THREE.HemisphereLight(0xfff7ed, 0x7c8ea6, 2.2))
   const key = new THREE.DirectionalLight(0xffe7cc, 3)
   key.position.set(-3, 5, 4)

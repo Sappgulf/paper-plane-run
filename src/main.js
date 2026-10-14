@@ -2,6 +2,7 @@ import './style.css'
 
 import { GameAudio } from './audio.js'
 import { PLANE_PORTRAIT_PREFIX, planePortraitUrl } from './game/plane-portrait.js'
+import { PLANE_TRAITS } from './plane-models.js'
 import { Haptic } from './haptics.js'
 import { isNativeShell } from './native-shell.js'
 import { createEngineLoader } from './engine-contract.js'
@@ -84,6 +85,20 @@ import {
 import { safeSetItem } from './game/safe-storage.js'
 import { bindDialogFocus } from './game/dialog-focus.js'
 import { initProgressKit } from './ui/progress-kit.js'
+
+// Nunito is requested only after the page's load event. A font stylesheet in the
+// document holds that event back, and on a slow network the menu stayed blank
+// until the font arrived. display=optional keeps the fallback if it is late.
+{
+  const loadFontSheet = () => {
+    const fontSheet = document.createElement('link')
+    fontSheet.rel = 'stylesheet'
+    fontSheet.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=optional'
+    document.head.append(fontSheet)
+  }
+  if (document.readyState === 'complete') loadFontSheet()
+  else window.addEventListener('load', loadFontSheet, { once: true })
+}
 
 /** Tree chip text: its name, plus ranks owned over ranks available in that tree (or all folds). */
 function upgradeChipParts(treeId, levels) {
@@ -712,9 +727,11 @@ async function showPlanePreview(
   stage.dataset.planeId = planeDefinition.id
   stage.dataset.silhouette = planeDefinition.silhouette
   stage.querySelector('[data-preview-name]').textContent = planeDefinition.name
-  stage.querySelector('[data-preview-family]').textContent = planeDefinition.silhouette === 'stunt'
+  const family = planeDefinition.silhouette === 'stunt'
     ? 'Stunt Fold'
     : `${planeDefinition.silhouette[0].toUpperCase()}${planeDefinition.silhouette.slice(1)}${planeDefinition.silhouette === 'classic' ? ' Fold' : ''}`
+  const trait = PLANE_TRAITS[planeDefinition.silhouette] || PLANE_TRAITS.classic
+  stage.querySelector('[data-preview-family]').textContent = `${family} · ${trait.label}`
   canvas.setAttribute('aria-label', `${planeDefinition.name} live 3D preview`)
 
   if (activePlanePreview?.canvas === canvas && activePlanePreview.updateSkin) {

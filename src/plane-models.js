@@ -64,6 +64,30 @@ export function getPlaneGeometrySpec(silhouette) {
   return PLANE_GEOMETRY[silhouette] || PLANE_GEOMETRY.classic
 }
 
+/**
+ * What each silhouette does in the air. Every multiplier stays within about 12%,
+ * so a plane is a feel rather than a power level; the upgrade tree still decides
+ * how far a run goes.
+ */
+export const PLANE_TRAITS = Object.freeze({
+  classic: Object.freeze({ label: 'Balanced', handlingMul: 1, sinkMul: 1, speedMul: 1, flareMul: 1 }),
+  dart: Object.freeze({ label: 'Quick snap', handlingMul: 1.1, sinkMul: 1.04, speedMul: 1, flareMul: 1 }),
+  glider: Object.freeze({ label: 'Long glide', handlingMul: 0.96, sinkMul: 0.9, speedMul: 0.98, flareMul: 1 }),
+  stunt: Object.freeze({ label: 'Deep stunt', handlingMul: 1.04, sinkMul: 1, speedMul: 1, flareMul: 1.12 }),
+})
+
+/** Scales a run's upgrade effects by the equipped plane's trait. Pure: returns a new object. */
+export function applyPlaneTraits(effects, silhouette) {
+  const trait = PLANE_TRAITS[silhouette] || PLANE_TRAITS.classic
+  return {
+    ...effects,
+    accelMul: effects.accelMul * trait.handlingMul,
+    sinkMul: effects.sinkMul * trait.sinkMul,
+    speedMul: effects.speedMul * trait.speedMul,
+    flarePayoutMul: effects.flarePayoutMul * trait.flareMul,
+  }
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
