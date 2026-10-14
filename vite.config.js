@@ -3,6 +3,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   // Ensure service worker & PWA assets are available at site root
   publicDir: 'public',
+  // One three.js instance in dev as well: RoomEnvironment imports 'three' by its
+  // raw path, which pre-bundling would otherwise duplicate.
+  resolve: { dedupe: ['three'] },
   // The iOS app (ios/) loads this build from a file:// bundle via
   // WKWebView, where absolute "/assets/..." paths (Vite's web default)
   // resolve to nothing. build:ios sets BASE_PATH=./ so every reference

@@ -1857,6 +1857,12 @@ const cloudShape = new THREE.Shape()
 ;[[-2,-.3],[-2.4,.1],[-1.8,.6],[-1,.6],[-.6,1.1],[.3,1.2],[.9,.65],[1.7,.7],[2.3,.1],[1.9,-.3]].forEach(([x,y],i) => i ? cloudShape.lineTo(x,y) : cloudShape.moveTo(x,y))
 cloudShape.closePath()
 const cloudGeometry = new THREE.ShapeGeometry(cloudShape)
+// One fold crease across the lower body, so a cloud reads as folded paper
+// rather than a blank cream silhouette.
+const cloudFoldShape = new THREE.Shape()
+;[[-1.3,.12],[.2,.42],[.5,.36],[-1,.04]].forEach(([x,y],i) => i ? cloudFoldShape.lineTo(x,y) : cloudFoldShape.moveTo(x,y))
+cloudFoldShape.closePath()
+const cloudFoldGeometry = new THREE.ShapeGeometry(cloudFoldShape)
 let cloudRng = mulberry32(hashString('paper-clouds'))
 const riverMat = new THREE.MeshStandardMaterial({
   color: 0x6fb0d8, roughness: 0.25, metalness: 0.15, transparent: true, opacity: 0.9,
@@ -1909,23 +1915,6 @@ function createParkPatch() {
   return g
 }
 
-function createClothesline() {
-  const g = new THREE.Group()
-  const poleA = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 2.2, 6), treeTrunkMat)
-  const poleB = poleA.clone()
-  poleA.position.set(-2.4, 1.1, 0)
-  poleB.position.set(2.4, 1.1, 0)
-  const line = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.04, 0.04), planeAccentMat)
-  line.position.y = 2.05
-  g.add(poleA, poleB, line)
-  for (let i = 0; i < 3; i++) {
-    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.85), parkMat)
-    sheet.position.set(-1.5 + i * 1.5, 1.55, 0)
-    g.add(sheet)
-  }
-  return g
-}
-
 function maybeSpawnGroundDecor(z) {
   const roll = rng()
   const waterBias = currentZoneId === 'harbor' ? 0.2 : 0
@@ -1941,12 +1930,6 @@ function maybeSpawnGroundDecor(z) {
     park.position.z = z + (rng() - 0.5) * 8
     scene.add(park)
     entities.push({ mesh: park, type: 'decor', disposable: true })
-  } else if (roll < 0.34 && renderQuality.secondaryEffects) {
-    const line = createClothesline()
-    const side = rng() < 0.5 ? -1 : 1
-    line.position.set(side * (12 + rng() * 8), 0, z)
-    scene.add(line)
-    entities.push({ mesh: line, type: 'decor', disposable: true })
   }
 }
 const windowMat = new THREE.MeshStandardMaterial({
@@ -2916,7 +2899,9 @@ function createCloud() {
   // shows thickness, while both geometry and randomness stay outside gameplay.
   const shade = new THREE.Mesh(cloudGeometry, cloudShadeMat)
   shade.position.set(.12,-.16,.04)
-  g.add(shade, new THREE.Mesh(cloudGeometry, cloudMat))
+  const fold = new THREE.Mesh(cloudFoldGeometry, cloudShadeMat)
+  fold.position.z = .02
+  g.add(shade, new THREE.Mesh(cloudGeometry, cloudMat), fold)
   g.scale.y = .65 + cloudRng() * .3
   g.rotation.z = (cloudRng()-.5)*.12
   return g
@@ -5270,8 +5255,75 @@ function applyRescuePop() {
   else velY = Math.max(velY, 0) + 12
 }
 
+/**
+ * DEV-only probe for "crashed into something I could not see": counts how many
+ * frames a flyer or scissors spent inside the camera view, and remembers where it
+ * sat. Stripped from production builds.
+ */
+function probeFlyerVisibility(e, m) {
+  if (!import.meta.env.DEV) return
+  const ndc = m.position.clone().project(camera)
+  const inView = Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z < 1
+  if (inView) e.devVisibleFrames = (e.devVisibleFrames || 0) + 1
+  e.devNdc = [+ndc.x.toFixed(2), +ndc.y.toFixed(2)]
+}
+
+function recordDeathCause(e, m, p, reason, hit) {
+  if (!import.meta.env.DEV) return
+  window.__paperDeathCause = {
+    reason,
+    type: e.type,
+    label: e.label || e.flyerId || '',
+    visibleFrames: e.devVisibleFrames || 0,
+    ndc: e.devNdc || null,
+    hitRadius: +hit.toFixed(2),
+    zGap: +(m.position.z - p.z).toFixed(2),
+    hitXY: [+m.position.x.toFixed(2), +m.position.y.toFixed(2)],
+    planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
+  }
+}
+
+/**
+ * Hazards outside a phone's narrow view are still dangerous. A bird or scissors
+ * that is about to enter from the side gets a chevron on that edge, so it reads
+ * as incoming even while it sits off-screen.
+ */
+const EDGE_THREAT_AHEAD = 28
+const edgeThreatBox = $('edge-threats')
+const edgeThreatEls = { left: $('edge-threat-left'), right: $('edge-threat-right') }
+
+function updateEdgeThreats() {
+  if (!plane) return
+  const best = { left: null, right: null }
+  for (const e of entities) {
+    if (e.type !== 'bird' && e.type !== 'scissors') continue
+    const ahead = e.mesh.position.z - plane.position.z
+    if (ahead < 0 || ahead > EDGE_THREAT_AHEAD) continue
+    const ndc = e.mesh.position.clone().project(camera)
+    if (Math.abs(ndc.x) <= 1) continue
+    const side = ndc.x < 0 ? 'left' : 'right'
+    if (!best[side] || ahead < best[side].ahead) best[side] = { ahead, y: ndc.y }
+  }
+  for (const side of ['left', 'right']) {
+    const el = edgeThreatEls[side]
+    const threat = best[side]
+    if (!el) continue
+    el.classList.toggle('hidden', !threat)
+    if (!threat) continue
+    el.style.top = `${THREE.MathUtils.clamp((1 - threat.y) * 50, 22, 78)}%`
+    el.style.opacity = String(0.5 + (1 - threat.ahead / EDGE_THREAT_AHEAD) * 0.5)
+  }
+  edgeThreatBox?.classList.toggle('hidden', !best.left && !best.right)
+}
+
+function hideEdgeThreats() {
+  edgeThreatBox?.classList.add('hidden')
+  for (const el of Object.values(edgeThreatEls)) el?.classList.add('hidden')
+}
+
 function die(reason) {
   if (state !== 'playing') return
+  hideEdgeThreats()
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
   // clock running out. Neither should be absorbed by shield/guardian, and
   // neither plays the tumble-crash animation.
@@ -7024,6 +7076,7 @@ function update(dt) {
 
   scrollWorld(move, windPushX * dt * 0.5)
   animateHazards(slowmo ? dt * SLOWMO_WORLD_SCALE : dt)
+  updateEdgeThreats()
   updateFlightReadability(zp)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
@@ -7261,6 +7314,18 @@ function update(dt) {
         // ring edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage.
         if (isLethalObstacle('boss') && !inGap && Math.abs(dz) < 1.05) {
           e.director?.collide()
+          if (import.meta.env.DEV) {
+            window.__paperDeathCause = {
+              reason: bossCrashReason(m.userData.kind),
+              type: 'boss',
+              kind: m.userData.kind,
+              zGap: +(dz).toFixed(2),
+              planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
+              bossX: +m.position.x.toFixed(2),
+              gapY,
+              passage: encounter?.passage ?? null,
+            }
+          }
           die(bossCrashReason(m.userData.kind))
           return
         }
@@ -7383,13 +7448,16 @@ function update(dt) {
         planeRadius: PLANE_COLLISION_RADIUS,
         boostHitboxScale,
       })
+      probeFlyerVisibility(e, m)
       if (isLethalObstacle(e.type) && dist2 < hit ** 2) {
         const label =
           e.type === 'scissors'
             ? 'Snipped by scissors'
             : `Tangled with ${e.label || 'paper birds'}`
         // Thick fog hides hazards until late, so say so rather than blaming the pilot.
-        die(fogIsThick() ? `${label} · hidden by the fog` : label)
+        const reason = fogIsThick() ? `${label} · hidden by the fog` : label
+        recordDeathCause(e, m, p, reason, hit)
+        die(reason)
         return
       }
       const graze = getNearMissRadius({

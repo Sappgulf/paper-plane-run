@@ -384,6 +384,13 @@ html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !i
 .power-hud[data-power="boost"] { border-color: #dc7443; }
 .power-hud[data-power="boost"] #power-fill { background: #e98940; }
 .power-hud[data-power="shield"] #power-fill { background: #60a8d1; }
+
+/* Off-screen threats: a chevron on the edge where a bird or scissors is about to
+   enter, so a hazard outside a phone's narrow view still reads as incoming. */
+.edge-threats { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+.edge-threat { position: absolute; width: 0; height: 0; transform: translateY(-50%); filter: drop-shadow(0 1px 0 #2b2b2b); transition: opacity 120ms linear; }
+.edge-threat-left { left: 4px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 20px solid #e0573f; }
+.edge-threat-right { right: 4px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-right: 20px solid #e0573f; }
 .power-hud[data-power="magnet"] #power-fill { background: #a489ce; }
 .power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
 #power-fill {

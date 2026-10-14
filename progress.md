@@ -2,6 +2,16 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Lateral threat cues, clothesline sheets removed, cloud creases
+
+- **Hazards you cannot see:** a phone's view is narrow, so a bird or scissors in an outer lane can slide out of the frame and hit you while it is off-screen. A chevron now shows on the edge a threat is entering from, for birds and scissors within 28 units ahead, shaded by how close it is (`updateEdgeThreats` in `src/flight-engine.js`, styles in `src/ui/flight.css`). In a gameplay probe on the final build, the cue was on screen for 5–12 half-second steps per portrait run and 0–2 per desktop run. Hitboxes and the camera are unchanged, so this is an awareness fix, not a change to the lanes.
+- **Blank colour sheets:** the clotheslines the ground decor spawned were three blank colour sheets each, with no art and no collision. They are removed, together with their factory (`maybeSpawnGroundDecor`).
+- **Clouds:** each cloud has a fold crease in its shade colour, so it reads as folded paper rather than a blank silhouette.
+- **Dev:** `resolve.dedupe: ['three']` in `vite.config.js` removes the duplicate three.js instance warning. RoomEnvironment imported three by its raw path, so dev pre-bundling loaded a second copy.
+- **Correction:** the previous entry said the blank cream wall beside the road was a route building. That was wrong. It is still unidentified and unchanged.
+- **Probe limits:** the scripted bot died mostly at boss gates, where it could not read the gate in advance. Across the gate deaths, the plane was outside the passage and the passage matched the visible hole, and the probe did not reproduce a hazard that was never visible. So the cue is a mitigation, not a proven fix for every case.
+- Verification: Vitest 629 tests passed (89 files); production build passed; bundle budget 913,972 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed.
+
 ## 2026-10-14 — Gust Guard, Thermal Sense, and visual polish
 
 - **Two new upgrades:** Gust Guard (Survive tree) cuts wind-gust push by 15% per level, down to 45% at rank three. Thermal Sense (Handle tree) raises updraft lift by 12% per level, up to 36% at rank three. Each costs 12–44 stars across three ranks. They reach the flight through `windPushMul` and `updraftStrengthMul` (`src/upgrades.js`, `src/flight-engine.js`). The catalog is now 16 upgrades, and the scope guard, spend trees, and contract tests were updated to match.
