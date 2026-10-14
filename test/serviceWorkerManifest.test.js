@@ -67,10 +67,9 @@ describe('service worker build manifest', () => {
     expect(shell).toContain('/icon-192.png')
     expect(shell).toContain('/assets/flight-engine-abc.js')
     expect(shell).toContain('/assets/index-abc.css')
-    expect(shell).toContain('/assets/planes/classic.webp')
-    // Skies and grounds are cut at runtime from the zone palettes now, so the
-    // shell has no zone art to precache — only the plane, and the release code.
-    expect(warm).toEqual(['/assets/bosses/wind.webp'])
+    // Skies, grounds and plane portraits are cut at runtime from palettes and
+    // silhouettes, so the shell has no zone or plane art to precache.
+    expect(warm).toEqual(['/assets/bosses/wind.webp', '/assets/planes/classic.webp'])
 
     // The split stays a partition of the full release — nothing lost, nothing double-fetched.
     expect([...shell, ...warm].sort()).toEqual([...urls].sort())

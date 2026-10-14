@@ -1,6 +1,7 @@
 import { getWallet, spendWallet } from './upgrades.js'
 import { safeSetItem } from './game/safe-storage.js'
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
+import { PLANE_PORTRAIT_PREFIX } from './game/plane-portrait.js'
 
 const KEY = 'paper-plane-run-skins'
 const EQUIP = 'paper-plane-run-skin'
@@ -33,9 +34,10 @@ const LEGACY_LIFETIME_REQUIREMENTS = Object.freeze({
 })
 
 function planeArt(id, silhouette) {
+  // Drawn from the plane's own silhouette in cut paper, so the Hangar matches the
+  // flight instead of showing a photograph of each skin.
   return {
-    portrait: `/assets/planes/${id}.webp`,
-    texture: `/assets/planes/${id}.webp`,
+    portrait: `${PLANE_PORTRAIT_PREFIX}${id}`,
     silhouette,
   }
 }

@@ -2,6 +2,13 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Cut-paper plane portraits and upgrade rank counts
+
+- **Plane portraits:** the Hangar portraits were one photograph per skin, which broke the cut-paper rule the flight follows. Each portrait is now drawn from its plane's own flight silhouette (`src/game/plane-portrait.js`): a lit and a shaded wing face split by the fold, accent creases, a hard offset shadow and an ink edge. The seventeen photo files moved to `docs/retired-art/planes/`, and the service worker no longer precaches one of them.
+- **Upgrade tree counts:** each spend-tree chip shows ranks owned over ranks available, such as `HANDLE 0/18` (`upgradeChipParts` in `src/main.js`). The count sits in an `aria-hidden` span, so button names do not change for assistive tech or tests.
+- **Not in this round:** the Live flight model preview on the Planes tab is unchanged, and no plane stats or upgrade effects changed.
+- Verification: Vitest 632 tests passed (90 files, 3 new for the portrait drawer); production build passed; bundle budget 916,510 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed, after one portrait assertion moved to the drawn image; production lane 63 passed / 69 intentional skips / 0 failed.
+
 ## 2026-10-14 — Fewer enemies, updrafts and boost; boss badges, mountains and ground props
 
 - **Enemies:** every chunk used to carry a hazard. On Normal, about 39% of chunks are now open (`OPEN_CHUNK_WEIGHT` in `pickHazardType`), so birds and scissors appear in about 40% fewer chunks. Flocks are smaller (1 + up to 1.1 instead of 1.6, scaled by the ramp), and the mixed-flyer roll fell from 18% + 10% per ramp to 10% + 6%.

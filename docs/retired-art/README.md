@@ -19,3 +19,10 @@ download.
 To bring a sprite back as a runtime texture, add a loader for it in the flyer
 pipeline and let `test/shipped-art.test.js` confirm the reference. To bring a
 flyer back to the roster, add its entry to `FLYER_DEFS` with `sprite: 'paper'`.
+
+## planes/
+
+The seventeen Hangar portraits were photographs of each skin, which broke the
+cut-paper rule. They are retired now. The Hangar draws each portrait from the
+plane's own silhouette (`src/game/plane-portrait.js`), so there is no file to
+load. The old files stay here for reference only.

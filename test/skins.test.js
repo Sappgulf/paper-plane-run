@@ -37,11 +37,9 @@ describe('plane collection art manifest', () => {
     ])
 
     for (const plane of SKINS) {
-      expect(plane.portrait).toBe(`/assets/planes/${plane.id}.webp`)
-      expect(plane.texture).toBe(`/assets/planes/${plane.id}.webp`)
+      expect(plane.portrait).toBe(`paper:plane:${plane.id}`)
+      expect(plane.texture).toBeUndefined()
       expect(silhouetteFamilies.has(plane.silhouette)).toBe(true)
-      expect(existsSync(new URL(`../public${plane.portrait}`, import.meta.url))).toBe(true)
-      expect(existsSync(new URL(`../public${plane.texture}`, import.meta.url))).toBe(true)
     }
   })
 })

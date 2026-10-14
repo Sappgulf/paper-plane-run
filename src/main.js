@@ -1,6 +1,7 @@
 import './style.css'
 
 import { GameAudio } from './audio.js'
+import { PLANE_PORTRAIT_PREFIX, planePortraitUrl } from './game/plane-portrait.js'
 import { Haptic } from './haptics.js'
 import { isNativeShell } from './native-shell.js'
 import { createEngineLoader } from './engine-contract.js'
@@ -83,6 +84,15 @@ import {
 import { safeSetItem } from './game/safe-storage.js'
 import { bindDialogFocus } from './game/dialog-focus.js'
 import { initProgressKit } from './ui/progress-kit.js'
+
+/** Tree chip text: its name, plus ranks owned over ranks available in that tree (or all folds). */
+function upgradeChipParts(treeId, levels) {
+  const tree = UPGRADE_TREES.find((entry) => entry.id === treeId)
+  const ids = tree ? tree.ids : UPGRADES.map(({ id }) => id)
+  const owned = ids.reduce((sum, id) => sum + (levels[id] || 0), 0)
+  const available = ids.reduce((sum, id) => sum + (UPGRADES.find((upgrade) => upgrade.id === id)?.max || 0), 0)
+  return { label: tree ? tree.label : 'All', count: `${owned}/${available}` }
+}
 
 initProgressKit()
 
@@ -836,7 +846,7 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
     card.setAttribute('aria-pressed', String(s.equipped))
 
     const image = document.createElement('img')
-    image.src = resolveAssetUrl(s.portrait)
+    image.src = s.portrait.startsWith(PLANE_PORTRAIT_PREFIX) ? planePortraitUrl(s) : resolveAssetUrl(s.portrait)
     image.alt = `${s.name} portrait`
     card.appendChild(image)
 
@@ -987,10 +997,16 @@ function renderUpgrades() {
       treeNav.appendChild(chip)
     }
   }
+  const levels = getAllUpgradeLevels()
   for (const chip of treeNav.children) {
     const active = chip.dataset.tree === (hangarUpgradeTree || '')
     chip.classList.toggle('active', active)
     chip.setAttribute('aria-pressed', String(active))
+    const { label, count } = upgradeChipParts(chip.dataset.tree, levels)
+    const counter = document.createElement('span')
+    counter.setAttribute('aria-hidden', 'true')
+    counter.textContent = ` ${count}`
+    chip.replaceChildren(label, counter)
   }
   const searchInput = $('upgrade-search')
   searchInput.value = hangarUpgradeSearch

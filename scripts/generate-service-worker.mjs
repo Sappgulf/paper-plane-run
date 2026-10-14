@@ -45,7 +45,6 @@ const FIRST_RUN_ART = new Set([
   '/assets/paper-flight-hero.webp',
   '/assets/paper-world-backdrop.webp',
   '/assets/zone-stamp-sheet.webp',
-  '/assets/planes/classic.webp',
 ])
 
 function isShellUrl(url) {

@@ -246,7 +246,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
   await expect(night).toHaveClass(/state-locked/)
   await expect(coral.locator('.plane-requirement')).toHaveText('Lifetime 50★')
   await expect(coral.locator('.plane-price')).toHaveText('Wallet 32★')
-  await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /assets\/planes\/coral\.webp$/)
+  await expect(coral.getByRole('img', { name: 'Coral Wash portrait' })).toHaveAttribute('src', /^data:image\/png;base64,/)
 
   await mint.focus()
   await expect(preview).toHaveAttribute('data-plane-id', 'mint', { timeout: 45_000 })
