@@ -2,7 +2,14 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
-## 2026-10-14 — Plane traits, live preview, iOS cold start, rebuilt iOS app
+## 2026-10-14 — iOS launch shows the loading card at once
+
+- **Cause of the blank launch:** `GameViewController.viewDidLoad` ran the audio session and the first `WKWebView` setup on the main thread before returning. The loading card was added first, but it could not paint until that work finished, so the screen stayed plain blue for several seconds.
+- **Fix:** the card is still built in `viewDidLoad`, and the rest of the setup moves to `startGameSession()` one run-loop turn later (`ios/PaperPlaneRun/Sources/GameView.swift`).
+- **Simulator timing, iPhone 18 Pro:** the loading card paints about 2 s after launch, and the menu appears at about 7 s. Before this change the menu appeared at about 10 s, and the card never showed.
+- **Not reproduced:** the simulator logged one WebP decode error (`initImage failed err=-50`) during startup. Every shipped WebP decodes with both libwebp and ImageIO, and the menu images render, so I could not tie the error to anything on screen.
+- **Limitation:** taps from the simulator automation tool do not reach the web view on either the previous or the current build, so a flight started from the iOS app is not verified here. The web lanes cover the flight path.
+- **Not done:** a physical-device test, since none is connected.
 
 - **Plane traits:** each silhouette flies differently (`PLANE_TRAITS` in `src/plane-models.js`). Dart snaps (handling +10%, sink +4%), Glider glides (sink −10%, speed −2%), Stunt pays more from a flare (+12%), and Classic is the balanced baseline. The equipped plane scales the run's upgrade effects when the run starts (`refreshUpgradeEffects` in `src/flight-engine.js`), so the same upgrades feel different on each plane. The Planes tab caption names the trait, for example "Classic Fold · Balanced".
 - **Live preview:** the Planes-tab model sits on a cut-paper plate with a hard shadow, and the camera is closer, so the plane fills the card.

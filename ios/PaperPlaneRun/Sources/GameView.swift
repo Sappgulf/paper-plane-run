@@ -98,7 +98,12 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0xC8 / 255, green: 0xDF / 255, blue: 0xF5 / 255, alpha: 1)
         configureLoadingView()
+        // The audio session and WebKit setup block the main thread for seconds on a
+        // cold start. Waiting one run-loop turn lets the loading card paint first.
+        DispatchQueue.main.async { [weak self] in self?.startGameSession() }
+    }
 
+    private func startGameSession() {
         // WebAudio game: .ambient silences with the Ring/Silent switch and
         // mixes with (rather than interrupts) other apps' audio.
         do {
