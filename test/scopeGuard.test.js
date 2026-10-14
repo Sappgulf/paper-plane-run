@@ -9,10 +9,12 @@ import { BOSS_ART } from '../src/game/boss-art.js'
  * product-approved. Weekly Fold is an approved seeded endless variant.
  */
 describe('product scope guard', () => {
-  test('keeps the upgrade catalog closed and the approved boss set exclusive', () => {
+  test('keeps the approved upgrade catalog exact and the boss set exclusive', () => {
+    // Gust Guard and Thermal Sense are the approved late-tree expansion.
     expect(UPGRADES.map(({ id }) => id)).toEqual([
       'handling', 'lift', 'glide', 'magnet', 'shield', 'luck', 'wingspan',
       'trail', 'turbo', 'guardian', 'flare', 'fever', 'streak', 'wealth',
+      'gust', 'thermal',
     ])
     expect(Object.keys(BOSS_ART).sort()).toEqual(['scissors', 'stapler', 'wind'])
   })

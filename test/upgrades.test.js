@@ -150,6 +150,28 @@ const UPGRADE_CONTRACTS = [
     values: [0, 8, 16, 24].map((doubleStarPercent) => ({ doubleStarPercent })),
     directions: { doubleStarPercent: 'up' },
   },
+  {
+    id: 'gust',
+    labels: [
+      'Gusts push at full strength',
+      'Gust push -15%',
+      'Gust push -30%',
+      'Gust push -45%',
+    ],
+    values: [0, 15, 30, 45].map((pushReductionPercent) => ({ pushReductionPercent })),
+    directions: { pushReductionPercent: 'up' },
+  },
+  {
+    id: 'thermal',
+    labels: [
+      'Updrafts lift at base strength',
+      'Updraft lift +12%',
+      'Updraft lift +24%',
+      'Updraft lift +36%',
+    ],
+    values: [0, 12, 24, 36].map((liftPercent) => ({ liftPercent })),
+    directions: { liftPercent: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))

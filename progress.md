@@ -2,6 +2,14 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Gust Guard, Thermal Sense, and visual polish
+
+- **Two new upgrades:** Gust Guard (Survive tree) cuts wind-gust push by 15% per level, down to 45% at rank three. Thermal Sense (Handle tree) raises updraft lift by 12% per level, up to 36% at rank three. Each costs 12–44 stars across three ranks. They reach the flight through `windPushMul` and `updraftStrengthMul` (`src/upgrades.js`, `src/flight-engine.js`). The catalog is now 16 upgrades, and the scope guard, spend trees, and contract tests were updated to match.
+- **Boss badges:** the top emblem is 3.7 units instead of 2.9 (`getBossBadgeLayout` in `src/game/boss-art.js`), so the stapler's cream body and navy base read from gate distance.
+- **Vista houses:** the city and sunset house vistas sit at ±44 units instead of ±36, and are 4–6.4 units wide and 5–9 tall instead of 5–8 wide and 7–14 tall. Near the camera they show windows instead of blank cream walls (`src/game/paper-landscape.js`).
+- Verification: Vitest 629 tests passed (89 files); production build passed; bundle budget 913,495 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed, after four upgrade-count assertions moved from 14 to 16 cards; production lane 63 passed / 69 intentional skips / 0 failed.
+- Still open: a blank cream wall beside the road on the right of the city view comes from a route building (`createBuilding`), not a vista, and is unchanged. The cream clouds are unchanged. The iOS app needs a rebuild to pick these up.
+
 ## 2026-10-14 — Fair boost, gauntlet sheet and random confetti removed
 
 - **Boost is a surge, not a jump:** the speed bonus used to land almost at once, +18 on top of a ×1.22 cruise. On a normal run that put the world at about 52 against a 28 base, and it dropped sharply at the end. The bonus now eases in over 0.45s, holds at +7 with a 1.1× cruise multiplier (about 38 against 28 at the start of a normal run), and drains over the last 0.8s (`getBoostSurge` in `src/game/power-pickup.js`). A same-kind refresh keeps the surge up, so grabbing a second boost never dips the speed.

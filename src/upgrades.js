@@ -126,6 +126,22 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.wealth,
   },
+  {
+    id: 'gust',
+    name: 'Gust Guard',
+    icon: '💨',
+    blurb: 'Wind gusts push you 15% less per level',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.gust,
+  },
+  {
+    id: 'thermal',
+    name: 'Thermal Sense',
+    icon: '🌡️',
+    blurb: 'Updrafts lift 12% harder per level',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.thermal,
+  },
 ]
 
 function findUpgrade(id) {
@@ -268,6 +284,24 @@ const UPGRADE_FORMULAS = {
       },
     )
   },
+  gust(level) {
+    const pushReductionPercent = level * 15
+    const label = level === 0
+      ? 'Gusts push at full strength'
+      : `Gust push -${pushReductionPercent}%`
+    return effect(label, { pushReductionPercent }, {
+      windPushMul: Math.max(0.55, 1 - pushReductionPercent / 100),
+    })
+  },
+  thermal(level) {
+    const liftPercent = level * 12
+    const label = level === 0
+      ? 'Updrafts lift at base strength'
+      : `Updraft lift +${liftPercent}%`
+    return effect(label, { liftPercent }, {
+      updraftStrengthMul: 1 + liftPercent / 100,
+    })
+  },
 }
 
 function getUpgradeFormula(id, level) {
@@ -394,6 +428,8 @@ export function getUpgradeEffects() {
   const fever = formulas.fever
   const streak = formulas.streak
   const wealth = formulas.wealth
+  const gust = formulas.gust
+  const thermal = formulas.thermal
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
@@ -413,6 +449,8 @@ export function getUpgradeEffects() {
     ...fever.runtime,
     ...streak.runtime,
     ...wealth.runtime,
+    ...gust.runtime,
+    ...thermal.runtime,
     synergyGold,
     synergyFever,
     // Max fever + streak: a tiny extra fever duration (feel, not a new system).

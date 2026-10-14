@@ -121,6 +121,8 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       fever: 2,
       streak: 2,
       wealth: 2,
+      gust: 2,
+      thermal: 2,
     }))
   })
   await openApp(page)

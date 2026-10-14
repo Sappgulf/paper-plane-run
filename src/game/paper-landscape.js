@@ -19,9 +19,11 @@ export function vistaLayers(zoneId, quality = 'high') {
       const side = index%2 ? 1 : -1
       const variation = ((index*31+layer*17)%29)/29
       return {
-        x: side*(36+layer*12+variation*4), z: Math.floor(index/2)*76+layer*32,
-        width: 5+variation*3, height: kind === 'sailboat' ? 7 : 7+variation*7,
-        depth: 7+variation*3, rotation: side*.16,
+        // Vistas sit wider and smaller than they used to: at 36 units a house
+        // filled the frame as a blank cream wall while it passed the camera.
+        x: side*(44+layer*12+variation*4), z: Math.floor(index/2)*76+layer*32,
+        width: 4+variation*2.4, height: kind === 'sailboat' ? 7 : 5+variation*4,
+        depth: 5+variation*2, rotation: side*.16,
       }
     }),
   }))

@@ -18,6 +18,8 @@ const UPGRADE_CARD_CONTRACTS = [
   { id: 'fever', name: 'Fever Focus', current: 'Fever at 6 near-misses · 5.50s', next: 'Fever at 5 near-misses · 6.25s' },
   { id: 'streak', name: 'Steady Hands', current: 'Star streak window 3.00s', next: 'Star streak window 3.40s' },
   { id: 'wealth', name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
+  { id: 'gust', name: 'Gust Guard', current: 'Gust push -30%', next: 'Gust push -45%' },
+  { id: 'thermal', name: 'Thermal Sense', current: 'Updraft lift +24%', next: 'Updraft lift +36%' },
 ]
 
 async function waitForShell(page) {

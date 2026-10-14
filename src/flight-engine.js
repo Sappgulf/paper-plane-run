@@ -4037,7 +4037,8 @@ function collectUpdraftLift(x, y) {
     const z = mesh.position.z
     if (z > 14 || z < -6) continue
     const distance = Math.hypot(mesh.position.x - x, (mesh.position.y - y) * 0.55)
-    lift += updraftLift({ distance, radius: entity.radius || UPDRAFT_RADIUS, strength: entity.strength || UPDRAFT_STRENGTH })
+    const strength = (entity.strength || UPDRAFT_STRENGTH) * (activeUpgradeEffects.updraftStrengthMul ?? 1)
+    lift += updraftLift({ distance, radius: entity.radius || UPDRAFT_RADIUS, strength })
   }
   return lift
 }
@@ -6546,7 +6547,7 @@ function update(dt) {
     }
   } else if (windActive > 0) {
     windActive -= dt
-    windPushX = windForce * (activePower?.kind === 'slow' ? 0.5 : 1)
+    windPushX = windForce * (activePower?.kind === 'slow' ? 0.5 : 1) * (activeUpgradeEffects.windPushMul ?? 1)
     if (windActive <= 0) windBanner.classList.add('hidden')
   } else if (windTimer <= 0 && runKind !== 'tutorial' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)

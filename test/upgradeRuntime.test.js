@@ -56,6 +56,8 @@ const RUNTIME_ASSERTIONS = [
   { id: 'fever', value: (runtime) => runtime.fever.duration, direction: 'up' },
   { id: 'streak', value: (runtime) => runtime.streak.windowSeconds, direction: 'up' },
   { id: 'wealth', value: (runtime) => runtime.luck.doubleStarChance, direction: 'up' },
+  { id: 'gust', value: (runtime) => runtime.effects.windPushMul, direction: 'down' },
+  { id: 'thermal', value: (runtime) => runtime.effects.updraftStrengthMul, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {

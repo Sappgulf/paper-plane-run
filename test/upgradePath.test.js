@@ -36,7 +36,7 @@ describe('upgrade early path', () => {
 
   test('filters catalog cards by spend tree', () => {
     const handle = filterUpgradesByTree(UPGRADES, 'handle')
-    expect(handle.map((item) => item.id)).toEqual(['handling', 'lift', 'glide'])
+    expect(handle.map((item) => item.id)).toEqual(['handling', 'lift', 'glide', 'thermal'])
     expect(filterUpgradesByTree(UPGRADES, null)).toHaveLength(UPGRADES.length)
   })
 })

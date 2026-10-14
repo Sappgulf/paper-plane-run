@@ -22,10 +22,12 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     guardian: Object.freeze([30, 60]),
     flare: Object.freeze([22, 40, 65, 95]),
     // First ranks of the late tree stay inside a short normal-run save so the
-    // three newest upgrades never feel gated behind a long grind.
+    // newest upgrades never feel gated behind a long grind.
     fever: Object.freeze([15, 28, 48]),
     streak: Object.freeze([12, 22, 38]),
     wealth: Object.freeze([14, 26, 44]),
+    gust: Object.freeze([12, 22, 38]),
+    thermal: Object.freeze([14, 26, 44]),
   }),
   planes: Object.freeze({
     mint: 18,

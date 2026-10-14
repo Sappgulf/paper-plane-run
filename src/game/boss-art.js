@@ -330,7 +330,9 @@ export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture, can
  * Never covers the center flyable hole.
  */
 export function getBossBadgeLayout({ halfWidth = 4, halfHeight = 3.7, gapY = 10 } = {}) {
-  const topSize = 2.9
+  // The top badge sits far above the gate, so it needs more size than the flanks
+  // to read as a boss emblem from play distance.
+  const topSize = 3.7
   const sideSize = 3.15
   return Object.freeze({
     top: Object.freeze({
