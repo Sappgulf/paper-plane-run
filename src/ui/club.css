@@ -299,3 +299,188 @@ html.a11y-reduced-motion #menu * { animation: none; }
 @media (pointer: coarse) {
   .u-buy, .upgrade-tree-chip, .hangar-tab, .hangar-group-btn, .claim-btn, .editor-toolbar button { min-height: 44px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Cut-paper menus. Every card, button and field is one material: ivory stock,
+   a 2px ink edge and a hard offset shadow with no blur. A pressed control drops
+   its shadow and moves into it; a selected control is pressed in.
+   Layout (sizes, paddings, media queries) stays in screens/adaptive.css.
+   --------------------------------------------------------------------------- */
+:root {
+  --cut-ink: #263d43;
+  --cut-ink-soft: #4a6166;
+  --cut-stock: #fffdf5;
+  --cut-well: #ebe5d2;
+  --cut-edge: 2px solid var(--cut-ink);
+  --cut-edge-soft: 2px solid var(--cut-ink-soft);
+  --cut-shadow: 3px 4px 0 var(--cut-ink);
+  --cut-shadow-lg: 5px 6px 0 var(--cut-ink);
+  --cut-shadow-sm: 2px 3px 0 var(--cut-ink);
+  --cut-radius: 8px;
+  --cut-focus: #1d3f4a;
+}
+
+/* Focus: one high-contrast ring for every control, including the ones that
+   previously removed their outline. */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visible {
+  outline: 3px solid var(--cut-focus); outline-offset: 3px;
+}
+.hangar-search-input:focus, .hangar-search-input:focus-visible {
+  outline: 3px solid var(--cut-focus); outline-offset: 2px; box-shadow: none; border-color: var(--cut-ink);
+}
+.skin-card:focus-visible { outline: 3px solid var(--cut-focus); outline-offset: 3px; }
+
+/* Primary action: the one solid coral block on each screen. */
+.cta-main, .journey-main-cta {
+  border: var(--cut-edge); border-radius: var(--cut-radius);
+  background: #b64a33; color: var(--paper);
+  box-shadow: 4px 5px 0 var(--cut-ink);
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+.cta-main:hover { background: #a3412e; filter: none; transform: translate(-1px,-1px); box-shadow: 5px 6px 0 var(--cut-ink); }
+.cta-main:active { transform: translate(3px,4px); box-shadow: 1px 1px 0 var(--cut-ink); }
+.cta-main:disabled { opacity: .55; box-shadow: none; }
+
+/* Secondary buttons: ivory stock, same edge and shadow as the cards. */
+.btn-secondary, .editor-toolbar button, .tab, .back-btn {
+  background: var(--cut-stock); color: var(--club-blue); border: var(--cut-edge-soft); border-radius: 6px;
+  box-shadow: var(--cut-shadow-sm); font-weight: 900; min-height: 40px; text-decoration: none;
+  transition: transform .08s ease, box-shadow .08s ease, background-color .08s ease;
+}
+.btn-secondary:hover, .editor-toolbar button:hover, .tab:hover, .back-btn:hover { background: #f1ecdb; }
+.btn-secondary:active, .editor-toolbar button:active, .tab:active, .back-btn:active {
+  transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--cut-ink);
+}
+.tab.active, .editor-toolbar button.active {
+  background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; transform: translate(2px,2px);
+}
+.back-btn { margin: 14px auto 0; min-width: 180px; align-self: center; }
+
+/* Launch poster: the mode buttons read as one group with matching weight. */
+#menu .menu-actions { gap: 12px 10px; }
+#menu .action-pill {
+  border: var(--cut-edge); border-radius: var(--cut-radius); background: var(--cut-stock); color: var(--ink);
+  box-shadow: var(--cut-shadow-sm); transition: transform .08s ease, box-shadow .08s ease, background-color .08s ease;
+}
+#menu .action-pill:hover { background: #f4efdf; }
+#menu .action-pill:active { transform: translate(2px,2px); box-shadow: none; }
+#menu .action-hangar { background: #dde7d0; }
+#menu .action-hangar:hover { background: #d3dfc4; }
+#menu .action-hangar.hangar-can-spend { background: #cfe2b8; border-color: var(--cut-ink); box-shadow: var(--cut-shadow); }
+#menu .menu-setup {
+  background: var(--cut-stock); border: var(--cut-edge); border-radius: var(--cut-radius); box-shadow: var(--cut-shadow);
+}
+#menu .diff-row { gap: 6px; }
+#menu .diff-btn, #menu .ctrl-btn {
+  border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-stock); color: var(--ink);
+  box-shadow: 2px 2px 0 var(--cut-ink); transition: transform .08s ease, box-shadow .08s ease;
+}
+#menu .diff-btn.active { background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; transform: translate(2px,2px); }
+#menu .diff-btn[data-diff=easy].active { background: var(--club-sage); }
+#menu .diff-btn[data-diff=hard].active { background: var(--coral); }
+#menu .ctrl-btn.active { background: var(--club-blue) !important; box-shadow: none !important; transform: translate(2px,2px); }
+#menu .name-row input {
+  background: #fff; border: var(--cut-edge-soft); border-radius: 6px; padding: 5px 8px; color: var(--ink);
+}
+#menu .name-row input:focus-visible { border-color: var(--cut-ink); }
+#menu .flight-guide-link { color: var(--club-blue); text-decoration-thickness: 2px; }
+
+/* Cards: the shared material for everything that lists, reports or chooses. */
+.upgrade-card, .skin-card, .achievement-card, .list-card, .settings-list, .logbook-card,
+.milestone-card, .run-summary, .journey-route-card, .journey-pilot, .progress-kit,
+.stats-diagnostics, .plane-preview, .flight-debrief, .challenge-result {
+  background: var(--cut-stock); border: var(--cut-edge-soft); border-radius: var(--cut-radius);
+  box-shadow: var(--cut-shadow-sm);
+}
+.upgrade-card.affordable, .skin-card.affordable { background: #fff4cf; border-color: #8a6a2a; box-shadow: 2px 3px 0 #8a6a2a; }
+.upgrade-card.upgrade-recommended { border-color: var(--club-sage); box-shadow: 2px 3px 0 var(--club-sage); }
+.upgrade-card.upgrade-focus { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
+.skin-card.equipped { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
+.skin-card.locked-funds { border-style: dashed; }
+.journey-route-card.risky { background: #fbebd9; border-color: #8a4a36; box-shadow: 2px 3px 0 #8a4a36; }
+.journey-route-card.selected, .journey-pilot.selected { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
+.journey-route-card:hover { background: #f5f1e2; }
+.journey-route-card.risky:hover { background: #f8e0c9; }
+.journey-pilot { border-width: 2px; }
+.run-summary { background: var(--cut-stock); }
+.progress-kit { background: var(--cut-well); }
+.settings-list { padding: 4px 14px; }
+.set-row { border-bottom: 1px dashed #c6b79e; }
+.set-row select, .import-input, .backup-text, .hangar-search-input {
+  border: var(--cut-edge-soft); border-radius: 6px; background: #fff; color: var(--ink);
+}
+.set-row select { min-height: 40px; padding: 6px 10px; }
+.set-row input[type=checkbox] { accent-color: var(--club-blue); }
+.u-buy, .claim-btn {
+  border: var(--cut-edge-soft); border-radius: 6px; background: #edce79; color: var(--ink);
+  box-shadow: var(--cut-shadow-sm);
+}
+.upgrade-card.affordable .u-buy { box-shadow: var(--cut-shadow-sm); transform: none; }
+.u-buy:disabled, .claim-btn:disabled { opacity: .55; box-shadow: none; }
+.upgrade-card .u-max { border: var(--cut-edge-soft); border-radius: 6px; box-shadow: none; }
+
+/* Hangar: segmented group, then square-cut tabs that press in when chosen. */
+.hangar-group-switch {
+  border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-well); padding: 3px;
+}
+.hangar-group-btn { border-radius: 4px; min-height: 36px; }
+.hangar-tabs { gap: 8px; padding-bottom: 6px; }
+.hangar-tab {
+  border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-stock); color: var(--ink);
+  box-shadow: var(--cut-shadow-sm); font-weight: 900; font-size: 12px;
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+.hangar-tab:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--cut-ink); }
+.hangar-tab.active {
+  background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; transform: translate(2px,2px);
+}
+.hangar-search-input { min-height: 42px; border-radius: 6px; }
+.hangar-search-clear { border: var(--cut-edge-soft); border-radius: 6px; box-shadow: var(--cut-shadow-sm); }
+
+/* Panels that float over the sky: the same ink edge and hard shadow. */
+.panel .menu-card, .manual-card, .pause-card, .postcard-surface, .install-hint-card, #sw-update-banner {
+  border: var(--cut-edge); border-radius: var(--cut-radius); box-shadow: var(--cut-shadow-lg);
+}
+#menu .menu-card { border: 0; box-shadow: none; border-radius: 0; }
+#gameover .menu-card { border-top: 4px solid var(--coral); }
+.manual-modes { border: 1.5px dashed var(--cut-ink-soft); border-radius: 6px; background: var(--cut-stock); }
+.manual-number { border: var(--cut-edge-soft); }
+.journey-section { border-top: 2px dashed #c6b79e; }
+.journey-stop-brief { border: var(--cut-edge-soft); border-left: 6px solid var(--coral); border-radius: var(--cut-radius); box-shadow: var(--cut-shadow-sm); background: var(--cut-stock); }
+
+/* Keyboard and touch. Coarse pointers get 44px targets on every menu control. */
+.panel button, .manual-card button, .pause-card button, .postcard-surface button {
+  -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: coarse) {
+  .panel button, .manual-card button, .pause-card button, .postcard-surface button,
+  .panel select, .panel input[type=search], .panel input[type=text], #menu .name-row input,
+  .set-row select, .import-input, .backup-text {
+    min-height: 44px;
+  }
+  #menu .diff-btn, #menu .ctrl-btn { min-height: 44px; }
+  #menu .action-pill { min-height: 56px; }
+  .set-row input[type=checkbox], #menu .inline-check input { width: 22px; height: 22px; }
+}
+
+@media (max-width: 700px) {
+  .menu-card, .hangar-card, .journey-card, .manual-card, .pause-card { border-radius: var(--cut-radius); }
+}
+
+/* Short viewports: touch screens (phones, landscape phones, small tablets) and small
+   portrait phones at 320px. The 44px touch minimums must not push a primary action off
+   screen. Desktop is unchanged. */
+@media (pointer: coarse) and (max-height: 760px), (max-width: 500px) and (max-height: 620px) {
+  #menu { padding-top: max(40px,calc(env(safe-area-inset-top) + 34px)); padding-bottom: 6px; }
+  #menu h1 { font-size: 34px; margin-bottom: 4px; }
+  /* The install shortcut sits in the eyebrow's corner on narrow screens. Keep the space, hide the words. */
+  html:has(#install-btn[data-install-eligible]:not(.hidden)) #menu .menu-eyebrow { visibility: hidden; }
+  #menu .menu-actions { gap: 6px; margin-bottom: 10px; }
+  #menu .action-pill { min-height: 44px; padding-block: 4px; }
+  #menu .action-pill small { font-size: 9px; line-height: 1.15; }
+  #menu .journey-main-cta { min-height: 50px; }
+  #menu .menu-setup { padding: 6px 8px; gap: 5px 8px; }
+  #menu .diff-btn, #menu .ctrl-btn { min-height: 40px; }
+  #menu .flight-guide-link { margin-top: 2px; min-height: 32px; }
+}

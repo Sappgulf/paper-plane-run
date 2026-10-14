@@ -17,6 +17,41 @@ function polygon(ctx, points) {
   ctx.closePath()
 }
 
+/** Mix a #rrggbb colour toward black (negative amount) or white (positive amount). */
+function shade(hex, amount) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
+  const value = parseInt(hex.slice(1), 16)
+  const target = amount < 0 ? 0 : 255
+  const t = Math.min(1, Math.abs(amount))
+  const channel = (shift) => {
+    const current = (value >> shift) & 255
+    return Math.round(current + (target - current) * t)
+  }
+  return `rgb(${channel(16)},${channel(8)},${channel(0)})`
+}
+
+/** Deterministic fibre specks for the current clip. Low contrast, never blurred. */
+function fibre(ctx, seed) {
+  let state = seed >>> 0
+  const random = () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296
+  }
+  ctx.save()
+  ctx.globalAlpha = .08
+  for (let index = 0; index < 90; index += 1) {
+    ctx.fillStyle = random() < .5 ? '#000000' : '#ffffff'
+    ctx.fillRect(random() * 100, random() * 100, 1.1, .5 + random() * 1.5)
+  }
+  ctx.restore()
+}
+
+function seedOf(text) {
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619) >>> 0
+  return hash
+}
+
 function starPoints() {
   return Array.from({length:10},(_,i) => {
     const angle = -Math.PI/2 + i*Math.PI/5
@@ -42,13 +77,19 @@ export function createPickupCanvas({ kind = 'star', color, size = 192, canvasFac
     else { ctx.beginPath(); ctx.arc(50,49,35,0,Math.PI*2) }
   }
   ctx.save(); ctx.translate(2,4); cut(); ctx.fillStyle = ink; ctx.fill(); ctx.restore()
-  cut(); ctx.fillStyle = accent; ctx.fill(); ctx.strokeStyle = ink; ctx.lineWidth = 2.2; ctx.stroke()
+  // The cut folds along x = 50: the lit half keeps the accent and the stock sheen,
+  // the shaded half takes a deeper tone, and fibre specks sit on both.
+  cut(); ctx.fillStyle = accent; ctx.fill()
   ctx.save(); cut(); ctx.clip()
+  ctx.fillStyle = shade(accent,-.16); ctx.fillRect(50,0,60,100)
   ctx.fillStyle = stock
   polygon(ctx,[[50,5],[50,49],[12,89],[0,0]]); ctx.fill()
   ctx.strokeStyle = 'rgba(51,43,53,.24)'; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(50,8); ctx.lineTo(50,89); ctx.stroke()
+  fibre(ctx,seedOf(kind))
   ctx.restore()
+  // The ink edge is drawn last so the facets never cover half of it.
+  cut(); ctx.strokeStyle = ink; ctx.lineWidth = 2.2; ctx.stroke()
   ctx.strokeStyle = ink; ctx.lineWidth = 4
   if (kind === 'boost') {
     ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(50,39,7,0,Math.PI*2); ctx.fill()
@@ -69,6 +110,8 @@ export function createPickupLabelCanvas({ label, canvasFactory } = {}) {
   canvas.width = 512; canvas.height = 128
   const ctx = canvas.getContext('2d')
   if (!ctx) return canvas
+  // Hard offset ink card under the stock face: the same cut language as the pickups.
+  ctx.fillStyle = '#332b35'; ctx.fillRect(14,22,492,92)
   ctx.fillStyle = '#fff4dd'; ctx.fillRect(10,18,492,92)
   ctx.strokeStyle = '#332b35'; ctx.lineWidth = 5; ctx.strokeRect(10,18,492,92)
   ctx.fillStyle = '#332b35'; ctx.font = 'bold 34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'

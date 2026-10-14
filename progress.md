@@ -2,6 +2,21 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Full QA pass: paper bosses, enemies, ground, pickups, menus, and shipped art
+
+- **Bosses:** the scissors, stapler and wind gates are cut paper. The hoop is a flat tinted ring with a hard ink offset instead of a glowing torus. Blades, jaws and fan blades are extruded paper cuts with ink offsets, and the stapler jaws have teeth facing the slot. The three emblems are drawn on canvas as `paper:boss:<id>` textures in the enemy style. The old boss WebPs moved to `docs/retired-art/bosses/`.
+- **Enemies:** the seven flyers are redrawn as folded paper in each zone's accent: two facets split by a fold, a hard offset shadow and a thin ink edge. The biplane reads as a biplane now; it was four bars. The WebP sprites were never loaded at runtime, so they moved to `docs/retired-art/obstacles/`. `FLYER_DEFS` carries `sprite: 'paper'` in their place.
+- **Ground:** road, kerb, block and park textures carry hard offset shadows, fold creases and fibre grain, and parks are scalloped cut shapes. The flat decal bands were 55% translucent and are opaque cut paper now.
+- **Updrafts:** the translucent green smear is solid mint chevrons with ink offsets and a fold each. They are alpha-tested, so the route still shows between rows.
+- **Pickups:** stars and power icons split along a fold into a lit half and a shaded half, with fibre grain. Labels sit on a hard offset card.
+- **Flight:** wingtip wisps are paper flecks (hard-edged triangles) instead of round dots.
+- **Menus:** one cut-paper layer over the menu, Hangar, Journey and the cards: 2px ink edges, hard offset shadows, a visible `:focus-visible` ring, and 44px touch minimums on coarse pointers. Short touch screens and 320px phones tighten the stack, so every primary action stays on screen. The spec `menu actions fit` enforces this. Settings checkbox rows now read box-then-label.
+- **Shipped art:** 18 files were never displayed (zone JPEGs replaced by procedural art, unused power-up and pickup WebPs) and are removed. Retired and unused sprites moved to `docs/retired-art/` with `git mv`, and the iOS icon source moved to `ios/source/logo.jpg`. The service worker precaches the menu illustration the first screen paints, not the logo. `test/shipped-art.test.js` fails if a file in `public/assets` is unreferenced, or if a referenced file is missing.
+- **Naming and seasons:** the pilot field is labelled "Callsign" and its grey placeholder still shows the default name. Spring boosted a retired flyer and changed nothing; season weights are a tested `SEASONAL_FLYER_BIAS` table.
+- **Engine:** removed the unreachable JPEG desaturation path from `loadTex`.
+- Verification: Vitest 89 files / 617 tests passed. Production build passed, and the bundle budget passed at 912,314 of 921,600 total bytes (the initial entry is 132,723 of 163,840). The budget is now tight, so the next JavaScript addition needs a decision. iOS web bundle parity matched 41 files exactly. Playwright development lane: 101 passed, 31 intentional viewport and platform skips, 0 failed. Production lane: 63 passed, 69 intentional skips, 0 failed. Screenshots were inspected for zones, enemies, bosses, pickups, updrafts and menus at 1280, 390 and 320 wide.
+- Not changed: the global leaderboard is still in-memory per warm serverless instance and resets on a cold start. Fixing it needs a storage backend and credentials. The sky and clouds are unchanged, and the ground change is a subtle upgrade rather than a repaint.
+
 ## 2026-10-02 — Flight onboarding, accessible controls, and release verification
 
 - Added paper field notes, six persistent tutorial lessons across a 420m practice route, readable updrafts, a low-height Tuck release cue, and route/distance/star totals on the pause card. Refined paper/coral controls and compact layouts at 320×568, 390×844, and 844×390.

@@ -91,7 +91,7 @@ import {
   shouldGrantLaunchGrace,
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
-import { FLYER_DEFS } from './game/flyers.js'
+import { FLYER_DEFS, flyerPoolForSeason } from './game/flyers.js'
 import { createBossArtOverlay, getBossBadgeLayout } from './game/boss-art.js'
 import {
   bossBannerEmoji,
@@ -278,6 +278,7 @@ const PLANE_THREE = Object.freeze({
   SphereGeometry: THREE.SphereGeometry,
 })
 const BOSS_ART_THREE = Object.freeze({
+  CanvasTexture: THREE.CanvasTexture,
   DoubleSide: THREE.DoubleSide,
   Mesh: THREE.Mesh,
   MeshBasicMaterial: THREE.MeshBasicMaterial,
@@ -1056,31 +1057,7 @@ function loadTex(rawUrl) {
   }
   const url = resolveAssetUrl(rawUrl)
   if (!texCache[url]) {
-    const isGround = url.includes('/ground-') || url.includes('buildings.jpg')
-    const onLoad = isGround ? (tex) => {
-      // Desaturate toward paper cream (#fffaf2) 55% to keep palette calm
-      try {
-        const img = tex.image
-        if (img && img.width) {
-          const c = document.createElement('canvas')
-          c.width = img.width; c.height = img.height
-          const ctx = c.getContext('2d')
-          ctx.drawImage(img, 0, 0)
-          const d = ctx.getImageData(0,0,c.width,c.height)
-          for (let i=0;i<d.data.length;i+=4){
-            const avg = (d.data[i]+d.data[i+1]+d.data[i+2])/3
-            const t2 = 0.55
-            d.data[i] = avg*t2 + 255*(1-t2)*0.98
-            d.data[i+1] = avg*t2 + 250*(1-t2)*0.97
-            d.data[i+2] = avg*t2 + 242*(1-t2)*0.96
-          }
-          ctx.putImageData(d,0,0)
-          tex.image = c
-          tex.needsUpdate = true
-        }
-      } catch {}
-    } : undefined
-    const t = loader.load(url, onLoad, undefined, () => { delete texCache[url] })
+    const t = loader.load(url, undefined, undefined, () => { delete texCache[url] })
     t.colorSpace = THREE.SRGBColorSpace
     t.wrapS = t.wrapT = THREE.RepeatWrapping
     t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4
@@ -1455,11 +1432,11 @@ function buildGroundLife(zoneId) {
       side: THREE.DoubleSide,
       // Decals sit millimetres above the ground plane; bias them so they do
       // not z-fight with it at distance.
-      // Roads are a surface, not a wash: fully opaque so they read against a
-      // busy paper ground. The softer decal bands stay translucent texture.
-      transparent: speciesDef.flat && !street,
-      opacity: speciesDef.flat && !street ? 0.55 : 1,
-      depthWrite: !speciesDef.flat || street,
+      // Roads and decal bands are cut paper: fully opaque with hard edges, so they
+      // read as a surface on the ground rather than a translucent wash.
+      transparent: false,
+      opacity: 1,
+      depthWrite: true,
       polygonOffset: speciesDef.flat,
       polygonOffsetFactor: speciesDef.flat ? -2 : 0,
       polygonOffsetUnits: speciesDef.flat ? -2 : 0,
@@ -1591,6 +1568,19 @@ const TRAIL_N = 24
 const wispPts = []
 const WISP_N = 14
 let wispSide = 1
+/** A folded paper fleck: a hard-edged triangle in cream stock with one darker fold. */
+const wispFleckTexture = (() => {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 32
+  const paint = canvas.getContext('2d')
+  paint.fillStyle = '#fff4dd'
+  paint.beginPath(); paint.moveTo(16, 2); paint.lineTo(30, 28); paint.lineTo(2, 28); paint.closePath(); paint.fill()
+  paint.fillStyle = '#d9c9ab'
+  paint.beginPath(); paint.moveTo(16, 2); paint.lineTo(16, 28); paint.lineTo(2, 28); paint.closePath(); paint.fill()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+})()
 {
   const g = new THREE.BufferGeometry()
   const arr = new Float32Array(WISP_N * 3)
@@ -1598,7 +1588,7 @@ let wispSide = 1
   const wisp = new THREE.Points(
     g,
     new THREE.PointsMaterial({
-      color: 0xff8a5e, size: 0.17, transparent: true, opacity: 0.3, depthWrite: false,
+      map: wispFleckTexture, alphaTest: 0.5, color: 0xffffff, size: 0.2, transparent: true, opacity: 0.3, depthWrite: false,
     }),
   )
   wisp.name = 'ambientWisp'
@@ -1832,8 +1822,22 @@ const dragonflyWingMat = new THREE.MeshStandardMaterial({
 // metalness workflow renders highly metallic surfaces near-black without
 // one (no reflections to fill them in) — high metalness here previously
 // made the blades look like dark wood beams instead of shiny silver.
-const scissorsMat = new THREE.MeshStandardMaterial({ color: 0xd7dce2, metalness: 0.12, roughness: 0.4 })
-const scissorsEdgeMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f9, metalness: 0.15, roughness: 0.25 })
+// Boss gates are cut paper like the rest of the scenery: flat stock, a fold and
+// a hard ink offset instead of metal or glow. Geometry and materials are shared
+// across spawns, so a gate costs a handful of meshes.
+const bossInkMat = new THREE.MeshBasicMaterial({ color: 0x3d3340, side: THREE.DoubleSide })
+/** Extrudes a flat paper cut from 2D points (in units), centred on z = 0. */
+function paperCutGeometry(points, depth) {
+  const shape = new THREE.Shape(points.map(([x, y]) => new THREE.Vector2(x, y)))
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 })
+  geo.translate(0, 0, -depth / 2)
+  return geo
+}
+const scissorsMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
+const scissorsFoldMat = new THREE.MeshBasicMaterial({ color: 0xd9c9ab, side: THREE.DoubleSide })
+/** One blade, 1 unit wide and 1 unit tall, tapering to a point at the top. */
+const scissorsBladeGeo = paperCutGeometry([[-0.55, -0.5], [0.55, -0.5], [0.06, 0.5], [-0.22, 0.44]], 0.35)
+const scissorsFoldGeo = new THREE.BoxGeometry(0.06, 1, 0.05)
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
@@ -2276,32 +2280,20 @@ const portalAccentMats = {
   stapler: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x92400e, emissiveIntensity: 0.28, roughness: 0.42 }),
 }
 
-function createSafePortalRing(color, emissive, halfWidth = 4, halfHeight = 3.7) {
+function createSafePortalRing(color, halfWidth = 4, halfHeight = 3.7) {
   const group = new THREE.Group()
   group.name = 'safeRing'
-  const hoopMat = new THREE.MeshStandardMaterial({
-    color,
-    emissive,
-    emissiveIntensity: 1.15,
-    roughness: 0.32,
-    side: THREE.DoubleSide,
-    depthTest: false,
-  })
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: emissive,
-    transparent: true,
-    opacity: 0.28,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    depthTest: false,
-  })
-  const hoop = new THREE.Mesh(new THREE.TorusGeometry(1, 0.085, 14, 56), hoopMat)
+  // A flat paper hoop in the gate's tint with a hard ink offset behind it. No
+  // halo: the opening reads as a cut-out, not a light.
+  const hoopGeo = new THREE.TorusGeometry(1, 0.1, 10, 56)
+  const shadow = new THREE.Mesh(hoopGeo, bossInkMat)
+  shadow.scale.set(halfWidth, halfHeight, 1)
+  shadow.position.set(0.1, -0.12, 0.02)
+  shadow.renderOrder = 4
+  const hoop = new THREE.Mesh(hoopGeo, new THREE.MeshBasicMaterial({ color, depthTest: false }))
   hoop.scale.set(halfWidth, halfHeight, 1)
   hoop.renderOrder = 5
-  const glow = new THREE.Mesh(new THREE.TorusGeometry(1, 0.16, 10, 40), glowMat)
-  glow.scale.set(halfWidth, halfHeight, 1)
-  glow.renderOrder = 4
-  group.add(glow, hoop)
+  group.add(shadow, hoop)
   group.userData.halfWidth = halfWidth
   group.userData.halfHeight = halfHeight
   return group
@@ -2319,7 +2311,7 @@ function createBossPortalBase(kind, passage) {
     stapler: { ring: 0xfde68a, emissive: 0xfbbf24 },
   }[kind] || { ring: 0xb8f3c8, emissive: 0x4ade80 }
 
-  const safeRing = createSafePortalRing(colors.ring, colors.emissive, halfWidth, halfHeight)
+  const safeRing = createSafePortalRing(colors.ring, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
 
@@ -2339,10 +2331,18 @@ function createBossGate(passage) {
   // Blades stay OUTSIDE the open portal — tall panels parked left/right.
   const bladeW = 1.1
   const bladeH = g.userData.halfHeight * 2 + 2.5
-  const left = new THREE.Mesh(new THREE.BoxGeometry(bladeW, bladeH, 0.35), scissorsMat)
-  const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(0.12, bladeH, 0.05), scissorsEdgeMat)
-  leftEdge.position.set(bladeW * 0.4, 0, 0.2)
-  left.add(leftEdge)
+  // A paper blade: the stock, a hard ink offset behind it and a fold along the spine.
+  const left = new THREE.Group()
+  const shade = new THREE.Mesh(scissorsBladeGeo, bossInkMat)
+  shade.scale.set(bladeW, bladeH, 1)
+  // The camera sits at -Z, so the offset goes to +Z (further away) and the fold to -Z (the face).
+  shade.position.set(0.09, -0.1, 0.12)
+  const cut = new THREE.Mesh(scissorsBladeGeo, scissorsMat)
+  cut.scale.set(bladeW, bladeH, 1)
+  const fold = new THREE.Mesh(scissorsFoldGeo, scissorsFoldMat)
+  fold.scale.set(1, bladeH, 1)
+  fold.position.set(bladeW * 0.18, 0, -0.19)
+  left.add(shade, cut, fold)
   left.position.set(-halfWidth - bladeW * 0.7 - 0.4, 10, 0.1)
   const right = left.clone()
   right.position.x = halfWidth + bladeW * 0.7 + 0.4
@@ -2352,7 +2352,25 @@ function createBossGate(passage) {
   return g
 }
 
-const staplerJawMat = new THREE.MeshStandardMaterial({ color: 0xc4c9d4, metalness: 0.18, roughness: 0.38 })
+const staplerJawMat = new THREE.MeshBasicMaterial({ color: 0x9dbcd3, side: THREE.DoubleSide })
+/** A stapler jaw: a paper plate with teeth on its inner (bottom) edge, 1 unit square. */
+const staplerJawGeo = paperCutGeometry([
+  [-0.5, 0.5], [0.5, 0.5], [0.5, -0.5], [0.36, -0.5], [0.32, -0.16], [0.28, -0.5],
+  [0.12, -0.5], [0.08, -0.16], [0.04, -0.5], [-0.04, -0.5], [-0.08, -0.16], [-0.12, -0.5],
+  [-0.28, -0.5], [-0.32, -0.16], [-0.36, -0.5], [-0.5, -0.5],
+], 0.45)
+
+/** A jaw is the plate with its ink offset; the animation moves the whole group. */
+function createStaplerJaw(width, height) {
+  const jaw = new THREE.Group()
+  const shade = new THREE.Mesh(staplerJawGeo, bossInkMat)
+  shade.scale.set(width, height, 1)
+  shade.position.set(0.08, -0.1, 0.14)
+  const plate = new THREE.Mesh(staplerJawGeo, staplerJawMat)
+  plate.scale.set(width, height, 1)
+  jaw.add(shade, plate)
+  return jaw
+}
 
 /** Top/bottom jaws only — the center slot is always open and matches the ring. */
 function createStaplerGate(passage) {
@@ -2361,9 +2379,11 @@ function createStaplerGate(passage) {
   const halfHeight = g.userData.halfHeight
   const jawH = 0.7
   const jawW = halfWidth * 1.15
-  const topJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.45), staplerJawMat)
+  const topJaw = createStaplerJaw(jawW, jawH)
   topJaw.position.set(0, 10 + halfHeight + jawH * 0.7 + 0.15, 0.15)
-  const bottomJaw = new THREE.Mesh(new THREE.BoxGeometry(jawW, jawH, 0.45), staplerJawMat)
+  const bottomJaw = createStaplerJaw(jawW, jawH)
+  // The bottom jaw is the top one turned over, so its teeth face the slot.
+  bottomJaw.rotation.z = Math.PI
   bottomJaw.position.set(0, 10 - halfHeight - jawH * 0.7 - 0.15, 0.15)
   g.add(topJaw, bottomJaw)
   g.userData.topJaw = topJaw
@@ -2371,8 +2391,10 @@ function createStaplerGate(passage) {
   return g
 }
 
-const windFanMat = new THREE.MeshStandardMaterial({ color: 0x9ab4cc, roughness: 0.5, metalness: 0.15 })
-const windDebrisMat = new THREE.MeshStandardMaterial({ color: 0xe8ddc8, roughness: 0.85 })
+const windFanMat = new THREE.MeshBasicMaterial({ color: 0xa9c7dd, side: THREE.DoubleSide })
+const windDebrisMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
+/** A turbine blade: a tapered paper cut from the hub outward, 1 unit long. */
+const windBladeGeo = paperCutGeometry([[-0.2, 0], [0.2, 0], [0.07, 0.9], [-0.07, 0.9]], 0.06)
 
 function createFan(radius) {
   const g = new THREE.Group()
@@ -2380,10 +2402,14 @@ function createFan(radius) {
   hub.rotation.x = Math.PI / 2
   g.add(hub)
   for (let i = 0; i < 4; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(radius * 0.32, radius * 0.9, 0.06), windFanMat)
-    blade.position.set(0, radius * 0.45, 0)
+    // Each blade casts a hard ink offset, then the paper stock sits on top of it.
+    const shade = new THREE.Mesh(windBladeGeo, bossInkMat)
+    shade.scale.set(radius, radius, 1)
+    shade.position.set(radius * 0.05, -radius * 0.04, 0.12)
+    const blade = new THREE.Mesh(windBladeGeo, windFanMat)
+    blade.scale.set(radius, radius, 1)
     const pivot = new THREE.Group()
-    pivot.add(blade)
+    pivot.add(shade, blade)
     pivot.rotation.z = (i / 4) * Math.PI * 2
     g.add(pivot)
   }
@@ -2658,8 +2684,9 @@ function createFlyer(kindId) {
   g.userData.barrel = !!def.barrel
   g.userData.pattern = patternForFlyer(def)
 
-  if (def.tex) {
-    const bill = createBillboardFlyer(def.tex, def.scale || 1.5, !!def.alpha, def.id)
+  if (def.sprite) {
+    // The billboard's art is generated per zone accent; no texture file is loaded.
+    const bill = createBillboardFlyer('', def.scale || 1.5, !!def.alpha, def.id)
     g.add(bill)
     g.userData.billboard = bill.userData.billboard
     return g
@@ -2815,18 +2842,7 @@ function createFlyer(kindId) {
 }
 
 function pickFlyerKind() {
-  // Seasonal bias
-  let pool = FLYER_DEFS
-    .map((flyer) => ({ ...flyer }))
-  if (season.id === 'halloween') {
-    pool = pool.map((f) => (f.id === 'bird' ? { ...f, weight: 1.4 } : f))
-  }
-  if (season.id === 'spring') {
-    pool = pool.map((f) => (f.id === 'butterfly' ? { ...f, weight: 1.6 } : f))
-  }
-  if (season.id === 'summer') {
-    pool = pool.map((f) => (f.id === 'kite' || f.id === 'balloon' ? { ...f, weight: f.weight * 1.5 } : f))
-  }
+  const pool = flyerPoolForSeason(FLYER_DEFS, season.id)
   const total = pool.reduce((s, f) => s + f.weight, 0)
   let r = rng() * total
   for (const f of pool) {
@@ -3958,36 +3974,46 @@ const UPDRAFT_RADIUS = 3.4
 const UPDRAFT_STRENGTH = 9.5
 const UPDRAFT_BASE_Y = 5.2
 
+const UPDRAFT_PAPER = '#8fe0b5'
+const UPDRAFT_SHADOW = '#2f7d62'
 const updraftGeo = new THREE.CylinderGeometry(2.2, 3.2, 9, 12, 1, true)
 const updraftCanvas = document.createElement('canvas')
-updraftCanvas.width = 128
-updraftCanvas.height = 128
+updraftCanvas.width = 256
+updraftCanvas.height = 256
 const updraftInk = updraftCanvas.getContext('2d')
-// Transparent arrow ribbons leave the route visible through rising air.
-updraftInk.strokeStyle = '#d4ffe3'
-updraftInk.lineWidth = 4
-for (let y = 16; y < 128; y += 32) {
-  for (let x = 16; x < 128; x += 32) {
-    updraftInk.beginPath()
-    updraftInk.moveTo(x - 9, y + 5)
-    updraftInk.lineTo(x, y - 5)
-    updraftInk.lineTo(x + 9, y + 5)
-    updraftInk.stroke()
+/** One cut-paper chevron: a solid offset shadow, the paper arms and a fold crease at the apex. */
+function drawUpdraftChevron(ctx, x, y) {
+  const arms = (dx, dy, ink) => {
+    ctx.strokeStyle = ink
+    ctx.lineWidth = 12
+    ctx.lineJoin = 'miter'
+    ctx.lineCap = 'butt'
+    ctx.beginPath()
+    ctx.moveTo(x - 26 + dx, y + 8 + dy)
+    ctx.lineTo(x + dx, y - 14 + dy)
+    ctx.lineTo(x + 26 + dx, y + 8 + dy)
+    ctx.stroke()
   }
+  arms(4, 4, UPDRAFT_SHADOW)
+  arms(0, 0, UPDRAFT_PAPER)
+  ctx.fillStyle = UPDRAFT_SHADOW
+  ctx.fillRect(x - 1, y - 19, 2, 10)
+}
+// Hard-edged paper chevrons with transparent gaps; alphaTest keeps the column crisp.
+for (let y = 40; y < 256; y += 64) {
+  for (let x = 40; x < 256; x += 64) drawUpdraftChevron(updraftInk, x, y)
 }
 const updraftMap = new THREE.CanvasTexture(updraftCanvas)
 updraftMap.colorSpace = THREE.SRGBColorSpace
 const updraftMat = new THREE.MeshBasicMaterial({
   map: updraftMap,
-  color: 0x75bfa0,
-  transparent: true,
-  opacity: 0.6,
+  transparent: false,
+  alphaTest: 0.5,
   side: THREE.DoubleSide,
-  depthWrite: false,
 })
 
 const updraftHoopGeo = new THREE.RingGeometry(3.08,3.16,32)
-const updraftHoopMat = new THREE.MeshBasicMaterial({ color: 0x75bfa0, transparent: true, opacity: .6, side: THREE.DoubleSide, depthWrite: false })
+const updraftHoopMat = new THREE.MeshBasicMaterial({ color: UPDRAFT_PAPER, transparent: false, side: THREE.DoubleSide })
 const updraftLabelMat = new THREE.MeshBasicMaterial({ map: pickupTexture(createPickupLabelCanvas({ label: 'UPDRAFT ↑ · LIFT' })), transparent: true, alphaTest: .1, side: THREE.DoubleSide, depthWrite: false })
 /** Arrow ribbons, footprint hoops and a named lift cue share four draw calls. */
 function createUpdraftColumn() {

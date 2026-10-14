@@ -511,15 +511,16 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
   text-align: left; background: rgba(255,255,255,.7); border-radius: 16px;
   padding: 10px 14px; border: 1.5px solid rgba(61,44,41,.06);
 }
+/* Checkbox rows read box-then-label; select rows push their control right. */
 .set-row {
-  display: flex; align-items: center; gap: 10px; justify-content: space-between;
+  display: flex; align-items: center; gap: 10px;
   font-weight: 800; font-size: 13px; padding: 10px 0;
   border-bottom: 1px solid rgba(61,44,41,.06); color: #3d2c29;
 }
 .set-row:last-child { border-bottom: none; }
-.set-row input[type=checkbox] { width: 18px; height: 18px; accent-color: #e06b4a; }
+.set-row input[type=checkbox] { flex: none; width: 18px; height: 18px; accent-color: #e06b4a; }
 .set-row select {
-  font-family: inherit; font-weight: 800; border-radius: 10px; padding: 6px 10px;
+  margin-left: auto; font-family: inherit; font-weight: 800; border-radius: 10px; padding: 6px 10px;
   border: 1.5px solid rgba(61,44,41,.12); background: #fff; max-width: 55%;
 }
 

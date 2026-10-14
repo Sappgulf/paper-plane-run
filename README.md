@@ -115,11 +115,13 @@ convention:
 3. Every plane of colour carries fibre grain and at least one fold crease.
 4. Depth is a hard offset shadow between layers, never a blur.
 
-Zone skies and grounds are painted assets. Hazard sprites and plane paper
-stock are generated from each zone's palette
-([`src/game/paper-art.js`](src/game/paper-art.js)), and every plane skin flies
-on the same generated sheet tinted by its own colours. The shared palettes
-keep hazards readable beside the scenery.
+Zone skies, grounds, hazard sprites and plane paper stock are all generated
+from each zone's palette ([`src/game/paper-art.js`](src/game/paper-art.js)), and
+every plane skin flies on the same generated sheet tinted by its own colours.
+The shared palettes keep hazards readable beside the scenery. The release ships
+only the art the game actually loads, and
+[`test/shipped-art.test.js`](test/shipped-art.test.js) fails if a file sits in
+`public/assets` without a reference.
 
 The launch illustration is an original generated cut-paper coast, shipped as
 a 137 kB WebP. Its prompt and source are recorded in

@@ -38,14 +38,13 @@ export function buildPrecacheManifest(directory) {
   }
 }
 
-// Art the very first flight needs: the menu backdrop plus the City zone. Later
-// zones, skins, bosses and postcards warm in the background after activation.
+// Art the first screen and first flight paint: the menu illustration and
+// backdrop, the zone stamp sheet, and the classic plane. Later zones, skins,
+// bosses and postcards warm in the background after activation.
 const FIRST_RUN_ART = new Set([
-  '/assets/logo.jpg',
+  '/assets/paper-flight-hero.webp',
   '/assets/paper-world-backdrop.webp',
   '/assets/zone-stamp-sheet.webp',
-  '/assets/pickup-orb.webp',
-  '/assets/pickup-boost.webp',
   '/assets/planes/classic.webp',
 ])
 

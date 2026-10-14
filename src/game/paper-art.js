@@ -2,7 +2,7 @@
  * One art rule, applied to everything.
  *
  * The old look was a texture library, not a direction: six photographic sky
- * JPEGs, six ground JPEGs, a `buildings.jpg` tile. Nothing shared a palette,
+ * JPEGs, six ground JPEGs, and a building tile. Nothing shared a palette,
  * nothing shared a rendering logic, and the result read as generic because
  * nothing was committing to anything. In a game whose entire identity is
  * *paper*, the art was made of photographs.
@@ -134,91 +134,306 @@ export function createPaperSheetCanvas({ palette = DEFAULT_PALETTE, size = 128, 
  * every zone tells you what will kill you.
  */
 export const HAZARD_INK = '#221a1c'
-/** Outline weight as a fraction of sprite size — hairlines vanish at distance. */
-export const HAZARD_OUTLINE = 0.055
+/**
+ * Visible edge weight as a fraction of sprite size. A thin cut edge (about 3%),
+ * not a comic outline: the facets carry the shape, the ink only separates it.
+ */
+export const HAZARD_OUTLINE = 0.032
 
-function outlinedPath(ctx, size, fill, draw) {
-  const line = Math.max(2, size * HAZARD_OUTLINE)
-  ctx.save()
-  ctx.lineJoin = 'round'
-  ctx.lineCap = 'round'
-  // Ink first and fat, then the fill on top: one path drawn twice gives a hard
-  // even outline without needing a second, offset silhouette.
-  ctx.strokeStyle = HAZARD_INK
-  ctx.lineWidth = line * 2.2
-  draw(ctx)
-  ctx.stroke()
-  ctx.fillStyle = fill
-  ctx.strokeStyle = fill
-  ctx.lineWidth = line * 0.6
-  draw(ctx)
-  ctx.fill()
-  ctx.stroke()
-  ctx.restore()
+/** Hard drop shadow offset as a fraction of sprite size. Solid, never blurred. */
+const HAZARD_SHADOW_OFFSET = 0.04
+/** Hazards are drawn in a 100-unit sheet centred on the canvas. */
+const SHEET = 100
+
+/** Mix a hex colour toward white or black by a fraction (0 keeps it, 1 is full). */
+function mixHex(hex, toward, fraction) {
+  const target = toward === 'white' ? 255 : 0
+  const amount = Math.min(1, Math.max(0, fraction))
+  const channels = [1, 3, 5].map((i) => {
+    const channel = parseInt(hex.slice(i, i + 2), 16)
+    return Math.round(channel + (target - channel) * amount).toString(16).padStart(2, '0')
+  })
+  return `#${channels.join('')}`
 }
 
-/** Crossed blades and two finger rings — read as scissors at any distance. */
-function drawScissors(ctx, size, fill) {
-  const c = size / 2
-  const cy = size * .45
-  const s = size / 100 * .85
-  outlinedPath(ctx, size, fill, (context) => {
-    context.beginPath()
-    context.moveTo(c - 26 * s, cy + 34 * s)
-    context.lineTo(c + 22 * s, cy - 38 * s)
-    context.moveTo(c + 26 * s, cy + 34 * s)
-    context.lineTo(c - 22 * s, cy - 38 * s)
+/** Two tones of the zone accent for the facets, plus a darker stripe and shadow. */
+function hazardTones(accent) {
+  return Object.freeze({
+    lit: mixHex(accent, 'white', 0.3),
+    shade: mixHex(accent, 'black', 0.2),
+    stripe: mixHex(accent, 'black', 0.42),
+    shadow: mixHex(accent, 'black', 0.5),
   })
-  for (const side of [-1, 1]) {
-    outlinedPath(ctx, size, fill, (context) => {
-      context.beginPath()
-      context.arc(c + side * 20 * s, cy + 40 * s, 13 * s, 0, Math.PI * 2)
+}
+
+function polygonBuild(points) {
+  return (ctx) => {
+    ctx.beginPath()
+    points.forEach(([x, y], index) => {
+      if (index) ctx.lineTo(x, y)
+      else ctx.moveTo(x, y)
     })
+    ctx.closePath()
   }
 }
 
-/** A hard-angled paper dart silhouette: two swept wings and a tail. */
-function drawFlyer(ctx, size, fill) {
-  const c = size / 2
-  const s = size / 100
-  outlinedPath(ctx, size, fill, (context) => {
-    context.beginPath()
-    context.moveTo(c, c - 34 * s)
-    context.lineTo(c + 42 * s, c + 26 * s)
-    context.lineTo(c + 12 * s, c + 16 * s)
-    context.lineTo(c, c + 36 * s)
-    context.lineTo(c - 12 * s, c + 16 * s)
-    context.lineTo(c - 42 * s, c + 26 * s)
-    context.closePath()
+/**
+ * One cut piece of paper. `crease` is [x, y, dx, dy]: a fold line the facets
+ * are split along. When omitted it runs from the centroid to the farthest point.
+ * `ink` scales the edge weight for thin strips such as ropes and spars.
+ */
+function piece(points, extra = {}) {
+  return {
+    points,
+    build: polygonBuild(points),
+    crease: null,
+    rule: 'nonzero',
+    ink: 1,
+    stripes: null,
+    ...extra,
+  }
+}
+
+function circlePoints(cx, cy, r, count) {
+  return Array.from({ length: count }, (_, i) => {
+    const a = (i / count) * Math.PI * 2
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]
   })
 }
 
-// Coordinates are paper cuts in a 100-unit sheet. Each active flyer keeps a
-// recognizable silhouette even when its texture is only a few pixels tall.
-export const HAZARD_PROFILES = Object.freeze({
-  bird: [[[-42,-12],[-13,-7],[0,7],[13,-7],[42,-12],[26,10],[9,18],[0,11],[-9,18],[-26,10]]],
-  hawk: [[[-43,-24],[-24,-10],[-6,-4],[0,-18],[6,-4],[24,-10],[43,-24],[34,13],[12,21],[5,15],[0,35],[-5,15],[-12,21],[-34,13]]],
-  kite: [[[0,-37],[28,0],[0,26],[-28,0]],[[0,24],[6,30],[-5,35],[5,40],[0,41],[-10,35]]],
-  biplane: [[[-40,-19],[40,-19],[40,-9],[-40,-9]],[[-37,8],[37,8],[37,18],[-37,18]],[[-6,-30],[6,-30],[9,31],[-9,31]],[[-19,25],[19,25],[19,33],[-19,33]]],
-  dragonfly: [[[-4,-18],[-39,-30],[-42,-12],[-7,-2]],[ [4,-18],[39,-30],[42,-12],[7,-2]],[[-5,0],[-35,5],[-28,23],[-4,12]],[[5,0],[35,5],[28,23],[4,12]],[[-4,-25],[4,-25],[5,30],[0,39],[-5,30]]],
-  wasp: [[[-4,-10],[-29,-29],[-35,-12],[-9,5]],[[4,-10],[29,-29],[35,-12],[9,5]],[[0,-20],[12,-6],[10,18],[0,34],[-10,18],[-12,-6]]],
-  balloon: [Array.from({length:12},(_,i)=>{ const a=i*Math.PI/6; return [Math.cos(a)*27,Math.sin(a)*31-10] }),[[-4,20],[4,20],[7,27],[-7,27]],[[0,27],[3,34],[-1,41],[-3,40],[0,34],[-2,28]]],
+function mirrorX(points) {
+  return points.map(([x, y]) => [-x, y]).reverse()
+}
+
+// Silhouettes. Every coordinate stays within about 40 units so the offset
+// shadow and the edge ink never reach the canvas edge.
+const BIRD_WING = [[-2, -6], [-14, -8], [-40, -13], [-27, 8], [-10, 17], [0, 9]]
+
+const HAWK_WING = [[-3, -8], [-20, -14], [-40, -24], [-35, -13], [-39, -8], [-30, -4], [-34, 2], [-24, 4], [-27, 11], [-14, 12], [-4, 6]]
+const HAWK_BODY = [[-4, -10], [4, -10], [6, 10], [9, 24], [0, 19], [-9, 24], [-6, 10]]
+
+const KITE_DIAMOND = [[0, -37], [28, 0], [0, 26], [-28, 0]]
+
+const BIPLANE_FUSELAGE = [[0, -36], [5, -30], [5, 24], [2, 34], [0, 36], [-2, 34], [-5, 24], [-5, -30]]
+const BIPLANE_TAIL = [[-14, 24], [-3, 21], [3, 21], [14, 24], [12, 30], [-12, 30]]
+const BIPLANE_LOWER = [[-34, 4], [-4, 2], [4, 2], [34, 4], [32, 11], [4, 9], [-4, 9], [-32, 11]]
+const BIPLANE_UPPER = [[-40, -12], [-4, -14], [4, -14], [40, -12], [38, -4], [4, -6], [-4, -6], [-38, -4]]
+const BIPLANE_PROP = [[-14, -38], [-1, -37], [1, -37], [14, -38], [1, -35], [-1, -35]]
+
+const DRAGON_UPPER = [[-4, -16], [-36, -30], [-40, -12], [-6, -2]]
+const DRAGON_LOWER = [[-4, 0], [-32, 4], [-26, 24], [-4, 12]]
+const DRAGON_BODY = [[-3, -20], [3, -20], [4, 20], [0, 36], [-4, 20]]
+
+const WASP_WING = [[-5, -12], [-20, -31], [-37, -31], [-34, -17], [-8, -3]]
+const WASP_BODY = [[-6, -14], [6, -14], [8, -2], [5, 16], [0, 31], [-5, 16], [-8, -2]]
+const WASP_STINGER = [[-2, 29], [2, 29], [0, 40]]
+
+const BALLOON_ENVELOPE = circlePoints(0, 0, 1, 20).map(([x, y]) => [x * 24, -12 + y * 27])
+const BALLOON_BASKET = [[-9, 20], [9, 20], [7, 31], [-7, 31]]
+const BALLOON_ROPE = [[-12, 10], [-10, 10], [-6, 20], [-8, 20]]
+
+const DART = [[0, -34], [40, 25], [12, 16], [0, 34], [-12, 16], [-40, 25]]
+
+/** Cut pieces for each named hazard, painted back to front. */
+const HAZARD_PIECES = Object.freeze({
+  bird: [piece(BIRD_WING), piece(mirrorX(BIRD_WING))],
+  hawk: [
+    piece(HAWK_WING),
+    piece(mirrorX(HAWK_WING)),
+    piece(HAWK_BODY),
+  ],
+  kite: [
+    piece(KITE_DIAMOND, { crease: [0, 0, 0, 1] }),
+    piece([[-28, -1.5], [28, -1.5], [28, 1.5], [-28, 1.5]], { ink: 0.6, crease: [0, 0, 1, 0] }),
+    piece([[-1.5, -36], [1.5, -36], [1.5, 25], [-1.5, 25]], { ink: 0.6, crease: [0, 0, 0, 1] }),
+    piece([[0, 25], [-8, 31], [-4, 37], [0, 30]]),
+    piece([[0, 25], [8, 31], [4, 37], [0, 30]]),
+    piece([[-1, 30], [1, 30], [1.5, 40], [-1.5, 40]], { ink: 0.6 }),
+  ],
+  biplane: [
+    piece(BIPLANE_FUSELAGE),
+    piece(BIPLANE_TAIL),
+    piece(BIPLANE_LOWER),
+    piece(BIPLANE_UPPER),
+    piece(BIPLANE_PROP, { ink: 0.6 }),
+  ],
+  dragonfly: [
+    piece(DRAGON_UPPER),
+    piece(mirrorX(DRAGON_UPPER)),
+    piece(DRAGON_LOWER),
+    piece(mirrorX(DRAGON_LOWER)),
+    piece(DRAGON_BODY, { crease: [0, -20, 0, 1] }),
+    piece(circlePoints(0, -27, 7, 14)),
+  ],
+  wasp: [
+    piece(WASP_WING),
+    piece(mirrorX(WASP_WING)),
+    piece(WASP_STINGER, { ink: 0.6 }),
+    piece(WASP_BODY, { crease: [0, 0, 0, 1], stripes: [[-6, -3], [2, 5], [10, 13]] }),
+    piece(circlePoints(0, -21, 5.5, 10)),
+  ],
+  balloon: [
+    piece(BALLOON_ENVELOPE, { crease: [0, -12, 0, 1] }),
+    piece(BALLOON_ROPE, { ink: 0.6 }),
+    piece(mirrorX(BALLOON_ROPE), { ink: 0.6 }),
+    piece(BALLOON_BASKET),
+  ],
 })
 
-function drawProfile(ctx, size, fill, profile) {
-  const center = size / 2, scale = size / 100
-  for (const points of profile) outlinedPath(ctx, size, fill, context => {
-    context.beginPath()
-    points.forEach(([x,y], index) => {
-      const method = index ? 'lineTo' : 'moveTo'
-      context[method](center+x*scale,center+y*scale)
-    })
-    context.closePath()
-  })
-  // A narrow crease differentiates the two sides without changing danger ink.
-  ctx.strokeStyle = HAZARD_INK
-  ctx.lineWidth = Math.max(1, size * .012)
-  ctx.beginPath(); ctx.moveTo(center,center-size*.12); ctx.lineTo(center,center+size*.12); ctx.stroke()
+/** Lookup for `HAZARD_PROFILES`: the outline of each piece, grouped by kind. */
+export const HAZARD_PROFILES = Object.freeze(Object.fromEntries(
+  Object.entries(HAZARD_PIECES).map(([kind, pieces]) => [
+    kind,
+    Object.freeze(pieces.map((cut) => cut.points)),
+  ]),
+))
+
+/** The default paper dart, folded down its middle so each half is one facet. */
+const FLYER_PIECES = Object.freeze([piece(DART, { crease: [0, 0, 0, 1] })])
+
+/** Crossed blades with their finger rings; each blade is a tapered paper cut. */
+function scissorBlade(tip, ring) {
+  const ringRadius = 10
+  const dx = ring[0] - tip[0]
+  const dy = ring[1] - tip[1]
+  const len = Math.hypot(dx, dy)
+  const ux = dx / len
+  const uy = dy / len
+  const nx = -uy
+  const ny = ux
+  // The handle meets the ring at its outer edge, nearest the blade tip.
+  const ex = ring[0] - ux * ringRadius
+  const ey = ring[1] - uy * ringRadius
+  return piece([
+    tip,
+    [nx * 5, ny * 5],
+    [ex + nx * 2.2, ey + ny * 2.2],
+    [ex - nx * 2.2, ey - ny * 2.2],
+    [-nx * 5, -ny * 5],
+  ], { crease: [0, 0, ux, uy] })
+}
+
+function scissorRing(cx, cy) {
+  const outer = 10
+  const inner = 5.5
+  return {
+    points: null,
+    build(ctx) {
+      ctx.beginPath()
+      ctx.arc(cx, cy, outer, 0, Math.PI * 2)
+      ctx.moveTo(cx + inner, cy)
+      ctx.arc(cx, cy, inner, 0, Math.PI * 2, true)
+    },
+    crease: [cx, cy, 0, 1],
+    rule: 'evenodd',
+    ink: 1,
+    stripes: null,
+  }
+}
+
+function scissorsPieces() {
+  return [
+    scissorBlade([22, -36], [-18, 30]),
+    scissorBlade([-22, -36], [18, 30]),
+    scissorRing(-18, 30),
+    scissorRing(18, 30),
+  ]
+}
+
+/** Fold crease through a piece: the centroid to its farthest point. */
+function autoCrease(points) {
+  let cx = 0
+  let cy = 0
+  for (const [x, y] of points) {
+    cx += x
+    cy += y
+  }
+  cx /= points.length
+  cy /= points.length
+  let far = null
+  let best = 0
+  for (const [x, y] of points) {
+    const d = (x - cx) ** 2 + (y - cy) ** 2
+    if (d > best) {
+      best = d
+      far = [x, y]
+    }
+  }
+  if (!far) return [cx, cy, 0, 1]
+  return [cx, cy, far[0] - cx, far[1] - cy]
+}
+
+/**
+ * Fill the facet on the shaded side of a crease. Light comes from the upper
+ * left, so the side facing down and right is the one in shadow.
+ */
+function fillShadedFacet(ctx, [cx, cy, dx, dy]) {
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  let nx = -uy
+  let ny = ux
+  if (nx + ny < 0) {
+    nx = -nx
+    ny = -ny
+  }
+  const reach = SHEET * 4
+  ctx.beginPath()
+  ctx.moveTo(cx - ux * reach, cy - uy * reach)
+  ctx.lineTo(cx + ux * reach, cy + uy * reach)
+  ctx.lineTo(cx + ux * reach + nx * reach, cy + uy * reach + ny * reach)
+  ctx.lineTo(cx - ux * reach + nx * reach, cy - uy * reach + ny * reach)
+  ctx.closePath()
+  ctx.fill()
+}
+
+/**
+ * Paint cut pieces in four hard passes: a solid offset shadow under everything,
+ * then for each piece a thin ink edge, a lit facet, and a shaded facet split by
+ * its fold crease. Only paths and fills are used; nothing is blurred.
+ */
+function drawHazardPieces(ctx, size, accent, pieces) {
+  const scale = size / SHEET
+  const edge = HAZARD_OUTLINE * SHEET
+  const offset = HAZARD_SHADOW_OFFSET * SHEET
+  const tones = hazardTones(accent)
+
+  ctx.save()
+  ctx.setTransform(scale, 0, 0, scale, size / 2, size / 2)
+  ctx.lineJoin = 'round'
+
+  ctx.fillStyle = tones.shadow
+  for (const cut of pieces) {
+    ctx.save()
+    ctx.translate(offset, offset)
+    cut.build(ctx)
+    ctx.fill(cut.rule)
+    ctx.restore()
+  }
+
+  for (const cut of pieces) {
+    // The stroke is centred on the outline, so only its outer half shows.
+    ctx.strokeStyle = HAZARD_INK
+    ctx.lineWidth = edge * 2 * cut.ink
+    cut.build(ctx)
+    ctx.stroke()
+
+    ctx.fillStyle = tones.lit
+    cut.build(ctx)
+    ctx.fill(cut.rule)
+
+    ctx.save()
+    cut.build(ctx)
+    ctx.clip(cut.rule)
+    ctx.fillStyle = tones.shade
+    fillShadedFacet(ctx, cut.crease || autoCrease(cut.points))
+    if (cut.stripes) {
+      ctx.fillStyle = tones.stripe
+      for (const [y0, y1] of cut.stripes) ctx.fillRect(-SHEET, y0, SHEET * 2, y1 - y0)
+    }
+    ctx.restore()
+  }
+  ctx.restore()
 }
 
 /**
@@ -240,9 +455,10 @@ export function createHazardCanvas({
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   const fill = palette.accent || DEFAULT_PALETTE.accent
-  if (kind === 'scissors') drawScissors(ctx, width, fill)
-  else if (HAZARD_PROFILES[kind]) drawProfile(ctx, width, fill, HAZARD_PROFILES[kind])
-  else drawFlyer(ctx, width, fill)
+  let pieces = FLYER_PIECES
+  if (kind === 'scissors') pieces = scissorsPieces()
+  else if (Object.prototype.hasOwnProperty.call(HAZARD_PIECES, kind)) pieces = HAZARD_PIECES[kind]
+  drawHazardPieces(ctx, width, fill, pieces)
   return canvas
 }
 

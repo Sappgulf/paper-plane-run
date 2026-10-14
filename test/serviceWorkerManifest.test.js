@@ -76,4 +76,19 @@ describe('service worker build manifest', () => {
     expect([...shell, ...warm].sort()).toEqual([...urls].sort())
     expect(shell.filter((url) => warm.includes(url))).toEqual([])
   })
+
+  test('precaches the menu art the first screen paints, not art only the iOS icon uses', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'paper-plane-sw-'))
+    directories.push(directory)
+    mkdirSync(join(directory, 'assets'), { recursive: true })
+    writeFileSync(join(directory, 'index.html'), '<html>release</html>')
+    writeFileSync(join(directory, 'sw.js'), 'template')
+    writeFileSync(join(directory, 'assets', 'paper-flight-hero.webp'), 'hero')
+    writeFileSync(join(directory, 'assets', 'paper-world-backdrop.webp'), 'backdrop')
+
+    const { shell } = buildPrecacheManifest(directory)
+
+    expect(shell).toContain('/assets/paper-flight-hero.webp')
+    expect(shell).toContain('/assets/paper-world-backdrop.webp')
+  })
 })
