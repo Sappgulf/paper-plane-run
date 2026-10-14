@@ -2934,6 +2934,8 @@ const stick = { x: 0, y: 0, active: false, pointerId: null }
 /** Co-op player 2 wind stick */
 /** Boost's own speed at full surge, and its cruise multiplier. Both sit well under
  *  the old +18 impulse and ×1.22 so the world never jumps to about double speed. */
+const BOOST_SPAWN_SPACING = 280
+let lastBoostSpawnDistance = -Infinity
 const BOOST_PEAK_SPEED = 7
 const BOOST_SPEED_MUL = 1.1
 /** Temporary speed impulse from boost, the flare and skim release (decays) */
@@ -3116,6 +3118,8 @@ function clearEntities() {
   }
 }
 
+const OPEN_CHUNK_WEIGHT = 0.42
+
 function pickHazardType(zone) {
   const bias = zone.hazardBias
   // A tier's named modifier leans the mix on top of the zone's own bias — a
@@ -3128,12 +3132,15 @@ function pickHazardType(zone) {
     ['building', weightOf('building', 0.28)],
     ['bird', weightOf('bird', 0.22)],
     ['scissors', weightOf('scissors', 0.16)],
+    // Open chunks give the sky room between flocks. Without them every chunk
+    // carried a hazard.
+    ['open', OPEN_CHUNK_WEIGHT],
   ]
   const total = weights.reduce((s, w) => s + w[1], 0)
   let r = rng() * Math.max(total, 0.01)
   for (const [t, w] of weights) {
     r -= w
-    if (r <= 0) return t
+    if (r <= 0) return t === 'open' ? null : t
   }
   return null
 }
@@ -3264,7 +3271,7 @@ function spawnChunk(z) {
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
     // 8-bird pileup in one chunk — cap the swarm so density stays readable.
-    const count = Math.min(3, Math.max(1, Math.round((1 + rng() * (1.6 + ramp * 2.2)) * cfg.birdCount)))
+    const count = Math.min(3, Math.max(1, Math.round((1 + rng() * (1.1 + ramp * 1.4)) * cfg.birdCount)))
     for (let i = 0; i < count; i++) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
@@ -3322,7 +3329,7 @@ function spawnChunk(z) {
   }
 
   // Occasional mixed flyer even on non-bird chunks
-  if (rng() < 0.18 + ramp * 0.1) {
+  if (rng() < 0.1 + ramp * 0.06) {
     const def = pickFlyerKind()
     const flyer = createFlyer(def.id)
     flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4.4 + rng() * 10.2, z + 4 + rng() * 6)
@@ -3445,7 +3452,12 @@ function spawnChunk(z) {
   }
   // Powers — which orb comes out is weighted in power-pickup.js, so boost is a minority
   if (starPlan.powerSpawn) {
-    const kind = pickPowerSpawnKind(rng(), POWER_KINDS)
+    let kind = pickPowerSpawnKind(rng(), POWER_KINDS)
+    // Boost rewrites the run's speed, so never hand out two in a short stretch.
+    if (kind === 'boost' && distance - lastBoostSpawnDistance < BOOST_SPAWN_SPACING) {
+      kind = pickPowerSpawnKind(rng(), POWER_KINDS.filter((k) => k !== 'boost'))
+    }
+    if (kind === 'boost') lastBoostSpawnDistance = distance
     const pu = createPowerUp(kind)
     // Prefer mid-lane height where player flies
     pu.position.set(safePickupX(), 5.4 + rng() * 8.2, z + 1 + rng() * 5)
@@ -3458,7 +3470,8 @@ function spawnChunk(z) {
   // to be *routed toward*, or the altitude economy is just a slow bleed with
   // no counterplay. Placed low, because the payoff for flying the dangerous
   // part of the corridor should be the thing that keeps you flying.
-  if (rng() < UPDRAFT_CHANCE) {
+  if (rng() < UPDRAFT_CHANCE && distance - lastUpdraftDistance >= UPDRAFT_MIN_SPACING) {
+    lastUpdraftDistance = distance
     const column = createUpdraftColumn()
     column.position.set(
       THREE.MathUtils.clamp(gapCenterForChunk + (rng() - 0.5) * 9, -MAX_X + 1.5, MAX_X - 1.5),
@@ -3943,7 +3956,10 @@ function activatePower(kind) {
 }
 
 /** How often a chunk carries an updraft. */
-const UPDRAFT_CHANCE = 0.42
+const UPDRAFT_CHANCE = 0.22
+/** Columns need this much run between them, so two never stack into a cheap ladder. */
+const UPDRAFT_MIN_SPACING = 140
+let lastUpdraftDistance = -Infinity
 const UPDRAFT_RADIUS = 3.4
 /** Lift at the column's core, units/second — enough to out-climb a hard bank. */
 const UPDRAFT_STRENGTH = 9.5
@@ -4321,6 +4337,8 @@ function resetGame() {
   lastGapCenter = 0
   bossCount = 0
   distanceMilestones.clear()
+  lastUpdraftDistance = -Infinity
+  lastBoostSpawnDistance = -Infinity
   speedBoost = 0
   rescueLift = 0
   invuln = SPAWN_INVULN_SECONDS

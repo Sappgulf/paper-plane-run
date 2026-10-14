@@ -2,6 +2,17 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Fewer enemies, updrafts and boost; boss badges, mountains and ground props
+
+- **Enemies:** every chunk used to carry a hazard. On Normal, about 39% of chunks are now open (`OPEN_CHUNK_WEIGHT` in `pickHazardType`), so birds and scissors appear in about 40% fewer chunks. Flocks are smaller (1 + up to 1.1 instead of 1.6, scaled by the ramp), and the mixed-flyer roll fell from 18% + 10% per ramp to 10% + 6%.
+- **Updrafts:** the chance per chunk fell from 0.42 to 0.22, and columns must be at least 140 m apart (`UPDRAFT_MIN_SPACING`).
+- **Boost:** boost is 1 of every 11 power orbs (was 1 of 6), and two boosts must be at least 280 m apart (`BOOST_SPAWN_SPACING`). Both spacing counters reset with each run in `resetGame`.
+- **Boss badges:** the emblems have heavier ink and larger silhouettes, and they sit on a pale paper plate with an ink edge, so they read against the sky (`drawBossEmblem` in `src/game/boss-art.js`).
+- **Mountains:** each peak has a lit face and two shaded folds split by hard creases, and peak heights vary more, from 0.6 to 1.3 of base (`src/paper-landscape-renderer.js`, `src/game/paper-landscape.js`).
+- **Ground props:** three props in the city, harbor and midnight zones changed colour so they no longer match a vehicle or another species in the same zone (`src/game/ground-life.js`).
+- **Not in this round:** plane models and upgrades are unchanged. They are the next candidates.
+- Verification: Vitest 629 tests passed (89 files); production build passed; bundle budget 914,309 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed.
+
 ## 2026-10-14 — Lateral threat cues, clothesline sheets removed, cloud creases
 
 - **Hazards you cannot see:** a phone's view is narrow, so a bird or scissors in an outer lane can slide out of the frame and hit you while it is off-screen. A chevron now shows on the edge a threat is entering from, for birds and scissors within 28 units ahead, shaded by how close it is (`updateEdgeThreats` in `src/flight-engine.js`, styles in `src/ui/flight.css`). In a gameplay probe on the final build, the cue was on screen for 5–12 half-second steps per portrait run and 0–2 per desktop run. Hitboxes and the camera are unchanged, so this is an awareness fix, not a change to the lanes.

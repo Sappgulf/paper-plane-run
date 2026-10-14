@@ -26,10 +26,10 @@ export function resolvePowerPickup({ currentKind = null, nextKind } = {}) {
 
 /**
  * Relative odds for each endless power orb. Boost rewrites the whole run's
- * speed, so it stays a minority: 2 of every 12 orbs (about one in six), down
- * from roughly 45% of orbs before.
+ * speed, so it stays rare: 1 of every 11 orbs (about one in eleven), down from
+ * one in six before.
  */
-export const POWER_SPAWN_WEIGHTS = Object.freeze({ shield: 5, magnet: 5, boost: 2 })
+export const POWER_SPAWN_WEIGHTS = Object.freeze({ shield: 5, magnet: 5, boost: 1 })
 
 /**
  * Picks the orb a spawn roll produces. `roll` is a 0..1 draw; a kind with no

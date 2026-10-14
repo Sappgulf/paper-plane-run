@@ -34,7 +34,7 @@ export const BOSS_ART = Object.freeze({
 
 // ---------------------------------------------------------------------------
 // Procedural cut-paper emblems. Same language as src/game/paper-art.js: flat
-// facets split by a fold crease, a hard offset shadow, a thin ink edge, and no
+// facets split by a fold crease, a hard offset shadow, a heavy ink edge, and no
 // blur anywhere. Pieces are drawn in a 100-unit sheet centred on the canvas,
 // with artwork kept inside roughly 8% of the edge.
 // ---------------------------------------------------------------------------
@@ -44,8 +44,8 @@ const SHEET = 100
 const TAU = Math.PI * 2
 /** Hard drop shadow, 4% of the canvas, straight down-right. */
 const SHADOW_OFFSET = 0.04 * SHEET
-/** Visible ink edge, 2.5% of the canvas. Strokes are centred, so double it. */
-const INK_EDGE = 0.025 * SHEET
+/** Visible ink edge, 3.5% of the canvas, heavy enough to read at phone distance. Strokes are centred, so double it. */
+const INK_EDGE = 0.035 * SHEET
 
 /** Mix a hex colour toward white or black by a fraction (0 keeps it, 1 is full). */
 function mixHex(hex, toward, fraction) {
@@ -122,21 +122,21 @@ function bladeOutline(from, to, width) {
 }
 
 function scissorsPieces() {
-  const ringA = [-22, 20]
-  const ringB = [22, 20]
-  const tipA = [20, -34]
-  const tipB = [-20, -34]
+  const ringA = [-21, 19]
+  const ringB = [21, 19]
+  const tipA = [20, -36]
+  const tipB = [-20, -36]
   const pivot = [0, -8]
   const along = (from, to, t) => [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]
   // Blades start just inside each handle ring and run to the opposite tip.
   const startA = along(ringA, tipA, 0.12)
   const startB = along(ringB, tipB, 0.12)
   return [
-    piece('paper', polyPath(bladeOutline(startA, tipA, 9)), creaseThrough(startA, tipA)),
-    piece('paper', polyPath(bladeOutline(startB, tipB, 9)), creaseThrough(startB, tipB)),
-    piece('primary', ringPath(ringA, 13, 6.5), creaseThrough(ringA, [ringA[0] + 1, ringA[1] - 1])),
-    piece('primary', ringPath(ringB, 13, 6.5), creaseThrough(ringB, [ringB[0] + 1, ringB[1] - 1])),
-    piece('accent', circlePath(pivot, 5), creaseThrough(pivot, [pivot[0] + 1, pivot[1] - 1])),
+    piece('paper', polyPath(bladeOutline(startA, tipA, 12)), creaseThrough(startA, tipA)),
+    piece('paper', polyPath(bladeOutline(startB, tipB, 12)), creaseThrough(startB, tipB)),
+    piece('primary', ringPath(ringA, 15, 7.5), creaseThrough(ringA, [ringA[0] + 1, ringA[1] - 1])),
+    piece('primary', ringPath(ringB, 15, 7.5), creaseThrough(ringB, [ringB[0] + 1, ringB[1] - 1])),
+    piece('accent', circlePath(pivot, 6), creaseThrough(pivot, [pivot[0] + 1, pivot[1] - 1])),
   ]
 }
 
@@ -146,32 +146,32 @@ function windPieces() {
     const angle = -Math.PI / 2 + (k * TAU) / 3
     const outline = [
       polar(8, angle - 0.2),
-      polar(29, angle + 0.3),
-      polar(27, angle + 0.52),
-      polar(8, angle + 0.22),
+      polar(31, angle + 0.3),
+      polar(29, angle + 0.52),
+      polar(9, angle + 0.22),
     ]
-    return piece('paper', polyPath(outline), creaseThrough(polar(8, angle), polar(28, angle + 0.35)))
+    return piece('paper', polyPath(outline), creaseThrough(polar(9, angle), polar(30, angle + 0.35)))
   })
   return [
-    piece('primary', ringPath(rimCentre, 34, 29.5), creaseThrough(rimCentre, [1, -1])),
+    piece('primary', ringPath(rimCentre, 35, 29.5), creaseThrough(rimCentre, [1, -1])),
     ...vanes,
-    piece('accent', circlePath(rimCentre, 8), creaseThrough(rimCentre, [1, -1])),
+    piece('accent', circlePath(rimCentre, 9), creaseThrough(rimCentre, [1, -1])),
   ]
 }
 
 function staplerPieces() {
   // Desk stapler in side view: high back, sloped nose, flat navy base plate.
-  const head = [[-34, 14], [-34, -6], [-26, -14], [4, -16], [28, -4], [34, 14]]
-  const jaw = [[-38, 14], [36, 14], [36, 22], [-38, 22]]
+  const head = [[-35, 16], [-35, -8], [-27, -19], [4, -21], [29, -6], [35, 16]]
+  const jaw = [[-39, 16], [37, 16], [37, 27], [-39, 27]]
   // A U-shaped staple, bridge up and legs down, just fired above the nose.
   const staple = [
-    [12, -20], [12, -32], [16, -34], [25, -34], [29, -32], [29, -20],
-    [25, -20], [25, -29], [16, -29], [16, -20],
+    [11, -22], [11, -36], [16, -38], [26, -38], [31, -36], [31, -22],
+    [26, -22], [26, -33], [16, -33], [16, -22],
   ]
   return [
-    piece('paper', polyPath(head), creaseThrough([-34, 2], [34, 2])),
-    piece('primary', polyPath(jaw), creaseThrough([-38, 18], [36, 18])),
-    piece('accent', polyPath(staple), creaseThrough([12, -31], [29, -31])),
+    piece('paper', polyPath(head), creaseThrough([-35, 2], [35, 2])),
+    piece('primary', polyPath(jaw), creaseThrough([-39, 21], [37, 21])),
+    piece('accent', polyPath(staple), creaseThrough([11, -35], [31, -35])),
   ]
 }
 
@@ -262,6 +262,14 @@ function drawBossEmblem(id, palette, { canvasFactory, size = EMBLEM_PX } = {}) {
   if (!canvas) return null
   const ctx = canvas.getContext?.('2d')
   if (!ctx) return null
+  // A pale paper plate with an ink edge sits behind the emblem, so the badge
+  // reads against a pale sky as well as a dark one.
+  const inset = size * 0.04
+  const edge = size * 0.035
+  ctx.fillStyle = '#2b2b2b'
+  ctx.fillRect(inset, inset, size - inset * 2, size - inset * 2)
+  ctx.fillStyle = '#d9e7f0'
+  ctx.fillRect(inset + edge, inset + edge, size - (inset + edge) * 2, size - (inset + edge) * 2)
   drawEmblemPieces(ctx, size, emblemTones(palette), buildPieces())
   return canvas
 }

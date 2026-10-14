@@ -36,13 +36,13 @@ describe('power orb pickup resolution', () => {
 describe('power orb spawn odds', () => {
   const kinds = ['shield', 'magnet', 'boost']
 
-  test('boost is about one orb in six', () => {
+  test('boost is about one orb in eleven', () => {
     const samples = 12000
     let boost = 0
     for (let i = 0; i < samples; i += 1) {
       if (pickPowerSpawnKind((i + 0.5) / samples, kinds) === 'boost') boost += 1
     }
-    expect(boost / samples).toBeCloseTo(1 / 6, 3)
+    expect(boost / samples).toBeCloseTo(1 / 11, 3)
   })
 
   test('every orb is reachable across the roll range', () => {

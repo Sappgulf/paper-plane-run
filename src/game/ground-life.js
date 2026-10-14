@@ -108,7 +108,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('rooftop-flags', {
       count: 18, motion: 'sway', amplitude: 0.14, speed: 1.9, y: 0, scale: 1.5,
-      palette: { primary: '#7eb8e8', accent: '#fff7e8' }, shape: 'flag',
+      palette: { primary: '#f2c9a8', accent: '#fff7e8' }, shape: 'flag',
     }),
     species('park-blocks', {
       count: 18, motion: 'sway', amplitude: 0.14, speed: 0.9, y: 0.3, scale: 1.2,
@@ -136,7 +136,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('dockhands', {
       count: 12, motion: 'bob', amplitude: 0.15, speed: 4.6, y: 0.5, scale: 1,
-      palette: { primary: '#fff7e8', accent: '#4a90c4' }, shape: 'person',
+      palette: { primary: '#e96957', accent: '#fff7e8' }, shape: 'person',
       align: 'pavement', zSpeedMul: 0.95,
     }),
     species('buoys', {
@@ -289,7 +289,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('desk-lamps', {
       count: 12, motion: 'pulse', amplitude: 0.18, speed: 0.9, y: 2.2, scale: 1.6,
-      palette: { primary: '#f0b429', accent: '#fff0c0' }, shape: 'lamp',
+      palette: { primary: '#ffe9a8', accent: '#f0b429' }, shape: 'lamp',
     }),
     species('paper-scraps', {
       count: 18, motion: 'sway', amplitude: 0.26, speed: 1.4, y: 0.25, scale: 1.1,

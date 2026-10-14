@@ -9,7 +9,9 @@ export function createPaperLandscape(scene) {
   const points = [[-.5,0,-.5],[.5,0,-.5],[.5,0,.5],[-.5,0,.5],[.12,1,-.05]]
   const faces = [[0,4,1],[1,4,2],[2,4,3],[3,4,0]]
   const vertices = faces.flatMap(face => face.flatMap(index => points[index]))
-  const tones = [.8,1,.92,.68]
+  // Lit facet (+x) against a mid face and two shaded folds: every neighbour
+  // differs, so each apex crease reads as a hard cut edge, never a gradient.
+  const tones = [.86,1,.62,.74]
   const colors = faces.flatMap((_,face) => Array.from({ length: 3 }, () => [tones[face],tones[face],tones[face]]).flat())
   const writeMatrices = field => {
     field.slots.forEach((slot, index) => {

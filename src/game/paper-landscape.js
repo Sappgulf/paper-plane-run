@@ -40,10 +40,12 @@ export function landscapeLayers(zoneId, quality = 'high') {
     for (let side = -1; side <= 1; side += 2) {
       for (let index = 0; index < 8; index++) {
         const variation = ((index * 37 + layer * 11 + (side + 1) * 7) % 23) / 23
+        // A separate hash for height so tall and low peaks do not follow the spacing.
+        const peak = ((index * 13 + layer * 5 + (side + 1) * 3) % 9) / 8
         slots.push({
           x: side * (x + variation * 6), z: index * 45 - 24 + layer * 17,
           width: width * (.85 + variation * .25),
-          height: (HEIGHTS[zoneId] || HEIGHTS.city) * (1 + layer * .4) * (.75 + variation * .5),
+          height: (HEIGHTS[zoneId] || HEIGHTS.city) * (1 + layer * .4) * (.6 + peak * .7),
           depth: 48, rotation: side * (.05 + variation * .08),
         })
       }
