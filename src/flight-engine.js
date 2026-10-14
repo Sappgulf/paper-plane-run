@@ -1331,7 +1331,12 @@ function mergeParts(parts) {
 
 const GROUND_LIFE_GEOMETRY = {
   box: () => new THREE.BoxGeometry(1.1, 0.55, 2.2),
-  flag: () => new THREE.PlaneGeometry(1.3, 0.95),
+  // A paper pennant on a short pole: the pole is the only part touching the
+  // pavement, and the pennant is cut stock hanging from its top.
+  flag: () => mergeParts([
+    { geometry: new THREE.BoxGeometry(0.07, 1.6, 0.07), at: [0, 0.8, 0] },
+    { geometry: paperCutGeometry([[0, 0], [0.95, -0.2], [0, -0.5]], 0.04), at: [0.03, 1.5, 0] },
+  ]),
   sail: () => new THREE.ConeGeometry(0.85, 1.8, 3),
   buoy: () => new THREE.SphereGeometry(0.42, 6, 5),
   fan: () => new THREE.PlaneGeometry(2.3, 0.32),

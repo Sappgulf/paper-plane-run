@@ -2,6 +2,13 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Ground props: street pennants and decal patches
+
+- **Street flags:** the city's rooftop-flag species floated as blank white panels 3.4 units up. They are now short paper pennants on poles standing on the pavement, and the sway is reduced so the poles don't swing like masts (`GROUND_LIFE_GEOMETRY.flag` in `src/flight-engine.js`, species data in `src/game/ground-life.js`).
+- **Decal patches:** the city, harbor and aurora decals were near-white and read as blank plates on pale pavement. They are warm tan, mid blue and light blue now, in the same family as the lot and water colours.
+- Verification: Vitest 617 tests passed; production build passed; bundle budget 912,405 of 921,600 total bytes; iOS web parity 41 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed. Street and harbor views were inspected.
+- Still open: the close-range house vistas are large cream slabs, the sky and clouds are unchanged, and the car and pedestrian models are unchanged.
+
 ## 2026-10-14 — Full QA pass: paper bosses, enemies, ground, pickups, menus, and shipped art
 
 - **Bosses:** the scissors, stapler and wind gates are cut paper. The hoop is a flat tinted ring with a hard ink offset instead of a glowing torus. Blades, jaws and fan blades are extruded paper cuts with ink offsets, and the stapler jaws have teeth facing the slot. The three emblems are drawn on canvas as `paper:boss:<id>` textures in the enemy style. The old boss WebPs moved to `docs/retired-art/bosses/`.

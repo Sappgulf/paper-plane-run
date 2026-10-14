@@ -107,7 +107,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       align: 'pavement', zSpeedMul: 0.9,
     }),
     species('rooftop-flags', {
-      count: 18, motion: 'sway', amplitude: 0.38, speed: 1.9, y: 3.4, scale: 1.5,
+      count: 18, motion: 'sway', amplitude: 0.14, speed: 1.9, y: 0, scale: 1.5,
       palette: { primary: '#7eb8e8', accent: '#fff7e8' }, shape: 'flag',
     }),
     species('park-blocks', {
@@ -116,7 +116,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('street-seams', {
       count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.4,
-      palette: { primary: '#e8dccb', accent: '#f6efe2' }, shape: 'decal', flat: true,
+      palette: { primary: '#c9ad85', accent: '#dcc7a6' }, shape: 'decal', flat: true,
     }),
     species('street-crates', {
       count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.1,
@@ -149,7 +149,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('tide-marks', {
       count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.6,
-      palette: { primary: '#cfe8f6', accent: '#ffffff' }, shape: 'decal', flat: true,
+      palette: { primary: '#9cc8de', accent: '#c6e2f0' }, shape: 'decal', flat: true,
     }),
     species('harbor-cranes', {
       count: 10, motion: 'sway', amplitude: 0.1, speed: 0.7, y: 0.9, scale: 1.5,
@@ -260,7 +260,7 @@ export const GROUND_LIFE_ZONES = Object.freeze({
     }),
     species('frost-veins', {
       count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.3,
-      palette: { primary: '#bfe8f4', accent: '#eefaff' }, shape: 'decal', flat: true,
+      palette: { primary: '#8fd0e2', accent: '#bfe8f4' }, shape: 'decal', flat: true,
     }),
     species('aurora-masts', {
       count: 18, motion: 'sway', amplitude: 0.14, speed: 0.8, y: 0.6, scale: 1.2,
