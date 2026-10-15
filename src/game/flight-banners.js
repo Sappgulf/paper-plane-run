@@ -30,9 +30,11 @@
 export const BANNER_PRIORITY = Object.freeze({
   guardian: 100,
   boss: 90,
+  // A gust lands about a second after its warning and changes where you can fly,
+  // so it outranks the gauntlet and zone names. Boss gates and saves still come first.
+  wind: 85,
   gauntlet: 70,
   zone: 60,
-  wind: 50,
   flare: 40,
   power: 30,
   status: 10,

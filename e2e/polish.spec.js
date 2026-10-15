@@ -166,7 +166,7 @@ test('tutorial teaches the current flight loop and reaches a complete result', a
   await page.keyboard.up('ArrowUp')
   expect(lessons).toEqual(new Set([
     'Find your line', 'Height is fuel', 'Ride the rising air', 'Tuck, then flare',
-    'Release while you have height', 'Take it into the open sky',
+    'Ride the wind', 'Release while you have height', 'Take it into the open sky',
   ]))
   await expect(page.locator('#gameover')).toBeVisible()
   await expect(page.locator('#gameover-title')).toHaveText('Tutorial complete!')

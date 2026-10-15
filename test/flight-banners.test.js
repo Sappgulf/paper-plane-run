@@ -24,8 +24,8 @@ describe('flight banner arbitration', () => {
     expect(chosen.text).toBe('boss text')
   })
 
-  test('priority order runs guardian > boss > gauntlet > zone > wind > power', () => {
-    const order = ['guardian', 'boss', 'gauntlet', 'zone', 'wind', 'flare', 'power', 'status']
+  test('priority order runs guardian > boss > wind > gauntlet > zone > flare > power', () => {
+    const order = ['guardian', 'boss', 'wind', 'gauntlet', 'zone', 'flare', 'power', 'status']
     for (let i = 1; i < order.length; i += 1) {
       expect(bannerPriority(order[i - 1]), `${order[i - 1]} vs ${order[i]}`)
         .toBeGreaterThan(bannerPriority(order[i]))

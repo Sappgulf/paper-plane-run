@@ -2,6 +2,15 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Gust telegraph, wind near the walls, and a tutorial wind lesson
+
+- **Gust warning:** the warning lasted 0.45 s and the banner did not say which way the push would go. It now lasts 1.2 s and reads `💨 Gust coming, pushing left…`, then `💨 Gust pushing left!` once the push lands (`src/flight-engine.js`).
+- **Banner priority:** the gust banner ranked below the gauntlet and zone names, so a warning could be hidden behind them. It now ranks above both, below boss gates and guardian saves (`src/game/flight-banners.js`).
+- **Walls:** a gust used to shove the plane into a wall, where nothing could be dodged. The outward share of a push now fades out from 10 to 13 units from centre, removing up to 70% at the wall. Inward pushes are unchanged (`src/game/wind.js`).
+- **Tutorial:** the Tutorial card promised "Learn to ride the wind", but the tutorial had no wind lesson. A "Ride the wind" lesson now sits at 270 m, and the lessons keep 60 m spacing (`src/game/tutorial-lessons.js`). A scripted gust in the tutorial was tried and removed: a sideways shove stops a straight climb from collecting the rings, so the tutorial could not finish.
+- Verification: Vitest 640 tests passed (92 files, 3 new for wind easing and direction); production build passed; bundle budget 918,018 of 921,600 total bytes; iOS web parity 24 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed. The e2e tutorial test now expects the Ride the wind lesson.
+- Not done: the native app was not rebuilt in Xcode this round, so it needs a rebuild to pick up these changes.
+
 ## 2026-10-14 — iOS launch shows the loading card at once
 
 - **Cause of the blank launch:** `GameViewController.viewDidLoad` ran the audio session and the first `WKWebView` setup on the main thread before returning. The loading card was added first, but it could not paint until that work finished, so the screen stayed plain blue for several seconds.

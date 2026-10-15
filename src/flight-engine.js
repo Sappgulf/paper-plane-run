@@ -56,6 +56,7 @@ import {
 import { confettiColors } from './game/confetti-palette.js'
 import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/star-value.js'
 import { getBoostSurge, pickPowerSpawnKind, resolvePowerPickup } from './game/power-pickup.js'
+import { easeWindTowardWall, windPushSide } from './game/wind.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
 import { pollFirstActiveGamepad } from './game/gamepad.js'
@@ -3009,7 +3010,8 @@ let windForce = 0
 let windWarningTimer = 0
 let pendingWindActive = 0
 let pendingWindForce = 0
-const WIND_WARNING_SECONDS = 0.45
+// Long enough to lean into a gust before it lands; the banner names its side.
+const WIND_WARNING_SECONDS = 1.2
 let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
@@ -3706,7 +3708,7 @@ function dispatchJourneyEncounter(event) {
   case 'gust':
     windActive = 2.2
     windForce = (event.params?.direction || 1) * 22 * (event.params?.strength || 0.7) * difficulty.windForce
-    windBanner.textContent = '💨 Wind gust!'
+    windBanner.textContent = `💨 Gust pushing ${windPushSide(windForce)}!`
     windBanner.classList.remove('hidden')
     audio.windGust()
     break
@@ -6624,11 +6626,14 @@ function update(dt) {
     if (windWarningTimer <= 0) {
       windActive = pendingWindActive
       windForce = pendingWindForce
-      windBanner.textContent = '💨 Wind gust!'
+      windBanner.textContent = `💨 Gust pushing ${windPushSide(windForce)}!`
     }
   } else if (windActive > 0) {
     windActive -= dt
-    windPushX = windForce * (activePower?.kind === 'slow' ? 0.5 : 1) * (activeUpgradeEffects.windPushMul ?? 1)
+    windPushX = easeWindTowardWall(
+      windForce * (activePower?.kind === 'slow' ? 0.5 : 1) * (activeUpgradeEffects.windPushMul ?? 1),
+      planeX,
+    )
     if (windActive <= 0) windBanner.classList.add('hidden')
   } else if (windTimer <= 0 && runKind !== 'tutorial' && activeTwist?.windMul !== 0) {
     // In co-op, P2 is the wind — skip random gusts (or rarer)
@@ -6637,7 +6642,7 @@ function update(dt) {
     pendingWindForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
     windTimer = ((6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)) * (activeTwist?.windMul ?? 1)
     windWarningTimer = WIND_WARNING_SECONDS
-    windBanner.textContent = '💨 Wind incoming…'
+    windBanner.textContent = `💨 Gust coming, pushing ${windPushSide(pendingWindForce)}…`
     windBanner.classList.remove('hidden')
     audio.windGust()
     if (settings.haptics) Haptic.wind()
