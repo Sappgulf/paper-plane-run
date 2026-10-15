@@ -58,6 +58,8 @@ const RUNTIME_ASSERTIONS = [
   { id: 'wealth', value: (runtime) => runtime.luck.doubleStarChance, direction: 'up' },
   { id: 'gust', value: (runtime) => runtime.effects.windPushMul, direction: 'down' },
   { id: 'thermal', value: (runtime) => runtime.effects.updraftStrengthMul, direction: 'up' },
+  { id: 'reader', value: (runtime) => runtime.effects.windWarningBonus, direction: 'up' },
+  { id: 'bounty', value: (runtime) => runtime.effects.gateStarBonus, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {

@@ -56,7 +56,7 @@ import {
 import { confettiColors } from './game/confetti-palette.js'
 import { GOLDEN_STAR_VALUE, STAR_BASE_METERS, resolveStarPickup } from './game/star-value.js'
 import { getBoostSurge, pickPowerSpawnKind, resolvePowerPickup } from './game/power-pickup.js'
-import { easeWindTowardWall, windPushSide } from './game/wind.js'
+import { easeWindTowardWall, gustWarningSeconds, windPushSide } from './game/wind.js'
 import { isInsideGauntletLane, resolveGauntletReward } from './game/gauntlet-reward.js'
 import { THREAD_REWARD_METERS, isInsideThreadGap, isThreadGapWidth } from './game/thread-gap.js'
 import { pollFirstActiveGamepad } from './game/gamepad.js'
@@ -103,6 +103,7 @@ import {
   describeBossPhase,
   getBossApproachSpeedScale,
   getBossClearReward,
+  getGateClearStars,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
@@ -6647,7 +6648,8 @@ function update(dt) {
     pendingWindActive = 1.6 + rng() * 1.4
     pendingWindForce = (rng() < 0.5 ? -1 : 1) * (14 + rng() * 12) * difficulty.windForce
     windTimer = ((6 + rng() * 8) / Math.sqrt(difficulty.hazardScale)) * (activeTwist?.windMul ?? 1)
-    windWarningTimer = WIND_WARNING_SECONDS
+    // Gust Reader holds the telegraph longer, so the side can be read before the push.
+    windWarningTimer = gustWarningSeconds(WIND_WARNING_SECONDS, activeUpgradeEffects)
     windBanner.textContent = `💨 Gust coming, pushing ${windPushSide(pendingWindForce)}…`
     windBanner.classList.remove('hidden')
     audio.windGust()
@@ -7388,17 +7390,19 @@ function update(dt) {
             bossRecoveryUntil = distance + reward.recoveryMeters
             hitStopTimer = reward.hitStopSeconds
             track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
-            stars += reward.stars
+            // Gate Bounty adds to the base reward; the banners show the total.
+            const gateStars = getGateClearStars(reward, ufx)
+            stars += gateStars
             starsEl.textContent = String(stars)
             audio.missionComplete()
             if (settings.haptics) Haptic.collect()
             invuln = Math.max(invuln, reward.invulnSeconds)
             spawnConfetti(planeX, planeY, 2, 'route')
-            showFlightFeedback(`GATE CLEARED · +${reward.stars}★`, 'route', 1.6)
+            showFlightFeedback(`GATE CLEARED · +${gateStars}★`, 'route', 1.6)
             pulseFlightImpact('route')
             audio.gateClear()
             audio.hoopWhoosh()
-            showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${reward.stars}★`, 1.8, 'boss')
+            showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${gateStars}★`, 1.8, 'boss')
           }
         }
       }

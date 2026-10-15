@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   easeWindTowardWall,
+  gustWarningSeconds,
   WIND_WALL_EASE_FROM,
   WIND_WALL_EASE_MAX,
   windPushSide,
@@ -38,5 +39,18 @@ describe('gust side for the banner', () => {
   test('names the side a push goes toward', () => {
     expect(windPushSide(18)).toBe('right')
     expect(windPushSide(-18)).toBe('left')
+  })
+})
+
+describe('gust telegraph length', () => {
+  test('keeps the base warning until Gust Reader adds to it', () => {
+    expect(gustWarningSeconds(1.2, {})).toBe(1.2)
+    expect(gustWarningSeconds(1.2, { windWarningBonus: 0.9 })).toBeCloseTo(2.1)
+  })
+
+  test('ignores a missing, negative or malformed bonus', () => {
+    expect(gustWarningSeconds(1.2)).toBe(1.2)
+    expect(gustWarningSeconds(1.2, { windWarningBonus: -0.5 })).toBe(1.2)
+    expect(gustWarningSeconds(1.2, { windWarningBonus: Number.NaN })).toBe(1.2)
   })
 })

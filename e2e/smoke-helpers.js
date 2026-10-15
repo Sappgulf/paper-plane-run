@@ -20,6 +20,8 @@ const UPGRADE_CARD_CONTRACTS = [
   { id: 'wealth', name: 'Gold Rush', current: 'Cluster chance +16% (stacks with Lucky Scrap)', next: 'Cluster chance +24% (stacks with Lucky Scrap)' },
   { id: 'gust', name: 'Gust Guard', current: 'Gust push -30%', next: 'Gust push -45%' },
   { id: 'thermal', name: 'Thermal Sense', current: 'Updraft lift +24%', next: 'Updraft lift +36%' },
+  { id: 'reader', name: 'Gust Reader', current: 'Gust warning +0.60s', next: 'Gust warning +0.90s' },
+  { id: 'bounty', name: 'Gate Bounty', current: 'Gate clears +4★', next: 'Gate clears +6★' },
 ]
 
 async function waitForShell(page) {

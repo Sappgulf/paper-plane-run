@@ -22,3 +22,12 @@ export function easeWindTowardWall(push, planeX) {
 export function windPushSide(force) {
   return force > 0 ? 'right' : 'left'
 }
+
+/**
+ * How long a gust is telegraphed before it lands. Gust Reader adds to the base
+ * warning only; the push itself is unchanged. A malformed bonus adds nothing.
+ */
+export function gustWarningSeconds(baseSeconds, effects = {}) {
+  const bonus = Number(effects?.windWarningBonus)
+  return baseSeconds + (Number.isFinite(bonus) && bonus > 0 ? bonus : 0)
+}

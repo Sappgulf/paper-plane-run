@@ -28,6 +28,9 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     wealth: Object.freeze([14, 26, 44]),
     gust: Object.freeze([12, 22, 38]),
     thermal: Object.freeze([14, 26, 44]),
+    // Late-tree additions: each first rank is a one- or two-run save.
+    reader: Object.freeze([12, 22, 38]),
+    bounty: Object.freeze([16, 30, 52]),
   }),
   planes: Object.freeze({
     mint: 18,

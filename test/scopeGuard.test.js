@@ -11,10 +11,11 @@ import { BOSS_ART } from '../src/game/boss-art.js'
 describe('product scope guard', () => {
   test('keeps the approved upgrade catalog exact and the boss set exclusive', () => {
     // Gust Guard and Thermal Sense are the approved late-tree expansion.
+    // Gust Reader and Gate Bounty are the next approved round.
     expect(UPGRADES.map(({ id }) => id)).toEqual([
       'handling', 'lift', 'glide', 'magnet', 'shield', 'luck', 'wingspan',
       'trail', 'turbo', 'guardian', 'flare', 'fever', 'streak', 'wealth',
-      'gust', 'thermal',
+      'gust', 'thermal', 'reader', 'bounty',
     ])
     expect(Object.keys(BOSS_ART).sort()).toEqual(['scissors', 'stapler', 'wind'])
   })

@@ -120,7 +120,9 @@ describe('economy progression model', () => {
   test('prices the full future upgrade tree without requiring an impossible first session', () => {
     const tree = estimateUpgradeTreeCost()
     expect(tree.upgradeCount).toBe(UPGRADES.length)
-    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 35 }).walletStars)
+    // Gust Reader and Gate Bounty raised the first-rank total past 35 runs, so
+    // every first rank is now reachable in about 38 normal runs, not 35.
+    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 40 }).walletStars)
     expect(tree.total).toBeGreaterThan(tree.firstRankTotal)
     expect(runsToAfford(tree.total)).toBeGreaterThan(runsToAfford(tree.firstRankTotal))
   })

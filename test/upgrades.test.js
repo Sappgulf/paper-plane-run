@@ -172,6 +172,28 @@ const UPGRADE_CONTRACTS = [
     values: [0, 12, 24, 36].map((liftPercent) => ({ liftPercent })),
     directions: { liftPercent: 'up' },
   },
+  {
+    id: 'reader',
+    labels: [
+      'Gust warnings at base length',
+      'Gust warning +0.30s',
+      'Gust warning +0.60s',
+      'Gust warning +0.90s',
+    ],
+    values: [0, 0.3, 0.6, 0.9].map((warningBonusSeconds) => ({ warningBonusSeconds })),
+    directions: { warningBonusSeconds: 'up' },
+  },
+  {
+    id: 'bounty',
+    labels: [
+      'Gate clears pay base stars',
+      'Gate clears +2★',
+      'Gate clears +4★',
+      'Gate clears +6★',
+    ],
+    values: [0, 2, 4, 6].map((starBonus) => ({ starBonus })),
+    directions: { starBonus: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -353,6 +375,8 @@ describe('exact upgrade contracts', () => {
         }
         if (contract.id === 'streak') expect(effects.streakWindowBonus).toBeCloseTo(values.windowBonusSeconds)
         if (contract.id === 'wealth') expect(effects.doubleStarBonus).toBeCloseTo(values.doubleStarPercent / 100)
+        if (contract.id === 'reader') expect(effects.windWarningBonus).toBeCloseTo(values.warningBonusSeconds)
+        if (contract.id === 'bounty') expect(effects.gateStarBonus).toBe(values.starBonus)
       }
     }
   })

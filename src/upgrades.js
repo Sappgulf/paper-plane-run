@@ -142,6 +142,22 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.thermal,
   },
+  {
+    id: 'reader',
+    name: 'Gust Reader',
+    icon: '🔭',
+    blurb: 'Gust warnings stay up longer, so you can read the side before the push',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.reader,
+  },
+  {
+    id: 'bounty',
+    name: 'Gate Bounty',
+    icon: '🏅',
+    blurb: 'Threading a boss gate pays extra stars',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.bounty,
+  },
 ]
 
 function findUpgrade(id) {
@@ -302,6 +318,24 @@ const UPGRADE_FORMULAS = {
       updraftStrengthMul: 1 + liftPercent / 100,
     })
   },
+  reader(level) {
+    const warningBonusSeconds = roundedEffectValue(level * 0.3)
+    const label = level === 0
+      ? 'Gust warnings at base length'
+      : `Gust warning +${warningBonusSeconds.toFixed(2)}s`
+    return effect(label, { warningBonusSeconds }, {
+      windWarningBonus: warningBonusSeconds,
+    })
+  },
+  bounty(level) {
+    const starBonus = level * 2
+    const label = level === 0
+      ? 'Gate clears pay base stars'
+      : `Gate clears +${starBonus}★`
+    return effect(label, { starBonus }, {
+      gateStarBonus: starBonus,
+    })
+  },
 }
 
 function getUpgradeFormula(id, level) {
@@ -430,6 +464,8 @@ export function getUpgradeEffects() {
   const wealth = formulas.wealth
   const gust = formulas.gust
   const thermal = formulas.thermal
+  const reader = formulas.reader
+  const bounty = formulas.bounty
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
@@ -451,6 +487,8 @@ export function getUpgradeEffects() {
     ...wealth.runtime,
     ...gust.runtime,
     ...thermal.runtime,
+    ...reader.runtime,
+    ...bounty.runtime,
     synergyGold,
     synergyFever,
     // Max fever + streak: a tiny extra fever duration (feel, not a new system).

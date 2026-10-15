@@ -7,6 +7,7 @@ import {
   getBossPassage,
   getBossApproachSpeedScale,
   getBossClearReward,
+  getGateClearStars,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
@@ -121,6 +122,15 @@ describe('boss encounter director', () => {
     expect(reward.invulnSeconds).toBeGreaterThanOrEqual(0.7)
     expect(describeBossPhase({ kind: 'stapler', phase: 'warning', safeLane: 0 }).headline).toMatch(/Stapler|hoop/i)
     expect(describeBossPhase({ kind: 'scissors', phase: 'final-pass', safeLane: 1 }).headline).toMatch(/Final cut|hoop/)
+  })
+
+  test('Gate Bounty adds to the base clear stars and ignores a bad bonus', () => {
+    const reward = getBossClearReward()
+    expect(getGateClearStars(reward, {})).toBe(5)
+    expect(getGateClearStars(reward, { gateStarBonus: 6 })).toBe(11)
+    expect(getGateClearStars(reward, { gateStarBonus: -2 })).toBe(5)
+    expect(getGateClearStars(reward, { gateStarBonus: Number.NaN })).toBe(5)
+    expect(getGateClearStars()).toBe(5)
   })
 
   test('edge grace keeps near-miss portal edges flyable', () => {

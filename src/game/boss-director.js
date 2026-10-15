@@ -84,6 +84,12 @@ export function getBossClearReward() {
   })
 }
 
+/** Gate Bounty adds to the base clear stars. A malformed bonus adds nothing. */
+export function getGateClearStars(reward = getBossClearReward(), effects = {}) {
+  const bonus = Number(effects?.gateStarBonus)
+  return reward.stars + (Number.isFinite(bonus) && bonus > 0 ? bonus : 0)
+}
+
 export function describeBossPhase({ kind, phase, safeLane } = {}) {
   const laneLabel = LANE_LABEL[safeLane] || 'CENTER'
   if (phase === 'final-pass') {

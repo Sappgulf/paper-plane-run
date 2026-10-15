@@ -26,12 +26,15 @@ describe('upgrade early path', () => {
     expect(banner.title).toMatch(/Lift/)
   })
 
-  test('groups the 14 upgrades into four spend trees', () => {
+  test('groups every upgrade into four spend trees', () => {
     const ids = UPGRADE_TREES.flatMap((tree) => tree.ids)
     expect(new Set(ids).size).toBe(UPGRADES.length)
+    expect(ids).toHaveLength(UPGRADES.length)
     expect(treeForUpgrade('handling')?.id).toBe('handle')
     expect(treeForUpgrade('guardian')?.id).toBe('survive')
     expect(treeForUpgrade('trail')?.id).toBe('style')
+    expect(treeForUpgrade('reader')?.id).toBe('survive')
+    expect(treeForUpgrade('bounty')?.id).toBe('score')
   })
 
   test('filters catalog cards by spend tree', () => {

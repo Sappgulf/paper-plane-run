@@ -35,8 +35,8 @@ export function nextRecommendedUpgrade(levels = {}, catalog = []) {
 
 export const UPGRADE_TREES = Object.freeze([
   Object.freeze({ id: 'handle', label: 'Handle', ids: Object.freeze(['handling', 'lift', 'glide', 'thermal']) }),
-  Object.freeze({ id: 'survive', label: 'Survive', ids: Object.freeze(['shield', 'turbo', 'guardian', 'gust']) }),
-  Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'flare']) }),
+  Object.freeze({ id: 'survive', label: 'Survive', ids: Object.freeze(['shield', 'turbo', 'guardian', 'gust', 'reader']) }),
+  Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'flare', 'bounty']) }),
   Object.freeze({ id: 'style', label: 'Style', ids: Object.freeze(['wingspan', 'trail']) }),
 ])
 
