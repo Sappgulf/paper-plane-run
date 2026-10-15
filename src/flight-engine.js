@@ -317,9 +317,10 @@ const magnetPullTrail = $('magnet-pull-trail')
 // Keep the wind/power/zone banner stack pinned just below the HUD's actual
 // rendered height — the HUD can wrap to 2-3 rows depending on how many
 // chips are active, so a fixed pixel offset would overlap it.
-// The notification toast has the same collision for the same reason, so the
-// one measurement feeds both: `--hud-bottom` on the root element is the HUD's
-// real bottom edge, which the toast's in-flight rule offsets from.
+// The notification toast starts in the same band, so it reads two root
+// variables: `--hud-bottom` is the HUD's real bottom edge, and `--banner-stack-h`
+// is how tall the banners currently are. The toast's in-flight rule stacks
+// below both, so a tier card can never sit on a gust warning or a boss cue.
 if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
   const syncBannerTop = () => {
     const rect = hudEl.getBoundingClientRect()
@@ -334,6 +335,11 @@ if (hudEl && bannerStackEl && typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(syncBannerTop).observe(hudEl)
   window.addEventListener('resize', syncBannerTop)
   syncBannerTop()
+  const syncBannerStackHeight = () => {
+    document.documentElement.style.setProperty('--banner-stack-h', `${bannerStackEl.offsetHeight}px`)
+  }
+  new ResizeObserver(syncBannerStackHeight).observe(bannerStackEl)
+  syncBannerStackHeight()
 }
 const comboFloat = $('combo-float')
 const feverFx = $('fever-fx')

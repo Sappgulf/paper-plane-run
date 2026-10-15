@@ -707,9 +707,14 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
    The offset can't be a constant: the chip row wraps to a different number of
    lines per mode, viewport and safe-area inset. `--hud-bottom` carries the
    HUD's measured bottom edge (see publishHudBottom), falling back to the
-   phone-layout top if it hasn't been measured yet. */
+   phone-layout top if it hasn't been measured yet.
+
+   The banner stack starts in the same band, and it grows when a gust warning,
+   a boss cue or a power banner appears. The tier card used to sit on top of
+   those (it is the higher z-index), hiding the boss "hold GO" line. So the toast
+   also clears `--banner-stack-h`, the stack's measured height. */
 #hud:not(.hidden) ~ #challenge-toast {
-  top: calc(var(--hud-bottom, 58px) + 12px);
+  top: calc(var(--hud-bottom, 58px) + 16px + var(--banner-stack-h, 0px));
 }
 
 /* —— Install prompt (custom, since iOS Safari has no beforeinstallprompt) —— */

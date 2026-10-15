@@ -2,6 +2,16 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-14 — Banners stay readable in flight, and the death screen names the dive
+
+- **Simulator test:** the iPhone 18 Pro simulator accepted screenshots but never routed taps into the web view, so the earlier note that flights could not be started there still stands for that device. A new simulator, "Paper Plane iPhone 16 Pro" on iOS 27.0, matches Austin's phone and takes taps. A flight ran on it, and the Hangar, the Journey map and the death screen all worked.
+- **Banner collision:** the tier card ("Tier 1 · Headwind …") is a notification, and it sat in the same band as the banner stack. The card is above the stack, so it covered the boss cue ("Fly the glowing ring — hold GO!"), and it could cover a gust warning too. This was seen on the simulator at 1128 m. The card now sits below the stack: a `ResizeObserver` publishes the stack's height as `--banner-stack-h`, and the in-flight rule in `src/ui/flight.css` offsets from it (`src/flight-engine.js`).
+- **Singular counts:** the death screen and route-complete card read "1 Gauntlets cleared", "1 Power pickups" and "1 Gaps threaded". Each highlight now has a singular and a plural, chosen by count (`src/game/flight-debrief.js`).
+- **Dive at a gate:** a death at a boss gate used the same advice whether or not the plane was tucking. When a dive was held at death, the advice now says to release Tuck before the gate, because a dive can drop the plane out of the outlined opening (`src/game/flight-debrief.js`). The simulated death at 1128 m came right after a tuck, with the plane diving on screen before the crash.
+- **Not verified in the simulator:** no tier card or challenge notice came up in the simulator run, so the observer path has not been seen on device. The layout was checked in the browser by setting the two variables to the values the observers publish.
+- **Not done:** gameplay balance was not changed. The simulator runs were too slow to judge difficulty, since each tool call adds several seconds of game time.
+- Verification: Vitest 642 tests passed (92 files, 2 new for the boss dive advice and singular counts); production build passed; bundle budget 918,338 of 921,600 total bytes; iOS web parity 24 files; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 63 passed / 69 intentional skips / 0 failed.
+
 ## 2026-10-14 — Gust telegraph, wind near the walls, and a tutorial wind lesson
 
 - **Gust warning:** the warning lasted 0.45 s and the banner did not say which way the push would go. It now lasts 1.2 s and reads `💨 Gust coming, pushing left…`, then `💨 Gust pushing left!` once the push lands (`src/flight-engine.js`).

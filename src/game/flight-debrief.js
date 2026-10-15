@@ -17,15 +17,20 @@ export function buildFlightDebrief({ reason = '', tucking = false, stats = {} } 
       : 'Ride the green UPDRAFT columns to regain height. Gentle banks preserve it; holding the nose up spends it.'
   } else if (/^Missed the (wind|stapler|scissors) ring!$/.test(reason)) {
     title = 'Read the passage early'
-    advice = 'Follow the outlined opening before the gate closes. Start your bank during its warning.'
+    advice = tucking
+      ? 'Release Tuck before the gate. A dive can drop you out of the outlined opening.'
+      : 'Follow the outlined opening before the gate closes. Start your bank during its warning.'
   }
+  // Each counter reads as one thing at 1, so "1 Gauntlet cleared", not "1 Gauntlets cleared".
   const highlights = [
-    ['gauntlets', 'Gauntlets cleared'],
-    ['threads', 'Gaps threaded'],
-    ['flares', 'Clean flares'],
-    ['fevers', 'Fever bursts'],
-    ['powers', 'Power pickups'],
-  ].map(([id, label]) => ({ id, label, value: count(stats?.[id]) }))
-    .filter(({ value }) => value > 0).slice(0, 3)
+    ['gauntlets', 'Gauntlet cleared', 'Gauntlets cleared'],
+    ['threads', 'Gap threaded', 'Gaps threaded'],
+    ['flares', 'Clean flare', 'Clean flares'],
+    ['fevers', 'Fever burst', 'Fever bursts'],
+    ['powers', 'Power pickup', 'Power pickups'],
+  ].map(([id, singular, plural]) => {
+    const value = count(stats?.[id])
+    return { id, label: value === 1 ? singular : plural, value }
+  }).filter(({ value }) => value > 0).slice(0, 3)
   return { title, advice, highlights }
 }
