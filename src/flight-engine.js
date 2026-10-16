@@ -104,6 +104,7 @@ import {
   describeBossPhase,
   getBossApproachSpeedScale,
   getBossClearReward,
+  getGateClearStars,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
