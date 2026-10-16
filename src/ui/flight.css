@@ -169,6 +169,7 @@ html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; 
 #flight-route[data-zone="aurora"] { --route-accent: #c47b18; }
 #flight-route[data-zone="sunset"] { --route-accent: #d45a3c; }
 #flight-route[data-zone="midnight"] { --route-accent: #5d4698; }
+#flight-route[data-zone="dawn"] { --route-accent: #8b5cf6; }
 
 /* Flight target marker — rides the object it names (star line, hazard,
    power-up), never the plane. Four corner brackets drawn with layered

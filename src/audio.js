@@ -11,6 +11,7 @@ const ZONE_SCALES = {
   sunset: [207.65, 233.08, 277.18, 311.13, 349.23, 415.3], // Ab major pentatonic — warm, golden
   aurora: [220, 246.94, 277.18, 329.63, 369.99, 440], // wider spacing — shimmering, exotic
   midnight: [196, 233.08, 261.63, 311.13, 349.23, 392], // G minor-ish — violet night
+  dawn: [293.66, 329.63, 369.99, 440, 493.88, 554.37], // D major pentatonic — first light, brightest of the lap
 }
 
 export class GameAudio {

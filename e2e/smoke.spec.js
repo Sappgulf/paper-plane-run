@@ -1295,7 +1295,7 @@ test('the endless route cycles zones instead of freezing on the final one', asyn
   await tap(page.locator('#start-btn'))
   await waitForGameText(page)
 
-  const run = await flyAutopilot(page, { untilDistance: 5_000 })
+  const run = await flyAutopilot(page, { untilDistance: 6_500 })
   const flightReport = JSON.stringify({
     died: run.died,
     timedOut: run.timedOut,
@@ -1312,9 +1312,10 @@ test('the endless route cycles zones instead of freezing on the final one', asyn
   }
   expect(run.laps[0].lap).toBe(1)
   expect(run.laps[1].lap).toBe(2)
-  // Laps are one full zone loop apart.
-  expect(run.laps[1].distance - run.laps[0].distance).toBeGreaterThan(2_200)
-  expect(run.laps[1].distance - run.laps[0].distance).toBeLessThan(2_600)
+  // Laps are one full zone loop apart (City → … → Midnight Origami → First
+  // Light → back is 3100m).
+  expect(run.laps[1].distance - run.laps[0].distance).toBeGreaterThan(2_900)
+  expect(run.laps[1].distance - run.laps[0].distance).toBeLessThan(3_300)
 
   expect(errors).toEqual([])
 })
@@ -1397,18 +1398,30 @@ test('hazard motion never carries a hazard into the guaranteed passage gap', asy
   // hazard's whole path, not just the frame it spawned on — the old integrated
   // motion drifted one way and could close the passage. Each hazard carries its
   // own wave's gap centre, because hazards on screen span several waves.
+  // An unsteered plane eventually hits something, so evidence accumulates
+  // across "Fly Again" restarts until the coverage bar is met; the invariant
+  // itself is only ever sampled while playing.
   const report = await page.evaluate(() => {
     const PLANE_RADIUS = 0.7
     const AIR_DAMAGE_WEIGHT = 0.52
     const MARGIN = 0.35
     const snapshot = () => JSON.parse(window.render_game_to_text())
+    const restart = () => {
+      const button = [...document.querySelectorAll('button')]
+        .find((candidate) => /Fly Again|Retry/i.test(candidate.textContent))
+        || document.getElementById('retry-btn')
+      button?.click()
+    }
     let worstSlack = Infinity
     let worst = null
     let checks = 0
     let frames = 0
-    for (let frame = 0; frame < 60 * 200; frame += 1) {
+    for (let frame = 0; frame < 60 * 200 && checks <= 500; frame += 1) {
       const state = snapshot()
-      if (state.state !== 'playing') break
+      if (state.state !== 'playing') {
+        restart()
+        continue
+      }
       for (const hazard of state.fairness.visibleHazards) {
         if (hazard.type !== 'bird' || hazard.passageGapX == null) continue
         // Each hazard's own envelope, not the snapshot's fixed sample radius.

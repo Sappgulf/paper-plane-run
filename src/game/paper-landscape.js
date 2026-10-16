@@ -1,12 +1,13 @@
 import { getPaperPalette } from './paper-art.js'
 
-const HEIGHTS = { city: 7, harbor: 10, storm: 16, sunset: 12, aurora: 20, midnight: 24 }
+const HEIGHTS = { city: 7, harbor: 10, storm: 16, sunset: 12, aurora: 20, midnight: 24, dawn: 9 }
 const SPAN = 360
 
 export const ZONE_VISTAS = Object.freeze({
   city: ['house', 'tree'], harbor: ['lighthouse', 'sailboat'],
   storm: ['windmill', 'crystal'], sunset: ['house', 'windmill'],
   aurora: ['crystal', 'tree'], midnight: ['book', 'lighthouse'],
+  dawn: ['tree', 'windmill'],
 })
 
 export function vistaLayers(zoneId, quality = 'high') {

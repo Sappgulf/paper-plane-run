@@ -17,7 +17,8 @@ describe('product scope guard', () => {
       'trail', 'turbo', 'guardian', 'flare', 'fever', 'streak', 'wealth',
       'gust', 'thermal', 'reader', 'bounty',
     ])
-    expect(Object.keys(BOSS_ART).sort()).toEqual(['scissors', 'stapler', 'wind'])
+    // The Punch joins the gate cycle — same procedural emblem contract.
+    expect(Object.keys(BOSS_ART).sort()).toEqual(['punch', 'scissors', 'stapler', 'wind'])
   })
 
   test('does not introduce a second wallet currency or new mode entry points in the shell', () => {

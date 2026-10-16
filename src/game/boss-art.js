@@ -30,6 +30,11 @@ export const BOSS_ART = Object.freeze({
     palette: { primary: '#172b57', accent: '#f59e0b', paper: '#f7e8c5' },
     shape: { cue: 'open stapler side silhouette', silhouette: 'stapler' },
   }),
+  punch: defineBossArt('punch', {
+    alt: 'Navy paper hole punch with a coral lever arm over a cream confetti dot.',
+    palette: { primary: '#172b57', accent: '#e96957', paper: '#f7e8c5' },
+    shape: { cue: 'twin round press ring', silhouette: 'punch' },
+  }),
 })
 
 // ---------------------------------------------------------------------------
@@ -175,10 +180,27 @@ function staplerPieces() {
   ]
 }
 
+function punchPieces() {
+  // Hole punch in side view: a cream body block, a navy throat, a coral lever
+  // arm reaching over the top, and the round confetti dot it just cut.
+  // Coordinates stay inside the ±40 emblem margin like every other boss.
+  const body = [[-30, 14], [-30, -12], [-12, -22], [14, -22], [30, -10], [30, 14]]
+  const neck = [[-10, -22], [-5, -34], [12, -34], [17, -22]]
+  const lever = [[-6, -28], [-2, -40], [24, -40], [28, -28], [20, -28], [18, -36], [6, -36], [4, -28]]
+  const dot = circlePath([16, 28], 7)
+  return [
+    piece('paper', polyPath(body), creaseThrough([-30, 0], [30, 0])),
+    piece('primary', polyPath(neck), creaseThrough([-10, -28], [17, -28])),
+    piece('accent', polyPath(lever), creaseThrough([-2, -36], [28, -32])),
+    piece('accent', dot, creaseThrough([16, 24], [17, 31])),
+  ]
+}
+
 const EMBLEM_PIECES = Object.freeze({
   scissors: scissorsPieces,
   wind: windPieces,
   stapler: staplerPieces,
+  punch: punchPieces,
 })
 
 /** Fill the facet on the shaded side of a crease, lower-right of the fold. */

@@ -38,8 +38,14 @@ export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512
         }
       }
     }
-    ctx.fillStyle = night ? '#f3e9c6' : zoneId === 'sunset' ? '#fff0c2' : '#f9f3e6'
+    ctx.fillStyle = night ? '#f3e9c6' : zoneId === 'sunset' ? '#fff0c2' : zoneId === 'dawn' ? '#ffe0cd' : '#f9f3e6'
     ctx.beginPath(); ctx.arc(w * .72, h * .3, h * .095, 0, Math.PI * 2); ctx.fill()
+    // First Light's sun is still climbing: a rose halo, no rays yet.
+    if (zoneId === 'dawn') {
+      ctx.strokeStyle = p.mid; ctx.globalAlpha = .5; ctx.lineWidth = 6
+      ctx.beginPath(); ctx.arc(w * .72, h * .3, h * .125, 0, Math.PI * 2); ctx.stroke()
+      ctx.globalAlpha = 1
+    }
     for (let layer = 0; layer < 3; layer++) {
       const y = h * (.64 + layer * .09)
       const points = [[0,h],[0,y]]
@@ -51,13 +57,26 @@ export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512
     for (let row = 0; row < 5; row++) for (let col = 0; col < 4; col++) {
       const x = (col + .28) * w / 4, y = (row + .28) * h / 5
       ctx.fillStyle = p.groundAlt; ctx.fillRect(x-3,y-3,w*.14+6,h*.1+6)
-      ctx.fillStyle = zoneId === 'midnight' || zoneId === 'aurora' ? '#f5dfa1' : '#637c87'
+      ctx.fillStyle = zoneId === 'midnight' || zoneId === 'aurora' ? '#f5dfa1' : zoneId === 'dawn' ? '#f7bfa4' : '#637c87'
       ctx.fillRect(x,y,w*.14,h*.1)
       ctx.fillStyle = p.paper; ctx.fillRect(x+w*.064,y,2,h*.1)
       ctx.fillRect(x,y+h*.048,w*.14,2)
     }
     ctx.strokeStyle = p.groundAlt; ctx.lineWidth = 2
     ctx.beginPath(); ctx.moveTo(0,h*.98); ctx.lineTo(w,h*.98); ctx.stroke()
+  } else if (zoneId === 'dawn') {
+    // Dew meadows: wide mowing bands catching the first light, with dew
+    // glints scattered along the band seams.
+    for (let row = 0; row < 6; row++) {
+      const y = row * h / 6
+      polygon(ctx, [[0,y],[w*.3,y+14],[w*.65,y-8],[w,y+6],[w,y+22],[w*.65,y+9],[w*.3,y+30],[0,y+16]], row % 2 ? p.groundAlt : '#f2e2cc')
+    }
+    for (let i = 0; i < 26; i++) {
+      const x = random() * w, y = random() * h
+      ctx.fillStyle = '#ffffff'; ctx.globalAlpha = .5
+      ctx.fillRect(x, y, 2, 2)
+      ctx.globalAlpha = 1
+    }
   } else if (zoneId === 'city') {
     paintCityBlocks(ctx,w,h)
   } else if (zoneId === 'harbor') {

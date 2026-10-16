@@ -2317,6 +2317,7 @@ function createBossPortalBase(kind, passage) {
     scissors: { ring: 0xb8f3c8, emissive: 0x4ade80 },
     wind: { ring: 0xbfdbfe, emissive: 0x60a5fa },
     stapler: { ring: 0xfde68a, emissive: 0xfbbf24 },
+    punch: { ring: 0xfbcfe8, emissive: 0xf472b6 },
   }[kind] || { ring: 0xb8f3c8, emissive: 0x4ade80 }
 
   const safeRing = createSafePortalRing(colors.ring, halfWidth, halfHeight)
@@ -2454,9 +2455,59 @@ function createWindTunnelGate(passage) {
   return g
 }
 
+const punchHeadMat = new THREE.MeshBasicMaterial({ color: 0x9dbcd3, side: THREE.DoubleSide })
+const punchDotMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
+/** A round press head: a flat disc with an ink offset, 1 unit diameter. */
+const punchHeadGeo = new THREE.CircleGeometry(0.5, 18)
+
+/** A punch head is the disc with its ink offset; the animation bobs the group. */
+function createPunchHead() {
+  const head = new THREE.Group()
+  const shade = new THREE.Mesh(punchHeadGeo, bossInkMat)
+  shade.scale.setScalar(1.12)
+  shade.position.set(0.07, -0.09, 0.13)
+  const disc = new THREE.Mesh(punchHeadGeo, punchHeadMat)
+  head.add(shade, disc)
+  return head
+}
+
+/** Hole punch: twin round press heads parked above and below the portal;
+ * the confetti dots they cut orbit strictly outside the safe opening. */
+function createPunchGate(passage) {
+  const g = createBossPortalBase('punch', passage)
+  const halfWidth = g.userData.halfWidth
+  const halfHeight = g.userData.halfHeight
+  const headR = 1.5
+  const topHead = createPunchHead()
+  topHead.scale.setScalar(headR)
+  topHead.position.set(0, 10 + halfHeight + headR + 0.5, 0.15)
+  const bottomHead = createPunchHead()
+  bottomHead.scale.setScalar(headR)
+  bottomHead.position.set(0, 10 - halfHeight - headR - 0.5, 0.15)
+  g.add(topHead, bottomHead)
+
+  const dots = []
+  for (let i = 0; i < 6; i++) {
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), punchDotMat)
+    // Cut confetti drifts around the frame, never through the hole.
+    dot.userData.orbit = rng() * Math.PI * 2
+    dot.userData.radius = halfWidth + 1.4 + rng() * 1.6
+    dot.userData.speed = 1.2 + rng() * 1.2
+    dot.userData.yBias = (rng() - 0.5) * halfHeight * 0.5
+    g.add(dot)
+    dots.push(dot)
+  }
+
+  g.userData.topHead = topHead
+  g.userData.bottomHead = bottomHead
+  g.userData.dots = dots
+  return g
+}
+
 function createBossMesh(kind, passage) {
   if (kind === 'wind') return createWindTunnelGate(passage)
   if (kind === 'stapler') return createStaplerGate(passage)
+  if (kind === 'punch') return createPunchGate(passage)
   return createBossGate(passage)
 }
 
@@ -3344,6 +3395,12 @@ function spawnBoss(z = 70, forcedKind = null) {
   }
   if (gate.userData.bottomJaw) {
     gate.userData.bottomJaw.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 0.85
+  }
+  if (gate.userData.topHead) {
+    gate.userData.topHead.position.y = openingSnap.safeY + openingSnap.passage.halfHeight + 2
+  }
+  if (gate.userData.bottomHead) {
+    gate.userData.bottomHead.position.y = openingSnap.safeY - openingSnap.passage.halfHeight - 2
   }
   const badgeLayout = getBossBadgeLayout({
     halfWidth: openingSnap.passage.halfWidth,
@@ -5958,6 +6015,26 @@ function animateHazards(dt) {
           : 0.45 + Math.sin(u.phase * 2.1) * 0.28
         if (u.topJaw) u.topJaw.position.y = u.gapY + halfH + 0.85 + press
         if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - halfH - 0.85 - press
+      } else if (u.kind === 'punch') {
+        // Twin press heads bob toward the slot without ever entering it, and
+        // the cut confetti dots orbit outside the opening, mirroring the
+        // wind-tunnel debris contract.
+        const press = encounter?.motionAllowed === false
+          ? 0.12
+          : 0.4 + Math.sin(u.phase * 1.9) * 0.3
+        if (u.topHead) u.topHead.position.y = u.gapY + halfH + 2 + press
+        if (u.bottomHead) u.bottomHead.position.y = u.gapY - halfH - 2 - press
+        if (u.dots?.length) {
+          for (const dot of u.dots) {
+            const o = dot.userData.orbit + (encounter?.motionAllowed === false ? 0 : elapsed * dot.userData.speed * 0.4)
+            const r = dot.userData.radius
+            dot.position.set(
+              Math.cos(o) * r,
+              u.gapY + (dot.userData.yBias || 0) + Math.sin(o * 1.2) * 0.7,
+              Math.sin(o) * 0.5,
+            )
+          }
+        }
       } else {
         // Scissors side blades: gentle bob only — never tilt into the portal.
         if (u.left) {
@@ -7915,7 +7992,7 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   invuln = 999
   nextSpawnZ = 1000
   windTimer = 999
-  bossCount = devBossProof === 'wind' ? 1 : devBossProof === 'stapler' ? 2 : 0
+  bossCount = devBossProof === 'wind' ? 1 : devBossProof === 'stapler' ? 2 : devBossProof === 'punch' ? 3 : 0
   spawnBoss(60)
   if (devBossPass) {
     const boss = entities.find((entity) => entity.type === 'boss')

@@ -82,12 +82,25 @@ export const ZONES = [
     nightReadability: true,
     hazardBias: { building: 1.25, bird: 1.35, scissors: 1.2 },
   },
+  {
+    id: 'dawn',
+    name: 'First Light',
+    from: 2400,
+    fog: 0xecc9b8,
+    hemiSky: 0xffe4d0,
+    hemiGround: 0xc09888,
+    exposure: 1.0,
+    sky: 'paper:sky:dawn',
+    ground: 'paper:ground:dawn',
+    groundTint: 0xffffff,
+    hazardBias: { building: 0.85, bird: 1.1, scissors: 0.9 },
+  },
 ]
 
 /**
- * Meters of Midnight Origami before the route folds back to Paper City. The
- * last zone gets a longer stretch than the others because it is the payoff of
- * a first full lap, not a waypoint.
+ * Meters of the lap's closing zone before the route folds back to Paper City.
+ * The last zone gets a longer stretch than the others because it is the payoff
+ * of a full lap, not a waypoint.
  */
 export const FINAL_ZONE_SPAN = 700
 

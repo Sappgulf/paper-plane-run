@@ -158,12 +158,12 @@ and results share ivory stock, ink type, rust actions, and blue/sage cues.
 | **Ground skim** — the low lane is the dangerous one, so holding it pays; pulling up under control cashes the chain in |
 | **Deck lane** — lethal hazards inside the ground-effect band, so the cushion is a risk you fly rather than a floor you park on |
 | **Risk pays everywhere** — hazard gauntlets bank +3★ for holding the promised gap, tight tower corridors pay a thread bonus, altitude tiers drop golden 5★ arcs, star meters ride fever + skim multipliers, duplicate power orbs refresh instead of wiping, slow-mo is real bullet-time, and wind gusts stream across the sky as weather |
-| **Zones** (City → Harbor → Storm → Sunset → Aurora → Midnight Origami), looping to a fresh lap rather than parking on the last one |
+| **Zones** (City → Harbor → Storm → Sunset → Aurora → Midnight Origami → First Light), a full day of paper in one lap, looping to a fresh morning rather than parking on the last one |
 | **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
 | **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
 | **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, and season-weighted spawn bias |
-| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws) |
+| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws · the Punch), all with procedural cut-paper emblems |
 | **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
 | Daily missions, achievements |

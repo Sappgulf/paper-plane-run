@@ -86,11 +86,12 @@ describe('boss encounter director', () => {
     expect(shouldClearForBossApproach({ type: 'bird', z: -10 })).toBe(false)
   })
 
-  test('cycles scissors, wind, and stapler deterministically', () => {
+  test('cycles scissors, wind, stapler, and punch deterministically', () => {
     expect(bossKindForIndex(0)).toBe('scissors')
     expect(bossKindForIndex(1)).toBe('wind')
     expect(bossKindForIndex(2)).toBe('stapler')
-    expect(bossKindForIndex(3)).toBe('scissors')
+    expect(bossKindForIndex(3)).toBe('punch')
+    expect(bossKindForIndex(4)).toBe('scissors')
   })
 
   test('is deterministic and keeps lanes in the supported range', () => {

@@ -49,6 +49,10 @@ export const PAPER_PALETTES = Object.freeze({
     far: '#2b2750', mid: '#453d75', near: '#6a5ea6', accent: '#ffd166',
     ground: '#241f42', groundAlt: '#191634', paper: '#d7cdf2',
   }),
+  dawn: Object.freeze({
+    far: '#f6dcd0', mid: '#efb9a4', near: '#d68f80', accent: '#8b5cf6',
+    ground: '#ecd6c2', groundAlt: '#dcc0a8', paper: '#fff4e8',
+  }),
 })
 
 export const DEFAULT_PALETTE = PAPER_PALETTES.city

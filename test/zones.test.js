@@ -4,16 +4,21 @@ import { PAPER_PALETTES } from '../src/game/paper-art.js'
 import { createWorldCanvas } from '../src/game/paper-world-art.js'
 
 describe('zones', () => {
-  test('includes Midnight Origami after Aurora', () => {
+  test('orders the lap City through Midnight Origami and closes on First Light', () => {
     expect(ZONES.map((z) => z.id)).toEqual([
-      'city', 'harbor', 'storm', 'sunset', 'aurora', 'midnight',
+      'city', 'harbor', 'storm', 'sunset', 'aurora', 'midnight', 'dawn',
     ])
     const midnight = zoneAt(1700)
     expect(midnight.id).toBe('midnight')
     expect(midnight.name).toBe('Midnight Origami')
     expect(midnight.nightReadability).toBe(true)
+    const dawn = zoneAt(2400)
+    expect(dawn.id).toBe('dawn')
+    expect(dawn.name).toBe('First Light')
+    expect(dawn.nightReadability).toBeUndefined()
     expect(nextZone(1200)?.id).toBe('midnight')
-    expect(nextZone(1700)).toBeNull()
+    expect(nextZone(1700)?.id).toBe('dawn')
+    expect(nextZone(2400)).toBeNull()
   })
 
   test('every zone resolves complete, distinct sky and ground plates without network assets', () => {

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 
 import { BOSS_ART, createBossArtOverlay, getBossBadgeLayout } from '../src/game/boss-art.js'
 
-const BOSS_IDS = ['scissors', 'stapler', 'wind']
+const BOSS_IDS = ['punch', 'scissors', 'stapler', 'wind']
 const CANVAS_PX = 256
 
 // A recording stand-in for a 2D canvas context. It tracks the current

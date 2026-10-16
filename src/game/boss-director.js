@@ -19,7 +19,7 @@ const PASSAGES = Object.freeze({
 /** Extra forgiveness so a grazing edge still counts as a pass. */
 export const PASSAGE_EDGE_GRACE = 0.55
 
-export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler'])
+export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler', 'punch'])
 
 export function getBossPassage({ difficulty = 'normal' } = {}) {
   return PASSAGES[difficulty] || PASSAGES.normal
@@ -97,7 +97,9 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
       ? 'Final gust · fly the hoop'
       : kind === 'stapler'
         ? 'Jaws closing · fly the hoop'
-        : 'Final cut · fly the hoop'
+        : kind === 'punch'
+          ? 'Press falling · fly the hoop'
+          : 'Final cut · fly the hoop'
     return Object.freeze({
       laneLabel,
       headline,
@@ -110,7 +112,9 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
       ? 'Wind rising · hold the hoop'
       : kind === 'stapler'
         ? 'Stapler press · hold the hoop'
-        : 'Blades closing · hold the hoop'
+        : kind === 'punch'
+          ? 'Punch pressing · hold the hoop'
+          : 'Blades closing · hold the hoop'
     return Object.freeze({
       laneLabel,
       headline,
@@ -122,7 +126,9 @@ export function describeBossPhase({ kind, phase, safeLane } = {}) {
     ? 'Wind gate · fly the hoop'
     : kind === 'stapler'
       ? 'Stapler gate · fly the hoop'
-      : 'Scissors gate · fly the hoop'
+      : kind === 'punch'
+        ? 'Punch gate · fly the hoop'
+        : 'Scissors gate · fly the hoop'
   return Object.freeze({
     laneLabel,
     headline,
@@ -138,17 +144,19 @@ export function bossKindForIndex(index = 0) {
 export function bossCrashReason(kind) {
   if (kind === 'wind') return 'Missed the wind ring!'
   if (kind === 'stapler') return 'Missed the stapler ring!'
+  if (kind === 'punch') return 'Missed the punch ring!'
   return 'Missed the scissors ring!'
 }
 
 export function bossBannerEmoji(kind) {
   if (kind === 'wind') return '🌬️'
   if (kind === 'stapler') return '📎'
+  if (kind === 'punch') return '🕳️'
   return '✂️'
 }
 
 function seededLane(kind, seed) {
-  const salt = kind === 'wind' ? 17 : kind === 'stapler' ? 29 : 5
+  const salt = kind === 'wind' ? 17 : kind === 'stapler' ? 29 : kind === 'punch' ? 41 : 5
   return [-1, 0, 1][Math.abs((Number(seed) || 0) + salt) % 3]
 }
 
@@ -156,6 +164,7 @@ function shapeCueFor(kind, colorblind) {
   if (!colorblind) return kind
   if (kind === 'wind') return 'radial-vane-ring'
   if (kind === 'stapler') return 'horizontal-jaw-slot'
+  if (kind === 'punch') return 'twin-round-press-ring'
   return 'crossed-blade-chevron'
 }
 

@@ -308,6 +308,43 @@ export const GROUND_LIFE_ZONES = Object.freeze({
       palette: { primary: '#8fa8d8', accent: '#e8eeff' }, shape: 'stack',
     }),
   ]),
+  dawn: Object.freeze([
+    species('lane-markers', {
+      count: 16, motion: 'none', amplitude: 0, speed: 0, y: 0.03, scale: 1,
+      palette: { primary: '#c9b6a0', accent: '#e4d2bc' }, shape: 'road',
+      flat: true, align: 'road',
+    }),
+    species('milk-floats', {
+      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.42, scale: 1.15,
+      palette: { primary: '#e8f0f4', accent: '#d68f80' }, shape: 'car',
+      align: 'road', zSpeedMul: 0.52,
+    }),
+    species('early-walkers', {
+      count: 18, motion: 'bob', amplitude: 0.16, speed: 4.6, y: 0.5, scale: 1,
+      palette: { primary: '#fff4e8', accent: '#d68f80' }, shape: 'person',
+      align: 'pavement', zSpeedMul: 0.9,
+    }),
+    species('weathervanes', {
+      count: 12, motion: 'spin', amplitude: 1, speed: 1.1, y: 2.6, scale: 1.5,
+      palette: { primary: '#d68f80', accent: '#fff4e8' }, shape: 'fan',
+    }),
+    species('dew-tufts', {
+      count: 20, motion: 'sway', amplitude: 0.3, speed: 1.5, y: 0.25, scale: 1.1,
+      palette: { primary: '#cbb59e', accent: '#fff4e8' }, shape: 'tuft',
+    }),
+    species('mist-patches', {
+      count: 12, motion: 'none', amplitude: 0, speed: 0, y: 0.04, scale: 3.6,
+      palette: { primary: '#f6e6d4', accent: '#fffaf2' }, shape: 'decal', flat: true,
+    }),
+    species('lampposts', {
+      count: 18, motion: 'sway', amplitude: 0.12, speed: 0.8, y: 0.6, scale: 1.2,
+      palette: { primary: '#b09484', accent: '#ffe0cd' }, shape: 'mast',
+    }),
+    species('hay-rolls', {
+      count: 14, motion: 'none', amplitude: 0, speed: 0, y: 0.2, scale: 1.2,
+      palette: { primary: '#dcc0a8', accent: '#fff4e8' }, shape: 'stack',
+    }),
+  ]),
 })
 
 export function getGroundLifeSpecies(zoneId) {

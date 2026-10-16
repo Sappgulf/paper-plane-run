@@ -13,6 +13,7 @@ export const ZONE_STAMP_SPRITES = Object.freeze({
 const STAMP_FALLBACKS = Object.freeze({
   sunset: 'aurora',
   midnight: 'storm',
+  dawn: 'harbor',
 })
 
 const ZONE_STAMP_NAMES = Object.freeze({
@@ -22,6 +23,7 @@ const ZONE_STAMP_NAMES = Object.freeze({
   aurora: 'Aurora Washi',
   sunset: 'Golden Fold',
   midnight: 'Midnight Origami',
+  dawn: 'First Light',
 })
 
 export function stampSpriteZone(zoneId = 'city') {

@@ -20,7 +20,7 @@ describe('folded landscape', () => {
         }
       }
     }
-    expect(signatures.size).toBe(6)
+    expect(signatures.size).toBe(ZONES.length)
   })
   it('merges complete finite landmark models and disposes the previous scene on transitions', () => {
     for (const kind of ['house','tree','lighthouse','sailboat','windmill','crystal','book']) {
