@@ -2611,6 +2611,7 @@ function attachLethalOutline(group, radius = 0.85) {
   outline.visible = false
   group.add(outline)
   group.userData.lethalOutline = outline
+  group.userData.lethalRadius = radius
   if (renderQuality.secondaryEffects) {
     const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
     glow.name = 'lethalGlow'
@@ -2659,7 +2660,10 @@ function createBillboardFlyer(scale = 1.5, kind = 'flyer') {
   card.rotation.y = Math.PI
   g.add(card)
   g.userData.billboard = card
-  attachLethalOutline(g, Math.max(0.7, (scale || 1.5) * 0.42))
+  // The warning ring is sized to overhang the sprite visibly even at distance:
+  // a hairline ring 40 units out is invisible, and in the haze zones it is the
+  // one cue that says "something lethal is here".
+  attachLethalOutline(g, Math.max(0.85, (scale || 1.5) * 0.55))
   return g
 }
 
@@ -4311,7 +4315,11 @@ function resetGame() {
   } else if (runKind === 'layout' && layoutPlay) {
     spawnLayoutItems()
   } else {
-    for (let i = 0; i < 14; i++) {
+    // Pre-populate only up to the readable fog depth for the same reason the
+    // live spawn band is capped: a hazard that materialises inside the haze
+    // and kills is the game's fault.
+    const spawnAhead = fogReadabilityDepth()
+    while (nextSpawnZ < spawnAhead) {
       spawnChunk(nextSpawnZ)
       nextSpawnZ += getWaveSpacing({ difficultyId: difficulty.id, distance }) * difficulty.gap
     }
@@ -5873,10 +5881,24 @@ function scrollWorld(move, lateralDrift = 0) {
 /**
  * True when fog draws the world in closer than normal: a foggy twist, a
  * low-visibility Journey route or a visibility pocket. Normal fog is far
- * (320, or 260 with reduced motion), so this only fires when visibility is cut.
+ * (320, or 260 with reduced motion) and night zones run 240, so this only
+ * fires when visibility is cut hard enough that a hazard can spawn inside
+ * the haze.
  */
 function fogIsThick() {
-  return scene.fog.far < (settings.reducedMotion ? 260 : 320) * 0.9
+  return scene.fog.far < 150
+}
+
+/**
+ * The depth at which a spawned hazard stops being readable: about 35% into
+ * the fog band a silhouette is mush. The spawn band never reaches past it, so
+ * a hazard is always on screen before it can reach the plane — the fog keeps
+ * its mood without hiding the things that end runs.
+ */
+function fogReadabilityDepth() {
+  const near = scene.fog.near
+  const far = Math.max(near + 1, scene.fog.far)
+  return near + 0.35 * (far - near)
 }
 
 function animateHazards(dt) {
@@ -5945,23 +5967,30 @@ function animateHazards(dt) {
       e.mesh.rotation.z += dt * 1.2
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
     }
-    const outline = e.mesh.userData.lethalOutline
-    if (outline && (e.type === 'bird' || e.type === 'scissors')) {
-      // Start ringing earlier (z<36) so the approach reads as pressure; the
-      // shared glow mesh mirrors the pulse without a second draw call.
-      // Thick fog hides hazards until they are close, so the ring also shows as a
-      // hazard enters the fog band. The ring ignores fog, so it reads through haze.
-      const foggy = fogIsThick() && e.mesh.position.z < scene.fog.far
-      const near = e.mesh.position.z < 36 || foggy
-      const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
-      outline.visible = near
-      outline.material.opacity = pulse
-      const glow = e.mesh.userData.lethalGlow
-      if (glow) {
-        glow.visible = near && renderQuality.secondaryEffects
-        glow.material.opacity = pulse * 0.38
+      const outline = e.mesh.userData.lethalOutline
+      if (outline && (e.type === 'bird' || e.type === 'scissors')) {
+        // Start ringing earlier (z<36) so the approach reads as pressure; the
+        // shared glow mesh mirrors the pulse without a second draw call.
+        // A hazard sitting deeper than the readable fog depth also rings —
+        // the ring ignores fog, so it reads through haze.
+        const hazy = e.mesh.position.z > fogReadabilityDepth()
+        const near = e.mesh.position.z < 36 || hazy
+        const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
+        outline.visible = near
+        outline.material.opacity = pulse
+        // The ring grows with distance so its on-screen size — the only size
+        // that matters for "I can see it" — stays roughly constant from the
+        // moment a hazard appears to the moment it passes.
+        const approach = THREE.MathUtils.clamp(e.mesh.position.z / 60, 0.85, 2.6)
+        const base = e.mesh.userData.lethalRadius || 0.85
+        outline.scale.setScalar(base * approach)
+        const glow = e.mesh.userData.lethalGlow
+        if (glow) {
+          glow.visible = near && renderQuality.secondaryEffects
+          glow.material.opacity = pulse * 0.38
+          glow.scale.setScalar(base * approach)
+        }
       }
-    }
     if (e.type === 'boss') {
       const u = e.mesh.userData
       const encounter = e.director?.step(dt)
@@ -7018,7 +7047,12 @@ function update(dt) {
   updateFlightReadability(zp)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
-    while (nextSpawnZ < 220) {
+    // Hazards spawn just up to the readable fog depth: past it a silhouette is
+    // mush and an end-of-run "I never saw it" is the game's fault, not the
+    // player's. Day fog (150/320) reads to ~210, night zones to ~130, a fog
+    // twist to its own edge — the band follows whatever the haze is doing.
+    const spawnAhead = fogReadabilityDepth()
+    while (nextSpawnZ < spawnAhead) {
       spawnChunk(nextSpawnZ)
       nextSpawnZ += getWaveSpacing({
         difficultyId: difficulty.id,
