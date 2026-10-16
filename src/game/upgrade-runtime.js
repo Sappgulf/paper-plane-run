@@ -197,6 +197,26 @@ export function getTrailFeedback({ trailLevel = 0, synergyGold = false } = {}) {
 }
 
 /**
+ * Handling / Lift / Glide perceptibility — wing flex and contrail length scale
+ * with upgrade levels so a maxed plane is visibly distinct:
+ * - handlingLevel 0–5 adds 0.05 rollMul (capped at +0.28) and 0.06 wisp span
+ * - glide (speedMul) and lift (sinkMul) lift contrail opacity and size
+ */
+export function getHandlingRollMul(level = 0) {
+  return 1 + Math.min(0.28, Math.max(0, Number(level) || 0) * 0.05)
+}
+
+export function getHandlingWispSpan(level = 0) {
+  return 1 + Math.min(0.28, Math.max(0, Number(level) || 0) * 0.06)
+}
+
+export function getGlideWispBoost({ speedMul = 1, sinkMul = 1 } = {}) {
+  const lift = Math.min(0.12, Math.max(0, (positiveNumber(speedMul, 1) - 1) * 0.6) + Math.max(0, (1 - positiveNumber(sinkMul, 1)) * 0.08))
+  const size = Math.min(0.08, Math.max(0, (positiveNumber(speedMul, 1) - 1) * 0.4))
+  return { opacityLift: lift, sizeLift: size }
+}
+
+/**
  * Concise, deterministic runtime contract used by tests and render_game_to_text.
  * The flight loop calls the same small helpers for each live calculation.
  */

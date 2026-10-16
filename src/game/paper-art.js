@@ -291,6 +291,58 @@ export const HAZARD_PROFILES = Object.freeze(Object.fromEntries(
 /** The default paper dart, folded down its middle so each half is one facet. */
 const FLYER_PIECES = Object.freeze([piece(DART, { crease: [0, 0, 0, 1] })])
 
+function rotatePoints(points, angle) {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return points.map(([x, y]) => [x * cos - y * sin, x * sin + y * cos])
+}
+
+/** Halloween re-cut: a bat's scalloped wings, ears and body, same accent + ink. */
+const BAT_WING = [[-1, -12], [-6, -18], [-14, -14], [-24, -16], [-32, -6], [-26, 0], [-32, 8], [-22, 12], [-12, 6], [-4, 14]]
+const BAT_PIECES = Object.freeze([
+  piece(BAT_WING),
+  piece(mirrorX(BAT_WING)),
+  piece([[-3, -10], [-10, -24], [-12, -8]]),
+  piece(mirrorX([[-3, -10], [-10, -24], [-12, -8]])),
+  piece([[-4, -10], [4, -10], [5, 8], [0, 16], [-5, 8]], { crease: [0, -10, 0, 1] }),
+])
+
+/** Snowfold re-cut: a six-spoke paper flake, spokes and side ticks as strips. */
+const SNOWFLAKE_PIECES = Object.freeze((() => {
+  const pieces = [piece(circlePoints(0, 0, 9, 14))]
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (Math.PI / 3) * i
+    pieces.push(piece(rotatePoints([[-2.4, 9], [2.4, 9], [2.4, 34], [-2.4, 34]], angle)))
+    const tick = [[0, 24], [-7, 31], [-9.5, 29], [-2.5, 22]]
+    pieces.push(piece(rotatePoints(tick, angle)))
+    pieces.push(piece(rotatePoints(mirrorX(tick), angle)))
+  }
+  return pieces
+})())
+
+/** Love Notes re-cut: a sent-letter heart. */
+const HEART_PIECES = Object.freeze([
+  piece([
+    [0, 36], [14, 22], [26, 8], [26, -6], [16, -14], [6, -12], [0, -4],
+    [-6, -12], [-16, -14], [-26, -6], [-26, 8], [-14, 22],
+  ], { crease: [0, -12, 0, 1] }),
+])
+
+/**
+ * Seasonal re-cuts for the bird, the most frequent hazard. Same zone accent
+ * and ink — only the silhouette changes, so the danger colour stays learnable.
+ */
+export const SEASONAL_BIRD_PIECES = Object.freeze({
+  halloween: BAT_PIECES,
+  winter: SNOWFLAKE_PIECES,
+  valentine: HEART_PIECES,
+})
+
+/** Cache key suffix for the season's bird re-cut, or null for the plain bird. */
+export function seasonalBirdSilhouetteId(seasonId) {
+  return seasonId && SEASONAL_BIRD_PIECES[seasonId] ? `bird:${seasonId}` : null
+}
+
 /** Crossed blades with their finger rings; each blade is a tapered paper cut. */
 function scissorBlade(tip, ring) {
   const ringRadius = 10
@@ -441,13 +493,15 @@ function drawHazardPieces(ctx, size, accent, pieces) {
  *
  * `kind` picks the silhouette; everything else is the zone accent plus ink, so
  * a new hazard type cannot accidentally arrive in a colour that means
- * something else.
+ * something else. `seasonId` optionally re-cuts the bird into its seasonal
+ * silhouette.
  */
 export function createHazardCanvas({
   kind = 'flyer',
   palette = DEFAULT_PALETTE,
   size = 128,
   canvasFactory,
+  seasonId = null,
 } = {}) {
   const width = Math.max(16, Math.floor(size))
   const canvas = makeCanvas(canvasFactory, width, width)
@@ -457,6 +511,7 @@ export function createHazardCanvas({
   const fill = palette.accent || DEFAULT_PALETTE.accent
   let pieces = FLYER_PIECES
   if (kind === 'scissors') pieces = scissorsPieces()
+  else if (kind === 'bird' && seasonId && SEASONAL_BIRD_PIECES[seasonId]) pieces = SEASONAL_BIRD_PIECES[seasonId]
   else if (Object.prototype.hasOwnProperty.call(HAZARD_PIECES, kind)) pieces = HAZARD_PIECES[kind]
   drawHazardPieces(ctx, width, fill, pieces)
   return canvas

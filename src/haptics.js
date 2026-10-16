@@ -37,6 +37,19 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
   window.addEventListener('paperplane:settings-changed', refreshHapticsEnabled)
 }
 
+// Chrome rejects navigator.vibrate until the document has seen a real user
+// activation and logs a console error for every attempt. All real feedback
+// flows from a pointer/key event anyway, so the flag just keeps pre-gesture
+// calls quiet without changing what engaged feedback does. Where events
+// cannot be observed (tests, non-DOM hosts) engagement is assumed.
+const canObserveInput = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+let userEngaged = !canObserveInput
+if (canObserveInput) {
+  for (const event of ['pointerdown', 'keydown', 'touchstart']) {
+    window.addEventListener(event, () => { userEngaged = true }, { once: true, passive: true })
+  }
+}
+
 export function haptic(pattern = 10, nativeName = 'tap') {
   try {
     if (!hapticsEnabled) return
@@ -45,6 +58,7 @@ export function haptic(pattern = 10, nativeName = 'tap') {
       bridge.postMessage(nativeName)
       return
     }
+    if (!userEngaged) return
     if (navigator.vibrate) navigator.vibrate(pattern)
   } catch {
     /* ignore */

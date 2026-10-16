@@ -175,6 +175,7 @@ import {
   createHazardCanvas,
   createPaperSheetCanvas,
   getPaperPalette,
+  seasonalBirdSilhouetteId,
 } from './game/paper-art.js'
 import {
   advanceBank,
@@ -250,7 +251,10 @@ import {
   getControlResponse,
   getCruiseSpeed,
   getFeverTuning,
+  getGlideWispBoost,
   getGuardianState,
+  getHandlingRollMul,
+  getHandlingWispSpan,
   getMagnetPull,
   getNearMissRadius,
   getPowerDuration,
@@ -260,7 +264,14 @@ import {
   getUpgradeRuntimeSnapshot,
   SHIELD_BASE_DURATION,
 } from './game/upgrade-runtime.js'
-// createPool available for future mesh reuse; low-power path already cuts DPR/shadows
+// createPool available for building mesh reuse; low-power path already cuts DPR/shadows.
+// Building pooling plan (deferred as invasive — variable w/h/d + roof props):
+//   const buildingGeometryPool = createPool(() => new THREE.BoxGeometry(1,1,1), 12)
+//   // spawnChunk: const mesh = buildingGeometryPool.acquire(); mesh.scale.set(w,h,d)
+//   // scrollWorld/clearEntities: buildingGeometryPool.release(mesh) instead of dispose.
+// Variable sizes + child roof/prop cleanup make 1:1 reuse non-trivial. Pool is
+// importable and verified by test/pool.test.js; wiring will replace
+// `new THREE.BoxGeometry(w,h,d)` in createBuilding with acquire/release.
 
 // Passing the complete module namespace through the injected plane-model API
 // makes the bundler retain every Three.js export. Keep the public injection
@@ -1044,11 +1055,16 @@ const texCache = {}
 function createPaperTexture(spec) {
   const [, kind, zoneId, variant] = spec.split(':')
   const palette = getPaperPalette(zoneId)
-  const canvas = ['sky', 'ground', 'wall'].includes(kind)
-    ? createWorldCanvas({ kind, zoneId, size: kind === 'sky' ? 1024 : 512 })
-    : kind === 'hazard'
-    ? createHazardCanvas({ kind: variant, palette })
-    : createPaperSheetCanvas({ palette })
+  let canvas = null
+  if (['sky', 'ground', 'wall'].includes(kind)) {
+    canvas = createWorldCanvas({ kind, zoneId, size: kind === 'sky' ? 1024 : 512 })
+  } else if (kind === 'hazard') {
+    // Variants can carry a seasonal re-cut: "bird:halloween" is still the
+    // bird silhouette slot, drawn as a bat.
+    const [silhouette, seasonId] = String(variant || 'flyer').split(':')
+    canvas = createHazardCanvas({ kind: silhouette, seasonId: seasonId || null, palette })
+  }
+  if (!canvas) canvas = createPaperSheetCanvas({ palette })
   if (!canvas) return new THREE.Texture()
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -1814,23 +1830,11 @@ const buildingMats = [
   new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xe8d4a4 }),
   new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xc6bfd8 }),
 ]
-const birdMat = new THREE.MeshStandardMaterial({
-  map: paperTex, color: season.birdColor, roughness: 0.78, side: THREE.DoubleSide,
-})
-const birdAccentMat = new THREE.MeshStandardMaterial({
-  map: paperTex, color: season.birdColor, roughness: 0.65, side: THREE.DoubleSide, emissive: 0x000000,
-})
-birdAccentMat.color.multiplyScalar(0.82) // subtle crease-shadow tone for the underside/accents
-const birdEyeMat = new THREE.MeshStandardMaterial({ color: 0x3d2c29, roughness: 0.5 })
-const dragonflyEyeMat = new THREE.MeshStandardMaterial({
-  color: 0x2563eb, emissive: 0x1d4ed8, emissiveIntensity: 0.3, roughness: 0.3,
-})
-// Was near-white at 0.6 opacity, which nearly vanished against the light
-// sky color — a deeper cyan tint at higher opacity keeps the "iridescent"
-// look while staying readable as a silhouette from any angle.
-const dragonflyWingMat = new THREE.MeshStandardMaterial({
-  color: 0x8fd8e8, transparent: true, opacity: 0.85, side: THREE.DoubleSide, roughness: 0.25, metalness: 0.05,
-})
+// Pre-allocate 12 BoxGeometries via pool for building reuse. Full wiring of
+// pool.acquire/release in spawnChunk/scrollWorld/clearEntities is deferred as
+// invasive (variable w/h/d + roof child cleanup) — see header note.
+const buildingGeometryPool = createPool(() => new THREE.BoxGeometry(1, 1, 1), 12)
+void buildingGeometryPool
 // Kept low-metalness: the scene has no environment map, and Three's
 // metalness workflow renders highly metallic surfaces near-black without
 // one (no reflections to fill them in) — high metalness here previously
@@ -1854,7 +1858,6 @@ const scissorsFoldGeo = new THREE.BoxGeometry(0.06, 1, 0.05)
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
-  birdMat.color.setHex(season.birdColor)
   if (season.fogBoost != null && scene.fog) {
     // blend toward seasonal fog
     scene.fog.color.lerp(new THREE.Color(season.fogBoost), 0.35)
@@ -2577,14 +2580,21 @@ function attachLethalOutline(group, radius = 0.85) {
 let hazardPaletteZone = 'city'
 
 function hazardTexture(kind) {
-  return loadTex(`paper:hazard:${hazardPaletteZone}:${kind}`)
+  // The bird gets re-cut per season (bat / snowflake / heart), so its cache
+  // key has to carry the season alongside the zone.
+  const resolvedKind = kind === 'bird'
+    ? (seasonalBirdSilhouetteId(season.id) || 'bird')
+    : kind
+  return loadTex(`paper:hazard:${hazardPaletteZone}:${resolvedKind}`)
 }
 
-function createBillboardFlyer(texUrl, scale = 1.5, hasAlpha = false, kind = 'flyer') {
+function createBillboardFlyer(scale = 1.5, kind = 'flyer') {
   const g = new THREE.Group()
   // Hazards are cut paper in the zone accent, not photographs. Everything that
   // can end a run shares one colour and one ink outline so it is identifiable
-  // as danger before it is identifiable as a scissors or a bird.
+  // as danger before it is identifiable as a scissors or a bird — and each
+  // flyer kind carries its own cut-paper silhouette so the roster reads as
+  // seven different threats, not one shape in seven sizes.
   const tex = hazardTexture(kind)
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
@@ -2606,76 +2616,6 @@ function createBird() {
   return createFlyer('bird')
 }
 
-// Shared geometries for the default paper-crane bird — birds are the most
-// frequently spawned hazard in the game, so building fresh Shape/Cone/Sphere
-// geometry on every single spawn was pure GC churn. Geometry is stateless
-// and safe to share across many mesh instances; only transforms differ.
-// Wings are folded via a per-frame rotation.z "dihedral" hinge (see
-// animateHazards) so they read from the side. But a perfectly flat
-// ShapeGeometry rotated purely around that hinge axis has a degenerate
-// case: dead-on from the front (the actual angle the player meets an
-// oncoming hazard at) its whole surface projects to a 1D line no matter
-// the hinge angle, since flat-shape area and hinge rotation share the
-// same axis. Giving the wing real extruded thickness guarantees a
-// minimum visible cross-section from every angle, including head-on.
-function extrudeFlat(shape, depth = 0.06) {
-  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false })
-  geo.translate(0, 0, -depth / 2)
-  return geo
-}
-const birdWingShape = new THREE.Shape()
-birdWingShape.moveTo(0, 0)
-birdWingShape.lineTo(0.62, -0.22)
-birdWingShape.lineTo(0.18, 0.08)
-birdWingShape.lineTo(0, 0)
-const birdWingGeo = extrudeFlat(birdWingShape, 0.07)
-const birdCreaseShape = new THREE.Shape()
-birdCreaseShape.moveTo(0, 0)
-birdCreaseShape.lineTo(0.34, -0.12)
-birdCreaseShape.lineTo(0.18, 0.08)
-birdCreaseShape.lineTo(0, 0)
-const birdCreaseGeo = extrudeFlat(birdCreaseShape, 0.075)
-const birdBodyGeo = new THREE.ConeGeometry(0.08, 0.5, 8)
-const birdNeckGeo = new THREE.ConeGeometry(0.05, 0.32, 8)
-const birdEyeGeo = new THREE.SphereGeometry(0.025, 8, 8)
-const birdFeatherGeo = new THREE.ConeGeometry(0.045, 0.4, 6)
-
-// Shared geometry for the dragonfly hazard (same reasoning as the bird above)
-const dragonflyHeadGeo = new THREE.SphereGeometry(0.13, 10, 8)
-const dragonflyEyeGeo = new THREE.SphereGeometry(0.08, 8, 8)
-const dragonflyThoraxGeo =
-  typeof THREE.CapsuleGeometry === 'function'
-    ? new THREE.CapsuleGeometry(0.075, 0.16, 4, 10)
-    : new THREE.CylinderGeometry(0.07, 0.075, 0.24, 10)
-const dragonflyAbdomenGeo = new THREE.ConeGeometry(0.06, 0.75, 8)
-const dragonflyBandGeo = new THREE.TorusGeometry(0.045, 0.012, 6, 10)
-const dragonflyWingShape = new THREE.Shape()
-dragonflyWingShape.moveTo(0, 0)
-dragonflyWingShape.quadraticCurveTo(0.42, 0.16, 0.78, 0.03)
-dragonflyWingShape.quadraticCurveTo(0.42, -0.09, 0, 0)
-const dragonflyWingGeo = extrudeFlat(dragonflyWingShape, 0.05)
-
-// Shared geometry/materials for the wasp hazard — small, fast, erratic
-// (spawns with dive+weave motion). Same extruded-wing trick as the bird
-// and dragonfly so it stays readable head-on.
-const waspBodyGeo = new THREE.ConeGeometry(0.09, 0.42, 8)
-const waspStingerGeo = new THREE.ConeGeometry(0.035, 0.16, 6)
-const waspBandGeo = new THREE.TorusGeometry(0.075, 0.02, 6, 10)
-const waspEyeGeo = new THREE.SphereGeometry(0.035, 8, 8)
-const waspWingShape = new THREE.Shape()
-waspWingShape.moveTo(0, 0)
-waspWingShape.quadraticCurveTo(0.2, 0.14, 0.4, 0.03)
-waspWingShape.quadraticCurveTo(0.2, -0.04, 0, 0)
-const waspWingGeo = extrudeFlat(waspWingShape, 0.035)
-const waspBodyMat = new THREE.MeshStandardMaterial({ color: 0x2b2320, roughness: 0.55 })
-const waspBandMat = new THREE.MeshStandardMaterial({
-  color: 0xfbbf24, emissive: 0x92400e, emissiveIntensity: 0.15, roughness: 0.45,
-})
-const waspWingMat = new THREE.MeshStandardMaterial({
-  color: 0xe8eef5, transparent: true, opacity: 0.55, side: THREE.DoubleSide, roughness: 0.3,
-})
-const waspEyeMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, emissive: 0x7f1d1d, emissiveIntensity: 0.4, roughness: 0.4 })
-
 function createFlyer(kindId) {
   const def = FLYER_DEFS.find((f) => f.id === kindId) || FLYER_DEFS[0]
   const g = new THREE.Group()
@@ -2688,160 +2628,12 @@ function createFlyer(kindId) {
   g.userData.barrel = !!def.barrel
   g.userData.pattern = patternForFlyer(def)
 
-  if (def.sprite) {
-    // The billboard's art is generated per zone accent; no texture file is loaded.
-    const bill = createBillboardFlyer('', def.scale || 1.5, !!def.alpha, def.id)
-    g.add(bill)
-    g.userData.billboard = bill.userData.billboard
-    return g
-  }
-
-  // Seasonal / geometric variants
-  if (season.id === 'halloween' || def.id === 'bird' && season.id === 'halloween') {
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), birdMat)
-    g.add(body)
-    const left = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 3), birdMat)
-    left.rotation.z = 0.8
-    left.position.set(-0.35, 0.05, 0)
-    const right = left.clone()
-    right.rotation.z = -0.8
-    right.position.x = 0.35
-    g.add(left, right)
-    g.userData.wingL = left
-    g.userData.wingR = right
-  } else if (def.id === 'dragonfly') {
-    // Round head with big compound eyes — enlarged so the face reads as a
-    // distinct silhouette element even head-on, when the body/wings foreshorten.
-    const head = new THREE.Mesh(dragonflyHeadGeo, birdAccentMat)
-    head.position.set(0, 0, 0.32)
-    g.add(head)
-    for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(dragonflyEyeGeo, dragonflyEyeMat)
-      eye.position.set(sx * 0.11, 0.02, 0.36)
-      g.add(eye)
-    }
-    // Short thorax + long tapering segmented abdomen
-    const thorax = new THREE.Mesh(dragonflyThoraxGeo, birdMat)
-    thorax.rotation.z = Math.PI / 2
-    thorax.position.z = 0.14
-    g.add(thorax)
-    const abdomen = new THREE.Mesh(dragonflyAbdomenGeo, birdAccentMat)
-    abdomen.rotation.z = -Math.PI / 2
-    abdomen.position.z = -0.28
-    g.add(abdomen)
-    for (const bz of [-0.1, -0.3, -0.5]) {
-      const band = new THREE.Mesh(dragonflyBandGeo, birdMat)
-      band.rotation.y = Math.PI / 2
-      band.position.z = bz
-      g.add(band)
-    }
-    // Iridescent paper wings — bigger leaf-shaped panels in a deeper tinted
-    // material so they stay visible against a light sky instead of nearly
-    // disappearing like the old pale/translucent version.
-    // Each side is a group of its two wings (fore + hind) so the shared
-    // flap/dihedral animation in animateHazards — which only knows about
-    // a single wingL/wingR target per bird — lifts both panels together.
-    for (const sx of [-1, 1]) {
-      const side = new THREE.Group()
-      for (const sy of [-1, 1]) {
-        const w = new THREE.Mesh(dragonflyWingGeo, dragonflyWingMat)
-        w.scale.x = sx
-        w.position.set(sx * 0.06, sy * 0.025, 0.14 + sy * 0.06)
-        w.rotation.x = -Math.PI / 2
-        side.add(w)
-      }
-      g.add(side)
-      if (sx < 0) g.userData.wingL = side
-      else g.userData.wingR = side
-    }
-  } else if (def.id === 'wasp') {
-    const body = new THREE.Mesh(waspBodyGeo, waspBodyMat)
-    body.rotation.x = Math.PI / 2
-    g.add(body)
-    const stinger = new THREE.Mesh(waspStingerGeo, waspBodyMat)
-    stinger.rotation.x = Math.PI / 2
-    stinger.position.z = -0.28
-    g.add(stinger)
-    for (const bz of [-0.02, -0.11, -0.2]) {
-      const band = new THREE.Mesh(waspBandGeo, waspBandMat)
-      band.rotation.y = Math.PI / 2
-      band.position.z = bz
-      g.add(band)
-    }
-    for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(waspEyeGeo, waspEyeMat)
-      eye.position.set(sx * 0.07, 0.01, 0.19)
-      g.add(eye)
-    }
-    // Small angular wings — same extruded-shape + shared dihedral flap
-    // animation as the bird/dragonfly so they stay visible head-on.
-    const left = new THREE.Mesh(waspWingGeo, waspWingMat)
-    left.scale.x = -1
-    left.position.set(0.05, 0.03, 0.05)
-    left.rotation.x = -Math.PI / 2
-    const right = new THREE.Mesh(waspWingGeo, waspWingMat)
-    right.position.set(-0.05, 0.03, 0.05)
-    right.rotation.x = -Math.PI / 2
-    g.add(left, right)
-    g.userData.wingL = left
-    g.userData.wingR = right
-  } else if (season.id === 'winter') {
-    g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), birdMat))
-  } else if (season.id === 'valentine') {
-    const a = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), birdMat)
-    a.position.set(-0.12, 0.05, 0)
-    const b = a.clone()
-    b.position.x = 0.12
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.35, 4), birdMat)
-    tip.rotation.x = Math.PI
-    tip.position.y = -0.15
-    g.add(a, b, tip)
-  } else {
-    // Folded-paper crane: hinged triangular wings (same fold logic as the
-    // player's plane) so the existing flap animation bends them at the root
-    // instead of spinning a chunky box around its own middle. Geometry is
-    // shared module-level (see birdWingGeo etc.) since birds are the most
-    // frequently spawned hazard — only per-instance transforms differ.
-    const left = new THREE.Mesh(birdWingGeo, birdMat)
-    left.rotation.x = -Math.PI / 2
-    left.scale.x = -1
-    // Crease panels are children so they flap in lockstep with their wing.
-    const leftCrease = new THREE.Mesh(birdCreaseGeo, birdAccentMat)
-    leftCrease.position.z = 0.003
-    left.add(leftCrease)
-    const right = new THREE.Mesh(birdWingGeo, birdMat)
-    right.rotation.x = -Math.PI / 2
-    const rightCrease = new THREE.Mesh(birdCreaseGeo, birdAccentMat)
-    rightCrease.position.z = 0.003
-    right.add(rightCrease)
-    g.add(left, right)
-
-    const body = new THREE.Mesh(birdBodyGeo, birdMat)
-    body.rotation.x = Math.PI / 2
-    g.add(body)
-    const neck = new THREE.Mesh(birdNeckGeo, birdAccentMat)
-    neck.rotation.z = Math.PI * 0.62
-    neck.position.set(0, 0.06, 0.28)
-    g.add(neck)
-    // Tiny painted eye for character
-    const eye = new THREE.Mesh(birdEyeGeo, birdEyeMat)
-    eye.position.set(0.035, 0.16, 0.42)
-    const eye2 = eye.clone()
-    eye2.position.x = -0.035
-    g.add(eye, eye2)
-    // Folded fan tail (three thin blades instead of one plain cone)
-    for (const a of [-0.22, 0, 0.22]) {
-      const feather = new THREE.Mesh(birdFeatherGeo, birdAccentMat)
-      feather.rotation.z = -Math.PI / 2
-      feather.rotation.x = a
-      feather.position.set(0, 0.02, -0.32)
-      g.add(feather)
-    }
-
-    g.userData.wingL = left
-    g.userData.wingR = right
-  }
-  attachLethalOutline(g, 0.85)
+  // Every flyer renders as its own cut-paper silhouette billboard; the old
+  // per-kind 3D geometry this replaced was unreachable from the moment every
+  // def carried a sprite, and it contradicted the one-ink-outline danger rule.
+  const bill = createBillboardFlyer(def.scale || 1.5, def.id)
+  g.add(bill)
+  g.userData.billboard = bill.userData.billboard
   return g
 }
 
@@ -2858,7 +2650,7 @@ function pickFlyerKind() {
 
 function createScissors() {
   const g = new THREE.Group()
-  const bill = createBillboardFlyer('', 3.15, true, 'scissors')
+  const bill = createBillboardFlyer(3.15, 'scissors')
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
   return g
@@ -4137,14 +3929,12 @@ function applyNightReadability(enabled) {
   const night = Boolean(enabled)
   document.documentElement.dataset.night = night ? '1' : '0'
   // Day base matches the tuned hemi/sun constants; night lifts them for
-  // readable silhouettes against the darker zones.
+  // readable silhouettes against the darker zones. Hazard readability at
+  // night is carried by the fog-immune lethal rings and the night-tinted
+  // wall textures rather than material emissive.
   hemi.intensity = night ? 1.55 : 0.92
   sun.intensity = night ? 1.7 : 1.25
   sun.color.setHex(night ? 0xffe9b8 : 0xfff0e0)
-  birdMat.emissive.setHex(night ? 0xff8a65 : 0x000000)
-  birdMat.emissiveIntensity = night ? 0.35 : 0
-  birdAccentMat.emissive.setHex(night ? 0xffcc80 : 0x000000)
-  birdAccentMat.emissiveIntensity = night ? 0.22 : 0
   renderer.setClearColor(night ? 0x6d6496 : 0xc8dff5, 1)
 }
 
@@ -5073,7 +4863,7 @@ bindClick('photo-share', async () => {
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file], title: 'Paper Plane Run', text: shareText() })
     } else {
-      await navigator.clipboard.writeText(shareText() + '\\n' + buildShareUrl())
+      await navigator.clipboard.writeText(`${shareText()}\n${buildShareUrl()}`)
       if (shareStatus) shareStatus.textContent = 'Link copied (photo save available)'
     }
   } catch {
@@ -5249,16 +5039,16 @@ function buildRecapCard() {
   // Watermark gets its own line at the top of the bar so it never has to
   // share horizontal space (and possibly collide) with the stats line below.
   ctx.textAlign = 'right'
-  ctx.font = `800 ${small}px system-ui, sans-serif`
+  ctx.font = `800 ${small}px Nunito, system-ui, sans-serif`
   ctx.fillStyle = 'rgba(255,248,239,.75)'
   ctx.fillText('Paper Plane Run', card.width - pad, barY + small * 1.15)
   ctx.textAlign = 'left'
 
   ctx.fillStyle = '#fff8ef'
-  ctx.font = `900 ${big}px system-ui, sans-serif`
+  ctx.font = `900 ${big}px Nunito, system-ui, sans-serif`
   ctx.fillText(`${Math.floor(distance)}m`, pad, card.height - barH * 0.42)
 
-  ctx.font = `700 ${small}px system-ui, sans-serif`
+  ctx.font = `700 ${small}px Nunito, system-ui, sans-serif`
   ctx.fillStyle = '#f0c94a'
   const starsStr = `${stars}★`
   ctx.fillText(starsStr, pad, card.height - barH * 0.13)
@@ -5550,6 +5340,31 @@ function renderRunSummary(summary) {
     row.append(key, result)
     runSummaryEl.appendChild(row)
   }
+  // Fever vs skim vs tier stacking — post-run delta makes the 1.5× feel legible
+  try {
+    const feverCount = runStats?.fevers || 0
+    const skimTier = groundSkim?.tier || 0
+    const tierAtEnd = typeof endlessTier === 'function' ? endlessTier().tier : currentTier?.tier || 0
+    const tierMul = typeof getTierScoreMultiplierSmooth === 'function' ? getTierScoreMultiplierSmooth(distance) : 1
+    const skimMul = typeof skimScoreMultiplier === 'function' ? skimScoreMultiplier(skimTier) : 1
+    const feverMul = feverCount > 0 ? FEVER_SCORE_MUL : 1
+    const stackingActive = feverCount > 0 || skimTier > 0 || tierAtEnd > 0
+    if (stackingActive) {
+      const row = document.createElement('div')
+      row.className = 'run-summary-next run-summary-stacking'
+      const key = document.createElement('span')
+      key.textContent = 'Stack'
+      const result = document.createElement('strong')
+      const parts = []
+      if (feverCount > 0) parts.push(`🔥 Fever ×${feverMul.toFixed(2).replace(/0$/, '').replace(/\.$/, '')}`)
+      if (skimTier > 0) parts.push(`Skim ×${skimMul.toFixed(2).replace(/0$/, '')}`)
+      if (tierAtEnd > 0) parts.push(`Tier ×${tierMul.toFixed(2).replace(/0$/, '')}`)
+      const total = feverMul * skimMul * tierMul
+      result.textContent = `${parts.join(' · ')} = ×${total.toFixed(2).replace(/0$/, '')}`
+      row.append(key, result)
+      runSummaryEl.appendChild(row)
+    }
+  } catch {}
   runSummaryEl.classList.remove('hidden')
 
   const hangarCta = $('hangar-from-gameover')
@@ -5875,6 +5690,10 @@ function updateBannerSlot() {
     if (!element) continue
     element.classList.toggle('banner-suppressed', source.id !== bannerSlot.id)
   }
+  // Magnet pull trail is not a banner — it must never be suppressed by the
+  // zone/wind banner arbiter. Even though it lives in #banner-stack, its
+  // visibility is owned solely by updateMagnetPullFeedback().
+  if (magnetPullTrail) magnetPullTrail.classList.remove('banner-suppressed')
 }
 
 function updateAltitudeHud() {
@@ -6702,7 +6521,7 @@ function update(dt) {
   bankState = advanceBank(bankState, {
     inputX: steerInput,
     dt,
-    rollMul: tuckFx.rollMul * (1 + Math.min(0.28, (ufx.handlingLevel || 0) * 0.05)),
+    rollMul: tuckFx.rollMul * getHandlingRollMul(ufx.handlingLevel),
   })
 
   // Physics toys modifiers
@@ -6905,16 +6724,16 @@ function update(dt) {
     // Streamers peel off alternating wingtips so both sides read at speed.
     wispSide *= -1
     const span = (activeUpgradeEffects.planeScale || 1) * 1.12
-    const handlingFlex = 1 + Math.min(0.28, (activeUpgradeEffects.handlingLevel || 0) * 0.06)
+    const handlingFlex = getHandlingWispSpan(activeUpgradeEffects.handlingLevel)
     wispPts[0].set(planeX + wispSide * 0.95 * span * handlingFlex, planeY - 0.05 - Math.random() * 0.15, -0.7 - Math.random() * 0.5)
     const wpos = wisp.geometry.attributes.position
     for (let i = 0; i < WISP_N; i++) wpos.setXYZ(i, wispPts[i].x, wispPts[i].y, wispPts[i].z)
     wpos.needsUpdate = true
     const baseOpacity = feverActive ? 0.65 : highG ? 0.5 : THREE.MathUtils.clamp((speed - cfg.speedBase * 1.15) / 30, 0, 0.42)
-    const glideLift = Math.min(0.12, (activeUpgradeEffects.speedMul ? (activeUpgradeEffects.speedMul - 1) * 0.6 : 0) + (activeUpgradeEffects.sinkMul ? (1 - activeUpgradeEffects.sinkMul) * 0.08 : 0))
+    const { opacityLift: glideLift, sizeLift } = getGlideWispBoost(activeUpgradeEffects)
     wisp.material.opacity = Math.min(0.72, baseOpacity + glideLift)
     // Glide lengthens the contrail visually: size scales with speedMul
-    wisp.material.size = 0.17 + Math.min(0.08, (activeUpgradeEffects.speedMul ? (activeUpgradeEffects.speedMul - 1) * 0.4 : 0))
+    wisp.material.size = 0.17 + sizeLift
     if (feverActive) {
       wisp.material.color.setHex(0xfbbf24)
     } else {
@@ -6983,7 +6802,7 @@ function update(dt) {
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
   plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
-  const handleMul = 1 + Math.min(0.28, (activeUpgradeEffects.handlingLevel || 0) * 0.05)
+  const handleMul = getHandlingRollMul(activeUpgradeEffects.handlingLevel)
   plane.rotation.z = THREE.MathUtils.clamp((roll + feverWobble) * handleMul, -0.9, 0.9)
   plane.rotation.y = flightPose.yaw
   const wingL = plane.userData.wingL

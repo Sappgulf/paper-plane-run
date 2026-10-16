@@ -337,7 +337,7 @@ function stopPlanePreview() {
   activePlanePreview = null
 }
 
-const PANEL_IDS = ['menu', 'journey-panel', 'gameover', 'hangar-panel', 'hotseat-intermission']
+const PANEL_IDS = ['menu', 'journey-panel', 'gameover', 'hangar-panel']
 
 function hideAllPanels() {
   stopPlanePreview()
@@ -1347,6 +1347,7 @@ let boardRenderToken = 0
 
 async function renderBoard(tab = 'local') {
   const list = $('board-list')
+  if (!list) return
   const token = ++boardRenderToken
   list.innerHTML = ''
   document.querySelectorAll('[data-board]').forEach((t) =>

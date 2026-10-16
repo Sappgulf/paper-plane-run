@@ -6,8 +6,8 @@ const TIMING = Object.freeze({
 })
 
 // Keep lanes in the middle flight band — avoid extreme low that hugs the ground.
-const LANE_Y = Object.freeze({ '-1': 8, 0: 10, 1: 12 })
-const LANE_LABEL = Object.freeze({ '-1': 'LOW', 0: 'CENTER', 1: 'HIGH' })
+const LANE_Y = Object.freeze({ [-1]: 8, [0]: 10, [1]: 12 })
+const LANE_LABEL = Object.freeze({ [-1]: 'LOW', [0]: 'CENTER', [1]: 'HIGH' })
 
 // Generous, flyable openings. Values are half-extents of the safe rectangle.
 const PASSAGES = Object.freeze({

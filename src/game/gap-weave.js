@@ -207,6 +207,8 @@ export function clampAmplitudeToGap({
     Math.max(0, finite(gapWidth, 3)) * 0.5 -
     Math.max(0, finite(damageRadius))
   if (edge <= 0) return 0
+  // 0.72 clamp keeps a hazard's envelope out of the gap with a readable 28%
+  // margin so the hole stays visually open even at max drift.
   return Math.min(requested, (edge * 0.72) / span)
 }
 
@@ -224,7 +226,12 @@ export function gapClearanceAt({ x = 0, hazards = [], damageRadius = 1.2 } = {})
 
 /** Share of stars deliberately placed off the guaranteed gap. */
 export const OFF_GAP_STAR_CHANCE = 0.45
-/** Spare room a star needs beyond a hazard's envelope to be worth going for. */
+/**
+ * Spare room a star needs beyond a hazard's envelope to be worth going for.
+ * At 2.6 vs lethal radius 1.96 (scissors 1.6 + 0.7*0.52) the gap is 0.64 — a
+ * readable hairlane that rewards leaving the guaranteed gap without being a
+ * coin-flip.
+ */
 export const STAR_CLEARANCE = 2.6
 
 /**

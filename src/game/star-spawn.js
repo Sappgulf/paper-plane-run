@@ -29,9 +29,10 @@ export function planStarSpawns({
   }
   const clusterRoll = sample()
   // Gold Rush wealth cluster: when doubleStarBonus is present a portion of the
-  // cluster window becomes a 3-star cluster with a gold tint so the payout is
-  // visually distinct from Lucky Scrap's 2-star roll.
-  const tripleChance = Math.min(0.12, Math.max(0, Number(doubleStarBonus) || 0) * 0.45)
+  // cluster window becomes a 3-star cluster with a gold tint (#ffe9a8 at 1.18 scale)
+  // so the payout is visually distinct from Lucky Scrap's 2-star roll. 12% cap
+  // keeps the economy readable — at max Wealth (0.24 bonus) this is exactly 0.12.
+  const tripleChance = Math.min(0.12, Math.max(0, Number(doubleStarBonus) || 0) * 0.5)
   let rolls = 1
   let triple = false
   if (tripleChance > 0 && clusterRoll < tripleChance) {

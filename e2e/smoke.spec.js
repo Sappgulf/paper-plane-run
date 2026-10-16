@@ -51,6 +51,9 @@ test('menu boots and the hangar returns to the main menu', async ({ page }) => {
 })
 
 test('Journey route cards and the live HUD expose stamps and shortcut risk', async ({ page }) => {
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.getByRole('button', { name: /Begin Journey/ }))
@@ -218,6 +221,9 @@ test('Mission claims credit the wallet stars promised by the Hangar copy', async
 })
 
 test('Plane Collection previews the shared equipped silhouette across card states and flight', async ({ page }, testInfo) => {
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   const errors = collectConsoleErrors(page)
   await page.addInitScript(() => {
@@ -280,6 +286,9 @@ test('Plane Collection previews the shared equipped silhouette across card state
 })
 
 test('Plane Collection releases each preview WebGL context without losing gameplay', async ({ page }) => {
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   await openApp(page)
   await tap(page.getByRole('button', { name: /^Hangar/ }))
@@ -326,6 +335,10 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
 
 test('a delayed engine chunk shows preparation before flight starts', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test relies on (module
+  // interception / advanceTime); it skips itself there rather than failing on
+  // a missing hook. Run it under npm run test:e2e.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'needs the dev server (module path / advanceTime hooks)')
   test.slow()
   let engineRequests = 0
   let releaseEngine
@@ -349,6 +362,10 @@ test('a delayed engine chunk shows preparation before flight starts', async ({ p
 
 test('an aborted engine chunk offers a retry that can start flight', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test relies on (module
+  // interception / advanceTime); it skips itself there rather than failing on
+  // a missing hook. Run it under npm run test:e2e.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'needs the dev server (module path / advanceTime hooks)')
   test.slow()
   const engineWarnings = []
   page.on('console', (message) => {
@@ -380,6 +397,9 @@ test('an aborted engine chunk offers a retry that can start flight', async ({ pa
 
 test('a preloaded engine applies shell graphics settings to the live runtime', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
 
   await openApp(page)
@@ -409,6 +429,9 @@ test('a preloaded engine applies shell graphics settings to the live runtime', a
 
 test('replaying custom routes uses the latest editor layout', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   await openApp(page)
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function', null, { timeout: 15_000 })
@@ -628,6 +651,9 @@ test('live flight loop wires seeded upgrade spawning and gap fairness', async ({
 test('flight ticks reuse cached upgrade effects instead of reading storage every frame', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   await page.addInitScript(() => {
     const originalGetItem = Storage.prototype.getItem
     window.__upgradeStorageReads = 0
@@ -647,6 +673,9 @@ test('flight ticks reuse cached upgrade effects instead of reading storage every
 test('reduced motion keeps shield and phase feedback stable in the live loop', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   await page.addInitScript(() => {
     localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ reducedMotion: true, haptics: false }))
   })
@@ -666,6 +695,9 @@ test('reduced motion keeps shield and phase feedback stable in the live loop', a
 test('existing bosses expose deterministic readable phases and accessibility cues', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   test.setTimeout(240_000)
 
@@ -727,6 +759,9 @@ test('native performance pressure lowers visual cost without changing gameplay s
 })
 
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   const errors = collectConsoleErrors(page)
   await openApp(page)
@@ -846,6 +881,9 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
 test('mobile game-over puts retry before sharing and inside the viewport', async ({ page }, testInfo) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
   test.skip(testInfo.project.name !== 'mobile')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   await openApp(page, '/#test-gameover')
   await waitForGameText(page)
 
@@ -940,6 +978,9 @@ test('Aim feel selection survives a Hangar tab round trip', async ({ page }, tes
 })
 
 test('ground skim rewards flying the low lane and releases when you climb', async ({ page }, testInfo) => {
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   test.skip(testInfo.project.name !== 'desktop')
   const errors = collectConsoleErrors(page)
@@ -1036,6 +1077,9 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
 
 test('ground life dresses each zone without entering the flight corridor', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
+  // The production bundle strips the DEV-only hooks this test drives; it
+  // skips itself there rather than failing forty times on a missing hook.
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))

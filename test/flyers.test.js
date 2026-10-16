@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { FLYER_DEFS, RETIRED_FLYER_IDS, SEASONAL_FLYER_BIAS, flyerPoolForSeason } from '../src/game/flyers.js'
+import { HAZARD_PROFILES } from '../src/game/paper-art.js'
 
 describe('generated obstacle flyers', () => {
   const byId = Object.fromEntries(FLYER_DEFS.map((flyer) => [flyer.id, flyer]))
@@ -35,7 +36,7 @@ describe('generated obstacle flyers', () => {
     expect(flyerPoolForSeason(FLYER_DEFS, 'default').map((flyer) => flyer.weight)).toEqual(before)
   })
 
-  test('gives each new silhouette a distinct motion personality', () => {
+  test('gives each silhouette a distinct motion personality', () => {
     expect(byId.hawk.dive).toBe(true)
     expect(byId.balloon.floaty).toBe(true)
     expect(byId.kite.weave).toBe(true)
@@ -48,5 +49,25 @@ describe('generated obstacle flyers', () => {
       expect(byId[id].weight).toBeLessThan(0.5)
     }
     expect(byId.hawk.weight).toBeLessThan(byId.bird.weight)
+  })
+
+  test('every flyer kind has its own cut-paper silhouette profile', () => {
+    // The billboard renderer cuts each kind from paper-art; a missing
+    // silhouette silently renders "some other flyer", which is exactly the
+    // look-alike wall the per-kind art pass was made to prevent.
+    for (const flyer of FLYER_DEFS) {
+      const profile = HAZARD_PROFILES[flyer.id]
+      expect(profile, `${flyer.id} has no cut-paper silhouette`).toBeTruthy()
+      expect(profile.length, `${flyer.id} silhouette is not empty`).toBeGreaterThan(0)
+    }
+  })
+
+  test('retired ids never re-enter the seasonal pool', () => {
+    for (const seasonId of ['default', 'halloween', 'winter', 'valentine', 'spring', 'summer']) {
+      const ids = flyerPoolForSeason(FLYER_DEFS, seasonId).map((f) => f.id)
+      for (const retired of RETIRED_FLYER_IDS) {
+        expect(ids, `${retired} in ${seasonId}`).not.toContain(retired)
+      }
+    }
   })
 })

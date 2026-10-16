@@ -12,7 +12,9 @@
  * richer hazard mix — plus a *named* crosswind-style modifier so the long
  * tail reads as authored escalation rather than a silent number creep. Every
  * knob is capped at MAX_TIER, so the ceiling is a hard, tuned difficulty, not
- * an asymptote that eventually becomes unplayable.
+ * an asymptote that eventually becomes unplayable. Within a tier,
+ * endlessTierProgress smooth-lerps via progress*0.5 so HUD <250m and speed
+ * caps at 1.25 never jump at boundaries.
  */
 
 /** Tiers begin where wave-spacing compression stops doing work. */

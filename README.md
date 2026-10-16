@@ -52,6 +52,20 @@ flyable and stops being free. It ramps in after 240m, because a player should
 meet the cushion before they meet its price. See
 [`src/game/deck-lane.js`](src/game/deck-lane.js).
 
+### Enemies that read at a glance
+
+The seven evergreen flyers — bird, runaway balloon, loose kite, toy biplane,
+paper dragonfly, paper wasp and the rare diving hawk — each cut from paper with
+their own silhouette in [`src/game/paper-art.js`](src/game/paper-art.js), so a
+threat is nameable before it is reachable (the roster's movement signatures are
+only worth their tuning if the art names the mover). Every kind still shares
+the zone's reserved accent and the ink outline, so danger stays one learnable
+colour; only the silhouette carries the identity. Seasons re-cut the most
+frequent hazard rather than repainting the world — Halloween birds are bats,
+Snowfold flurries, Love Notes hearts — and re-weight the roster: spring sends
+the dragonflies, summer the kites and balloons. See
+[`src/game/flyers.js`](src/game/flyers.js).
+
 ### Fairness
 
 Every wave contains at least one continuous horizontal gap wide enough for the
@@ -148,6 +162,7 @@ and results share ivory stock, ink type, rust actions, and blue/sage cues.
 | **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
 | **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
+| **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, and season-weighted spawn bias |
 | **Boss gates** every 500m (scissors · wind tunnel · stapler jaws) |
 | **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |

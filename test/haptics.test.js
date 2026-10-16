@@ -57,6 +57,9 @@ describe('haptics native bridge', () => {
     const { Haptic: freshHaptic } = await import('../src/haptics.js')
     navigator.vibrate = vi.fn()
 
+    // The browser keeps vibrate silent until a real user activation, so the
+    // engagement the game would have received is simulated here first.
+    window.dispatchEvent(new Event('pointerdown'))
     freshHaptic.tap()
     expect(navigator.vibrate).toHaveBeenCalledTimes(1)
 
@@ -65,5 +68,18 @@ describe('haptics native bridge', () => {
 
     freshHaptic.tap()
     expect(navigator.vibrate).toHaveBeenCalledTimes(1)
+  })
+
+  test('stays silent on the web before a real user gesture engages the frame', async () => {
+    // A fresh EventTarget window: engagement has not been observed yet, which
+    // is the state the browser is in on first paint.
+    globalThis.window = new EventTarget()
+    vi.resetModules()
+    const { Haptic: freshHaptic } = await import('../src/haptics.js')
+    navigator.vibrate = vi.fn()
+
+    freshHaptic.tap()
+
+    expect(navigator.vibrate).not.toHaveBeenCalled()
   })
 })
