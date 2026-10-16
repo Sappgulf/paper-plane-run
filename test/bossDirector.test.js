@@ -82,6 +82,7 @@ describe('boss encounter director', () => {
     expect(shouldClearForBossApproach({ type: 'bird', z: 170 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'scissors', z: 20 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'building', z: 120 })).toBe(true)
+    expect(shouldClearForBossApproach({ type: 'updraft', z: 80 })).toBe(true)
     expect(shouldClearForBossApproach({ type: 'star', z: 80 })).toBe(false)
     expect(shouldClearForBossApproach({ type: 'bird', z: -10 })).toBe(false)
   })

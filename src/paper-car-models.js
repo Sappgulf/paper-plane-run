@@ -3,7 +3,7 @@ import * as THREE from 'three'
 export function roadVehicleVariant(zoneId, speciesId = '') {
   if (zoneId === 'aurora') return 'sled'
   if (zoneId === 'storm' || zoneId === 'sunset') return 'pickup'
-  if (zoneId === 'midnight' || speciesId === 'oncoming') return 'van'
+  if (zoneId === 'midnight' || zoneId === 'dawn' || speciesId === 'oncoming') return 'van'
   return 'sedan'
 }
 

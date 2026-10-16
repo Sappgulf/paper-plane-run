@@ -3,7 +3,7 @@ import { ROAD_LANES_X } from './ground-life.js'
 
 export const STREET_BLOCK_SIZE = 35
 export const STREET_WIDTH = 6.6
-const ROAD_INK = {city:'#687580',storm:'#5c536e',sunset:'#a07b5d',aurora:'#5c8fa3',midnight:'#35364d'}
+const ROAD_INK = {city:'#687580',storm:'#5c536e',sunset:'#a07b5d',aurora:'#5c8fa3',midnight:'#35364d',dawn:'#b89882'}
 /** Every shadow is a solid copy of its shape offset down-right; nothing is blurred. */
 const SHADOW_OFFSET = 4
 const PAVEMENT = '#ddd2ba', MARKING = '#fff1d6'

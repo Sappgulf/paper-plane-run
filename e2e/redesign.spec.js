@@ -118,7 +118,7 @@ test('all six paper landscapes render with readable flight UI and bounded scener
   test.slow()
   const errors = collectConsoleErrors(page)
   const readings = []
-  for (const zone of ['city', 'harbor', 'storm', 'sunset', 'aurora', 'midnight']) {
+  for (const zone of ['city', 'harbor', 'storm', 'sunset', 'aurora', 'midnight', 'dawn']) {
     await openApp(page, `/?scene=${zone}#test-landscape-${zone}`)
     await waitForGameText(page)
     await expect(page.locator('#hud')).toBeVisible()

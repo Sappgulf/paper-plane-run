@@ -69,9 +69,9 @@ export function getBossApproachSpeedScale({ bossZ } = {}) {
   return 1
 }
 
-/** Clear lethal clutter farther out so the approach lane stays empty. */
+/** Clear lethal clutter and visual-occluder columns farther out so the approach lane stays empty and the ring reads cleanly. */
 export function shouldClearForBossApproach({ type, z } = {}) {
-  return ['bird', 'scissors', 'building'].includes(type) && Number(z) >= 0 && Number(z) <= 180
+  return ['bird', 'scissors', 'building', 'updraft'].includes(type) && Number(z) >= 0 && Number(z) <= 180
 }
 
 /** Stars and recovery granted when a boss is successfully threaded. */

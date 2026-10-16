@@ -96,6 +96,7 @@ import { FLYER_DEFS, flyerPoolForSeason } from './game/flyers.js'
 import { setScreenAwake } from './native-shell.js'
 import { createBossArtOverlay, getBossBadgeLayout } from './game/boss-art.js'
 import {
+  BOSS_KINDS,
   bossBannerEmoji,
   bossCrashReason,
   bossKindForIndex,
@@ -103,7 +104,6 @@ import {
   describeBossPhase,
   getBossApproachSpeedScale,
   getBossClearReward,
-  getGateClearStars,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
@@ -3371,7 +3371,7 @@ function spawnBoss(z = 70, forcedKind = null) {
   clearBossApproachHazards()
   const encounterIndex = bossCount
   bossCount++
-  const kind = forcedKind && ['scissors', 'wind', 'stapler'].includes(forcedKind)
+  const kind = forcedKind && BOSS_KINDS.includes(forcedKind)
     ? forcedKind
     : bossKindForIndex(encounterIndex)
   const director = createBossEncounter({
@@ -3838,7 +3838,7 @@ const UPDRAFT_RADIUS = 3.4
 const UPDRAFT_STRENGTH = 9.5
 const UPDRAFT_BASE_Y = 5.2
 
-const UPDRAFT_PAPER = '#8fe0b5'
+const UPDRAFT_PAPER = '#9ce6c0'
 const UPDRAFT_SHADOW = '#2f7d62'
 const updraftGeo = new THREE.CylinderGeometry(2.2, 3.2, 9, 12, 1, true)
 const updraftCanvas = document.createElement('canvas')
@@ -3849,23 +3849,28 @@ const updraftInk = updraftCanvas.getContext('2d')
 function drawUpdraftChevron(ctx, x, y) {
   const arms = (dx, dy, ink) => {
     ctx.strokeStyle = ink
-    ctx.lineWidth = 12
+    ctx.lineWidth = 10
     ctx.lineJoin = 'miter'
     ctx.lineCap = 'butt'
     ctx.beginPath()
-    ctx.moveTo(x - 26 + dx, y + 8 + dy)
-    ctx.lineTo(x + dx, y - 14 + dy)
-    ctx.lineTo(x + 26 + dx, y + 8 + dy)
+    ctx.moveTo(x - 30 + dx, y + 10 + dy)
+    ctx.lineTo(x + dx, y - 16 + dy)
+    ctx.lineTo(x + 30 + dx, y + 10 + dy)
     ctx.stroke()
   }
   arms(4, 4, UPDRAFT_SHADOW)
   arms(0, 0, UPDRAFT_PAPER)
   ctx.fillStyle = UPDRAFT_SHADOW
-  ctx.fillRect(x - 1, y - 19, 2, 10)
+  ctx.fillRect(x - 1, y - 21, 2, 9)
 }
-// Hard-edged paper chevrons with transparent gaps; alphaTest keeps the column crisp.
-for (let y = 40; y < 256; y += 64) {
-  for (let x = 40; x < 256; x += 64) drawUpdraftChevron(updraftInk, x, y)
+// Two rows of three large chevrons with wide transparent gaps: the column
+// reads as air you are rising through, not a wall of green in the corridor.
+for (let row = 0; row < 3; row += 1) {
+  const y = 52 + row * 76
+  for (let col = 0; col < 3; col += 1) {
+    const x = 43 + col * 85
+    drawUpdraftChevron(updraftInk, x, y)
+  }
 }
 const updraftMap = new THREE.CanvasTexture(updraftCanvas)
 updraftMap.colorSpace = THREE.SRGBColorSpace
@@ -3888,12 +3893,10 @@ function createUpdraftColumn() {
   label.rotation.y = Math.PI
   label.position.y = 3.9
   group.add(shell,label)
-  for (const y of [-4,0]) {
-    const hoop = new THREE.Mesh(updraftHoopGeo,updraftHoopMat)
-    hoop.rotation.x = Math.PI/2
-    hoop.position.y = y
-    group.add(hoop)
-  }
+  const hoop = new THREE.Mesh(updraftHoopGeo,updraftHoopMat)
+  hoop.rotation.x = Math.PI/2
+  hoop.position.y = -4
+  group.add(hoop)
   group.userData.shell = shell
   return group
 }
@@ -6106,6 +6109,9 @@ function animateHazards(dt) {
       }
     }
     if (e.type === 'ring') e.mesh.rotation.z += dt * 1.5
+    if (e.type === 'updraft' && !settings.reducedMotion && e.mesh.userData.shell) {
+      e.mesh.userData.shell.rotation.y += dt * 0.55
+    }
   }
   for (let i = confetti.length - 1; i >= 0; i--) {
     const c = confetti[i]
