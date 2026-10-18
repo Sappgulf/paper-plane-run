@@ -194,6 +194,28 @@ const UPGRADE_CONTRACTS = [
     values: [0, 2, 4, 6].map((starBonus) => ({ starBonus })),
     directions: { starBonus: 'up' },
   },
+  {
+    id: 'lens',
+    labels: [
+      'Fog draws at base distance',
+      'Fog draw +12%',
+      'Fog draw +24%',
+      'Fog draw +36%',
+    ],
+    values: [0, 12, 24, 36].map((drawPercent) => ({ drawPercent })),
+    directions: { drawPercent: 'up' },
+  },
+  {
+    id: 'purse',
+    labels: [
+      'Skim tiers pay base stars',
+      'Skim tiers +1★',
+      'Skim tiers +2★',
+      'Skim tiers +3★',
+    ],
+    values: [0, 1, 2, 3].map((tierStars) => ({ tierStars })),
+    directions: { tierStars: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -377,6 +399,8 @@ describe('exact upgrade contracts', () => {
         if (contract.id === 'wealth') expect(effects.doubleStarBonus).toBeCloseTo(values.doubleStarPercent / 100)
         if (contract.id === 'reader') expect(effects.windWarningBonus).toBeCloseTo(values.warningBonusSeconds)
         if (contract.id === 'bounty') expect(effects.gateStarBonus).toBe(values.starBonus)
+        if (contract.id === 'lens') expect(effects.fogDistanceMul).toBeCloseTo(1 + values.drawPercent / 100)
+        if (contract.id === 'purse') expect(effects.skimTierStarBonus).toBe(values.tierStars)
       }
     }
   })

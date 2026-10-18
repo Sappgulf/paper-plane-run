@@ -53,6 +53,27 @@ describe('ground skim tiers', () => {
     ])
   })
 
+  test('adds the Skim Purse bonus to each tier-up and to its banner', () => {
+    let current = createGroundSkimState()
+    const bankedWithBonus = []
+    for (let elapsed = 0; elapsed < SKIM_TIER_SECONDS * 2 + 0.05; elapsed += 0.1) {
+      current = advanceGroundSkim(current, { low: true, dt: 0.1, tierBonusStars: 2 })
+      if (current.bankedStars > 0) bankedWithBonus.push({ tier: current.tier, stars: current.bankedStars, banner: current.banner })
+    }
+    expect(bankedWithBonus).toEqual([
+      { tier: 1, stars: 3, banner: 'Skim +3★' },
+      { tier: 2, stars: 4, banner: 'SKIMMING! +4★' },
+    ])
+  })
+
+  test('ignores a negative or malformed Skim Purse bonus', () => {
+    let current = createGroundSkimState()
+    for (let elapsed = 0; elapsed < SKIM_TIER_SECONDS; elapsed += 0.1) {
+      current = advanceGroundSkim(current, { low: true, dt: 0.1, tierBonusStars: -5 })
+    }
+    expect(current.bankedStars).toBe(1)
+  })
+
   test('caps the tier so a long hold cannot run away with the score', () => {
     const { state, banked } = skimFor(SKIM_TIER_SECONDS * (SKIM_MAX_TIER + 4))
     expect(state.tier).toBe(SKIM_MAX_TIER)

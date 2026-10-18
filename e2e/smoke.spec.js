@@ -128,6 +128,8 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       thermal: 2,
       reader: 2,
       bounty: 2,
+      lens: 2,
+      purse: 2,
     }))
   })
   await openApp(page)
@@ -644,6 +646,53 @@ test('live flight loop wires seeded upgrade spawning and gap fairness', async ({
   // The flare pays in distance and buys height back.
   expect(flared.distance - tucked.distance).toBeGreaterThan(30)
   expect(flared.player.y).toBeGreaterThan(tucked.player.y)
+
+  // Skim Purse: every tier-up banks base + the purse rank. The control run
+  // banks exactly the tier; the maxed run banks tier + 3 — same fixture, same
+  // hold, so the delta isolates the upgrade. Distinct queries force a reload;
+  // hash-only navigations reuse the running engine.
+  await openApp(page, '/?proof=control#test-upgrade-live-skim')
+  await waitForGameText(page)
+  const controlTierUps = []
+  for (let i = 0; i < 24; i += 1) {
+    const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    await page.evaluate(() => window.advanceTime(300))
+    const after = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    if (after.groundSkim.tier > before.groundSkim.tier) controlTierUps.push({ tier: after.groundSkim.tier, delta: after.stars - before.stars })
+    if (after.groundSkim.tier >= 3) break
+  }
+  expect(controlTierUps.length).toBeGreaterThanOrEqual(2)
+  for (const up of controlTierUps) expect(up.delta).toBe(up.tier)
+
+  await openApp(page, '/?upgrade-proof=purse-max#test-upgrade-live-skim')
+  await waitForGameText(page)
+  const purseTierUps = []
+  for (let i = 0; i < 24; i += 1) {
+    const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    await page.evaluate(() => window.advanceTime(300))
+    const after = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    if (after.groundSkim.tier > before.groundSkim.tier) purseTierUps.push({ tier: after.groundSkim.tier, delta: after.stars - before.stars })
+    if (after.groundSkim.tier >= 3) break
+  }
+  expect(purseTierUps.length).toBeGreaterThanOrEqual(2)
+  for (const up of purseTierUps) expect(up.delta).toBe(up.tier + 3)
+
+  // Fog Lens: the zone fog draws farther with the lens, same run otherwise.
+  // The tier-climb fixture never calls configureDevUpgradeProof, so the lens
+  // arrives through storage instead of the upgrade-proof query param.
+  await openApp(page, '/?proof=fog#test-tier-climb')
+  await waitForGameText(page)
+  await page.evaluate(() => window.advanceTime(300))
+  const fogBase = await page.evaluate(() => JSON.parse(window.render_game_to_text()).fogFar)
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ lens: 3 }))
+  })
+  await openApp(page, '/?proof=fog-lens#test-tier-climb')
+  await waitForGameText(page)
+  await page.evaluate(() => window.advanceTime(300))
+  const fogLensed = await page.evaluate(() => JSON.parse(window.render_game_to_text()).fogFar)
+  expect(fogLensed).toBeGreaterThan(fogBase)
+  expect(fogLensed).toBeCloseTo(fogBase * 1.36, -1)
 
   expect(errors).toEqual([])
 })

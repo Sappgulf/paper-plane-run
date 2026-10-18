@@ -158,6 +158,22 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.bounty,
   },
+  {
+    id: 'lens',
+    name: 'Fog Lens',
+    icon: '🔦',
+    blurb: 'Thick fog draws back 12% farther per level, so hidden hazards read sooner',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.lens,
+  },
+  {
+    id: 'purse',
+    name: 'Skim Purse',
+    icon: '👝',
+    blurb: 'Each skim tier-up banks one extra star per level',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.purse,
+  },
 ]
 
 function findUpgrade(id) {
@@ -336,6 +352,24 @@ const UPGRADE_FORMULAS = {
       gateStarBonus: starBonus,
     })
   },
+  lens(level) {
+    const drawPercent = level * 12
+    const label = level === 0
+      ? 'Fog draws at base distance'
+      : `Fog draw +${drawPercent}%`
+    return effect(label, { drawPercent }, {
+      fogDistanceMul: 1 + drawPercent / 100,
+    })
+  },
+  purse(level) {
+    const tierStars = level
+    const label = level === 0
+      ? 'Skim tiers pay base stars'
+      : `Skim tiers +${tierStars}★`
+    return effect(label, { tierStars }, {
+      skimTierStarBonus: tierStars,
+    })
+  },
 }
 
 function getUpgradeFormula(id, level) {
@@ -466,6 +500,8 @@ export function getUpgradeEffects() {
   const thermal = formulas.thermal
   const reader = formulas.reader
   const bounty = formulas.bounty
+  const lens = formulas.lens
+  const purse = formulas.purse
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
@@ -489,6 +525,8 @@ export function getUpgradeEffects() {
     ...thermal.runtime,
     ...reader.runtime,
     ...bounty.runtime,
+    ...lens.runtime,
+    ...purse.runtime,
     synergyGold,
     synergyFever,
     // Max fever + streak: a tiny extra fever duration (feel, not a new system).

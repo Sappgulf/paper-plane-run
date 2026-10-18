@@ -79,9 +79,10 @@ export function skimHudTier(tier) {
  * is returned fresh each call rather than mutated so a replayed frame gives an
  * identical result.
  */
-export function advanceGroundSkim(state, { low = false, dt = 0, enabled = true } = {}) {
+export function advanceGroundSkim(state, { low = false, dt = 0, enabled = true, tierBonusStars = 0 } = {}) {
   const previous = state || createGroundSkimState()
   const step = Math.max(0, Number(dt) || 0)
+  const bonus = Math.max(0, Math.floor(Number(tierBonusStars) || 0))
 
   if (!enabled) return createGroundSkimState()
 
@@ -89,14 +90,15 @@ export function advanceGroundSkim(state, { low = false, dt = 0, enabled = true }
     const seconds = previous.seconds + step
     const tier = skimTierFor(seconds)
     const tierUp = Math.max(0, tier - previous.tier)
+    const reward = tierUp > 0 ? skimTierReward(tier) + bonus : 0
     return Object.freeze({
       active: true,
       seconds,
       tier,
       grace: SKIM_GRACE_SECONDS,
-      bankedStars: tierUp > 0 ? skimTierReward(tier) : 0,
+      bankedStars: reward,
       tierUp,
-      banner: tierUp > 0 ? `${describeSkimTier(tier)} +${skimTierReward(tier)}★` : null,
+      banner: tierUp > 0 ? `${describeSkimTier(tier)} +${reward}★` : null,
     })
   }
 

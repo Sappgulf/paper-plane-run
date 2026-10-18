@@ -12,10 +12,11 @@ describe('product scope guard', () => {
   test('keeps the approved upgrade catalog exact and the boss set exclusive', () => {
     // Gust Guard and Thermal Sense are the approved late-tree expansion.
     // Gust Reader and Gate Bounty are the next approved round.
+    // Fog Lens and Skim Purse follow them.
     expect(UPGRADES.map(({ id }) => id)).toEqual([
       'handling', 'lift', 'glide', 'magnet', 'shield', 'luck', 'wingspan',
       'trail', 'turbo', 'guardian', 'flare', 'fever', 'streak', 'wealth',
-      'gust', 'thermal', 'reader', 'bounty',
+      'gust', 'thermal', 'reader', 'bounty', 'lens', 'purse',
     ])
     // The Punch joins the gate cycle — same procedural emblem contract.
     expect(Object.keys(BOSS_ART).sort()).toEqual(['punch', 'scissors', 'stapler', 'wind'])

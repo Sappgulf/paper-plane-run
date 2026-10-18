@@ -22,6 +22,8 @@ const UPGRADE_CARD_CONTRACTS = [
   { id: 'thermal', name: 'Thermal Sense', current: 'Updraft lift +24%', next: 'Updraft lift +36%' },
   { id: 'reader', name: 'Gust Reader', current: 'Gust warning +0.60s', next: 'Gust warning +0.90s' },
   { id: 'bounty', name: 'Gate Bounty', current: 'Gate clears +4★', next: 'Gate clears +6★' },
+  { id: 'lens', name: 'Fog Lens', current: 'Fog draw +24%', next: 'Fog draw +36%' },
+  { id: 'purse', name: 'Skim Purse', current: 'Skim tiers +2★', next: 'Skim tiers +3★' },
 ]
 
 async function waitForShell(page) {

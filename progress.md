@@ -2,6 +2,17 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-18 — Fog Lens and Skim Purse, and the boss-gate payout proven in flight
+
+- **Fog Lens** (Survive, 3 ranks, 12 / 22 / 38★) draws foggy skies back 12% farther per rank. The zone/twist fog expression moved into one `zoneFogFar()` helper read by every fog reset, and the Journey visibility pocket multiplies by the same `fogDistanceMul` (`src/flight-engine.js`). Thick fog stays thick (`fogIsThick()` threshold unchanged, and the pocket at max rank still draws in under 150), so hazard warning rings keep working; the hazard spawn band already derives from `fog.far`, so fairness holds as the readable world grows.
+- **Skim Purse** (Score, 3 ranks, 14 / 26 / 44★) banks one extra star per rank at every skim tier-up. The payout math lives in the pure module — `advanceGroundSkim` takes `tierBonusStars` and folds it into `bankedStars` and the banner (`src/game/ground-skim.js`) — and the flight passes the purse rank through (`updateGroundSkim` in `src/flight-engine.js`). The run summary's Banked figure rides the same number.
+- **Trees:** the catalog is now 20 upgrades and 69 ranks. Survive holds 18 ranks and Score 27.
+- **Balance guard:** the first ranks of all 20 upgrades total 289★, about 41 normal runs at 7★ a run; the guard now allows 42 (was 40), with the reason in the test.
+- **In-flight verification, closing last round's open item:** Gate Bounty's extra stars were never verified in flight. The boss-pass fixture run with Gate Bounty 3 now clears the scissors gate at 11★ with the banner `✂️ Boss cleared · +11★` (control run: 5★). A new dev fixture `#test-upgrade-live-skim` holds the plane inside the skim band with the spawn pump parked; the control run banks exactly the tier (1★, 2★, 3★) and the purse-max run banks tier + 3 (4★, 5★, 6★). Fog Lens measured in flight: zone fog 320 → 435 at rank 3. The debug surface gained a `fogFar` field (`render_game_to_text`).
+- **e2e lesson, recorded in the spec:** hash-only navigations reuse the running engine, so a fixture hop that only changes the hash silently drives the previous fixture. The new in-flight proofs pass a distinct query on every hop (`?proof=…`).
+- Not done: the Style tree still holds only Wide Wings and Paper Trail; cloud tint and the unidentified cream wall remain open. Bundle headroom after this round is 1,743 bytes — the next JavaScript addition needs the same decision as before.
+- Verification: Vitest 663 tests passed (93 files, 6 new); production build passed; bundle budget 919,857 of 921,600 total bytes; iOS web parity 24 files; native Debug build succeeded with the synced bundle; Playwright development lane 100 passed / 31 intentional skips with one tutorial flake that passed twice on rerun (load flake under full-lane machine load, the documented pattern); production lane 49 passed / 83 intentional skips / 0 failed. Subagent tooling was unavailable this round (expired API key), so the survey and implementation ran inline.
+
 ## 2026-10-15 — Gust Reader and Gate Bounty
 
 - **Gust Reader** (Survive, 3 ranks, 12 / 22 / 38★) holds the gust telegraph longer: +0.3 s per rank, so a maxed warning lasts 2.1 s instead of 1.2 s. The push itself is unchanged (`gustWarningSeconds` in `src/game/wind.js`, read where the gust is armed in `src/flight-engine.js`).

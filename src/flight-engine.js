@@ -3590,11 +3590,11 @@ function dispatchJourneyEncounter(event) {
   }
   case 'visibility-pocket':
     journeyVisibilityTimer = Math.max(journeyVisibilityTimer, Number(event.params?.duration) || 5)
-    scene.fog.far = Math.max(68, 145 * (1 - (Number(event.params?.density) || 0.75) * 0.45))
+    scene.fog.far = Math.max(68, 145 * (1 - (Number(event.params?.density) || 0.75) * 0.45)) * (activeUpgradeEffects.fogDistanceMul ?? 1)
     break
   case 'reveal':
     journeyVisibilityTimer = 0
-    scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
+    scene.fog.far = zoneFogFar()
     break
   case 'rival':
     notifications.show('🔺 Red Dart cuts across the aurora — hold your line!', {
@@ -4010,7 +4010,7 @@ function applyZone(z, announce) {
     scene.fog.far = 240
   } else {
     scene.fog.near = 150
-    scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
+    scene.fog.far = zoneFogFar()
   }
   hemi.color.setHex(z.hemiSky)
   hemi.groundColor.setHex(z.hemiGround)
@@ -4282,7 +4282,7 @@ function resetGame() {
     activeTwist = null
   }
   audio.setAltitudeTier(0)
-  scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
+  scene.fog.far = zoneFogFar()
 
   plane.position.set(0, planeY, 0)
   plane.rotation.set(0, 0, 0)
@@ -5798,6 +5798,7 @@ function updateGroundSkim(dt) {
     // made long skims impossible to hold. The boss passage already constrains
     // where you can fly; altitude stays the player's own call.
     enabled: state === 'playing',
+    tierBonusStars: activeUpgradeEffects.skimTierStarBonus ?? 0,
   })
   const wasActive = groundSkim.active
   groundSkim = next
@@ -5891,6 +5892,15 @@ function scrollWorld(move, lateralDrift = 0) {
  */
 function fogIsThick() {
   return scene.fog.far < 150
+}
+
+/**
+ * Normal (non-thick) fog draw distance: the zone or twist fog, scaled by the
+ * Fog Lens upgrade. Thick-fog bands multiply their own base by the same lens
+ * so the fog keeps its mood while the readable world grows with the rank.
+ */
+function zoneFogFar() {
+  return (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1) * (activeUpgradeEffects.fogDistanceMul ?? 1)
 }
 
 /**
@@ -6333,7 +6343,7 @@ function update(dt) {
   if (journeyVisibilityTimer > 0) {
     journeyVisibilityTimer = Math.max(0, journeyVisibilityTimer - dt)
     if (journeyVisibilityTimer === 0) {
-      scene.fog.far = (settings.reducedMotion ? 260 : 320) * (activeTwist?.fogMul ?? 1)
+      scene.fog.far = zoneFogFar()
     }
   }
   if (damageFlash > 0) {
@@ -7683,6 +7693,7 @@ window.render_game_to_text = () => JSON.stringify({
     ceiling: SKIM_CEILING,
     scoreMultiplier: skimScoreMultiplier(groundSkim.tier),
   },
+  fogFar: Math.round(scene.fog.far),
   groundLife: {
     zone: groundLifeZoneId,
     // Decorative only — asserted here so a regression that pushes scenery into
@@ -8019,6 +8030,28 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-cooldown') {
   windTimer = 999
   hudEl?.classList.remove('hidden')
   applyUpgradeVisuals()
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-skim') {
+  // Skim Purse proof: the plane sits inside the skim band with the spawn pump
+  // parked, so every tier-up banks base + the purse rank on schedule.
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  planeY = SKIM_CEILING - 1.2
+  mouseTarget.x = planeX
+  mouseTarget.y = planeY
+  plane.position.set(planeX, planeY, 0)
   simulationPaused = true
 }
 

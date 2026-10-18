@@ -60,6 +60,8 @@ const RUNTIME_ASSERTIONS = [
   { id: 'thermal', value: (runtime) => runtime.effects.updraftStrengthMul, direction: 'up' },
   { id: 'reader', value: (runtime) => runtime.effects.windWarningBonus, direction: 'up' },
   { id: 'bounty', value: (runtime) => runtime.effects.gateStarBonus, direction: 'up' },
+  { id: 'lens', value: (runtime) => runtime.effects.fogDistanceMul, direction: 'up' },
+  { id: 'purse', value: (runtime) => runtime.effects.skimTierStarBonus, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {
