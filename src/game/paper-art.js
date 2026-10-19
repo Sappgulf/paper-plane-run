@@ -262,9 +262,9 @@ const DRAGON_LOWER = [[-4, -2], [-24, 0], [-36, 7], [-29, 13], [-4, 10]]
 const DRAGON_BODY = [[-2.5, -20], [2.5, -20], [3.5, 16], [2, 28], [0, 36], [-2, 28], [-3.5, 16]]
 
 // Wasp: striped teardrop abdomen hanging off a round thorax, small head with
-// antennae, and one pair of long swept wings. The old cut had horn-like wings
-// and read as a torch.
-const WASP_WING = [[-5, -7], [-16, -25], [-30, -30], [-34, -24], [-24, -13], [-8, -3]]
+// antennae, and one pair of long slim wings swept out flat and straight. The
+// old cut curved the wings up like commas and they read as horns.
+const WASP_WING = [[-3, -6], [-18, -13], [-31, -19], [-34, -14], [-19, -8], [-4, -2]]
 const WASP_THORAX = circlePoints(0, -8, 8.5, 12)
 const WASP_HEAD = circlePoints(0, -22, 6, 12)
 const WASP_ANTENNA_L = stripPoints([-1.5, -27], [-6, -38], 1.8)
@@ -356,14 +356,18 @@ function rotatePoints(points, angle) {
   return points.map(([x, y]) => [x * cos - y * sin, x * sin + y * cos])
 }
 
-/** Halloween re-cut: a bat's scalloped wings, ears and body, same accent + ink. */
-const BAT_WING = [[-1, -12], [-6, -18], [-14, -14], [-24, -16], [-32, -6], [-26, 0], [-32, 8], [-22, 12], [-12, 6], [-4, 14]]
+/** Halloween re-cut in the dove family: round head with round ears, a folded
+ * diamond body, and membrane wings whose trailing edge carries the same two
+ * scalloped notches as the dove's feather cuts. Same accent + ink. */
+const BAT_WING = [[-2, -9], [-15, -14], [-28, -16], [-37, -14], [-30, -6], [-33, 1], [-24, 3], [-25, 9], [-7, 7]]
+const BAT_BODY = [[0, -9], [6.5, 1], [0, 17], [-6.5, 1]]
 const BAT_PIECES = Object.freeze([
-  piece(BAT_WING),
-  piece(mirrorX(BAT_WING)),
-  piece([[-3, -10], [-10, -24], [-12, -8]]),
-  piece(mirrorX([[-3, -10], [-10, -24], [-12, -8]])),
-  piece([[-4, -10], [4, -10], [5, 8], [0, 16], [-5, 8]], { crease: [0, -10, 0, 1] }),
+  piece(BAT_WING, { crease: [-2, -9, -24, -7] }),
+  piece(mirrorX(BAT_WING), { crease: [2, -9, 24, -7] }),
+  piece(circlePoints(-5.5, -24, 4.5, 10)),
+  piece(circlePoints(5.5, -24, 4.5, 10)),
+  piece(BAT_BODY, { crease: [0, -9, 0, 1] }),
+  piece(circlePoints(0, -17, 6.5, 12)),
 ])
 
 /** Snowfold re-cut: a six-spoke paper flake, spokes and side ticks as strips. */

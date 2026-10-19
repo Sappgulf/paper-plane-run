@@ -130,15 +130,46 @@ function collectConsoleErrors(page) {
 
 async function waitForGameText(page) {
   await expect.poll(
-    () => page.evaluate(() => typeof window.render_game_to_text),
+    () => page.evaluate(() => typeof window.render_game_to_text).catch((error) => {
+      // A cold Vite dev server can re-optimize dependencies and full-reload
+      // the page mid-boot, which destroys the execution context the poll is
+      // evaluating in. That is the environment reloading, not a missing hook:
+      // report a non-matching sample and let the poll re-read the new
+      // document instead of failing the test on the reload itself.
+      if (/Execution context was destroyed/.test(String(error?.message ?? error))) return 'navigating'
+      throw error
+    }),
     { timeout: 45_000 },
   ).toBe('function')
+}
+
+/**
+ * Boot a `#test-*` fixture state and make sure it actually took.
+ *
+ * The engine scrubs `?query` and `#hash` from the address bar right after its
+ * first boot (a `history.replaceState` deep-link cleanup), so an
+ * environment-triggered reload mid-test — a Vite dependency re-optimization,
+ * a recovered WebGL context — lands on a plain menu instead of the fixture
+ * state. Navigating again from the test re-applies the deep link, so retry
+ * the boot until the run is live rather than trusting the first arrival.
+ */
+async function openFixture(page, path) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await openApp(page, path)
+    await waitForGameText(page)
+    const state = await page.evaluate(() => {
+      try { return JSON.parse(window.render_game_to_text()).state } catch { return null }
+    }).catch(() => null)
+    if (state === 'playing') return
+  }
+  throw new Error(`fixture ${path} never reached a playing state`)
 }
 
 export {
   UPGRADE_CARD_CONTRACTS,
   collectConsoleErrors,
   openApp,
+  openFixture,
   tap,
   waitForGameText,
 }

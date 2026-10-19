@@ -191,33 +191,34 @@ function windPieces() {
 }
 
 /**
- * Stapler: side view with the jaws genuinely open — a navy base plate with an
- * anvil lip, the cream head hinged up behind it, and a fired amber staple
- * mid-air over the mouth. The old cut was a closed iron-shaped block.
- */
-/**
- * Stapler: side view with the jaws genuinely open — the cream head is a Γ
- * shape whose underside overhangs the navy anvil, leaving a wide rectangular
- * mouth with a fired amber staple inside it. The old cut was a closed
- * iron-shaped block with the staple perched on top.
+ * Stapler: side view with the jaws genuinely open — a navy base with an anvil,
+ * the cream head raised clear of it on a rear hinge, a hard navy mouth shadow
+ * under the jaw, and a fired amber staple nearly as wide as the mouth. The
+ * mouth gap and the staple are deliberately oversized: at 44-72px badge size
+ * everything else merges, and those two signatures are all that survive.
  */
 function staplerPieces() {
-  const base = [[-38, 12], [38, 12], [38, 22], [-38, 22]]
-  const anvil = [[8, 8], [38, 8], [38, 12], [8, 12]]
-  // Γ-shaped head: thick top bar over the whole mouth, a rear leg down to the
-  // base, and its underside lifted well clear of the anvil — that pale gap is
-  // what says "jaws open" from a distance.
-  const head = [[-38, -22], [36, -22], [36, -12], [10, -12], [10, 12], [-38, 12]]
-  // A U-shaped staple, bridge up, legs reaching for the anvil. Its ink is
-  // lightened so the amber still reads instead of collapsing into black.
-  const staple = [[14, 8], [14, -6], [34, -6], [34, 8], [30, 8], [30, -1], [18, -1], [18, 8]]
-  const hinge = circlePath([-29, 10], 4.5)
+  const base = [[-38, 16], [38, 16], [38, 26], [-38, 26]]
+  const anvil = [[6, 8], [38, 8], [38, 16], [6, 16]]
+  // The jaw's cast shadow: a hard navy sheet laid in the mouth right under
+  // the head's underside, offset down like every other hard shadow pass.
+  // Without it the open mouth is pale plate and the emblem reads as a box.
+  const mouthShadow = [[-24, -14], [32, -14], [32, -4], [-24, -4]]
+  // Γ-shaped head: a thick top bar over the whole mouth and a rear leg down
+  // to the base, its underside lifted well clear of the anvil.
+  const head = [[-36, -28], [32, -28], [32, -16], [-24, -16], [-24, 16], [-36, 16]]
+  // A U-shaped staple, bridge up, legs reaching for the anvil, sized to fill
+  // most of the mouth so the amber read survives 44px. Its ink is lightened
+  // so the amber still reads instead of collapsing into black.
+  const staple = [[-8, 4], [-8, -13], [16, -13], [16, 4], [10, 4], [10, -6], [-2, -6], [-2, 4]]
+  const hinge = circlePath([-30, 12], 4.5)
   return [
-    piece('primary', polyPath(base), creaseThrough([-38, 17], [38, 17])),
-    piece('primary', polyPath(anvil), creaseThrough([16, 10], [38, 10])),
-    piece('paper', polyPath(head), creaseThrough([-38, -17], [36, -17])),
-    piece('accent', polyPath(staple), creaseThrough([15, 1], [34, 1]), 'nonzero', 0.55),
-    piece('accent', hinge, creaseThrough([-29, 10], [-28, 9]), 'nonzero', 0.7),
+    piece('primary', polyPath(base), creaseThrough([-38, 21], [38, 21])),
+    piece('primary', polyPath(anvil), creaseThrough([6, 12], [38, 12])),
+    piece('primary', polyPath(mouthShadow), creaseThrough([-24, -9], [32, -9])),
+    piece('paper', polyPath(head), creaseThrough([-36, -22], [32, -22])),
+    piece('accent', polyPath(staple), creaseThrough([-8, -9.5], [16, -9.5]), 'nonzero', 0.55),
+    piece('accent', hinge, creaseThrough([-30, 12], [-29, 11]), 'nonzero', 0.7),
   ]
 }
 

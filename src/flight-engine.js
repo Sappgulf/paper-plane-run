@@ -142,6 +142,10 @@ import {
   isLethalObstacle,
   getSideBuildingSpread,
   getWaveSpacing,
+  getOpenChunkWeight,
+  planOpeningPresence,
+  OPEN_CHUNK_WEIGHT,
+  OPENING_CALM_METERS,
   normalizeControlAxes,
 } from './game/pacing.js'
 import { safeSetItem } from './game/safe-storage.js'
@@ -1880,11 +1884,20 @@ function paperCutGeometry(points, depth) {
   geo.translate(0, 0, -depth / 2)
   return geo
 }
-const scissorsMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
-const scissorsFoldMat = new THREE.MeshBasicMaterial({ color: 0xd9c9ab, side: THREE.DoubleSide })
+const scissorsMat = new THREE.MeshBasicMaterial({ color: 0xe6d5b4, side: THREE.DoubleSide })
+const scissorsFoldMat = new THREE.MeshBasicMaterial({ color: 0xc2a97f, side: THREE.DoubleSide })
 /** One blade, 1 unit wide and 1 unit tall, tapering to a point at the top. */
 const scissorsBladeGeo = paperCutGeometry([[-0.55, -0.5], [0.55, -0.5], [0.06, 0.5], [-0.22, 0.44]], 0.35)
-const scissorsFoldGeo = new THREE.BoxGeometry(0.06, 1, 0.05)
+const scissorsFoldGeo = new THREE.BoxGeometry(0.11, 1, 0.05)
+// A dark strap that wraps the foot of each blade: without it the tall cream
+// panels read as white sticks lost against the sky instead of paper posts.
+const scissorsBaseGeo = new THREE.BoxGeometry(1.3, 0.5, 0.44)
+// Ink strip tracing the blade's outer (tapered) edge, so the silhouette keeps
+// a hard line against the sky the whole way up. The taper runs from
+// (-0.55,-0.5) to (-0.22,0.44) in the 1-unit cut; under the blade's
+// non-uniform scale (bladeW × bladeH) the world tilt flattens to
+// atan2(0.33·bladeW, 0.94·bladeH), computed per gate below.
+const scissorsEdgeGeo = new THREE.BoxGeometry(0.11, 1, 0.06)
 
 function applySeasonVisuals() {
   season = seasonInfo(settings.forceSeason)
@@ -2310,6 +2323,9 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
  * 2. Hazards live OUTSIDE that rectangle (left/right or above/below).
  * 3. A bright safe ring is scaled to the real opening (not a tiny fixed torus).
  * 4. Art is a small badge above the hole — never a full-face cover.
+ * 5. The ring is two-tone cut paper (lit outer band, shaded inner rim) with a
+ *    hard ink outline peeking past its outer edge; every decorative layer
+ *    keeps the hole's clear opening identical to the collision passage.
  */
 const portalFrameMat = new THREE.MeshStandardMaterial({ color: 0xd9cbb8, roughness: 0.72, metalness: 0.05 })
 const portalAccentMats = {
@@ -2318,20 +2334,34 @@ const portalAccentMats = {
   stapler: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x92400e, emissiveIntensity: 0.28, roughness: 0.42 }),
 }
 
-function createSafePortalRing(color, halfWidth = 4, halfHeight = 3.7) {
+function createSafePortalRing(tone, halfWidth = 4, halfHeight = 3.7) {
   const group = new THREE.Group()
   group.name = 'safeRing'
-  // A flat paper hoop in the gate's tint with a hard ink offset behind it. No
-  // halo: the opening reads as a cut-out, not a light.
-  const hoopGeo = new THREE.TorusGeometry(1, 0.1, 10, 56)
-  const shadow = new THREE.Mesh(hoopGeo, bossInkMat)
+  // Cut-paper hoop: the band is split radially into a lit outer face and a
+  // shaded inner rim that butt at the same hard seam (radii 1.05/0.95 with a
+  // 0.05 tube tile the old single-tone 0.9..1.1 band exactly, so the clear
+  // opening is unchanged and the hole stays the brightest region on screen).
+  const litGeo = new THREE.TorusGeometry(1.05, 0.05, 10, 56)
+  const rimGeo = new THREE.TorusGeometry(0.95, 0.05, 10, 56)
+  const bandGeo = new THREE.TorusGeometry(1, 0.1, 10, 56)
+  const shadow = new THREE.Mesh(bandGeo, bossInkMat)
   shadow.scale.set(halfWidth, halfHeight, 1)
   shadow.position.set(0.1, -0.12, 0.02)
   shadow.renderOrder = 4
-  const hoop = new THREE.Mesh(hoopGeo, new THREE.MeshBasicMaterial({ color, depthTest: false }))
-  hoop.scale.set(halfWidth, halfHeight, 1)
-  hoop.renderOrder = 5
-  group.add(shadow, hoop)
+  // Hard ink outline: the same band a touch wider, parked just behind the
+  // face so it only peeks past the outer edge. Its inner edge stays under
+  // the band (0.945·scale > 0.9·scale), so it never crosses into the hole.
+  const outline = new THREE.Mesh(bandGeo, bossInkMat)
+  outline.scale.set(halfWidth * 1.05, halfHeight * 1.05, 1)
+  outline.position.set(0, 0, 0.05)
+  outline.renderOrder = 4
+  const rim = new THREE.Mesh(rimGeo, new THREE.MeshBasicMaterial({ color: tone.shade, depthTest: false }))
+  rim.scale.set(halfWidth, halfHeight, 1)
+  rim.renderOrder = 5
+  const lit = new THREE.Mesh(litGeo, new THREE.MeshBasicMaterial({ color: tone.lit, depthTest: false }))
+  lit.scale.set(halfWidth, halfHeight, 1)
+  lit.renderOrder = 5
+  group.add(shadow, outline, rim, lit)
   group.userData.halfWidth = halfWidth
   group.userData.halfHeight = halfHeight
   return group
@@ -2343,14 +2373,16 @@ function createBossPortalBase(kind, passage) {
   const halfHeight = passage?.halfHeight ?? 3.7
   const g = new THREE.Group()
 
+  // Boss tint, two paper tones deep enough to hold against a bright sky:
+  // lit outer band + shaded inner rim (the old pastel-only hoop washed out).
   const colors = {
-    scissors: { ring: 0xb8f3c8, emissive: 0x4ade80 },
-    wind: { ring: 0xbfdbfe, emissive: 0x60a5fa },
-    stapler: { ring: 0xfde68a, emissive: 0xfbbf24 },
-    punch: { ring: 0xfbcfe8, emissive: 0xf472b6 },
-  }[kind] || { ring: 0xb8f3c8, emissive: 0x4ade80 }
+    scissors: { lit: 0x7fd8a4, shade: 0x2e8b62 },
+    wind: { lit: 0x5ea7dd, shade: 0x2a6396 },
+    stapler: { lit: 0xf6c453, shade: 0xb87a1c },
+    punch: { lit: 0xf191bd, shade: 0xc4538a },
+  }[kind] || { lit: 0x7fd8a4, shade: 0x2e8b62 }
 
-  const safeRing = createSafePortalRing(colors.ring, halfWidth, halfHeight)
+  const safeRing = createSafePortalRing(colors, halfWidth, halfHeight)
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
 
@@ -2375,13 +2407,28 @@ function createBossGate(passage) {
   const shade = new THREE.Mesh(scissorsBladeGeo, bossInkMat)
   shade.scale.set(bladeW, bladeH, 1)
   // The camera sits at -Z, so the offset goes to +Z (further away) and the fold to -Z (the face).
-  shade.position.set(0.09, -0.1, 0.12)
+  shade.position.set(0.14, -0.14, 0.12)
   const cut = new THREE.Mesh(scissorsBladeGeo, scissorsMat)
   cut.scale.set(bladeW, bladeH, 1)
   const fold = new THREE.Mesh(scissorsFoldGeo, scissorsFoldMat)
   fold.scale.set(1, bladeH, 1)
   fold.position.set(bladeW * 0.18, 0, -0.19)
-  left.add(shade, cut, fold)
+  const base = new THREE.Mesh(scissorsBaseGeo, bossInkMat)
+  base.position.set(0, -bladeH * 0.5 + 0.5, 0)
+  // The inked outer edge traces the cut's tapered side in WORLD space: the
+  // 1-unit edge segment (0.33, 0.94) scales to (0.33·bladeW, 0.94·bladeH),
+  // so both the strip's length and its tilt come from that world vector.
+  // Both blades share the same local outer edge (the right one is a plain
+  // clone), so one placement serves both.
+  const edgeLen = Math.hypot(0.33 * bladeW, 0.94 * bladeH)
+  const edgeTilt = Math.atan2(0.33 * bladeW, 0.94 * bladeH)
+  const edge = new THREE.Mesh(scissorsEdgeGeo, bossInkMat)
+  edge.scale.set(1, edgeLen, 1)
+  // Half the strip breaks past the silhouette so the outer edge reads as a
+  // hard ink line against the sky, not a sliver inside the cream stock.
+  edge.position.set(-0.44 * bladeW, -0.03 * bladeH, -0.24)
+  edge.rotation.z = -edgeTilt
+  left.add(shade, cut, fold, base, edge)
   left.position.set(-halfWidth - bladeW * 0.7 - 0.4, 10, 0.1)
   const right = left.clone()
   right.position.x = halfWidth + bladeW * 0.7 + 0.4
@@ -2391,23 +2438,32 @@ function createBossGate(passage) {
   return g
 }
 
-const staplerJawMat = new THREE.MeshBasicMaterial({ color: 0x9dbcd3, side: THREE.DoubleSide })
+// Jaw stock sits near the zone's near tone so the pale original (0x9dbcd3)
+// stops dissolving into the sky; ink does the edge work, not a lighter fill.
+const staplerJawMat = new THREE.MeshBasicMaterial({ color: 0x6e91aa, side: THREE.DoubleSide })
 /** A stapler jaw: a paper plate with teeth on its inner (bottom) edge, 1 unit square. */
 const staplerJawGeo = paperCutGeometry([
   [-0.5, 0.5], [0.5, 0.5], [0.5, -0.5], [0.36, -0.5], [0.32, -0.16], [0.28, -0.5],
   [0.12, -0.5], [0.08, -0.16], [0.04, -0.5], [-0.04, -0.5], [-0.08, -0.16], [-0.12, -0.5],
   [-0.28, -0.5], [-0.32, -0.16], [-0.36, -0.5], [-0.5, -0.5],
 ], 0.45)
+const jawEdgeGeo = new THREE.BoxGeometry(1, 1, 1)
 
 /** A jaw is the plate with its ink offset; the animation moves the whole group. */
 function createStaplerJaw(width, height) {
   const jaw = new THREE.Group()
   const shade = new THREE.Mesh(staplerJawGeo, bossInkMat)
   shade.scale.set(width, height, 1)
-  shade.position.set(0.08, -0.1, 0.14)
+  shade.position.set(0.12, -0.13, 0.14)
   const plate = new THREE.Mesh(staplerJawGeo, staplerJawMat)
   plate.scale.set(width, height, 1)
-  jaw.add(shade, plate)
+  // Ink edge along the business end: a dark band wrapping the plate just
+  // above the teeth line, so the jaw front reads as inked paper, not a
+  // washed-out blue slab. Wraps front-to-back (deeper than the plate).
+  const edge = new THREE.Mesh(jawEdgeGeo, bossInkMat)
+  edge.scale.set(width * 1.02, height * 0.2, 0.5)
+  edge.position.set(0, -height * 0.06, 0)
+  jaw.add(shade, plate, edge)
   return jaw
 }
 
@@ -2430,21 +2486,24 @@ function createStaplerGate(passage) {
   return g
 }
 
-const windFanMat = new THREE.MeshBasicMaterial({ color: 0xa9c7dd, side: THREE.DoubleSide })
+// Fan blades take the city zone's near tone and the hub a step deeper: the
+// old pale steel (0xa9c7dd) sat in the same register as the sky and vanished.
+const windFanMat = new THREE.MeshBasicMaterial({ color: 0x7ea6cc, side: THREE.DoubleSide })
+const windHubMat = new THREE.MeshBasicMaterial({ color: 0x55809f, side: THREE.DoubleSide })
 const windDebrisMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
 /** A turbine blade: a tapered paper cut from the hub outward, 1 unit long. */
 const windBladeGeo = paperCutGeometry([[-0.2, 0], [0.2, 0], [0.07, 0.9], [-0.07, 0.9]], 0.06)
 
 function createFan(radius) {
   const g = new THREE.Group()
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.3, 10), windFanMat)
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.3, 10), windHubMat)
   hub.rotation.x = Math.PI / 2
   g.add(hub)
   for (let i = 0; i < 4; i++) {
     // Each blade casts a hard ink offset, then the paper stock sits on top of it.
     const shade = new THREE.Mesh(windBladeGeo, bossInkMat)
     shade.scale.set(radius, radius, 1)
-    shade.position.set(radius * 0.05, -radius * 0.04, 0.12)
+    shade.position.set(radius * 0.09, -radius * 0.08, 0.12)
     const blade = new THREE.Mesh(windBladeGeo, windFanMat)
     blade.scale.set(radius, radius, 1)
     const pivot = new THREE.Group()
@@ -2470,6 +2529,11 @@ function createWindTunnelGate(passage) {
   const debris = []
   for (let i = 0; i < 8; i++) {
     const d = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), windDebrisMat)
+    // Hard ink offset behind each scrap, so tumbling debris keeps an edge
+    // against the sky instead of dissolving into it.
+    const dShade = new THREE.Mesh(d.geometry, bossInkMat)
+    dShade.position.set(0.05, -0.06, 0.02)
+    d.add(dShade)
     // Orbit only OUTSIDE the safe opening.
     d.userData.orbit = rng() * Math.PI * 2
     d.userData.radius = halfWidth + 1.6 + rng() * 1.8
@@ -2485,10 +2549,13 @@ function createWindTunnelGate(passage) {
   return g
 }
 
-const punchHeadMat = new THREE.MeshBasicMaterial({ color: 0x9dbcd3, side: THREE.DoubleSide })
+// Press heads share the stapler's deep steel stock; a hard ink rim tube
+// replaces the washed-out pale disc edge (0x9dbcd3 against a bright sky).
+const punchHeadMat = new THREE.MeshBasicMaterial({ color: 0x6e91aa, side: THREE.DoubleSide })
 const punchDotMat = new THREE.MeshBasicMaterial({ color: 0xfff4dd, side: THREE.DoubleSide })
 /** A round press head: a flat disc with an ink offset, 1 unit diameter. */
 const punchHeadGeo = new THREE.CircleGeometry(0.5, 18)
+const punchRimGeo = new THREE.TorusGeometry(0.5, 0.035, 8, 28)
 
 /** A punch head is the disc with its ink offset; the animation bobs the group. */
 function createPunchHead() {
@@ -2497,7 +2564,11 @@ function createPunchHead() {
   shade.scale.setScalar(1.12)
   shade.position.set(0.07, -0.09, 0.13)
   const disc = new THREE.Mesh(punchHeadGeo, punchHeadMat)
-  head.add(shade, disc)
+  // Ink outline tube hugging the disc face — the head keeps a hard edge at
+  // every bob position.
+  const rim = new THREE.Mesh(punchRimGeo, bossInkMat)
+  rim.position.z = -0.06
+  head.add(shade, disc, rim)
   return head
 }
 
@@ -2519,7 +2590,12 @@ function createPunchGate(passage) {
   const dots = []
   for (let i = 0; i < 6; i++) {
     const dot = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), punchDotMat)
-    // Cut confetti drifts around the frame, never through the hole.
+    // Cut confetti drifts around the frame, never through the hole. Each dot
+    // carries a hard ink offset so it keeps its cut edge against the sky.
+    const dotShade = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), bossInkMat)
+    dotShade.scale.setScalar(1.14)
+    dotShade.position.set(0.04, -0.05, 0.02)
+    dot.add(dotShade)
     dot.userData.orbit = rng() * Math.PI * 2
     dot.userData.radius = halfWidth + 1.4 + rng() * 1.6
     dot.userData.speed = 1.2 + rng() * 1.2
@@ -3020,9 +3096,7 @@ function clearEntities() {
   }
 }
 
-const OPEN_CHUNK_WEIGHT = 0.42
-
-function pickHazardType(zone) {
+function pickHazardType(zone, openWeight = OPEN_CHUNK_WEIGHT) {
   const bias = zone.hazardBias
   // A tier's named modifier leans the mix on top of the zone's own bias — a
   // Scissor Storm over the Harbor still reads as the Harbor, just bladier.
@@ -3035,8 +3109,9 @@ function pickHazardType(zone) {
     ['bird', weightOf('bird', 0.22)],
     ['scissors', weightOf('scissors', 0.16)],
     // Open chunks give the sky room between flocks. Without them every chunk
-    // carried a hazard.
-    ['open', OPEN_CHUNK_WEIGHT],
+    // carried a hazard. The share drains when the sky has been empty too long
+    // (pacing.js famine guard), so an opening can't starve for 300m.
+    ['open', openWeight],
   ]
   const total = weights.reduce((s, w) => s + w[1], 0)
   let r = rng() * Math.max(total, 0.01)
@@ -3172,7 +3247,22 @@ function spawnChunk(z) {
     }
   }
 
-  const ht = recovering || early ? null : pickHazardType(zone)
+  const ht = recovering || early ? null : pickHazardType(zone, getOpenChunkWeight({ distance, lastHazardDistance }))
+  // Opening/presence smoothing (pacing.js): a scheduled flier owns the calm
+  // band, and famine forces presence after it. Journey legs are authored —
+  // excluded the same way the deck lane is. The boundary must stay in sync
+  // with the `early` gate above.
+  const wantsOpeningFlyer = !recovering && runKind !== 'journey' && planOpeningPresence({
+    random: rng,
+    distance,
+    lastOpeningHazardDistance,
+    lastHazardDistance,
+    earlyBoundary: OPENING_CALM_METERS,
+    gap: cfg.gap,
+    quantum: waveSpacing * cfg.gap * cfg.scoreMul,
+  })
+  if (wantsOpeningFlyer || ht === 'bird' || ht === 'scissors') lastHazardDistance = distance
+  if (wantsOpeningFlyer) lastOpeningHazardDistance = distance
   if (ht === 'building') {
     const w = 2 + rng() * 3
     const centerHeights = [5.2, 8.6, 12.2]
@@ -3253,8 +3343,10 @@ function spawnChunk(z) {
     }
   }
 
-  // Occasional mixed flyer even on non-bird chunks
-  if (rng() < 0.1 + ramp * 0.06) {
+  // Occasional mixed flyer even on non-bird chunks. In the calm opening band
+  // the scheduled presence owns this roll instead, so a starving seed still
+  // meets its first flier; the rng draw itself is unchanged.
+  if (early ? wantsOpeningFlyer : (wantsOpeningFlyer || rng() < 0.1 + ramp * 0.06)) {
     const def = pickFlyerKind()
     const flyer = createFlyer(def.id)
     flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4.4 + rng() * 10.2, flyerSpawnZ(z + 4 + rng() * 6))
@@ -3285,6 +3377,9 @@ function spawnChunk(z) {
       tier: tier.tier,
       gap: cfg.gap,
     })
+    // Deck hazards count as presence for the famine guard: a deck wave and a
+    // scheduled flier are both "the sky is not empty" signals.
+    if (deck.heights.length > 0) lastHazardDistance = distance
     for (const height of deck.heights) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
@@ -3894,6 +3989,11 @@ const UPDRAFT_CHANCE = 0.22
 /** Columns need this much run between them, so two never stack into a cheap ladder. */
 const UPDRAFT_MIN_SPACING = 140
 let lastUpdraftDistance = -Infinity
+// Opening/presence smoothing (pacing.js): the last distance that spawned a
+// flier, inside and outside the calm opening band, so the opening can carry a
+// scheduled slot and a famine can force presence after it.
+let lastHazardDistance = null
+let lastOpeningHazardDistance = null
 const UPDRAFT_RADIUS = 3.4
 /** Lift at the column's core, units/second — enough to out-climb a hard bank. */
 const UPDRAFT_STRENGTH = 9.5
@@ -4280,6 +4380,8 @@ function resetGame() {
   bossCount = 0
   distanceMilestones.clear()
   lastUpdraftDistance = -Infinity
+  lastHazardDistance = null
+  lastOpeningHazardDistance = null
   lastBoostSpawnDistance = -Infinity
   speedBoost = 0
   rescueLift = 0
@@ -7478,7 +7580,8 @@ function update(dt) {
               killedOnScreen: Math.abs(bossNdc.x) <= 1 && Math.abs(bossNdc.y) <= 1,
               gapY,
               passage: encounter?.passage ?? null,
-              fogFar: Math.round(scene.fog.far),
+  fogFar: Math.round(scene.fog.far),
+  cameraPullback: Number(bossCamPullback.toFixed(3)),
               distance: +distance.toFixed(2),
             }
           }
@@ -8136,6 +8239,11 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-spawn') {
   state = 'playing'
   spawnUnfold = 1
   invuln = 999
+  // Boot past the calm-opening band: the diorama's 32 chunks pre-spawn at a
+  // frozen distance, and chunk pacing reads that distance, so at 0 the whole
+  // pre-spawn sits inside the early gate and spawns nothing. 120m puts the
+  // chunk decisions in the real pacing regime the diorama stands for.
+  distance = 120
   nextSpawnZ = 1000
   windTimer = 999
   for (let index = 0; index < 32; index += 1) spawnChunk(40 + index * 4)
@@ -8157,9 +8265,39 @@ if (import.meta.env.DEV && devTestState === '#test-upgrade-live-collision') {
   nextSpawnZ = 1000
   windTimer = 999
   const scissors = createScissors()
-  scissors.position.set(devCollisionProof === 'hit' ? 0 : 2.3, planeY, difficulty.speedBase / 60)
+  // 'tail': the hazard's centre sits just behind the plane's centre — with the
+  // kill window closed past centre contact this must be a pass, not a death.
+  // 'hit': dead centre. Anything else: just outside the graze radius.
+  const tailProof = devCollisionProof === 'tail'
+  scissors.position.set(
+    tailProof ? 0 : devCollisionProof === 'hit' ? 0 : 2.3,
+    planeY,
+    tailProof ? -0.78 : difficulty.speedBase / 60,
+  )
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-upgrade-live-tucklow') {
+  // Tuck ground-cue proof: the plane starts inside the warning band, so
+  // holding Tuck must surface the forced release cue immediately.
+  configureDevUpgradeProof()
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1000
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  planeY = 3
+  mouseTarget.x = planeX
+  mouseTarget.y = planeY
+  plane.position.set(planeX, planeY, 0)
   simulationPaused = true
 }
 
