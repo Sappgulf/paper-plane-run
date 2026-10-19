@@ -33,6 +33,8 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     bounty: Object.freeze([16, 30, 52]),
     lens: Object.freeze([12, 22, 38]),
     purse: Object.freeze([14, 26, 44]),
+    mail: Object.freeze([10, 20, 36]),
+    patient: Object.freeze([12, 24, 42]),
   }),
   planes: Object.freeze({
     mint: 18,

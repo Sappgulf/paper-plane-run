@@ -6154,7 +6154,7 @@ function registerNearMiss(kind = null) {
   if (tier) comboHud.classList.add(tier)
   void comboHud.offsetWidth // restart the animation on rapid consecutive combos
   comboHud.classList.add('combo-pulse')
-  const nearMissPay = 5 * combo * 0.25 * (feverActive ? 2 : 1)
+  const nearMissPay = 5 * combo * 0.25 * (feverActive ? 2 : 1) + (activeUpgradeEffects.nearMissPayBonus ?? 0)
   comboFloat.textContent = `${describeNearMissFloat(combo)} · +${nearMissPay}m`
   comboFloat.classList.remove('fever-float')
   comboFloat.classList.toggle('combo-float-hot', combo >= 6)

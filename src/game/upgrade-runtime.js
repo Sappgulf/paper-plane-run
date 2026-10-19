@@ -179,10 +179,11 @@ export function getStreakTuning({ streakWindowBonus = 0 } = {}) {
 /**
  * Fever Focus also lengthens the near-miss chain used to *enter* fever.
  * The old 1.6s hold was shorter than a single compressed wave at cruise cap.
+ * Patient Fold adds its own seconds on top.
  */
-export function getComboHold({ feverDurationBonus = 0 } = {}) {
+export function getComboHold({ feverDurationBonus = 0, comboHoldBonus = 0 } = {}) {
   return {
-    windowSeconds: COMBO_BASE_WINDOW + positiveNumber(feverDurationBonus) * 0.22,
+    windowSeconds: COMBO_BASE_WINDOW + positiveNumber(feverDurationBonus) * 0.22 + positiveNumber(comboHoldBonus),
   }
 }
 

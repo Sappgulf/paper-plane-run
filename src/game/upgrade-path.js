@@ -37,7 +37,7 @@ export const UPGRADE_TREES = Object.freeze([
   Object.freeze({ id: 'handle', label: 'Handle', ids: Object.freeze(['handling', 'lift', 'glide', 'thermal']) }),
   Object.freeze({ id: 'survive', label: 'Survive', ids: Object.freeze(['shield', 'turbo', 'guardian', 'gust', 'reader', 'lens']) }),
   Object.freeze({ id: 'score', label: 'Score', ids: Object.freeze(['magnet', 'luck', 'fever', 'streak', 'wealth', 'flare', 'bounty', 'purse']) }),
-  Object.freeze({ id: 'style', label: 'Style', ids: Object.freeze(['wingspan', 'trail']) }),
+  Object.freeze({ id: 'style', label: 'Style', ids: Object.freeze(['wingspan', 'trail', 'mail', 'patient']) }),
 ])
 
 export function treeForUpgrade(upgradeId) {

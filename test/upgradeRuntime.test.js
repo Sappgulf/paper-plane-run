@@ -62,6 +62,8 @@ const RUNTIME_ASSERTIONS = [
   { id: 'bounty', value: (runtime) => runtime.effects.gateStarBonus, direction: 'up' },
   { id: 'lens', value: (runtime) => runtime.effects.fogDistanceMul, direction: 'up' },
   { id: 'purse', value: (runtime) => runtime.effects.skimTierStarBonus, direction: 'up' },
+  { id: 'mail', value: (runtime) => runtime.effects.nearMissPayBonus, direction: 'up' },
+  { id: 'patient', value: (runtime) => runtime.fever.comboHold, direction: 'up' },
 ]
 
 describe('upgrade runtime contracts', () => {

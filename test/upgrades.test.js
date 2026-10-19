@@ -216,6 +216,28 @@ const UPGRADE_CONTRACTS = [
     values: [0, 1, 2, 3].map((tierStars) => ({ tierStars })),
     directions: { tierStars: 'up' },
   },
+  {
+    id: 'mail',
+    labels: [
+      'Near misses pay base meters',
+      'Near misses +1m',
+      'Near misses +2m',
+      'Near misses +3m',
+    ],
+    values: [0, 1, 2, 3].map((nearMissMeters) => ({ nearMissMeters })),
+    directions: { nearMissMeters: 'up' },
+  },
+  {
+    id: 'patient',
+    labels: [
+      'Combo holds at base length',
+      'Combo hold +0.25s',
+      'Combo hold +0.50s',
+      'Combo hold +0.75s',
+    ],
+    values: [0, 0.25, 0.5, 0.75].map((holdBonusSeconds) => ({ holdBonusSeconds })),
+    directions: { holdBonusSeconds: 'up' },
+  },
 ]
 
 const MAXED_LEVELS = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -401,6 +423,8 @@ describe('exact upgrade contracts', () => {
         if (contract.id === 'bounty') expect(effects.gateStarBonus).toBe(values.starBonus)
         if (contract.id === 'lens') expect(effects.fogDistanceMul).toBeCloseTo(1 + values.drawPercent / 100)
         if (contract.id === 'purse') expect(effects.skimTierStarBonus).toBe(values.tierStars)
+        if (contract.id === 'mail') expect(effects.nearMissPayBonus).toBe(values.nearMissMeters)
+        if (contract.id === 'patient') expect(effects.comboHoldBonus).toBeCloseTo(values.holdBonusSeconds)
       }
     }
   })

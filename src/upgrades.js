@@ -174,6 +174,22 @@ export const UPGRADES = [
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.purse,
   },
+  {
+    id: 'mail',
+    name: 'Fan Mail',
+    icon: '📮',
+    blurb: 'Every near miss pays +1m extra per level — the crowd loves a close call',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.mail,
+  },
+  {
+    id: 'patient',
+    name: 'Patient Fold',
+    icon: '🧘',
+    blurb: 'A near-miss chain holds open +0.25s longer per level',
+    max: 3,
+    costs: FUTURE_PRICE_TABLE.upgrades.patient,
+  },
 ]
 
 function findUpgrade(id) {
@@ -370,6 +386,24 @@ const UPGRADE_FORMULAS = {
       skimTierStarBonus: tierStars,
     })
   },
+  mail(level) {
+    const nearMissMeters = level
+    const label = level === 0
+      ? 'Near misses pay base meters'
+      : `Near misses +${nearMissMeters}m`
+    return effect(label, { nearMissMeters }, {
+      nearMissPayBonus: nearMissMeters,
+    })
+  },
+  patient(level) {
+    const holdBonusSeconds = roundedEffectValue(level * 0.25)
+    const label = level === 0
+      ? 'Combo holds at base length'
+      : `Combo hold +${holdBonusSeconds.toFixed(2)}s`
+    return effect(label, { holdBonusSeconds }, {
+      comboHoldBonus: holdBonusSeconds,
+    })
+  },
 }
 
 function getUpgradeFormula(id, level) {
@@ -502,6 +536,8 @@ export function getUpgradeEffects() {
   const bounty = formulas.bounty
   const lens = formulas.lens
   const purse = formulas.purse
+  const mail = formulas.mail
+  const patient = formulas.patient
   const synergyGold = ['wingspan', 'trail'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   const synergyFever = ['fever', 'streak'].every((id) => getUpgradeLevel(id) >= findUpgrade(id).max)
   return {
@@ -527,6 +563,8 @@ export function getUpgradeEffects() {
     ...bounty.runtime,
     ...lens.runtime,
     ...purse.runtime,
+    ...mail.runtime,
+    ...patient.runtime,
     synergyGold,
     synergyFever,
     // Max fever + streak: a tiny extra fever duration (feel, not a new system).

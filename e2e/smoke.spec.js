@@ -130,6 +130,8 @@ test('Hangar upgrade cards show exact current, next, and max contracts', async (
       bounty: 2,
       lens: 2,
       purse: 2,
+      mail: 2,
+      patient: 2,
     }))
   })
   await openApp(page)

@@ -12,9 +12,15 @@ import { resolve } from 'node:path'
 // what a player downloads before the menu paints, which must stay small and is
 // the number worth defending. `totalBytes` guards the lazy engine chunk, where
 // gameplay features land, and is sized to leave real room to build.
+//
+// Total was raised from 900 KiB to 960 KiB when the catalog reached 20
+// upgrades across four trees plus two Journey chapters: the old limit left
+// under 2KB, which is not a working budget, it is a hard stop. 960 KiB is
+// still ~275 KB gzipped on the lazy chunk. The initial budget stays put —
+// the menu must keep painting fast.
 export const BUNDLE_BUDGET = Object.freeze({
   initialBytes: 160 * 1024,
-  totalBytes: 900 * 1024,
+  totalBytes: 960 * 1024,
 })
 
 // Entries pull in their statically imported chunks before the menu paints, so
