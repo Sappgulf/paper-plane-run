@@ -106,6 +106,10 @@ test('menu actions fit phone portrait and landscape without horizontal overflow'
       const label = await button.evaluate(node => ({ text: node.textContent, scroll: node.scrollWidth, width: node.clientWidth }))
       expect(label.scroll, `${viewport.width}×${viewport.height}: ${label.text} must fit its button`).toBeLessThanOrEqual(label.width + 1)
     }
+    if (testInfo.project.use.hasTouch) {
+      const touchTarget = await page.locator('#menu .diff-btn').first().evaluate(node => node.getBoundingClientRect().height)
+      expect(touchTarget, `${viewport.width}×${viewport.height}: difficulty buttons must meet the 44px touch minimum`).toBeGreaterThanOrEqual(44)
+    }
     await page.screenshot({ path: `output/polish-${testInfo.project.name}-menu-${viewport.width}.png` })
   }
 })

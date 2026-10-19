@@ -1659,7 +1659,13 @@ dust.visible = !settings.lowPower
 // pooled set of stretched motes streams across the field in the push
 // direction so a gust reads as weather, not as an unexplained shove.
 const WIND_STREAK_COUNT = 16
-const windStreakGeo = new THREE.BoxGeometry(2.4, 0.05, 0.05)
+// A hard-edged paper fleck: one thin triangle rather than a box bar, so a
+// gust reads as torn paper shreds streaming past instead of laser lines.
+const windStreakGeo = new THREE.BufferGeometry()
+windStreakGeo.setAttribute(
+  'position',
+  new THREE.BufferAttribute(new Float32Array([-1.2, 0, 0, 1.2, 0, 0, 0, 0.14, 0]), 3),
+)
 const windStreakMat = new THREE.MeshBasicMaterial({
   color: 0xe8f6ff, transparent: true, opacity: 0.42, depthWrite: false,
 })
@@ -1671,6 +1677,8 @@ for (let i = 0; i < WIND_STREAK_COUNT; i++) {
   scene.add(s)
   windStreaks.push(s)
 }
+// One shared material means one shared fade — driven in updateWindStreaks.
+let windStreakFade = 0
 function resetWindStreak(s, dir) {
   // Spawn on the upwind side so streaks fly with the push, past the plane.
   s.position.set(
@@ -1683,12 +1691,17 @@ function updateWindStreaks(dt, pushX, worldSpeed) {
   const active = Math.abs(pushX) > 0.01 && !settings.reducedMotion && !settings.lowPower
   const dir = Math.sign(pushX)
   const feverBoost = typeof feverActive !== 'undefined' && feverActive ? 1.8 : 1
+  // The pool shares one material, so the fade is pool-wide: ease opacity
+  // toward its target over ~0.15s and hide the lot below a visible floor,
+  // so streaks settle in and out instead of popping.
+  windStreakFade = THREE.MathUtils.clamp(windStreakFade + (active ? dt : -dt) / 0.15, 0, 1)
+  windStreakMat.opacity = windStreakFade * (feverBoost > 1 ? 0.62 : 0.42)
+  const visible = windStreakFade > 0.02
   for (const s of windStreaks) {
-    s.visible = active
+    s.visible = visible
     if (!active) continue
     s.position.x += dir * (9 + s.userData.jitter * 7) * dt * feverBoost
     s.position.z -= worldSpeed * 0.45 * dt
-    s.material.opacity = feverBoost > 1 ? 0.62 : 0.42
     if (Math.abs(s.position.x) > 30 || s.position.z < -12) resetWindStreak(s, dir)
   }
 }
@@ -3438,7 +3451,10 @@ function spawnBoss(z = 70, forcedKind = null) {
   zoneBanner.classList.remove('hidden')
   zoneBannerTimer = 3.6
   track('boss_start', { distance: Math.floor(distance), kind })
-  audio.windGust()
+  // The wind boss announces itself with weather; the metal bosses get the
+  // harsher klaxon their commit phase already uses.
+  if (kind === 'wind') audio.windGust()
+  else audio.bossWarning()
   Haptic.power()
 }
 
@@ -3940,6 +3956,11 @@ function applyFlarePayout(payout) {
     if (typeof audio.flare === 'function') audio.flare(payout.charge)
     else audio.nearMiss(Math.min(3, 1 + Math.floor(payout.charge * 3)))
     if (settings.haptics) Haptic.power()
+  } else if (!payout.clean) {
+    // The SAVED case: the climb still lands but pays nothing, so a soft tone
+    // marks the rescue without dressing it up as a win.
+    audio.shortcutGate()
+    if (settings.haptics) Haptic.tap()
   }
   bannerTimer = Math.max(bannerTimer, 0.9)
   powerBanner.textContent = payout.banner
@@ -6576,6 +6597,11 @@ function update(dt) {
       windActive = pendingWindActive
       windForce = pendingWindForce
       windBanner.textContent = `💨 Gust pushing ${windPushSide(windForce)}!`
+      // The push lands: a paper hiss, a haptic nudge, and a small camera
+      // punch so the gust's arrival is felt, not just read.
+      audio.paperPush()
+      if (settings.haptics) Haptic.wind()
+      shake = Math.max(shake, 0.08)
     }
   } else if (windActive > 0) {
     windActive -= dt
@@ -6598,8 +6624,11 @@ function update(dt) {
     if (settings.haptics) Haptic.wind()
     runStats.winds++
   }
-  // Gust weather: streaks stream with the push while it blows.
-  updateWindStreaks(dt, windPushX, speed)
+  // Gust weather: streaks stream with the push while it blows. During the
+  // telegraph the air already leans — a faint preview drifts in the push
+  // direction so the banner's promise is visible, not just readable.
+  const windPreviewX = windWarningTimer > 0 ? pendingWindForce * 0.3 : 0
+  updateWindStreaks(dt, windPushX || windPreviewX, speed)
 
   const ufx = activeUpgradeEffects
   const activeControlMode = mouseMode
@@ -6840,7 +6869,7 @@ function update(dt) {
   // faint lift to opacity at low altitude, and handling sharpens wisp response to
   // bank so a max-handling plane visibly flexes more even without measuring numbers.
   const wisp = scene.getObjectByName('ambientWisp')
-  const highG = Math.abs(bankState?.bank || 0) > 0.35 || tuckState?.diving || feverActive
+  const highG = Math.abs(bankState?.bank || 0) > 0.35 || tuckState?.phase === 'tucking' || feverActive
   if (wisp && renderQuality.secondaryEffects && (speed > cfg.speedBase * 1.15 || highG)) {
     wisp.visible = true
     for (let i = WISP_N - 1; i > 0; i--) wispPts[i].copy(wispPts[i - 1])

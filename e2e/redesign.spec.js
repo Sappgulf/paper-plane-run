@@ -11,7 +11,7 @@ test('workshop search keeps focus through a complete query and group filters rec
   await expect(page.locator('.upgrade-card')).toHaveCount(1)
   await tap(page.getByRole('button', { name: 'Clear search', exact: true }))
   await tap(page.getByRole('button', { name: 'Style', exact: true }))
-  await expect(page.locator('.upgrade-card')).toHaveCount(2)
+  await expect(page.locator('.upgrade-card')).toHaveCount(4)
   await search.fill('unfindable fold')
   await expect(page.locator('#upgrade-empty')).toBeVisible()
   await tap(page.getByRole('button', { name: 'Reset filters', exact: true }))

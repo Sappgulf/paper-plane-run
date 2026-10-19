@@ -33,6 +33,10 @@ export function createPaperCarGeometry({ variant = 'sedan', bodyColor = '#e96957
   surface([base[3],base[0],roof[0],roof[3]],glass)
   // The pale pillars define folded window apertures instead of a solid cabin box.
   for (const x of [-.64,.64]) box([.05,height-.24,.07],[x,(height+.26)/2,(front+back)/2],paint)
+  // Front and rear strips close the glass band at the cabin ends, same idiom.
+  for (const x of [-.58,.58]) for (const z of [front,back]) box([.05,height-.24,.07],[x,(height+.26)/2,z],paint)
+  // One hard fold seam across the hood, cut in the stock colour.
+  box([1.5,.014,.05],[0,.247,front+.3],stock)
   for (const z of [front,back]) box([1.32,.06,.06],[0,.28,z],stock)
   if (variant === 'pickup') {
     box([1.42,.05,1.43],[0,.27,-.84],stock)

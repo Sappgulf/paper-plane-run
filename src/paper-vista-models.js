@@ -43,6 +43,8 @@ export function createVistaGeometry(kind) {
     triangle([[.6,.7,-.6],[.6,.7,.6],[0,1.12,.6]],.83)
     triangle([[.6,.7,-.6],[0,1.12,.6],[0,1.12,-.6]],.83)
     for (const x of [-.28,.28]) box([.18,.22,.025],[x,.43,-.515],.3)
+    // The camera sweeps past at x=±44, so the windows mirror onto the ±x faces.
+    for (const x of [-.515,.515]) for (const z of [-.28,.28]) box([.025,.22,.18],[x,.43,z],.3)
     box([.17,.35,.025],[0,.175,-.515],.52)
     if (kind === 'windmill') {
       box([.1,1.4,.1],[0,1.15,-.65],.55)

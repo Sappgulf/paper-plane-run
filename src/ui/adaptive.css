@@ -134,12 +134,7 @@ html.a11y-reduced-motion .hud-card.altitude-hud[data-alt="critical"] { animation
 
 /* Field notes and flight controls share the same ink-on-stock material. */
 :root {
-  --focus-ink: #245d7a;
   --paper-edge: #dccfb8;
-}
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visible {
-  outline: 3px solid var(--focus-ink);
-  outline-offset: 3px;
 }
 #c:focus { outline: none; }
 button, input, select { -webkit-tap-highlight-color: transparent; }

@@ -415,6 +415,10 @@ html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !i
   font-size: calc(var(--hud-fs-value) * 0.82); letter-spacing: -1px;
 }
 .icon-btn.install-btn { right: max(110px, calc(env(safe-area-inset-right) + 102px)); }
+@media (pointer: coarse) {
+  /* --btn-size floors at 32px on short viewports; touch needs the 44px minimum. */
+  .icon-btn { min-width: 44px; min-height: 44px; }
+}
 
 #pause-overlay {
   position: absolute; inset: 0; z-index: 26;
@@ -753,6 +757,7 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 #sw-update-btn {
   border: 0; border-radius: 999px;
   padding: 8px 14px;
+  min-height: 44px;
   font: inherit; font-weight: 900;
   background: #fbbf24; color: #2c211f;
   cursor: pointer;

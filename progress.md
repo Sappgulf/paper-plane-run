@@ -2,6 +2,32 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-18 — Budget raised to 960 KiB, then a flight/art/menus polish sweep
+
+Direction: “upgrade budget, then lets improve everything in the game further, flight, assets etc, all menus.”
+
+- **Budget:** total JavaScript raised 900 → 960 KiB (983,040 bytes) with the rationale in the script: at 20 upgrades, four trees and two Journey chapters the old limit left under 2KB — a hard stop, not a working budget. 960 KiB uncompressed is still ~275 KB gzipped on the lazy engine chunk. The critical-path budget stays at 160 KiB; the menu must keep painting fast. This round spent ~2.5 KB of the new room.
+- **Flight feel** (all in `src/flight-engine.js`, found by a parallel survey):
+  - The tuck now lights the wingtip wisps: the check tested `tuckState?.diving`, a field that does not exist, so the trail documented as “active at tuck dive” never fired. It tests `tuckState.phase === 'tucking'` now.
+  - A gust lands with feeling: when the telegraph expires the push now plays the unused `audio.paperPush()`, fires `Haptic.wind()` again, and gives the camera a small punch (`shake ≥ 0.08`).
+  - The telegraph is physical: during the whole warning the streak pool drifts faintly in the push direction (`pendingWindForce × 0.3`), so “Gust pushing left…” is visible before it is true.
+  - A blown-tuck *save* is no longer silent: the SAVED branch (clean === false) plays a soft tone and a tap haptic; the clean branch keeps its full payout fanfare.
+  - Bosses announce correctly: the wind boss keeps its whoosh; scissors, stapler and the Punch get the harsher `audio.bossWarning()` their commit phase already used.
+  - Gust streaks are paper flecks now — a hard-edged triangle shard instead of a box bar — and the shared material fades in and out over ~0.15 s instead of popping (pool-wide fade; one material, no clones).
+- **Assets** (art rule: fibre grain + fold crease + hard shadows):
+  - Building walls carry a fold crease across the wall plane (between window rows, never across glass) and a dark 2px ink plinth under the skirt highlight — `paper:wall:<zone>` in `src/game/paper-world-art.js`.
+  - Vista houses show windows on the ±x faces the camera actually passes at x = ±44, not just the −z face (`src/paper-vista-models.js`).
+  - Mountains, ridges and vistas ride one shared paper-grain texture (128² canvas, planar UVs projected onto the un-UV'd terrain geometry) — the largest colour planes on screen follow the grain rule for exactly one texture, inside the scene-cost caps (`src/paper-landscape-renderer.js`).
+  - Cars break the front-to-back glass stripe with front/rear pillar strips and a stock-colour fold seam across the hood (`src/paper-car-models.js`).
+- **Menus** (44px touch contract + purge):
+  - Flight corner buttons (pause/mute) reach 44px on coarse pointers even in phone landscape, where the clamp used to floor at 32px.
+  - Difficulty and control buttons are honestly 44px on touch now: the later 40px override was bumped and the two setup rows pay for it out of the actions grid's row gaps, so the menu column height stays put. “menu actions fit” gained a coarse-pointer height assertion on the touch project.
+  - The death-screen polaroid lost its blurred shadow for a hard `3px 4px 0` ink offset — the last blurred shadow on a game-over card.
+  - The service-worker update banner button is a 44px target.
+  - Dead theme layers purged after verifying each supersession in the cascade (flight → screens → journey → adaptive → club): the menu card's blurred `backdrop-filter` and blurred shadow, the first cta-main paint block (its layout properties stay; club.css re-paints), the first `.tab.active`, the first `.u-buy` paint (its `min-height` floor stays live), the adaptive focus-ring block and orphaned `--focus-ink`, and the skin-card focus ring. Two media-scoped adaptive cta blocks were left alone — provably dead but too cheap to be worth the risk.
+- **Style tree:** Fan Mail (+1m per near miss per rank) and Patient Fold (combo holds +0.25s per rank) landed in the previous commit on a clean tree, then this sweep ran on top; the redesign Style-filter count is now 4.
+- Verification: Vitest 667 tests passed (93 files); production build passed; bundle budget 922,378 of 983,040; iOS web parity 24 files; native Debug build succeeded; Playwright development lane 101 passed / 31 intentional skips / 0 failed; production lane 49 passed / 83 intentional skips / 0 failed. Screenshots inspected: city, harbor, sunset scenes, mid-flight with the boss ring, menu at 1280 / 320 / 844×390.
+
 ## 2026-10-18 — Fog Lens and Skim Purse, and the boss-gate payout proven in flight
 
 - **Fog Lens** (Survive, 3 ranks, 12 / 22 / 38★) draws foggy skies back 12% farther per rank. The zone/twist fog expression moved into one `zoneFogFar()` helper read by every fog reset, and the Journey visibility pocket multiplies by the same `fogDistanceMul` (`src/flight-engine.js`). Thick fog stays thick (`fogIsThick()` threshold unchanged, and the pocket at max rank still draws in under 150), so hazard warning rings keep working; the hazard spawn band already derives from `fog.far`, so fairness holds as the readable world grows.

@@ -9,6 +9,33 @@ function polygon(ctx, points, color) {
   ctx.fill()
 }
 
+/** Darkens a hex colour toward black. Shadows reuse the shape's own hue. */
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16)
+  const channel = shift => Math.round(((n >> shift) & 255) * amount)
+  return `rgb(${channel(16)},${channel(8)},${channel(0)})`
+}
+
+/** Mixes a hex colour toward white for the light edge of a fold. */
+function tint(hex, amount) {
+  const n = parseInt(hex.slice(1), 16)
+  const channel = shift => {
+    const value = (n >> shift) & 255
+    return Math.round(value + (255 - value) * amount)
+  }
+  return `rgb(${channel(16)},${channel(8)},${channel(0)})`
+}
+
+/** A paper fold is a hard light edge with a hard dark edge beside it. */
+function fold(ctx, x, y, len, vertical, light, dark) {
+  ctx.fillStyle = light
+  if (vertical) ctx.fillRect(x, y, 1, len)
+  else ctx.fillRect(x, y, len, 1)
+  ctx.fillStyle = dark
+  if (vertical) ctx.fillRect(x + 1, y, 1, len)
+  else ctx.fillRect(x, y + 1, len, 1)
+}
+
 /** Original paper-world plates, drawn once per zone and cached by the renderer. */
 export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512, canvasFactory } = {}) {
   const canvas = canvasFactory?.() || (typeof document !== 'undefined' ? document.createElement('canvas') : null)
@@ -62,8 +89,13 @@ export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512
       ctx.fillStyle = p.paper; ctx.fillRect(x+w*.064,y,2,h*.1)
       ctx.fillRect(x,y+h*.048,w*.14,2)
     }
+    // One hard fold across the wall plane, riding the seam between window rows.
+    fold(ctx, 0, Math.round(h*.4), w, false, tint(p.paper,.6), shade(p.paper,.72))
     ctx.strokeStyle = p.groundAlt; ctx.lineWidth = 2
     ctx.beginPath(); ctx.moveTo(0,h*.98); ctx.lineTo(w,h*.98); ctx.stroke()
+    // Dark ink base under the light skirt so the plinth reads at the wall's foot.
+    ctx.fillStyle = shade(p.paper,.4)
+    ctx.fillRect(0, Math.round(h*.98)+1, w, 2)
   } else if (zoneId === 'dawn') {
     // Dew meadows: wide mowing bands catching the first light, with dew
     // glints scattered along the band seams.
