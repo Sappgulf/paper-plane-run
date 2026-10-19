@@ -39,5 +39,5 @@ playwright-report/
 test-results/
 
 # macOS duplicate-copy junk ("file 2.ext") left by Finder/copy operations.
-\ *" 2"*
-**/*" 2"*
+**/*\ 2.xcodeproj/
+**/*\ 2.xcworkspace/
