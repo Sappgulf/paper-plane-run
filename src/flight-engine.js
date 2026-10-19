@@ -437,6 +437,7 @@ function checkHazardTelegraph() {
 }
 const _edgeNdc = new THREE.Vector3()
 const _focusNdc = new THREE.Vector3()
+const _bossGapNdc = new THREE.Vector3()
 // Reused candidate slots so the per-frame pass allocates nothing; `count`
 // marks the live prefix and the sort only ever touches that prefix.
 const edgeCandidates = []
@@ -881,6 +882,10 @@ const devBossPass = import.meta.env.DEV
   : false
 function configureDevUpgradeProof(proof = devUpgradeProof) {
   if (!import.meta.env.DEV) return
+  // No ?upgrade-proof= param — leave stored levels alone. Writing {} here used
+  // to wipe levels a DEV probe had pre-set in localStorage. An explicit
+  // ?upgrade-proof= value (including a bare '?upgrade-proof=') still resets.
+  if (proof === null || proof === '') return
   let levels = {}
   if (proof === 'max') {
     levels = Object.fromEntries(UPGRADES.map((upgrade) => [upgrade.id, upgrade.max]))
@@ -1019,6 +1024,17 @@ const CAM_AIM_Z = 13
 const CAM_FOLLOW_X = 1
 const CAM_EASE_LATERAL = 0.0005
 const CAM_EASE_VERTICAL = 1e-7
+// Boss approach pullback. The portrait half-frustum at the gate plane (≈ ±3.9)
+// is narrower than the passage's lethal half-width plus grace (±4.75–5.35), and
+// the lateral follow lag is ≤0.4 — so once |plane x| passes ~4 the whole gate
+// sits off-screen (16/16 probe boss kills had the gate fully off-frustum).
+// While a boss gate is ahead the chase eases out to BOSS_CAM_PULLBACK × its
+// normal distance with a slight lift, using the same dt-power easing idiom as
+// the lateral axes (~65% there at 0.5s, ~88% at 1s). Inactive without a boss.
+const BOSS_CAM_PULLBACK = 1.55
+const BOSS_CAM_EASE = 0.12
+const BOSS_CAM_LIFT = 1.4
+let bossCamPullback = 1
 
 // A soft generic room environment so metallic/reflective materials (scissors
 // blades, power crystals, upgrade halos) pick up real reflections instead of
@@ -2868,6 +2884,11 @@ let tuckPointerHeld = false
 let tuckFxForFrame = tuckFlightModifiers(null)
 /** The Tuck: hold to trade height for speed, release to flare. */
 let tuckState = createTuckState()
+// Deep-tuck ground cue: while tucked below this height the release cue is
+// forced (and a warning tick plays once per entry). A 76 m/s tuck pull-down
+// from y≈3.4 beat the plain release cue in the death probe.
+const TUCK_GROUND_WARN_HEIGHT = 4
+let tuckGroundCueArmed = true
 /** Forward speed currently borrowed from height. Repaid by climbing. */
 let diveSpeed = 0
 /** Latest altitude read, so the HUD and the ground check share one source. */
@@ -3026,6 +3047,29 @@ function pickHazardType(zone) {
   return null
 }
 
+/**
+ * Flyer spawn depth. The spawn band normally sits at the readable fog depth,
+ * but every flyer placement goes through this guard so a fast run can never
+ * materialise a bird/scissors closer than speed × FLYER_MIN_DEPTH_SPEED_FACTOR
+ * ahead of the plane (~30 units at cruise, ~34+ at tier cap) — and never deeper
+ * than the readable fog depth, where a silhouette is mush (fogReadabilityDepth).
+ * Boss/updraft/star placement is deliberately untouched; this is the flyer
+ * spacing rule and it is a pure function of (baseZ, speed, fog) so it is
+ * testable in isolation.
+ */
+const FLYER_MIN_DEPTH_SPEED_FACTOR = 0.45
+
+function minFlyerSpawnDepth(speedNow = speed) {
+  return Math.max(0, Number(speedNow) || 0) * FLYER_MIN_DEPTH_SPEED_FACTOR
+}
+
+function flyerSpawnZ(baseZ, speedNow = speed) {
+  return Math.min(
+    Math.max(baseZ, minFlyerSpawnDepth(speedNow)),
+    fogReadabilityDepth(),
+  )
+}
+
 function spawnChunk(z) {
   if (runKind === 'tutorial') return
   if (runKind === 'layout' && layoutPlay) return
@@ -3158,7 +3202,7 @@ function spawnChunk(z) {
       const flyer = createFlyer(def.id)
       const anchorX = safeAirX(6 * cfg.gap, def.radius)
       const anchorY = 5 + rng() * 8.5
-      flyer.position.set(anchorX, anchorY, z + i * 2.5)
+      flyer.position.set(anchorX, anchorY, flyerSpawnZ(z + i * 2.5))
       scene.add(flyer)
       // Motion is an offset from this anchor, resolved fresh each frame from
       // the clock. The lateral amplitude is clamped against the reserved lane
@@ -3196,14 +3240,14 @@ function spawnChunk(z) {
     }
   } else if (ht === 'scissors') {
     const sc = createScissors()
-    sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z)
+    sc.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, flyerSpawnZ(z))
     scene.add(sc)
     entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenterForChunk })
     // Scissor squadron — a rarer second blade further down the lane, more
     // likely to appear the deeper into a run you get (altitude tiers lean in).
     if (rng() < 0.12 + ramp * 0.22 + tier.tier * 0.02) {
       const sc2 = createScissors()
-      sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, z + 6 + rng() * 4)
+      sc2.position.set(safeAirX(4.5 * cfg.gap, 1.6), 4.4 + rng() * 10.2, flyerSpawnZ(z + 6 + rng() * 4))
       scene.add(sc2)
       entities.push({ mesh: sc2, type: 'scissors', radius: 1.6, passageGapX: gapCenterForChunk })
     }
@@ -3213,7 +3257,7 @@ function spawnChunk(z) {
   if (rng() < 0.1 + ramp * 0.06) {
     const def = pickFlyerKind()
     const flyer = createFlyer(def.id)
-    flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4.4 + rng() * 10.2, z + 4 + rng() * 6)
+    flyer.position.set(safeAirX(5.5 * cfg.gap, def.radius), 4.4 + rng() * 10.2, flyerSpawnZ(z + 4 + rng() * 6))
     scene.add(flyer)
     entities.push({
       mesh: flyer,
@@ -3245,7 +3289,7 @@ function spawnChunk(z) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
       const anchorX = safeAirX(5 * cfg.gap, def.radius)
-      flyer.position.set(anchorX, height, z + 3 + rng() * 5)
+      flyer.position.set(anchorX, height, flyerSpawnZ(z + 3 + rng() * 5))
       // Deck hazards hold their height: a vertical swing down here would put
       // the envelope through the floor, where the run already ends.
       flyer.userData.anchorX = anchorX
@@ -3495,7 +3539,7 @@ function spawnMiniGauntlet(z = 60) {
     })
     plan.xs.forEach((x, i) => {
       const sc = createScissors()
-      sc.position.set(x, 8 + rng() * 6, z + i * 9)
+      sc.position.set(x, 8 + rng() * 6, flyerSpawnZ(z + i * 9))
       scene.add(sc)
       entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenter })
       placements.push({ x, radius: 1.6 })
@@ -3513,7 +3557,7 @@ function spawnMiniGauntlet(z = 60) {
     plan.xs.forEach((x, i) => {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
-      flyer.position.set(x, 6 + rng() * 12, z + i * 3.5 + (rng() - 0.5) * 1.5)
+      flyer.position.set(x, 6 + rng() * 12, flyerSpawnZ(z + i * 3.5 + (rng() - 0.5) * 1.5))
       scene.add(flyer)
       entities.push({
         mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageGapX: gapCenter,
@@ -4175,6 +4219,7 @@ function resetGame() {
   resetStick()
   tuckPointerHeld = false
   tuckState = createTuckState()
+  tuckGroundCueArmed = true
   tuckFxForFrame = tuckFlightModifiers(null)
   bankState = createBankState()
   diveSpeed = 0
@@ -4188,6 +4233,7 @@ function resetGame() {
   pendingWindActive = 0
   pendingWindForce = 0
   nextSpawnZ = 35
+  bossCamPullback = 1
   shake = 0
   hitStopTimer = 0
   elapsed = 0
@@ -5188,16 +5234,23 @@ function probeFlyerVisibility(e, m) {
 
 function recordDeathCause(e, m, p, reason, hit) {
   if (!import.meta.env.DEV) return
+  const ndc = e.devNdc || null
   window.__paperDeathCause = {
     reason,
     type: e.type,
     label: e.label || e.flyerId || '',
     visibleFrames: e.devVisibleFrames || 0,
-    ndc: e.devNdc || null,
+    ndc,
+    // Was the killer inside the camera frustum at the kill moment?
+    // Non-flyer deaths (ground/boss) have no flyer ndc here, so false.
+    killedOnScreen: ndc ? Math.abs(ndc[0]) <= 1 && Math.abs(ndc[1]) <= 1 : false,
     hitRadius: +hit.toFixed(2),
     zGap: +(m.position.z - p.z).toFixed(2),
     hitXY: [+m.position.x.toFixed(2), +m.position.y.toFixed(2)],
     planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
+    planeSpeed: +speed.toFixed(2),
+    fogFar: Math.round(scene.fog.far),
+    distance: +distance.toFixed(2),
   }
 }
 
@@ -5209,6 +5262,11 @@ function recordDeathCause(e, m, p, reason, hit) {
 const EDGE_THREAT_AHEAD = 28
 const edgeThreatBox = $('edge-threats')
 const edgeThreatEls = { left: $('edge-threat-left'), right: $('edge-threat-right') }
+// Boss hole chevron rides the same edge-threat DOM/classes. It arms slightly
+// before the hard frustum edge (0.92) and only while the gate is ahead of the
+// plane's slice (z gap > 2) — the same window the camera pullback uses.
+const BOSS_CHEVRON_NDC_START = 0.92
+const BOSS_CHEVRON_MIN_AHEAD = 2
 
 function updateEdgeThreats() {
   if (!plane) return
@@ -5221,6 +5279,25 @@ function updateEdgeThreats() {
     if (Math.abs(ndc.x) <= 1) continue
     const side = ndc.x < 0 ? 'left' : 'right'
     if (!best[side] || ahead < best[side].ahead) best[side] = { ahead, y: ndc.y }
+  }
+  // Boss gate hole: the gate assembly is wider than a portrait frustum at the
+  // gate plane, so the whole ring can sit off-screen while lethal (16/16 probe
+  // boss kills). Project the hole itself (gate x + gapY at gate z) and flag
+  // that edge through the same chevron elements — no new DOM, no new CSS.
+  if (bossActive) {
+    for (const e of entities) {
+      if (e.type !== 'boss' || e.cleared) continue
+      const m = e.mesh
+      const ahead = m.position.z - plane.position.z
+      if (ahead < BOSS_CHEVRON_MIN_AHEAD) break
+      const ndc = _bossGapNdc.set(m.position.x, m.userData.gapY || 10, m.position.z).project(camera)
+      if (ndc.z > 1 || Math.abs(ndc.x) <= BOSS_CHEVRON_NDC_START) break
+      // The hole outranks a far bird on the same edge; proximity shading uses
+      // the flyer opacity curve with the same 28-unit span.
+      const side = ndc.x < 0 ? 'left' : 'right'
+      best[side] = { ahead: THREE.MathUtils.clamp(ahead, 0, EDGE_THREAT_AHEAD), y: ndc.y }
+      break
+    }
   }
   for (const side of ['left', 'right']) {
     const el = edgeThreatEls[side]
@@ -5800,7 +5877,10 @@ function updateTuckHud() {
   if (!tuckHud) return
   const tucking = tuckState.phase === 'tucking'
   tuckHud.classList.toggle('hidden', !tucking)
-  if (!tucking) return
+  if (!tucking) {
+    tuckGroundCueArmed = true
+    return
+  }
   tuckVal.textContent = `${Math.round(tuckState.charge * 100)}%`
   tuckFill.style.width = `${tuckState.charge * 100}%`
   const cue = tuckReleaseCue(tuckState, planeY)
@@ -5808,6 +5888,24 @@ function updateTuckHud() {
   if (cue === 'release') tuckVal.textContent = 'Release!'
   else if (cue === 'full') tuckVal.textContent = 'Full · release'
   fireBtn.dataset.cue = cue || ''
+  // Deep tuck near the deck: force the existing release/warning styling (the
+  // only warning look dataset.tuck maps to) so the cue cannot be missed, and
+  // play one short warning tick on the transition into this state — re-armed
+  // on exit so a re-commit below the line warns again.
+  const groundDanger = planeY < TUCK_GROUND_WARN_HEIGHT
+  if (groundDanger) {
+    if (tuckGroundCueArmed) {
+      tuckGroundCueArmed = false
+      // No dedicated stall voice exists in audio.js (no stall/warn fn); the
+      // incoming telegraph ping is the least dramatic existing warning cue.
+      if (typeof audio.incoming === 'function') audio.incoming()
+    }
+    tuckHud.dataset.tuck = 'release'
+    tuckVal.textContent = 'Release!'
+    fireBtn.dataset.cue = 'release'
+  } else {
+    tuckGroundCueArmed = true
+  }
 }
 
 function updateGroundSkim(dt) {
@@ -6756,6 +6854,25 @@ function update(dt) {
 
   altitudeStatus = evaluateAltitude(planeY)
   if (altitudeStatus.grounded && state === 'playing' && invuln <= 0 && !isLaunchGraceActive(elapsed, launchGraceSeconds)) {
+    if (import.meta.env.DEV) {
+      window.__paperDeathCause = {
+        reason: 'Nosed into the paper ground',
+        type: 'ground',
+        ndc: null,
+        killedOnScreen: false,
+        planeXY: [+planeX.toFixed(2), +planeY.toFixed(2)],
+        velXY: [+velX.toFixed(2), +velY.toFixed(2)],
+        planeSpeed: +speed.toFixed(2),
+        bank: +bankState.bank.toFixed(2),
+        tuckPhase: tuckState.phase,
+        tuckCharge: +tuckState.charge.toFixed(2),
+        gustActive: windActive > 0,
+        gustSide: windActive > 0 ? windPushSide(windForce) : null,
+        skimActive: groundSkim.active,
+        fogFar: Math.round(scene.fog.far),
+        distance: +distance.toFixed(2),
+      }
+    }
     die('Nosed into the paper ground')
     return
   }
@@ -7053,8 +7170,24 @@ function update(dt) {
   checkTutorialHints()
 
   // Camera: pull back slightly during boost
-  const camZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10 : -8
-  const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0)
+  // Boss approach pullback target, measured against the live gate so it engages
+  // only while the gate is ahead of the plane's slice (z > 2) and releases the
+  // moment it passes. No boss active ⇒ bossCamPullback stays exactly 1 and every
+  // number below is identical to the plain chase rig.
+  let bossGateZ = null
+  if (bossActive) {
+    for (const e of entities) {
+      if (e.type === 'boss' && !e.cleared) {
+        bossGateZ = e.mesh.position.z
+        break
+      }
+    }
+  }
+  const bossCamEase = 1 - Math.pow(BOSS_CAM_EASE, dt)
+  bossCamPullback += ((bossGateZ !== null && bossGateZ > 2 ? BOSS_CAM_PULLBACK : 1) - bossCamPullback) * bossCamEase
+  const baseCamZ = activePower?.kind === 'boost' || speedBoost > 10 ? -10 : -8
+  const camZ = baseCamZ * bossCamPullback
+  const camY = planeY + CAM_HEIGHT + (activePower?.kind === 'boost' ? 0.4 : 0) + (bossCamPullback - 1) * BOSS_CAM_LIFT
   const lateralEase = 1 - Math.pow(CAM_EASE_LATERAL, dt)
   const verticalEase = 1 - Math.pow(CAM_EASE_VERTICAL, dt)
   const tgt = cameraTarget({ planeX, planeY, camHeight: camY - planeY, camZ, followX: CAM_FOLLOW_X })
@@ -7065,7 +7198,7 @@ function update(dt) {
   const { leanX, leanY } = cameraLean({ velX, velY, reducedMotion: settings.reducedMotion })
   const camRoll = computeBankRoll({ bank: bankState?.bank ?? 0, reducedMotion: settings.reducedMotion })
   camera.position.x = cameraLateralPosition({ current: camera.position.x, planeX, aspect: camera.aspect })
-  camera.position.z = Math.min(camera.position.z,-cameraFlightDistance({ aspect: camera.aspect, fov: camera.fov, planeScale: plane.scale.x }))
+  camera.position.z = Math.min(camera.position.z,-cameraFlightDistance({ aspect: camera.aspect, fov: camera.fov, planeScale: plane.scale.x }) * bossCamPullback)
   camera.lookAt(planeX + leanX * Math.min(1,camera.aspect), planeY + CAM_AIM_LIFT + leanY, CAM_AIM_Z)
   // lookAt owns the base orientation; bank belongs after it or it is erased.
   camera.rotation.z += camRoll
@@ -7333,6 +7466,7 @@ function update(dt) {
         if (isLethalObstacle('boss') && !inGap && Math.abs(dz) < 1.05) {
           e.director?.collide()
           if (import.meta.env.DEV) {
+            const bossNdc = m.position.clone().project(camera)
             window.__paperDeathCause = {
               reason: bossCrashReason(m.userData.kind),
               type: 'boss',
@@ -7340,8 +7474,12 @@ function update(dt) {
               zGap: +(dz).toFixed(2),
               planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
               bossX: +m.position.x.toFixed(2),
+              ndc: [+bossNdc.x.toFixed(2), +bossNdc.y.toFixed(2)],
+              killedOnScreen: Math.abs(bossNdc.x) <= 1 && Math.abs(bossNdc.y) <= 1,
               gapY,
               passage: encounter?.passage ?? null,
+              fogFar: Math.round(scene.fog.far),
+              distance: +distance.toFixed(2),
             }
           }
           die(bossCrashReason(m.userData.kind))
@@ -7469,7 +7607,19 @@ function update(dt) {
         boostHitboxScale,
       })
       probeFlyerVisibility(e, m)
-      if (isLethalObstacle(e.type) && dist2 < hit ** 2) {
+      // z-window mirrors the boss gate test (dz < 3.5 && dz > -2.5): a flyer
+      // already behind the plane cannot kill from behind — the probe caught a
+      // scissors kill at zGap −0.78 with no depth test at all.
+      if (
+        isLethalObstacle(e.type) &&
+        // A hazard whose centre is already behind the plane's centre is a
+        // pass-through, not a hit: ending a run on a tail-clip reads as
+        // crashing into nothing. The kill window closes just past centre
+        // contact, the same moment the near-miss window opens.
+        dz > -0.3 &&
+        dz < 3.5 &&
+        dist2 < hit ** 2
+      ) {
         const label =
           e.type === 'scissors'
             ? 'Snipped by scissors'

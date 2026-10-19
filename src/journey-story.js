@@ -53,7 +53,7 @@ const CHAPTERS = Object.freeze({
       rooftops: Object.freeze({
         headline: 'The window closes behind you',
         brief:
-          'Paper City is chimneys, washing lines and a thousand rooftops that all look like the ' +
+          'Paper City is chimneys, washing lines, and a thousand rooftops that all look like the ' +
           'right one. Get above them before the updraft off the tiles runs out.',
         safe: 'The long ridge over the terraces. Slower, and you can see every roof coming.',
         risky: 'Straight down the service alley, under the lines, where nobody looks up.',
@@ -75,7 +75,7 @@ const CHAPTERS = Object.freeze({
           'the folds. Whatever you decide here, decide it early.',
         safe: 'Around the shoulder of the front, the long way, while the folds stay crisp.',
         risky: 'Through the seam in the middle, where the lightning is drawing the map for you.',
-        arrival: 'Through, and still dry at the nose. The storm keeps the sound of you for a while.',
+        arrival: 'Past the front, and still dry at the nose. The storm keeps the sound of you for a while.',
       }),
       aurora: Object.freeze({
         headline: 'The Red Dart, finally',
@@ -123,7 +123,7 @@ const CHAPTERS = Object.freeze({
           'Between the tray and the drawer, everything is metal and everything is hinged. This is the ' +
           'part of the desk that was never meant to be flown.',
         safe: 'The gutter beside the tray — narrow, but nothing in it bites.',
-        risky: 'Down the middle of the alley, between the jaws, on the beat.',
+        risky: 'Down the middle of the alley, into the fog of shavings, where the blades hang open.',
         arrival: 'Out the far end of the alley with all four corners. That is not usual.',
       }),
       'desk-finale': Object.freeze({

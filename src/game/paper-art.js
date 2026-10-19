@@ -211,26 +211,65 @@ function mirrorX(points) {
 
 // Silhouettes. Every coordinate stays within about 40 units so the offset
 // shadow and the edge ink never reach the canvas edge.
-const BIRD_WING = [[-2, -6], [-14, -8], [-40, -13], [-27, 8], [-10, 17], [0, 9]]
+
+/** A thin strip from one point to another — antennae, struts, prop bars. */
+function stripPoints([ax, ay], [bx, by], width) {
+  const dx = bx - ax
+  const dy = by - ay
+  const len = Math.hypot(dx, dy) || 1
+  const nx = (-dy / len) * (width / 2)
+  const ny = (dx / len) * (width / 2)
+  return [
+    [ax + nx, ay + ny],
+    [bx + nx, by + ny],
+    [bx - nx, by - ny],
+    [ax - nx, ay - ny],
+  ]
+}
+
+// Bird: a gliding dove seen head-on — round head with a side beak, a folded
+// diamond body split down its middle, swept wings with two scalloped feather
+// notches, and a small fanned tail. The old cut was two wings and nothing
+// between them, which read as a moustache.
+const BIRD_WING = [[-3, -3], [-14, -12], [-33, -17], [-38, -10], [-27, -3], [-31, 7], [-20, 10], [-9, 14], [-3, 9]]
+const BIRD_BODY = [[0, -12], [7, 2], [0, 26], [-7, 2]]
+const BIRD_TAIL = [[-4, 22], [4, 22], [10, 33], [0, 29], [-10, 33]]
+const BIRD_HEAD = circlePoints(0, -17, 7, 12)
+const BIRD_BEAK = [[4, -19], [14, -15], [4, -11]]
 
 const HAWK_WING = [[-3, -8], [-20, -14], [-40, -24], [-35, -13], [-39, -8], [-30, -4], [-34, 2], [-24, 4], [-27, 11], [-14, 12], [-4, 6]]
 const HAWK_BODY = [[-4, -10], [4, -10], [6, 10], [9, 24], [0, 19], [-9, 24], [-6, 10]]
+const HAWK_HEAD = circlePoints(0, -17, 6.5, 12)
+const HAWK_BEAK = [[2, -20], [13, -16], [2, -11]]
 
 const KITE_DIAMOND = [[0, -37], [28, 0], [0, 26], [-28, 0]]
 
-const BIPLANE_FUSELAGE = [[0, -36], [5, -30], [5, 24], [2, 34], [0, 36], [-2, 34], [-5, 24], [-5, -30]]
-const BIPLANE_TAIL = [[-14, 24], [-3, 21], [3, 21], [14, 24], [12, 30], [-12, 30]]
-const BIPLANE_LOWER = [[-34, 4], [-4, 2], [4, 2], [34, 4], [32, 11], [4, 9], [-4, 9], [-32, 11]]
-const BIPLANE_UPPER = [[-40, -12], [-4, -14], [4, -14], [40, -12], [38, -4], [4, -6], [-4, -6], [-38, -4]]
-const BIPLANE_PROP = [[-14, -38], [-1, -37], [1, -37], [14, -38], [1, -35], [-1, -35]]
+// Biplane: the iconic side view — long fuselage, two stacked wing bands on
+// struts, a tail fin at the rear and a two-blade prop over the nose. The old
+// head-on cut was three slabs and read as a ladder.
+const BIPLANE_FUSELAGE = [[-28, -5], [24, -5], [30, -2], [30, 3], [24, 6], [-28, 6]]
+const BIPLANE_FIN = [[-38, -14], [-29, -12], [-27, 4], [-38, 8]]
+const BIPLANE_UPPER = [[-22, -17], [22, -17], [24, -11], [-24, -11]]
+const BIPLANE_LOWER = [[-18, 10], [18, 10], [20, 16], [-20, 16]]
+const BIPLANE_STRUT = [[-12, -11], [-10, -11], [-10, 10], [-12, 10]]
+const BIPLANE_NOSE = circlePoints(30, 0, 4.5, 12)
+const BIPLANE_PROP = [[33, -13], [35, -13], [35, 13], [33, 13]]
 
-const DRAGON_UPPER = [[-4, -16], [-36, -30], [-40, -12], [-6, -2]]
-const DRAGON_LOWER = [[-4, 0], [-32, 4], [-26, 24], [-4, 12]]
-const DRAGON_BODY = [[-3, -20], [3, -20], [4, 20], [0, 36], [-4, 20]]
+// Dragonfly: four long horizontal wing blades in an X around a pin-thin body
+// with big round eyes, so it reads as an insect, not a moth.
+const DRAGON_UPPER = [[-4, -16], [-26, -26], [-40, -21], [-35, -14], [-4, -8]]
+const DRAGON_LOWER = [[-4, -2], [-24, 0], [-36, 7], [-29, 13], [-4, 10]]
+const DRAGON_BODY = [[-2.5, -20], [2.5, -20], [3.5, 16], [2, 28], [0, 36], [-2, 28], [-3.5, 16]]
 
-const WASP_WING = [[-5, -12], [-20, -31], [-37, -31], [-34, -17], [-8, -3]]
-const WASP_BODY = [[-6, -14], [6, -14], [8, -2], [5, 16], [0, 31], [-5, 16], [-8, -2]]
-const WASP_STINGER = [[-2, 29], [2, 29], [0, 40]]
+// Wasp: striped teardrop abdomen hanging off a round thorax, small head with
+// antennae, and one pair of long swept wings. The old cut had horn-like wings
+// and read as a torch.
+const WASP_WING = [[-5, -7], [-16, -25], [-30, -30], [-34, -24], [-24, -13], [-8, -3]]
+const WASP_THORAX = circlePoints(0, -8, 8.5, 12)
+const WASP_HEAD = circlePoints(0, -22, 6, 12)
+const WASP_ANTENNA_L = stripPoints([-1.5, -27], [-6, -38], 1.8)
+const WASP_ABDOMEN = [[-8, -2], [8, -2], [6, 12], [0, 34], [-6, 12]]
+const WASP_STINGER = [[-2, 31], [2, 31], [0, 40]]
 
 const BALLOON_ENVELOPE = circlePoints(0, 0, 1, 20).map(([x, y]) => [x * 24, -12 + y * 27])
 const BALLOON_BASKET = [[-9, 20], [9, 20], [7, 31], [-7, 31]]
@@ -240,11 +279,20 @@ const DART = [[0, -34], [40, 25], [12, 16], [0, 34], [-12, 16], [-40, 25]]
 
 /** Cut pieces for each named hazard, painted back to front. */
 const HAZARD_PIECES = Object.freeze({
-  bird: [piece(BIRD_WING), piece(mirrorX(BIRD_WING))],
+  bird: [
+    piece(BIRD_WING),
+    piece(mirrorX(BIRD_WING)),
+    piece(BIRD_TAIL),
+    piece(BIRD_BODY, { crease: [0, 0, 0, 1] }),
+    piece(BIRD_HEAD),
+    piece(BIRD_BEAK),
+  ],
   hawk: [
     piece(HAWK_WING),
     piece(mirrorX(HAWK_WING)),
-    piece(HAWK_BODY),
+    piece(HAWK_BODY, { crease: [0, 0, 0, 1] }),
+    piece(HAWK_HEAD),
+    piece(HAWK_BEAK),
   ],
   kite: [
     piece(KITE_DIAMOND, { crease: [0, 0, 0, 1] }),
@@ -255,11 +303,14 @@ const HAZARD_PIECES = Object.freeze({
     piece([[-1, 30], [1, 30], [1.5, 40], [-1.5, 40]], { ink: 0.6 }),
   ],
   biplane: [
-    piece(BIPLANE_FUSELAGE),
-    piece(BIPLANE_TAIL),
-    piece(BIPLANE_LOWER),
-    piece(BIPLANE_UPPER),
-    piece(BIPLANE_PROP, { ink: 0.6 }),
+    piece(BIPLANE_FIN, { crease: [0, -12, 0, 1] }),
+    piece(BIPLANE_FUSELAGE, { crease: [0, 0, 1, 0] }),
+    piece(BIPLANE_STRUT, { ink: 0.5 }),
+    piece(mirrorX(BIPLANE_STRUT), { ink: 0.5 }),
+    piece(BIPLANE_LOWER, { crease: [0, 13, 1, 0] }),
+    piece(BIPLANE_UPPER, { crease: [0, -14, 1, 0] }),
+    piece(BIPLANE_NOSE),
+    piece(BIPLANE_PROP, { ink: 0.55, crease: [0, 0, 0, 1] }),
   ],
   dragonfly: [
     piece(DRAGON_UPPER),
@@ -267,14 +318,18 @@ const HAZARD_PIECES = Object.freeze({
     piece(DRAGON_LOWER),
     piece(mirrorX(DRAGON_LOWER)),
     piece(DRAGON_BODY, { crease: [0, -20, 0, 1] }),
-    piece(circlePoints(0, -27, 7, 14)),
+    piece(circlePoints(-5.5, -27, 5, 10)),
+    piece(circlePoints(5.5, -27, 5, 10)),
   ],
   wasp: [
     piece(WASP_WING),
     piece(mirrorX(WASP_WING)),
+    piece(WASP_ANTENNA_L, { ink: 0.5 }),
+    piece(mirrorX(WASP_ANTENNA_L), { ink: 0.5 }),
     piece(WASP_STINGER, { ink: 0.6 }),
-    piece(WASP_BODY, { crease: [0, 0, 0, 1], stripes: [[-6, -3], [2, 5], [10, 13]] }),
-    piece(circlePoints(0, -21, 5.5, 10)),
+    piece(WASP_ABDOMEN, { crease: [0, 0, 0, 1], stripes: [[-1, 3], [6, 10], [13, 17], [20, 24]] }),
+    piece(WASP_THORAX, { crease: [0, -8, 0, 1] }),
+    piece(WASP_HEAD),
   ],
   balloon: [
     piece(BALLOON_ENVELOPE, { crease: [0, -12, 0, 1] }),
@@ -443,12 +498,21 @@ function fillShadedFacet(ctx, [cx, cy, dx, dy]) {
   ctx.fill()
 }
 
+/** Stable little hash so a sprite's grain is identical on every redraw. */
+function hashLabel(label) {
+  let hash = 2166136261
+  for (let i = 0; i < label.length; i += 1) hash = Math.imul(hash ^ label.charCodeAt(i), 16777619) >>> 0
+  return hash >>> 1 || 1
+}
+
 /**
  * Paint cut pieces in four hard passes: a solid offset shadow under everything,
  * then for each piece a thin ink edge, a lit facet, and a shaded facet split by
- * its fold crease. Only paths and fills are used; nothing is blurred.
+ * its fold crease. Each facet also takes a sparse fibre grain inside its own
+ * outline, because the art rule gives every plane of colour grain. Only paths
+ * and fills are used; nothing is blurred.
  */
-function drawHazardPieces(ctx, size, accent, pieces) {
+function drawHazardPieces(ctx, size, accent, pieces, grainSeed = 1) {
   const scale = size / SHEET
   const edge = HAZARD_OUTLINE * SHEET
   const offset = HAZARD_SHADOW_OFFSET * SHEET
@@ -467,7 +531,7 @@ function drawHazardPieces(ctx, size, accent, pieces) {
     ctx.restore()
   }
 
-  for (const cut of pieces) {
+  pieces.forEach((cut, index) => {
     // The stroke is centred on the outline, so only its outer half shows.
     ctx.strokeStyle = HAZARD_INK
     ctx.lineWidth = edge * 2 * cut.ink
@@ -487,8 +551,9 @@ function drawHazardPieces(ctx, size, accent, pieces) {
       ctx.fillStyle = tones.stripe
       for (const [y0, y1] of cut.stripes) ctx.fillRect(-SHEET, y0, SHEET * 2, y1 - y0)
     }
+    drawGrain(ctx, SHEET, SHEET, 0.05, grainSeed + index * 131)
     ctx.restore()
-  }
+  })
   ctx.restore()
 }
 
@@ -517,7 +582,7 @@ export function createHazardCanvas({
   if (kind === 'scissors') pieces = scissorsPieces()
   else if (kind === 'bird' && seasonId && SEASONAL_BIRD_PIECES[seasonId]) pieces = SEASONAL_BIRD_PIECES[seasonId]
   else if (Object.prototype.hasOwnProperty.call(HAZARD_PIECES, kind)) pieces = HAZARD_PIECES[kind]
-  drawHazardPieces(ctx, width, fill, pieces)
+  drawHazardPieces(ctx, width, fill, pieces, hashLabel(kind))
   return canvas
 }
 
