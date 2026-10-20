@@ -7,6 +7,7 @@ import {
   isLethalObstacle,
   getSafeSpawnX,
   getWaveSpacing,
+  getSpawnStep,
   getFlyableBuildingHeight,
   getSideBuildingSpread,
   normalizeControlAxes,
@@ -181,6 +182,19 @@ describe('center building corridor safety', () => {
     }
     return widest
   }
+
+  test('endless tiers tighten the live spawn step, not just the unused wave helper', () => {
+    const early = getSpawnStep({ difficultyId: 'normal', distance: 0, gap: 1 })
+    const deep = getSpawnStep({ difficultyId: 'normal', distance: 9000, gap: 1 })
+    expect(deep).toBeGreaterThan(0)
+    expect(deep).toBeLessThan(early)
+    // The step is still the documented base spacing times gap times tier scale.
+    expect(getSpawnStep({ difficultyId: 'normal', distance: 0, gap: 0.85 }))
+      .toBeCloseTo(early * 0.85, 8)
+    const baseAtStart = getSpawnStep({ difficultyId: 'normal', distance: 0 })
+    expect(getSpawnStep({ difficultyId: 'normal', distance: 0, tierScale: 0.9 }))
+      .toBeCloseTo(baseAtStart * 0.9, 8)
+  })
 
   test('a full simulated spawnChunk building layout always leaves a flyable corridor', () => {
     const rng = mulberry32(0xC0FFEE)

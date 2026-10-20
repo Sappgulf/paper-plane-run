@@ -8,10 +8,32 @@ import {
   getBossApproachSpeedScale,
   getBossClearReward,
   getGateClearStars,
+  isBossCenterThread,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
 } from '../src/game/boss-director.js'
+
+describe('boss center thread', () => {
+  const passage = { halfWidth: 4.8, halfHeight: 4.4 }
+
+  test('a centered line through the hole earns the precision bonus', () => {
+    expect(isBossCenterThread({ playerX: 0.4, playerY: 9.7, bossX: 0, gapY: 10, passage })).toBe(true)
+  })
+
+  test('a clean pass near the edge is still a pass, not a center thread', () => {
+    expect(isInsideBossPassage({ playerX: 3.6, playerY: 10, bossX: 0, gapY: 10, passage })).toBe(true)
+    expect(isBossCenterThread({ playerX: 3.6, playerY: 10, bossX: 0, gapY: 10, passage })).toBe(false)
+  })
+
+  test('vertical offset is measured against the passage height', () => {
+    expect(isBossCenterThread({ playerX: 0, playerY: 12.4, bossX: 0, gapY: 10, passage })).toBe(false)
+  })
+
+  test('junk input never awards precision', () => {
+    expect(isBossCenterThread({ playerX: NaN, playerY: NaN, bossX: NaN, gapY: NaN, passage: null })).toBe(false)
+  })
+})
 
 describe('boss encounter director', () => {
   test.each(BOSS_KINDS)('runs warning, pressure, and final pass for %s', (kind) => {

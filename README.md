@@ -163,7 +163,7 @@ and results share ivory stock, ink type, rust actions, and blue/sage cues.
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
 | **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
 | **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, and season-weighted spawn bias |
-| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws · the Punch), all with procedural cut-paper emblems |
+| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws · the Punch), all with procedural cut-paper emblems; a centered thread pays a +2★ precision bounty |
 | **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
 | Daily missions, achievements |

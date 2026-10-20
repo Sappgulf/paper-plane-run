@@ -40,7 +40,6 @@ import {
   endlessTierProgress,
   getTierHazardBonusSmooth,
   getTierScoreMultiplierSmooth,
-  getTierSpacingScaleSmooth,
   getTierSpeedBonusSmooth,
   resolveTier,
   tierProgress,
@@ -103,8 +102,10 @@ import {
   createBossEncounter,
   describeBossPhase,
   getBossApproachSpeedScale,
+  BOSS_CENTER_THREAD_BONUS,
   getBossClearReward,
   getGateClearStars,
+  isBossCenterThread,
   isInsideBossPassage,
   resolveBossGapY,
   shouldClearForBossApproach,
@@ -140,7 +141,7 @@ import {
   getObstacleDamageRadius,
   isLethalObstacle,
   getSideBuildingSpread,
-  getWaveSpacing,
+  getSpawnStep,
   getOpenChunkWeight,
   planOpeningPresence,
   OPEN_CHUNK_WEIGHT,
@@ -230,6 +231,8 @@ import {
 } from './game/star-streak.js'
 import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from './game/star-spawn.js'
 import { pickFlightFocus, shouldTelegraphHazard } from './game/flight-focus.js'
+import { buildingOverlapsPlane } from './game/building-hitbox.js'
+import { crossedPassLine } from './game/gate-crossing.js'
 import {
   describeNearMissFloat,
   feverConfettiOffsets,
@@ -250,7 +253,6 @@ import {
 import {
   getAltitudeRecovery,
   getBoostSafety,
-  getCollisionRadius,
   getComboHold,
   getControlResponse,
   getCruiseSpeed,
@@ -357,6 +359,7 @@ const powerLabel = $('power-label')
 const powerFill = $('power-fill')
 const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
+const comboFillEl = $('combo-fill')
 const altitudeHud = $('altitude-hud')
 const altitudeVal = $('altitude-val')
 const altitudeFill = $('altitude-fill')
@@ -367,6 +370,7 @@ const skimHud = $('skim-hud')
 const skimVal = $('skim-val')
 const streakHud = $('streak-hud')
 const streakVal = $('streak-val')
+const streakFillEl = $('streak-fill')
 const flightRouteEl = $('flight-route')
 const flightRouteCurrentEl = $('flight-route-current')
 const flightRouteNextEl = $('flight-route-next')
@@ -375,6 +379,7 @@ const flightRouteStampEl = $('flight-route-stamp')
 const flightRouteRiskEl = $('flight-route-risk')
 const flightFocusEl = $('flight-focus')
 const flightFocusCueEl = $('flight-focus-cue')
+const gapTrailEl = $('gap-trail')
 const flightFeedbackEl = $('flight-feedback')
 let flightFeedbackTimer = 0
 const distanceEl = $('distance')
@@ -842,7 +847,7 @@ let comboFloatTimeout = null
 let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0 }
 let lastFlightDebrief = null
 let tutorialDone = safeGetItem('paper-plane-run-tutorial') === '1'
 let lastPhotoDataUrl = null
@@ -2913,12 +2918,13 @@ function createRing() {
   // instead of projecting edge-on as a solid bar.
   const m = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.14, 12, 32), ringMat)
   // Soft glow halo so the guide ring reads as an inviting target, not a thin hoop
-  const glow = new THREE.Mesh(
-    new THREE.TorusGeometry(1.4, 0.2, 8, 32),
-    new THREE.MeshBasicMaterial({
-      color: 0xf59e0b, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
-    }),
-  )
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf59e0b, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+  })
+  // Per-ring material (unlike the shared ring stock); the disposer frees it
+  // when the ring is collected or scrolled past.
+  glowMaterial.userData.owned = true
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.2, 8, 32), glowMaterial)
   m.add(glow)
   return m
 }
@@ -3106,14 +3112,13 @@ function updateWeatherFx(dt) {
 }
 
 function clearEntities() {
-  for (const e of entities) {
-    if (e.disposable) disposeMeshResources(e.mesh)
-    scene.remove(e.mesh)
-  }
+  for (const e of entities) releaseEntity(e)
   entities.length = 0
   for (const c of clouds) scene.remove(c)
   clouds.length = 0
   if (ghostMesh) {
+    // Ghost/rival materials are shared; only the per-run geometry is owned.
+    disposeMeshResources(ghostMesh)
     scene.remove(ghostMesh)
     ghostMesh = null
   }
@@ -3192,9 +3197,12 @@ function spawnChunk(z) {
   const cfg = difficulty
   const zone = activeZoneAt(spawnDistance)
   const recovering = distance < bossRecoveryUntil
-  const waveSpacing =
-    getWaveSpacing({ difficultyId: difficulty.id, distance: spawnDistance, recovery: recovering }) *
-    cfg.gap * getTierSpacingScaleSmooth(spawnDistance)
+  const waveSpacing = getSpawnStep({
+    difficultyId: difficulty.id,
+    distance: spawnDistance,
+    recovery: recovering,
+    gap: cfg.gap,
+  })
   // The wave's guaranteed passage is a continuous gap, not one of three fixed
   // lanes. Same fairness strength — there is always a hole wide enough to fly
   // — but its position moves by a bounded amount each wave, so threading it is
@@ -3256,7 +3264,16 @@ function spawnChunk(z) {
       b.position.x = side * laneSpread
       b.position.z = z + (rng() - 0.5) * 6
       scene.add(b)
-      const buildingEntity = { mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk, disposable: true }
+      const buildingEntity = {
+        mesh: b,
+        type: 'building',
+        radius,
+        halfW: w / 2,
+        halfD: d / 2,
+        halfH: h,
+        passageGapX: gapCenterForChunk,
+        disposable: true,
+      }
       entities.push(buildingEntity)
       sideBuildings.push(buildingEntity)
       if (side === -1) leftInnerEdge = -laneSpread + radius
@@ -3310,7 +3327,16 @@ function spawnChunk(z) {
       b.position.x = safeRange.minX + rng() * (safeRange.maxX - safeRange.minX)
       b.position.z = z
       scene.add(b)
-      entities.push({ mesh: b, type: 'building', radius, halfH: h, passageGapX: gapCenterForChunk, disposable: true })
+      entities.push({
+        mesh: b,
+        type: 'building',
+        radius,
+        halfW: w / 2,
+        halfD: d / 2,
+        halfH: h,
+        passageGapX: gapCenterForChunk,
+        disposable: true,
+      })
     }
   } else if (ht === 'bird') {
     // Late-game ramp + Hard's birdCount multiplier can otherwise stack into an
@@ -3821,8 +3847,16 @@ function spawnLayoutItems() {
     if (it.t === 'building') {
       const h = 8 + (it.h || 0)
       mesh = createBuilding(3, h, 3, buildingMats[0])
-      mesh.position.set(it.x, 0, it.z)
-      ent = { mesh, type: 'building', radius: 1.8, halfH: h }
+      mesh.position.set(it.x, h / 2, it.z)
+      ent = {
+        mesh,
+        type: 'building',
+        radius: 1.8,
+        halfW: 1.5,
+        halfD: 1.5,
+        halfH: h,
+        disposable: true,
+      }
     } else if (it.t === 'bird') {
       mesh = createBird()
       mesh.position.set(it.x, it.y || 8, it.z)
@@ -3860,7 +3894,7 @@ function spawnTutorial() {
     const ring = createRing()
     ring.position.set(x, y, z)
     scene.add(ring)
-    entities.push({ mesh: ring, type: 'ring', radius: 1.5 })
+    entities.push({ mesh: ring, type: 'ring', radius: 1.5, disposable: true })
   }
   // gentle side buildings
   for (let z = 30; z < TUTORIAL_LENGTH; z += 60) {
@@ -4388,7 +4422,7 @@ function resetGame() {
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0 }
   journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
@@ -4527,7 +4561,7 @@ function resetGame() {
     const spawnAhead = fogReadabilityDepth()
     while (nextSpawnZ < spawnAhead) {
       spawnChunk(nextSpawnZ)
-      nextSpawnZ += getWaveSpacing({ difficultyId: difficulty.id, distance }) * difficulty.gap
+      nextSpawnZ += getSpawnStep({ difficultyId: difficulty.id, distance, gap: difficulty.gap })
     }
   }
 
@@ -5482,7 +5516,7 @@ function updateEdgeThreats() {
     if (e.type !== 'bird' && e.type !== 'scissors') continue
     const ahead = e.mesh.position.z - plane.position.z
     if (ahead < 0 || ahead > EDGE_THREAT_AHEAD) continue
-    const ndc = e.mesh.position.clone().project(camera)
+    const ndc = _edgeNdc.copy(e.mesh.position).project(camera)
     if (Math.abs(ndc.x) <= 1) continue
     const side = ndc.x < 0 ? 'left' : 'right'
     if (!best[side] || ahead < best[side].ahead) best[side] = { ahead, y: ndc.y }
@@ -6163,22 +6197,32 @@ function updateGroundSkim(dt) {
 // buffers on removal. The WeakSet keeps a shared geometry from ever being
 // disposed twice if an entity is ever mis-flagged.
 const disposedGeometries = new WeakSet()
-const disposedMaterials = new WeakSet()
 function disposeMeshResources(mesh, { materials = false } = {}) {
   if (!mesh) return
+  // Deduplicate within this release only. A global WeakSet would skip a second
+  // disposal after a shared boss/part material was re-used and re-uploaded by
+  // the renderer, which is exactly how a leak survives a second boss.
+  const geometries = new Set()
+  const materialsSeen = new Set()
+  const textures = new Set()
   mesh.traverse((node) => {
-    if (node.geometry && !disposedGeometries.has(node.geometry)) {
-      disposedGeometries.add(node.geometry)
+    if (node.geometry && !geometries.has(node.geometry)) {
+      geometries.add(node.geometry)
       node.geometry.dispose()
     }
-    if (materials && node.material) {
-      const list = Array.isArray(node.material) ? node.material : [node.material]
-      for (const material of list) {
-        if (material && !disposedMaterials.has(material)) {
-          disposedMaterials.add(material)
-          material.dispose()
-        }
+    if (!node.material) return
+    const list = Array.isArray(node.material) ? node.material : [node.material]
+    for (const material of list) {
+      // `materials` is the boss-gate opt-in (its whole assembly is per-gate);
+      // otherwise only materials explicitly marked as instance-owned (tutorial
+      // ring glow, boss emblem cards) are freed, so shared stock is untouched.
+      if (!material || (!materials && !material.userData?.owned) || materialsSeen.has(material)) continue
+      materialsSeen.add(material)
+      if (material.userData?.disposeMap && material.map && !textures.has(material.map)) {
+        textures.add(material.map)
+        material.map.dispose()
       }
+      material.dispose()
     }
   })
 }
@@ -6559,8 +6603,7 @@ function registerStarStreak() {
   starStreakTimer = pickup.timer
   starStreakWindow = pickup.windowSeconds
   if (streakVal) streakVal.textContent = String(starStreak)
-  const streakFill = $('streak-fill')
-  if (streakFill) streakFill.style.width = '100%'
+  if (streakFillEl) streakFillEl.style.width = '100%'
   if (pickup.visible && streakHud) {
     streakHud.classList.remove('hidden')
     streakHud.classList.remove('combo-pulse')
@@ -6650,8 +6693,10 @@ function update(dt) {
     camera.lookAt(plane.position)
     if (shake > 0) {
       shake = Math.max(0, shake - dt)
-      camera.position.x += (Math.random() - 0.5) * shake * 0.8
-      camera.position.y += (Math.random() - 0.5) * shake * 0.4
+      if (!settings.reducedMotion) {
+        camera.position.x += (Math.random() - 0.5) * shake * 0.8
+        camera.position.y += (Math.random() - 0.5) * shake * 0.4
+      }
     }
     // FOV settle
     if (fovPunch !== 0) {
@@ -6763,9 +6808,8 @@ function update(dt) {
   if (comboTimer > 0) {
     comboTimer -= dt
     const comboWindow = Math.max(0.01, getComboHold(activeUpgradeEffects).windowSeconds)
-    const comboFill = $('combo-fill')
-    if (comboFill) {
-      comboFill.style.width = `${THREE.MathUtils.clamp(comboTimer / comboWindow, 0, 1) * 100}%`
+    if (comboFillEl) {
+      comboFillEl.style.width = `${THREE.MathUtils.clamp(comboTimer / comboWindow, 0, 1) * 100}%`
     }
     if (comboTimer <= 0) {
       combo = 0
@@ -6777,10 +6821,9 @@ function update(dt) {
     const nextStreak = advanceStarStreakState({ count: starStreak, timer: starStreakTimer }, dt)
     starStreak = nextStreak.count
     starStreakTimer = nextStreak.timer
-    const streakFill = $('streak-fill')
     const streakWindow = Math.max(0.01, starStreakWindow || getStreakTuning(activeUpgradeEffects).windowSeconds)
-    if (streakFill) {
-      streakFill.style.width = nextStreak.visible
+    if (streakFillEl) {
+      streakFillEl.style.width = nextStreak.visible
         ? `${THREE.MathUtils.clamp(starStreakTimer / streakWindow, 0, 1) * 100}%`
         : '0%'
     }
@@ -7369,7 +7412,6 @@ function update(dt) {
   updateEndlessTier()
   updateEdgeIndicators()
   // Faint gap moth trail — always on, 0.12 opacity, so the guaranteed gap reads even without gauntlet ribbon
-  const gapTrailEl = document.getElementById('gap-trail')
   if (gapTrailEl && activePassageGap && state === 'playing') {
     gapTrailEl.style.left = `calc(50% + ${activePassageGap.center * 1.8}%)`
     gapTrailEl.classList.add('visible')
@@ -7442,11 +7484,12 @@ function update(dt) {
     const spawnAhead = fogReadabilityDepth()
     while (nextSpawnZ < spawnAhead) {
       spawnChunk(nextSpawnZ)
-      nextSpawnZ += getWaveSpacing({
+      nextSpawnZ += getSpawnStep({
         difficultyId: difficulty.id,
         distance,
         recovery: distance < bossRecoveryUntil,
-      }) * difficulty.gap
+        gap: difficulty.gap,
+      })
     }
   }
 
@@ -7505,7 +7548,7 @@ function update(dt) {
       const dy = m.position.y - p.y
       const dz = m.position.z - p.z
       if (dx * dx + dy * dy + dz * dz < 2.8 ** 2) {
-        scene.remove(m)
+        releaseEntity(e)
         entities.splice(i, 1)
         stars++
         starsEl.textContent = String(stars)
@@ -7636,7 +7679,7 @@ function update(dt) {
     if (e.type === 'boss') {
       const dz = m.position.z - p.z
       const prevDz = e.prevBossDz
-      const crossed = Number.isFinite(prevDz) && prevDz > -0.55 && dz <= -0.55
+      const crossed = crossedPassLine(prevDz, dz)
       e.prevBossDz = dz
       const inWindow = dz < 3.5 && dz > -2.5
       let gapY = m.userData.gapY || 10
@@ -7699,19 +7742,34 @@ function update(dt) {
         bossRecoveryUntil = distance + reward.recoveryMeters
         hitStopTimer = reward.hitStopSeconds
         track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
+        // Center thread: a precise line through the hole pays an extra bounty
+        // on top of Gate Bounty. Edge-gracing passes still clear, but only a
+        // centered line gets the skill reward.
+        const centerThread = isBossCenterThread({
+          playerX: p.x,
+          playerY: p.y,
+          bossX: m.position.x,
+          gapY,
+          passage: encounter?.passage,
+        })
+        if (centerThread) {
+          runStats.centerThreads = (runStats.centerThreads || 0) + 1
+          track('boss_center_thread', { distance: Math.floor(distance), kind: m.userData.kind })
+        }
         // Gate Bounty adds to the base reward; the banners show the total.
-        const gateStars = getGateClearStars(reward, ufx)
+        const gateStars = getGateClearStars(reward, ufx) + (centerThread ? BOSS_CENTER_THREAD_BONUS : 0)
         stars += gateStars
+        runStats.stars = stars
         starsEl.textContent = String(stars)
         audio.missionComplete()
         if (settings.haptics) Haptic.collect()
         invuln = Math.max(invuln, reward.invulnSeconds)
         spawnConfetti(planeX, planeY, 2, 'route')
-        showFlightFeedback(`GATE CLEARED · +${gateStars}★`, 'route', 1.6)
+        showFlightFeedback(centerThread ? `CENTER THREAD · +${gateStars}★` : `GATE CLEARED · +${gateStars}★`, 'route', 1.6)
         pulseFlightImpact('route')
         audio.gateClear()
         audio.hoopWhoosh()
-        showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${gateStars}★`, 1.8, 'boss')
+        showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared${centerThread ? ' · CENTER THREAD' : ''} · +${gateStars}★`, 1.8, 'boss')
       }
 
       // Retire a missed/grace-passed gate behind the plane so bossActive can
@@ -7736,20 +7794,23 @@ function update(dt) {
       const dx = Math.abs(m.position.x - p.x)
       const dz = Math.abs(m.position.z - p.z)
       // Buildings sit on ground: solid from y=0 to halfH
-      const hitR = getCollisionRadius({
-        entityRadius: e.radius,
-        planeRadius: PLANE_COLLISION_RADIUS,
-        planeWeight: 0.5,
-        boostActive: activePower?.kind === 'boost',
-        boostHitboxScale: boostSafety.collisionScale,
-      }).effectiveRadius
       const grazeR = getNearMissRadius({
         entityRadius: e.radius,
         planeRadius: PLANE_COLLISION_RADIUS,
         nearMissBonus: ufx.nearMissBonus,
         tighten: nmTighten,
       })
-      const hitsBuilding = dx < hitR && dz < hitR && p.y < e.halfH - 0.85 && p.y > -0.5
+      const hitsBuilding = buildingOverlapsPlane({
+        dx,
+        dz,
+        halfWidth: e.halfW ?? e.radius,
+        halfDepth: e.halfD ?? e.radius,
+        planeRadius: PLANE_COLLISION_RADIUS,
+        planeWeight: 0.5,
+        boostActive: activePower?.kind === 'boost',
+        boostHitboxScale: boostSafety.collisionScale,
+      }) && p.y < e.halfH - 0.85 && p.y > -0.5
+      const grazeInnerR = (e.halfW ?? e.radius) + PLANE_COLLISION_RADIUS * 0.5
       if (hitsBuilding) {
         const push = Math.sign(p.x - m.position.x) || (p.x >= 0 ? 1 : -1)
         planeX = THREE.MathUtils.clamp(planeX + push * 0.55, -MAX_X, MAX_X)
@@ -7764,7 +7825,7 @@ function update(dt) {
         m.position.z > -2 &&
         m.position.z < 9 &&
         dx < grazeR &&
-        dx > hitR * 0.9 &&
+        dx > grazeInnerR * 0.9 &&
         dz < grazeR &&
         p.y < e.halfH + 2.5 &&
         p.y > e.halfH * 0.15
@@ -8574,7 +8635,7 @@ if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
   // the RNG stream identical so totals differ by exactly the reward.
   const makeTower = (x) => {
     const b = createBuilding(3, 10, 3, buildingMats[0])
-    b.position.set(x, 0, 30)
+    b.position.set(x, 5, 30)
     scene.add(b)
     return b
   }
@@ -8585,6 +8646,8 @@ if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
     mesh,
     type: 'building',
     radius: 1.5,
+    halfW: 1.5,
+    halfD: 1.5,
     halfH: 10,
     passageGapX: null,
     ...(corridor ? { thread: corridor } : {}),

@@ -1,3 +1,5 @@
+import { getTierSpacingScaleSmooth } from './endless-tiers.js'
+
 const BASE_SPACING = Object.freeze({ easy: 24, normal: 20, hard: 17 })
 export const PASSAGE_LANES = Object.freeze([-1, 0, 1])
 export const PASSAGE_LANE_X = Object.freeze([-6, 0, 6])
@@ -97,6 +99,28 @@ export function getWaveSpacing({ difficultyId = 'normal', distance = 0, recovery
   const opening = Math.max(0, 6 - meters / 20)
   const compression = Math.min(2.2, meters / 420)
   return Math.max(16, base + opening - compression)
+}
+
+/**
+ * The step between spawn chunks in the live/pre-populate pumps: base wave
+ * spacing, difficulty gap, and the endless-tier spacing scale. Tiers 1-8 are
+ * documented as tightening waves, but the pumps previously omitted the tier
+ * factor while the (unused) chunk helper included it, so the escalation never
+ * reached a real spawn. Keep this as the one canonical pump step.
+ */
+export function getSpawnStep({
+  difficultyId = 'normal',
+  distance = 0,
+  recovery = false,
+  gap = 1,
+  tierScale = null,
+} = {}) {
+  const gapScale = Number(gap)
+  const spacing = getWaveSpacing({ difficultyId, distance, recovery })
+  const scale = tierScale === null || tierScale === undefined
+    ? getTierSpacingScaleSmooth(distance)
+    : nonNegative(tierScale, 1)
+  return spacing * (Number.isFinite(gapScale) && gapScale > 0 ? gapScale : 1) * (scale > 0 ? scale : 1)
 }
 
 // ---------------------------------------------------------------------------

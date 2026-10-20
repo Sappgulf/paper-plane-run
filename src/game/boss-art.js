@@ -430,6 +430,9 @@ export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture, can
     depthWrite: false,
     side: THREE.DoubleSide,
   })
+  // Each badge owns its material (and, in the procedural branch below, its
+  // canvas texture), so the gate disposer can release them with the gate.
+  material.userData.owned = true
   const overlay = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material)
   overlay.name = `bossArt-${kind}`
   overlay.renderOrder = 6
@@ -450,7 +453,9 @@ export function createBossArtOverlay({ THREE, kind, size = 2.8, loadTexture, can
       const id = art.texture.slice(PAPER_BOSS_PREFIX.length)
       const canvas = drawBossEmblem(id, art.palette, { canvasFactory })
       if (canvas) {
-        showTexture(new THREE.CanvasTexture(canvas))
+        const texture = new THREE.CanvasTexture(canvas)
+        material.userData.disposeMap = true
+        showTexture(texture)
       } else {
         keepProceduralFallback()
       }

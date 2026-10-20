@@ -18,6 +18,9 @@ const PASSAGES = Object.freeze({
 
 /** Extra forgiveness so a grazing edge still counts as a pass. */
 export const PASSAGE_EDGE_GRACE = 0.55
+/** Precision radius (fraction of the raw passage) that pays a center bonus. */
+export const BOSS_CENTER_THREAD_THRESHOLD = 0.42
+export const BOSS_CENTER_THREAD_BONUS = 2
 
 export const BOSS_KINDS = Object.freeze(['scissors', 'wind', 'stapler', 'punch'])
 
@@ -38,6 +41,33 @@ export function isInsideBossPassage({
   const nx = ((Number(playerX) || 0) - (Number(bossX) || 0)) / Math.max(0.01, halfWidth)
   const ny = ((Number(playerY) || 0) - (Number(gapY) || 0)) / Math.max(0.01, halfHeight)
   return (nx * nx) + (ny * ny) < 1
+}
+
+/**
+ * A clean center thread is a smaller circle inside the passage. This is the
+ * skill payout the gate was missing: passing always paid, but there was no
+ * reason to line the hole up instead of scraping an edge. Measured against
+ * the raw passage (no edge grace), so it must be a genuinely centered line.
+ */
+export function isBossCenterThread({
+  playerX = 0,
+  playerY = 0,
+  bossX = 0,
+  gapY = 10,
+  passage = PASSAGES.normal,
+  threshold = BOSS_CENTER_THREAD_THRESHOLD,
+} = {}) {
+  const px = Number(playerX)
+  const py = Number(playerY)
+  const bx = Number(bossX)
+  const gy = Number(gapY)
+  if (![px, py, bx, gy].every(Number.isFinite)) return false
+  const halfWidth = Math.max(0.01, Number(passage?.halfWidth) || 0)
+  const halfHeight = Math.max(0.01, Number(passage?.halfHeight) || 0)
+  const radius = Math.max(0, Number(threshold) || BOSS_CENTER_THREAD_THRESHOLD)
+  const nx = (px - bx) / halfWidth
+  const ny = (py - gy) / halfHeight
+  return (nx * nx) + (ny * ny) <= radius * radius
 }
 
 /** Slow the world only while the boss is in the readable approach band. */
