@@ -1,7 +1,7 @@
 /**
  * Web Audio SFX + soft generative music bed.
  */
-import { safeSetItem } from './game/safe-storage.js'
+import { safeGetItem, safeSetItem } from './game/safe-storage.js'
 // Per-zone motifs for the generative bed — same gentle pentatonic engine,
 // different mood so a zone transition is reinforced musically too.
 const ZONE_SCALES = {
@@ -17,14 +17,14 @@ const ZONE_SCALES = {
 export class GameAudio {
   constructor() {
     this.ctx = null
-    this.muted = localStorage.getItem('paper-plane-run-muted') === '1'
+    this.muted = safeGetItem('paper-plane-run-muted') === '1'
     this.master = null
     this.sfx = null
     this.music = null
     this.windGain = null
     this.paperNoise = null
     this.started = false
-    this.musicOn = localStorage.getItem('paper-plane-run-music') !== '0'
+    this.musicOn = safeGetItem('paper-plane-run-music', '1') !== '0'
     this._musicNodes = []
     this._musicTimer = null
     /** 0 (calm) – 1 (intense): driven by combo/speed, brightens & quickens the music bed */
@@ -109,6 +109,11 @@ export class GameAudio {
     this.muted = m
     safeSetItem('paper-plane-run-muted', m ? '1' : '0')
     if (this.master) this.master.gain.value = m ? 0 : 0.4
+    // One source of truth for every mute path (HUD, keyboard, gamepad,
+    // pause menu, shell) so assistive state never disagrees with the icon.
+    try {
+      window?.dispatchEvent?.(new CustomEvent('paperplane:mute-changed', { detail: { muted: this.muted } }))
+    } catch {}
   }
 
   toggleMute() {

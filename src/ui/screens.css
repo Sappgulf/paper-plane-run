@@ -9,9 +9,7 @@
   text-align: center; overflow-y: auto;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
-  background:
-    linear-gradient(165deg, rgba(200,223,245,.12) 0%, rgba(255,238,225,.20) 100%),
-    url('/assets/paper-world-backdrop.webp') center / cover no-repeat;
+  background: linear-gradient(165deg, rgba(200,223,245,.12) 0%, rgba(255,238,225,.20) 100%);
 }
 
 .menu-card {
@@ -338,7 +336,7 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 .skin-card .name { font-weight: 900; font-size: 13px; }
 .skin-card .meta { margin-top: auto; font-size: 11px; font-weight: 900; color: #6d554f; }
 .plane-state {
-  flex: 0 0 auto; border-radius: 999px; padding: 3px 6px; font-size: 8px; font-weight: 900;
+  flex: 0 0 auto; border-radius: 999px; padding: 3px 7px; font-size: 9px; font-weight: 900;
   letter-spacing: .04em; text-transform: uppercase; background: #eee6df; color: #75635f;
 }
 .plane-state-equipped { background: #dbeafe; color: #1d4f78; }
@@ -456,6 +454,9 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
   font-size: 12px;
 }
 .stats-diagnostics summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   font-weight: 800;
   color: #58708b;
   cursor: pointer;
@@ -485,6 +486,8 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 }
 .tab.active { background: #5a9fd4; color: #fff; border-color: transparent; }
 .board-list { list-style: none; padding-left: 0; }
+.board-loading, .board-error { padding: 10px 4px; font-size: 13px; font-weight: 700; color: #8a6f68; }
+.board-error { color: #a4482f; }
 .board-row { align-items: center; gap: 10px; }
 .board-rank {
   flex: 0 0 26px; text-align: center; font-weight: 900; font-size: 14px; color: #8a6f68;
@@ -618,7 +621,5 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 .polaroid p { margin-top: 8px; font-size: 12px; font-weight: 800; color: #5c4540; }
 
 #gameover {
-  background:
-    linear-gradient(165deg, rgba(200,223,245,.12) 0%, rgba(255,238,225,.20) 100%),
-    url('/assets/paper-world-backdrop.webp') center / cover no-repeat;
+  background: linear-gradient(165deg, rgba(200,223,245,.12) 0%, rgba(255,238,225,.20) 100%);
 }

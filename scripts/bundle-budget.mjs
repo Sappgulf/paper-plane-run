@@ -3,10 +3,11 @@ import { resolve } from 'node:path'
 
 // Uncompressed JavaScript, which is roughly 3.5x the wire cost after gzip.
 //
-// Composition as of the ground-life work: three ~572KB, flight engine ~140KB,
-// menu/shell entry ~100KB. The three chunk is effectively a floor — it is
-// lazy-loaded, and WebGLRenderer alone reaches most of the library, so named
-// imports and dropping PMREM were both measured at under 5KB of savings.
+// Composition as of the 2026-10 polish pass: three ~570KB, flight engine
+// ~214KB, menu/shell entry ~144KB. The three chunk is effectively a floor — it
+// is lazy-loaded, and WebGLRenderer alone reaches most of the library, so named
+// imports and dropping PMREM were both measured at under 5KB of savings. The
+// budget is checked on uncompressed bytes; the wire cost is roughly a third.
 //
 // The two limits do different jobs. `initialBytes` guards the critical path:
 // what a player downloads before the menu paints, which must stay small and is

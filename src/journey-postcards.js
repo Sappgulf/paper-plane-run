@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeStorage } from './game/safe-storage.js'
 
 export const POSTCARD_STORAGE_KEY = 'paper-plane-run-postcards-v1'
 
@@ -23,14 +23,14 @@ export function normalizePostcard(card) {
   }
 }
 
-export function loadPostcardAlbum(storage = localStorage) {
+export function loadPostcardAlbum(storage = safeStorage) {
   try {
     const cards = JSON.parse(storage.getItem(POSTCARD_STORAGE_KEY) || '[]')
     return Array.isArray(cards) ? cards.map(normalizePostcard).filter(Boolean) : []
   } catch { return [] }
 }
 
-export function savePostcardOnce(storage = localStorage, postcard) {
+export function savePostcardOnce(storage = safeStorage, postcard) {
   const normalized = normalizePostcard(postcard)
   if (!normalized) return false
   const cards = loadPostcardAlbum(storage)

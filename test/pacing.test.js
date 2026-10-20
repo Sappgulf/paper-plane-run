@@ -287,19 +287,19 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
   const state = { lastHazardDistance: null, lastOpeningDistance: null }
   const chunks = []
 
-  const spawnChunk = ({ distance, z, quantum }) => {
-    const early = distance < EARLY_CALM_METERS
-    const ramp = Math.min(1, distance / 700)
+  const spawnChunk = ({ distance, z, quantum, decisionDistance = distance }) => {
+    const early = decisionDistance < EARLY_CALM_METERS
+    const ramp = Math.min(1, decisionDistance / 700)
     let carriers = 0
     let scheduled = false
 
     const ht = early ? null : pickHazardTypeSim(rng, {
       openWeight: smooth
-        ? getOpenChunkWeight({ distance, lastHazardDistance: state.lastHazardDistance })
+        ? getOpenChunkWeight({ distance: decisionDistance, lastHazardDistance: state.lastHazardDistance })
         : OPEN_CHUNK_WEIGHT,
       birdCount: cfg.birdCount,
       hazardScale: cfg.hazardScale,
-      distance,
+      distance: decisionDistance,
     })
     if (ht && (ht.type === 'bird' || ht.type === 'scissors')) carriers += ht.carriers
 
@@ -309,7 +309,7 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
     if (early && smooth) {
       scheduled = planOpeningPresence({
         random: rng,
-        distance,
+        distance: decisionDistance,
         lastOpeningHazardDistance: state.lastOpeningDistance,
         lastHazardDistance: state.lastHazardDistance,
         earlyBoundary: EARLY_CALM_METERS,
@@ -320,7 +320,7 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
     } else if (!early && smooth) {
       scheduled = planOpeningPresence({
         random: rng,
-        distance,
+        distance: decisionDistance,
         lastOpeningHazardDistance: state.lastOpeningDistance,
         lastHazardDistance: state.lastHazardDistance,
         earlyBoundary: EARLY_CALM_METERS,
@@ -333,14 +333,14 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
     }
 
     let deckHere = false
-    if (!early && distance >= DECK_INTRO_METERS) {
-      const deck = planDeckLane({ random: rng, distance, tier: 0, gap: cfg.gap })
+    if (!early && decisionDistance >= DECK_INTRO_METERS) {
+      const deck = planDeckLane({ random: rng, distance: decisionDistance, tier: 0, gap: cfg.gap })
       if (deck.heights.length > 0) deckHere = true
     }
     if (carriers > 0 || scheduled || deckHere) {
-      state.lastHazardDistance = distance
+      state.lastHazardDistance = decisionDistance
     }
-    if (scheduled && early) state.lastOpeningDistance = distance
+    if (scheduled && early) state.lastOpeningDistance = decisionDistance
     // Fairness-window span in HUD-distance samples: an entity spawned at
     // (distance, z) is visible while the fairness probe's z window
     // (-25..220) contains it, i.e. samples
@@ -348,7 +348,7 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
     // clamped at zero (nothing is visible before the run starts).
     const visibleFrom = Math.max(0, distance - (SPAWN_WINDOW_AHEAD - z) * cfg.scoreMul)
     const visibleUntil = distance + (z + SPAWN_WINDOW_BEHIND) * cfg.scoreMul
-    chunks.push({ distance, presenceInterval: [visibleFrom, visibleUntil], carriers, scheduled, deck: deckHere })
+    chunks.push({ distance, decisionDistance, presenceInterval: [visibleFrom, visibleUntil], carriers, scheduled, deck: deckHere })
   }
 
   // The engine's two spawn pumps (reset pre-populate + live pump): chunks
@@ -360,7 +360,7 @@ function simulateOpeningSeeds({ seed, difficultyId = 'normal', smooth = true }) 
   const pump = () => {
     while (nextSpawnZ < SPAWN_DEPTH) {
       const step = getWaveSpacing({ difficultyId, distance }) * cfg.gap
-      spawnChunk({ distance, z: nextSpawnZ, quantum: step * cfg.scoreMul })
+      spawnChunk({ distance, z: nextSpawnZ, quantum: step * cfg.scoreMul, decisionDistance: distance + nextSpawnZ })
       nextSpawnZ += step
     }
   }
@@ -475,12 +475,13 @@ describe('opening presence smoothing', () => {
     for (const seed of SEEDS.slice(0, 64)) {
       for (const chunk of simulateOpeningSeeds({ seed })) {
         if (chunk.scheduled) {
-          if (chunk.distance < EARLY_CALM_METERS) {
-            expect(chunk.distance).toBeGreaterThanOrEqual(OPENING_FIRST_MIN_METERS)
+          const metAt = chunk.decisionDistance ?? chunk.distance
+          if (metAt < EARLY_CALM_METERS) {
+            expect(metAt).toBeGreaterThanOrEqual(OPENING_FIRST_MIN_METERS)
           } else {
             // Payments after the gate come from the famine force; they may fire
             // anywhere the sky has been empty long enough.
-            expect(chunk.distance).toBeGreaterThanOrEqual(EARLY_CALM_METERS)
+            expect(metAt).toBeGreaterThanOrEqual(EARLY_CALM_METERS)
           }
         }
       }

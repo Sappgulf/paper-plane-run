@@ -39,5 +39,16 @@ playwright-report/
 test-results/
 
 # macOS duplicate-copy junk ("file 2.ext") left by Finder/copy operations.
-**/*\ 2.xcodeproj/
-**/*\ 2.xcworkspace/
+**/*\ [0-9].xcodeproj/
+**/*\ [0-9].xcworkspace/
+**/*\ [0-9].png
+**/*\ [0-9].jpg
+**/*\ [0-9].jpeg
+**/*\ [0-9].webp
+**/*\ [0-9].js
+**/*\ [0-9].css
+**/*\ [0-9].html
+**/*\ [0-9].json
+
+# iOS build output
+ios/build/

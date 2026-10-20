@@ -121,7 +121,7 @@ export function renderPilotChoices(root, journey, lifetimeStamps, onSelect, mast
   root.innerHTML = Object.values(PILOTS).map((pilot) => {
     const unlocked = lifetimeStamps >= pilot.unlockedAt
     const mastery = getPilotMasteryView(masteryState, pilot.id)
-    return `<button type="button" class="journey-pilot${journey.pilotId === pilot.id ? ' selected' : ''}" data-pilot-id="${pilot.id}" ${unlocked ? '' : 'disabled'}>
+    return `<button type="button" class="journey-pilot${journey.pilotId === pilot.id ? ' selected' : ''}" data-pilot-id="${pilot.id}" aria-pressed="${journey.pilotId === pilot.id ? 'true' : 'false'}" ${unlocked ? '' : 'disabled'}>
       <span class="pilot-icon">${pilot.icon}</span><strong>${escapeHtml(pilot.name)} · Level ${mastery?.level || 0}</strong><small>${escapeHtml(pilot.ability)}</small>
       <em>${unlocked ? escapeHtml(pilot.description) : `Collect ${pilot.unlockedAt} stamps to unlock`}</em>
       <span class="mastery-meter" role="progressbar" aria-label="${escapeHtml(pilot.name)} mastery" aria-valuemin="0" aria-valuemax="3" aria-valuenow="${mastery?.level || 0}"><i style="width:${((mastery?.level || 0) / 3) * 100}%"></i></span>

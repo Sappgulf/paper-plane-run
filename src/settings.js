@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeGetItem, safeSetItem } from './game/safe-storage.js'
 
 const KEY = 'paper-plane-run-settings-v1'
 
@@ -18,17 +18,32 @@ const DEFAULTS = {
   mouseSensitivity: 1,
 }
 
+/** OS-level motion preference; the in-game toggle can still override it. */
+export function prefersReducedMotion() {
+  try {
+    return Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
+  } catch {
+    return false
+  }
+}
+
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = safeGetItem(KEY)
     if (!raw) {
       // First run: joysticks + low-power rendering on touch devices (phones
       // are the ones most likely to stutter at full shadow/DPR settings),
-      // mouse + full quality on desktop.
+      // mouse + full quality on desktop. Reduced motion starts from the OS
+      // preference so vestibular-sensitive players are protected by default.
       const touch =
         typeof navigator !== 'undefined' &&
         ('ontouchstart' in globalThis || navigator.maxTouchPoints > 0)
-      return { ...DEFAULTS, controlMode: touch ? 'joystick' : 'mouse', lowPower: touch }
+      return {
+        ...DEFAULTS,
+        reducedMotion: prefersReducedMotion(),
+        controlMode: touch ? 'joystick' : 'mouse',
+        lowPower: touch,
+      }
     }
     return { ...DEFAULTS, ...JSON.parse(raw) }
   } catch {

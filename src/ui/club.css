@@ -9,6 +9,12 @@
 .panel, #gameover {
   background: linear-gradient(90deg,#b8cdd4bb,#bfd2d53b), url('/assets/paper-flight-hero.webp') center / cover no-repeat;
 }
+/* The Journey map gets its own paper diorama plate; the menu/game-over share
+   the flight hero. This also keeps the generated world backdrop from being
+   shipped-but-never-painted. */
+#journey-panel {
+  background: linear-gradient(180deg,#b8cdd488,#fff9ed26), url('/assets/paper-world-backdrop.webp') center / cover no-repeat;
+}
 .panel .menu-card, .manual-card, .pause-card, .postcard-surface, .install-hint-card, #sw-update-banner {
   background: var(--paper); color: var(--ink); border: 1px solid var(--club-rule);
   border-radius: 6px; box-shadow: 7px 9px 0 #263d4324; backdrop-filter: none;

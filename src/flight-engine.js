@@ -11,7 +11,6 @@ import {
   tutorialLessonAt,
 } from './game/tutorial-lessons.js'
 import { Haptic } from './haptics.js'
-import { createPool } from './pool.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
 import { todaysTwist } from './twists.js'
 import { foldById, thisWeeksFold, weeklyKey, weeklySeed } from './game/weekly-fold.js'
@@ -93,7 +92,8 @@ import {
 } from './game/firstFlight.js'
 import { nextPauseState } from './game/pause.js'
 import { FLYER_DEFS, flyerPoolForSeason } from './game/flyers.js'
-import { setScreenAwake } from './native-shell.js'
+import { copyNative, setScreenAwake, shareNative, sharePhotoNative } from './native-shell.js'
+import { shareBaseUrl } from './share-url.js'
 import { createBossArtOverlay, getBossBadgeLayout } from './game/boss-art.js'
 import {
   BOSS_KINDS,
@@ -135,7 +135,6 @@ import {
   wrapGroundLifeZ,
 } from './game/ground-life.js'
 import {
-  createPacingWave,
   getCenterBuildingSafeRange,
   getFlyableBuildingHeight,
   getObstacleDamageRadius,
@@ -148,7 +147,7 @@ import {
   OPENING_CALM_METERS,
   normalizeControlAxes,
 } from './game/pacing.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { safeGetItem, safeSetItem, safeStorage } from './game/safe-storage.js'
 import {
   buildRunConfiguration,
   createJourney,
@@ -269,15 +268,6 @@ import {
   getUpgradeRuntimeSnapshot,
   SHIELD_BASE_DURATION,
 } from './game/upgrade-runtime.js'
-// createPool available for building mesh reuse; low-power path already cuts DPR/shadows.
-// Building pooling plan (deferred as invasive — variable w/h/d + roof props):
-//   const buildingGeometryPool = createPool(() => new THREE.BoxGeometry(1,1,1), 12)
-//   // spawnChunk: const mesh = buildingGeometryPool.acquire(); mesh.scale.set(w,h,d)
-//   // scrollWorld/clearEntities: buildingGeometryPool.release(mesh) instead of dispose.
-// Variable sizes + child roof/prop cleanup make 1:1 reuse non-trivial. Pool is
-// importable and verified by test/pool.test.js; wiring will replace
-// `new THREE.BoxGeometry(w,h,d)` in createBuilding with acquire/release.
-
 // Passing the complete module namespace through the injected plane-model API
 // makes the bundler retain every Three.js export. Keep the public injection
 // contract while exposing only the constructors the registry actually uses.
@@ -708,9 +698,6 @@ let bossRecoveryUntil = 0
 let activePassageGap = { center: 0, width: 3 }
 /** Last wave's gap centre, so consecutive gaps drift instead of teleporting. */
 let lastGapCenter = 0
-let planeWingL = null
-let planeWingR = null
-let autoLevelHold = false
 
 // ---------------------------------------------------------------------------
 // Difficulty
@@ -745,18 +732,18 @@ function parseBestScore(value) {
 
 function loadBest(id) {
   if (id === 'normal') {
-    const legacy = localStorage.getItem('paper-plane-run-best')
-    if (legacy && !localStorage.getItem(BEST_PREFIX + id)) {
+    const legacy = safeGetItem('paper-plane-run-best')
+    if (legacy && !safeGetItem(BEST_PREFIX + id)) {
       safeSetItem(BEST_PREFIX + id, legacy)
     }
   }
-  return parseBestScore(localStorage.getItem(BEST_PREFIX + id))
+  return parseBestScore(safeGetItem(BEST_PREFIX + id))
 }
 function saveBest(id, v) {
   safeSetItem(BEST_PREFIX + id, String(v))
 }
 
-let difficulty = DIFFS[localStorage.getItem(DIFF_KEY)] || DIFFS.normal
+let difficulty = DIFFS[safeGetItem(DIFF_KEY, 'normal')] || DIFFS.normal
 let bestDistance = loadBest(difficulty.id)
 if (bestEl) bestEl.textContent = `${Math.floor(bestDistance)}m`
 if (hudModeEl) hudModeEl.textContent = difficulty.label
@@ -797,9 +784,9 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 /** @type {'classic'|'daily'|'weekly'|'tutorial'|'layout'|'journey'} */
 let runKind = 'classic'
-let journey = loadJourney(localStorage).journey
+let journey = loadJourney(safeStorage).journey
 let journeyRunConfig = null
-let mastery = loadMastery(localStorage).mastery
+let mastery = loadMastery(safeStorage).mastery
 let journeyTimeline = null
 let journeyTelemetry = null
 let journeyPreviousDistance = 0
@@ -857,7 +844,7 @@ let starStreakTimer = 0
 let starStreakWindow = 0
 let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0 }
 let lastFlightDebrief = null
-let tutorialDone = localStorage.getItem('paper-plane-run-tutorial') === '1'
+let tutorialDone = safeGetItem('paper-plane-run-tutorial') === '1'
 let lastPhotoDataUrl = null
 let nearMissCooldown = new WeakMap()
 
@@ -1864,11 +1851,6 @@ const buildingMats = [
   new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xe8d4a4 }),
   new THREE.MeshBasicMaterial({ map: buildingTex, color: 0xc6bfd8 }),
 ]
-// Pre-allocate 12 BoxGeometries via pool for building reuse. Full wiring of
-// pool.acquire/release in spawnChunk/scrollWorld/clearEntities is deferred as
-// invasive (variable w/h/d + roof child cleanup) — see header note.
-const buildingGeometryPool = createPool(() => new THREE.BoxGeometry(1, 1, 1), 12)
-void buildingGeometryPool
 // Kept low-metalness: the scene has no environment map, and Three's
 // metalness workflow renders highly metallic surfaces near-black without
 // one (no reflections to fill them in) — high metalness here previously
@@ -2222,8 +2204,10 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
   previewCamera.lookAt(0, 0, 0)
   // A cut-paper plate under the plane, with a hard offset shadow on the same plane.
   const plateGeometry = new THREE.CircleGeometry(1.3, 48)
-  const plateShadow = new THREE.Mesh(plateGeometry, new THREE.MeshBasicMaterial({ color: 0xb9ab8f }))
-  const plate = new THREE.Mesh(plateGeometry, new THREE.MeshBasicMaterial({ color: 0xf3e9d6 }))
+  const plateShadowMaterial = new THREE.MeshBasicMaterial({ color: 0xb9ab8f })
+  const plateMaterial = new THREE.MeshBasicMaterial({ color: 0xf3e9d6 })
+  const plateShadow = new THREE.Mesh(plateGeometry, plateShadowMaterial)
+  const plate = new THREE.Mesh(plateGeometry, plateMaterial)
   plateShadow.rotation.x = plate.rotation.x = -Math.PI / 2
   plateShadow.position.set(0.07, -0.46, 0.06)
   plate.position.y = -0.44
@@ -2272,16 +2256,30 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
     model.rotation.z = -0.04
     previewScene.add(model)
   }
-  const resize = () => {
+  // Reading getBoundingClientRect per animation frame forces layout while the
+  // Hangar is open. Cache the box and only remeasure when it actually resizes.
+  let previewWidth = 360
+  let previewHeight = 210
+  let previewSizeDirty = true
+  const measurePreview = () => {
     const bounds = canvas.getBoundingClientRect()
-    const width = Math.max(1, Math.round(bounds.width || 360))
-    const height = Math.max(1, Math.round(bounds.height || 210))
-    if (canvas.width !== Math.round(width * previewRenderer.getPixelRatio()) ||
-        canvas.height !== Math.round(height * previewRenderer.getPixelRatio())) {
-      previewRenderer.setSize(width, height, false)
-      previewCamera.aspect = width / height
-      previewCamera.updateProjectionMatrix()
-    }
+    previewWidth = Math.max(1, Math.round(bounds.width || 360))
+    previewHeight = Math.max(1, Math.round(bounds.height || 210))
+    previewSizeDirty = true
+  }
+  measurePreview()
+  const previewObserver = typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver(measurePreview)
+    : null
+  previewObserver?.observe(canvas)
+  const resize = () => {
+    if (!previewSizeDirty &&
+        canvas.width === Math.round(previewWidth * previewRenderer.getPixelRatio()) &&
+        canvas.height === Math.round(previewHeight * previewRenderer.getPixelRatio())) return
+    previewSizeDirty = false
+    previewRenderer.setSize(previewWidth, previewHeight, false)
+    previewCamera.aspect = previewWidth / previewHeight
+    previewCamera.updateProjectionMatrix()
   }
   const renderPreview = (time = 0) => {
     if (disposed) return
@@ -2307,7 +2305,11 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
       if (disposed) return
       disposed = true
       cancelAnimationFrame(animationFrame)
+      previewObserver?.disconnect()
       disposeModel()
+      plateGeometry.dispose()
+      plateShadowMaterial.dispose()
+      plateMaterial.dispose()
       previewRenderer.dispose()
       previewRenderer.forceContextLoss()
     },
@@ -2746,22 +2748,48 @@ function hazardTexture(kind) {
   return loadTex(`paper:hazard:${hazardPaletteZone}:${resolvedKind}`)
 }
 
+// Flyers and scissors spawn in the hundreds per long run. Their card geometry
+// and material are stable per (scale, texture): cache both instead of
+// allocating a fresh GPU buffer + material for every hazard, which was never
+// disposed and eventually cost a mobile WebGL context.
+const flyerCardGeometryCache = new Map()
+const flyerCardMaterialCache = new Map()
+
+function flyerCardGeometry(scale) {
+  const key = String(scale)
+  let geo = flyerCardGeometryCache.get(key)
+  if (!geo) {
+    geo = new THREE.PlaneGeometry(scale, scale)
+    flyerCardGeometryCache.set(key, geo)
+  }
+  return geo
+}
+
+function flyerCardMaterial(kind) {
+  const tex = hazardTexture(kind)
+  const key = tex.uuid
+  let mat = flyerCardMaterialCache.get(key)
+  if (!mat) {
+    // Hazards are cut paper in the zone accent, not photographs. Everything
+    // that can end a run shares one colour and one ink outline so it is
+    // identifiable as danger before it is identifiable as a scissors or a
+    // bird — and each flyer kind carries its own cut-paper silhouette so the
+    // roster reads as seven different threats, not one shape in seven sizes.
+    mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      alphaTest: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+    flyerCardMaterialCache.set(key, mat)
+  }
+  return mat
+}
+
 function createBillboardFlyer(scale = 1.5, kind = 'flyer') {
   const g = new THREE.Group()
-  // Hazards are cut paper in the zone accent, not photographs. Everything that
-  // can end a run shares one colour and one ink outline so it is identifiable
-  // as danger before it is identifiable as a scissors or a bird — and each
-  // flyer kind carries its own cut-paper silhouette so the roster reads as
-  // seven different threats, not one shape in seven sizes.
-  const tex = hazardTexture(kind)
-  const mat = new THREE.MeshBasicMaterial({
-    map: tex,
-    transparent: true,
-    alphaTest: 0.18,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  })
-  const card = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale), mat)
+  const card = new THREE.Mesh(flyerCardGeometry(scale), flyerCardMaterial(kind))
   // Face the player (camera comes from -Z looking +Z)
   card.rotation.y = Math.PI
   g.add(card)
@@ -3150,22 +3178,23 @@ function spawnChunk(z) {
   if (runKind === 'layout' && layoutPlay) return
 
   const tier = endlessTier()
+  // A chunk is spawned at `z` world units ahead of the plane, so its design
+  // decisions must be made for the distance at which the player will *meet*
+  // it — not the distance when it was queued. Using current distance made the
+  // pre-populated opening band (distance 0) all calm, star-telegraphed and
+  // flier-free, and shifted the 45–80m opening guarantee ~200m late.
+  const spawnDistance = distance + Math.max(0, z)
   // The shipped ramp saturates at 700m; tier headroom keeps flock sizes and
   // building heights growing past it instead of freezing for the rest of the run.
   // Smooth lerp within the tier (endlessTierProgress) prevents a step at each
   // tier boundary — escalation is a continuous curve, not a staircase.
-  const ramp = Math.min(1, distance / 700) + getTierHazardBonusSmooth(distance)
+  const ramp = Math.min(1, spawnDistance / 700) + getTierHazardBonusSmooth(spawnDistance)
   const cfg = difficulty
-  const zone = activeZoneAt(distance)
+  const zone = activeZoneAt(spawnDistance)
   const recovering = distance < bossRecoveryUntil
   const waveSpacing =
-    getWaveSpacing({ difficultyId: difficulty.id, distance, recovery: recovering }) *
-    cfg.gap * getTierSpacingScaleSmooth(distance)
-  const wave = createPacingWave({
-    index: Math.max(0, Math.round((z - 35) / Math.max(1, waveSpacing))),
-    difficultyId: difficulty.id,
-    afterBoss: recovering,
-  })
+    getWaveSpacing({ difficultyId: difficulty.id, distance: spawnDistance, recovery: recovering }) *
+    cfg.gap * getTierSpacingScaleSmooth(spawnDistance)
   // The wave's guaranteed passage is a continuous gap, not one of three fixed
   // lanes. Same fairness strength — there is always a hole wide enough to fly
   // — but its position moves by a bounded amount each wave, so threading it is
@@ -3210,7 +3239,7 @@ function spawnChunk(z) {
 
   if (!recovering) maybeSpawnGroundDecor(z)
 
-  const early = distance < 90
+  const early = spawnDistance < 90
   const sideBuildings = []
   for (const side of recovering ? [] : [-1, 1]) {
     if (rng() < 0.38) {
@@ -3247,22 +3276,22 @@ function spawnChunk(z) {
     }
   }
 
-  const ht = recovering || early ? null : pickHazardType(zone, getOpenChunkWeight({ distance, lastHazardDistance }))
+  const ht = recovering || early ? null : pickHazardType(zone, getOpenChunkWeight({ distance: spawnDistance, lastHazardDistance }))
   // Opening/presence smoothing (pacing.js): a scheduled flier owns the calm
   // band, and famine forces presence after it. Journey legs are authored —
   // excluded the same way the deck lane is. The boundary must stay in sync
   // with the `early` gate above.
   const wantsOpeningFlyer = !recovering && runKind !== 'journey' && planOpeningPresence({
     random: rng,
-    distance,
+    distance: spawnDistance,
     lastOpeningHazardDistance,
     lastHazardDistance,
     earlyBoundary: OPENING_CALM_METERS,
     gap: cfg.gap,
     quantum: waveSpacing * cfg.gap * cfg.scoreMul,
   })
-  if (wantsOpeningFlyer || ht === 'bird' || ht === 'scissors') lastHazardDistance = distance
-  if (wantsOpeningFlyer) lastOpeningHazardDistance = distance
+  if (wantsOpeningFlyer || ht === 'bird' || ht === 'scissors') lastHazardDistance = spawnDistance
+  if (wantsOpeningFlyer) lastOpeningHazardDistance = spawnDistance
   if (ht === 'building') {
     const w = 2 + rng() * 3
     const centerHeights = [5.2, 8.6, 12.2]
@@ -3373,13 +3402,13 @@ function spawnChunk(z) {
   if (!recovering && !early && runKind !== 'journey') {
     const deck = planDeckLane({
       random: rng,
-      distance,
+      distance: spawnDistance,
       tier: tier.tier,
       gap: cfg.gap,
     })
     // Deck hazards count as presence for the famine guard: a deck wave and a
     // scheduled flier are both "the sky is not empty" signals.
-    if (deck.heights.length > 0) lastHazardDistance = distance
+    if (deck.heights.length > 0) lastHazardDistance = spawnDistance
     for (const height of deck.heights) {
       const def = pickFlyerKind()
       const flyer = createFlyer(def.id)
@@ -3425,7 +3454,7 @@ function spawnChunk(z) {
     powerChanceMul: ufx.powerChanceMul,
     twistStarMul: activeTwist?.starMul || 1,
     doubleStarBonus: ufx.doubleStarBonus,
-  }), { distance, midY: 8 })
+  }), { distance: spawnDistance, midY: 8 })
   // Airborne hazards sharing this chunk's depth band, widened by how far each
   // one's pattern can swing. A star must clear a hazard's whole path, not the
   // spot it happens to occupy at spawn, or it becomes bait.
@@ -3513,8 +3542,7 @@ function clearBossApproachHazards() {
   for (let index = entities.length - 1; index >= 0; index -= 1) {
     const entity = entities[index]
     if (!shouldClearForBossApproach({ type: entity.type, z: entity.mesh.position.z })) continue
-    if (entity.disposable) disposeMeshResources(entity.mesh)
-    scene.remove(entity.mesh)
+    releaseEntity(entity)
     entities.splice(index, 1)
   }
 }
@@ -3581,6 +3609,10 @@ function spawnBoss(z = 70, forcedKind = null) {
     isBoss: true,
     director,
     lastBossPhase: 'warning',
+    // Gate meshes are built per encounter; free their GPU buffers when the
+    // gate retires. Shared boss materials are deduped by the disposer.
+    disposable: true,
+    disposeMaterials: true,
   })
   bossActive = true
   // Brief approach invuln so a late hazard can't snipe the commit.
@@ -3615,7 +3647,7 @@ function spawnMiniGauntlet(z = 60) {
     previousCenter: lastGapCenter,
     halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
     gapWidth,
-    tier: (typeof tier !== 'undefined' ? tier.tier ?? tier : 0),
+    tier: endlessTier().tier,
   })
   lastGapCenter = gapCenter
   activePassageGap = { center: gapCenter, width: gapWidth }
@@ -3669,12 +3701,13 @@ function spawnMiniGauntlet(z = 60) {
     })),
   })
   const side = gapCenter < -1.5 ? 'LEFT' : gapCenter > 1.5 ? 'RIGHT' : 'CENTRE'
-  // Payoff marker: an invisible tripwire behind the last hazard. Passing it
-  // while holding the advertised gap banks a gauntlet reward — the same
-  // promise-for-payout contract boss gates already honor. Anchored to the
-  // wave's gap centre rather than a fixed lane, since the passage moves.
+  // Payoff marker: an invisible tripwire beyond the deepest hazard
+  // (scissors reach z + 18, flyers z + ~12). It used to sit at z - 2, which
+  // is *closer* to the plane — so the reward paid on entering the lane before
+  // a single hazard had been threaded. Anchored to the wave's gap centre
+  // rather than a fixed lane, since the passage moves.
   const marker = new THREE.Object3D()
-  marker.position.set(gapCenter, 9, z - 2)
+  marker.position.set(gapCenter, 9, z + 30)
   scene.add(marker)
   entities.push({ mesh: marker, type: 'gauntlet', gauntletLaneX: gapCenter, cleared: false })
   zoneBannerKind = 'gauntlet'
@@ -4817,6 +4850,36 @@ if (stickZone && stickBase) {
 
 const lastGamepadButtons = { pause: false, mute: false, startFly: false }
 
+// Shell-level gamepad actions must run every frame, including menu, death and
+// pause — the old poll lived inside update()'s playing section, so Start could
+// start nothing on the menu, retry nothing on the game-over screen, and could
+// never un-pause (update is skipped entirely while paused).
+function pollShellGamepad() {
+  const gp = typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
+    ? pollFirstActiveGamepad(navigator.getGamepads())
+    : null
+  if (!gp) {
+    lastGamepadButtons.pause = false
+    lastGamepadButtons.mute = false
+    lastGamepadButtons.startFly = false
+    return
+  }
+  if (gp.pause && !lastGamepadButtons.pause && state === 'playing') {
+    setManualPause(!manualPause)
+  }
+  if (gp.mute && !lastGamepadButtons.mute) {
+    audio.toggleMute()
+    syncPauseUi()
+  }
+  if (gp.startFly && !lastGamepadButtons.startFly) {
+    if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
+    else if (state === 'dead' && crashT <= 0) retryCurrentRun()
+  }
+  lastGamepadButtons.pause = gp.pause
+  lastGamepadButtons.mute = gp.mute
+  lastGamepadButtons.startFly = gp.startFly
+}
+
 // Input
 function ghostStorageKey() {
   if (runKind === 'daily') return `${difficulty.id}-daily`
@@ -4829,7 +4892,7 @@ function retryCurrentRun() {
     startGame('classic')
     return
   }
-  if (runKind === 'journey') journey = loadJourney(localStorage).journey
+  if (runKind === 'journey') journey = loadJourney(safeStorage).journey
   if (runKind === 'journey' && !journey?.selectedRouteId) {
     openJourney()
     return
@@ -4848,6 +4911,10 @@ function syncPauseUi() {
   if (pauseBtn) pauseBtn.setAttribute('aria-pressed', String(dialogOpen))
   if (dialogOpen !== pauseDialogWasOpen) {
     if (dialogOpen) $('pause-resume')?.focus()
+    // Resuming must hand focus back to the playfield so Space/Tuck and the
+    // arrow keys keep working immediately; only the menu path focuses a HUD
+    // button.
+    else if (state === 'playing') canvas.focus({ preventScroll: true })
     else pauseBtn?.focus()
     pauseDialogWasOpen = dialogOpen
   }
@@ -4933,7 +5000,13 @@ window.addEventListener('keyup', (e) => keys.delete(e.code))
 // A key held down when focus leaves the window (alt-tab, clicking another
 // app) never gets its keyup event, so it would otherwise stay "held"
 // forever — which would leave the Tuck held down for the rest of the run.
-window.addEventListener('blur', () => keys.clear())
+// The analog stick holds its last sample too, so an interrupted drag would
+// keep steering after the window regains focus.
+window.addEventListener('blur', () => {
+  keys.clear()
+  resetStick()
+  releaseFloatingBase(stickBase)
+})
 // The action button is the Tuck: press and hold to dive, release to flare.
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
@@ -4998,6 +5071,7 @@ function showMenu() {
   setScreenAwake(false)
   state = 'menu'
   launchChallenge = null
+  challenge = null
   manualPause = false
   // The menu's attract-mode spawner runs the full spawnChunk, which reads
   // run-state (tier, twists, boss recovery, zone) — reset it to fresh-run
@@ -5088,9 +5162,14 @@ bindClick('pause-menu', () => {
 bindClick('share-btn', () => shareScore())
 bindClick('photo-save', () => {
   if (!lastPhotoDataUrl) return
+  const filename = `paper-plane-${Math.floor(lastRun.d)}m.png`
+  if (sharePhotoNative(lastPhotoDataUrl, filename)) {
+    if (shareStatus) shareStatus.textContent = 'Choose Save Image to keep your flight.'
+    return
+  }
   const link = document.createElement('a')
   link.href = lastPhotoDataUrl
-  link.download = `paper-plane-${Math.floor(lastRun.d)}m.png`
+  link.download = filename
   link.click()
 })
 bindClick('photo-share', async () => {
@@ -5098,8 +5177,11 @@ bindClick('photo-share', async () => {
   try {
     const blob = await (await fetch(lastPhotoDataUrl)).blob()
     const file = new File([blob], 'paper-plane.png', { type: 'image/png' })
+    if (sharePhotoNative(lastPhotoDataUrl, 'paper-plane.png')) return
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file], title: 'Paper Plane Run', text: shareText() })
+    } else if (copyNative(`${shareText()}\n${buildShareUrl()}`)) {
+      if (shareStatus) shareStatus.textContent = 'Link copied (photo save available)'
     } else {
       await navigator.clipboard.writeText(`${shareText()}\n${buildShareUrl()}`)
       if (shareStatus) shareStatus.textContent = 'Link copied (photo save available)'
@@ -5118,8 +5200,9 @@ function shareText() {
   return `I flew ${d}m · ${s}★ on ${DIFFS[m]?.label || m}${daily ? ` · Daily ${dailyKey()}` : ''} in Paper Plane Run — race my ghost!`
 }
 function buildShareUrl() {
-  const u = new URL(location.href)
+  const u = new URL(shareBaseUrl())
   u.search = ''
+  u.hash = ''
   const code = encodeChallenge({
     kind: lastRun.kind || (lastRun.weekly ? 'weekly' : lastRun.daily ? 'daily' : 'classic'),
     mode: lastRun.m,
@@ -5144,6 +5227,10 @@ function buildShareUrl() {
 async function shareScore() {
   const text = shareText()
   const url = buildShareUrl()
+  if (shareNative({ text, url })) {
+    shareStatus.textContent = 'Share sheet opened!'
+    return
+  }
   try {
     if (navigator.share) {
       await navigator.share({ title: 'Paper Plane Run', text, url })
@@ -5154,6 +5241,10 @@ async function shareScore() {
     if (e?.name === 'AbortError') return
   }
   try {
+    if (copyNative(`${text}\n${url}`)) {
+      shareStatus.textContent = 'Link copied!'
+      return
+    }
     await navigator.clipboard.writeText(`${text}\n${url}`)
     shareStatus.textContent = 'Link copied!'
   } catch {
@@ -5182,7 +5273,20 @@ async function startGame(kind = 'classic', opts = {}) {
     if (opts.shellBridge) shellBridge = opts.shellBridge
     const settingsResult = await syncRuntimeSettings(opts.settings || loadSettings())
     shellBridge?.settingsApplied?.(settingsResult)
-    setDifficulty(localStorage.getItem(DIFF_KEY) || 'normal', { persist: false })
+    setDifficulty(safeGetItem(DIFF_KEY, 'normal'), { persist: false })
+    // A challenge handed over by the shell arrives after the URL was cleaned
+    // (main consumes ?c= and strips it before this lazy engine boots), so the
+    // engine's own URL parse never sees it. Adopt it here and run it on the
+    // difficulty it was recorded with instead of the player's saved one.
+    if (opts.challenge) {
+      launchChallenge = opts.challenge
+      challenge = {
+        d: Number(opts.challenge.distance) || 0,
+        s: Number(opts.challenge.stars) || 0,
+        m: opts.challenge.mode,
+      }
+      if (DIFFS[opts.challenge.mode]) setDifficulty(opts.challenge.mode, { persist: false })
+    }
     // Finish deferred death rewards if restarting mid-crash
     if (state === 'dead' && crashT > 0) {
       crashT = 0
@@ -5192,7 +5296,7 @@ async function startGame(kind = 'classic', opts = {}) {
     audio.uiClick()
     runKind = kind
     if (opts.challenge) launchChallenge = opts.challenge
-    if (kind === 'journey') journey = loadJourney(localStorage).journey
+    if (kind === 'journey') journey = loadJourney(safeStorage).journey
     journeyRunConfig = kind === 'journey' ? resolveJourneyRunConfig(opts.journeyConfig, journey) : null
     if (kind === 'journey' && !journeyRunConfig) {
       openJourney()
@@ -5200,6 +5304,7 @@ async function startGame(kind = 'classic', opts = {}) {
     }
     layoutPlay = selectLayoutForStart(layoutPlay, kind, opts)
     hideAllPanels()
+    $('sw-update-banner')?.classList.add('hidden')
     manualPause = false
     resetGame()
     state = 'playing'
@@ -5570,7 +5675,7 @@ function finalizeDeath() {
 const HANGAR_ONBOARD_KEY = 'paper-plane-run-hangar-onboard'
 
 function maybeShowHangarOnboarding(reason, summary) {
-  if (localStorage.getItem(HANGAR_ONBOARD_KEY) === '1') return
+  if (safeGetItem(HANGAR_ONBOARD_KEY) === '1') return
   const tutorialJustDone = reason === 'Tutorial complete!'
   const wallet = summary?.walletAfterRun ?? getWallet()
   const canBuy = listUpgrades().some((upgrade) => upgrade.canAfford)
@@ -5703,7 +5808,7 @@ function finalizeDeathUnsafe() {
       ? Math.max(0, Math.round(stars * (journeyRunConfig.rewardMultiplier - 1)))
       : 0
     const rewardId = `${journeyRunConfig.attemptId}:bonus`
-    if (journeyBonus > 0 && applyJourneyRewardOnce(localStorage, { id: rewardId })) {
+    if (journeyBonus > 0 && applyJourneyRewardOnce(safeStorage, { id: rewardId })) {
       addLifetimeStars(journeyBonus)
       addWallet(journeyBonus)
     } else if (journeyBonus > 0) journeyBonus = 0
@@ -5737,7 +5842,7 @@ function finalizeDeathUnsafe() {
       masteryLevel: masteryAfter?.level || 0,
       decorationIds: Object.freeze([...(masteryAfter?.cosmetics || [])]),
     })
-    try { saveMastery(localStorage, mastery) } catch (error) { console.warn('Journey mastery save failed', error) }
+    try { saveMastery(safeStorage, mastery) } catch (error) { console.warn('Journey mastery save failed', error) }
     lastJourneyResult = Object.freeze({
       outcome: journeyOutcome,
       objectiveResult,
@@ -5746,8 +5851,8 @@ function finalizeDeathUnsafe() {
       unlockedCosmetic: masteryAfter?.cosmetics.find((id) => !masteryBefore?.cosmetics.includes(id)) || null,
     })
     journey = resolveJourneyFlight(journey, journeyOutcome)
-    saveJourney(localStorage, journey)
-    if (journey.postcard && savePostcardOnce(localStorage, journey.postcard)) {
+    saveJourney(safeStorage, journey)
+    if (journey.postcard && savePostcardOnce(safeStorage, journey.postcard)) {
       track('journey_postcard_completed', { journeyId: journey.id, rivalBeaten: journey.postcard.rivalBeaten })
     }
     track(completedJourneyRoute ? 'journey_flight_completed' : 'journey_flight_crashed', {
@@ -6058,14 +6163,33 @@ function updateGroundSkim(dt) {
 // buffers on removal. The WeakSet keeps a shared geometry from ever being
 // disposed twice if an entity is ever mis-flagged.
 const disposedGeometries = new WeakSet()
-function disposeMeshResources(mesh) {
+const disposedMaterials = new WeakSet()
+function disposeMeshResources(mesh, { materials = false } = {}) {
   if (!mesh) return
   mesh.traverse((node) => {
     if (node.geometry && !disposedGeometries.has(node.geometry)) {
       disposedGeometries.add(node.geometry)
       node.geometry.dispose()
     }
+    if (materials && node.material) {
+      const list = Array.isArray(node.material) ? node.material : [node.material]
+      for (const material of list) {
+        if (material && !disposedMaterials.has(material)) {
+          disposedMaterials.add(material)
+          material.dispose()
+        }
+      }
+    }
   })
+}
+
+/** Remove an entity and release any GPU-owned resources it carries. */
+function releaseEntity(entity) {
+  if (!entity) return
+  if (entity.disposable) {
+    disposeMeshResources(entity.mesh, { materials: Boolean(entity.disposeMaterials) })
+  }
+  scene.remove(entity.mesh)
 }
 
 function scrollWorld(move, lateralDrift = 0) {
@@ -6073,8 +6197,7 @@ function scrollWorld(move, lateralDrift = 0) {
     const e = entities[i]
     e.mesh.position.z -= move
     if (e.mesh.position.z < -25) {
-      if (e.disposable) disposeMeshResources(e.mesh)
-      scene.remove(e.mesh)
+      releaseEntity(e)
       entities.splice(i, 1)
     }
   }
@@ -6719,22 +6842,6 @@ function update(dt) {
     ? pollFirstActiveGamepad(navigator.getGamepads())
     : null
 
-  if (gpState) {
-    if (gpState.pause && !lastGamepadButtons.pause) {
-      if (state === 'playing') setManualPause(!manualPause)
-    }
-    if (gpState.mute && !lastGamepadButtons.mute) {
-      muteBtn.textContent = audio.toggleMute() ? '🔇' : '🔊'
-      syncPauseUi()
-    }
-    if (gpState.startFly && !lastGamepadButtons.startFly) {
-      if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
-      else if (state === 'dead' && crashT <= 0) retryCurrentRun()
-    }
-    lastGamepadButtons.pause = gpState.pause
-    lastGamepadButtons.mute = gpState.mute
-    lastGamepadButtons.startFly = gpState.startFly
-  }
 
   if (joyMode) {
     // Joystick / keyboard relative control
@@ -7522,106 +7629,105 @@ function update(dt) {
       continue
     }
 
-    // Boss gate expiry — resolves even while un-collideable, mirroring the
-    // gauntlet tripwire above: a gate the plane slipped past under a Phase
-    // power or invuln must still retire the encounter, or bossActive pins
-    // true and every future boss gate and mini-gauntlet silently stops
-    // spawning (the old cleanup sat inside the collision window and behind
-    // the canCollide gate, so it could never run). The gate plane is behind
-    // the camera at this depth, so freeing the mesh now is invisible.
-    if (e.type === 'boss') {
-      if (!e.cleared && m.position.z < -2.5) {
-        e.cleared = true
-        bossActive = false
-        scene.remove(m)
-        entities.splice(i, 1)
-        continue
-      }
-      if (m.position.z < -25) {
-        scene.remove(m)
-        entities.splice(i, 1)
-        bossActive = false
-        continue
-      }
-      // Still inside the collision window — fall through to the pass/collide
-      // test below (it runs after the canCollide gate, as before).
-    }
-
-    // Hazards ignored during invuln
-    if (!canCollide) continue
-
+    // Boss gates resolve in one place, before the invuln gate: a gate the
+    // plane actually threads must pay out even under Phase/shield grace, and a
+    // gate crossed during a fast frame must not tunnel through the old 2.1-unit
+    // z-slice. `crossed` is a swept test over the frame's dz interval.
     if (e.type === 'boss') {
       const dz = m.position.z - p.z
-      // Only test when gate is in the plane's path slice
-      if (dz < 3.5 && dz > -2.5) {
-        const gapY = m.userData.gapY || 10
-        const encounter = e.director?.snapshot()
-        const inGap = isInsideBossPassage({
+      const prevDz = e.prevBossDz
+      const crossed = Number.isFinite(prevDz) && prevDz > -0.55 && dz <= -0.55
+      e.prevBossDz = dz
+      const inWindow = dz < 3.5 && dz > -2.5
+      let gapY = m.userData.gapY || 10
+      let encounter = null
+      let inGap = false
+      if (inWindow || crossed) {
+        encounter = e.director?.snapshot()
+        inGap = isInsideBossPassage({
           playerX: p.x,
           playerY: p.y,
           bossX: m.position.x,
           gapY,
           passage: encounter?.passage,
         })
-        // Only punish a clear miss near the gate plane — grazing the glowing
-        // ring edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage.
-        if (isLethalObstacle('boss') && !inGap && Math.abs(dz) < 1.05) {
-          e.director?.collide()
-          if (import.meta.env.DEV) {
-            const bossNdc = m.position.clone().project(camera)
-            window.__paperDeathCause = {
-              reason: bossCrashReason(m.userData.kind),
-              type: 'boss',
-              kind: m.userData.kind,
-              zGap: +(dz).toFixed(2),
-              planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
-              bossX: +m.position.x.toFixed(2),
-              ndc: [+bossNdc.x.toFixed(2), +bossNdc.y.toFixed(2)],
-              killedOnScreen: Math.abs(bossNdc.x) <= 1 && Math.abs(bossNdc.y) <= 1,
-              gapY,
-              passage: encounter?.passage ?? null,
-  fogFar: Math.round(scene.fog.far),
-  cameraPullback: Number(bossCamPullback.toFixed(3)),
-              distance: +distance.toFixed(2),
-            }
-          }
-          die(bossCrashReason(m.userData.kind))
-          return
-        }
-        // Success once the plane has threaded past the gate while in the hole.
-        if (dz < -0.55 && inGap) {
-          // Successfully threaded — reward once
-          if (!e.cleared) {
-            e.cleared = true
-            e.director?.pass()
-            if (journeyTelemetry && e.journeyGateRequired) {
-              journeyTelemetry.shortcutGatesCleared += 1
-              if (e.journeyGateBonus) {
-                stars += 2
-                runStats.stars = stars
-              }
-              updateJourneyObjectiveHud()
-            }
-            const reward = getBossClearReward()
-            bossActive = false
-            bossRecoveryUntil = distance + reward.recoveryMeters
-            hitStopTimer = reward.hitStopSeconds
-            track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
-            // Gate Bounty adds to the base reward; the banners show the total.
-            const gateStars = getGateClearStars(reward, ufx)
-            stars += gateStars
-            starsEl.textContent = String(stars)
-            audio.missionComplete()
-            if (settings.haptics) Haptic.collect()
-            invuln = Math.max(invuln, reward.invulnSeconds)
-            spawnConfetti(planeX, planeY, 2, 'route')
-            showFlightFeedback(`GATE CLEARED · +${gateStars}★`, 'route', 1.6)
-            pulseFlightImpact('route')
-            audio.gateClear()
-            audio.hoopWhoosh()
-            showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${gateStars}★`, 1.8, 'boss')
+      }
+
+      // Only punish a clear miss at the gate plane — grazing the glowing ring
+      // edges uses PASSAGE_EDGE_GRACE inside isInsideBossPassage. The swept
+      // crossing catches a frame that jumps straight from approach to expiry.
+      if (!e.cleared && !inGap && canCollide && isLethalObstacle('boss') && (crossed || Math.abs(dz) < 1.05)) {
+        e.director?.collide()
+        if (import.meta.env.DEV) {
+          const bossNdc = m.position.clone().project(camera)
+          window.__paperDeathCause = {
+            reason: bossCrashReason(m.userData.kind),
+            type: 'boss',
+            kind: m.userData.kind,
+            zGap: +(dz).toFixed(2),
+            planeXY: [+p.x.toFixed(2), +p.y.toFixed(2)],
+            bossX: +m.position.x.toFixed(2),
+            ndc: [+bossNdc.x.toFixed(2), +bossNdc.y.toFixed(2)],
+            killedOnScreen: Math.abs(bossNdc.x) <= 1 && Math.abs(bossNdc.y) <= 1,
+            gapY,
+            passage: encounter?.passage ?? null,
+            fogFar: Math.round(scene.fog.far),
+            cameraPullback: Number(bossCamPullback.toFixed(3)),
+            distance: +distance.toFixed(2),
           }
         }
+        die(bossCrashReason(m.userData.kind))
+        return
+      }
+
+      // Success once the plane has threaded past the gate while in the hole.
+      // Runs before the invuln check so a Phase/grace pass still banks the
+      // encounter reward instead of silently retiring the gate.
+      if (!e.cleared && inGap && (crossed || dz < -0.55)) {
+        e.cleared = true
+        e.director?.pass()
+        if (journeyTelemetry && e.journeyGateRequired) {
+          journeyTelemetry.shortcutGatesCleared += 1
+          if (e.journeyGateBonus) {
+            stars += 2
+            runStats.stars = stars
+          }
+          updateJourneyObjectiveHud()
+        }
+        const reward = getBossClearReward()
+        bossActive = false
+        bossRecoveryUntil = distance + reward.recoveryMeters
+        hitStopTimer = reward.hitStopSeconds
+        track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
+        // Gate Bounty adds to the base reward; the banners show the total.
+        const gateStars = getGateClearStars(reward, ufx)
+        stars += gateStars
+        starsEl.textContent = String(stars)
+        audio.missionComplete()
+        if (settings.haptics) Haptic.collect()
+        invuln = Math.max(invuln, reward.invulnSeconds)
+        spawnConfetti(planeX, planeY, 2, 'route')
+        showFlightFeedback(`GATE CLEARED · +${gateStars}★`, 'route', 1.6)
+        pulseFlightImpact('route')
+        audio.gateClear()
+        audio.hoopWhoosh()
+        showPowerBanner(`${bossBannerEmoji(m.userData.kind)} Boss cleared · +${gateStars}★`, 1.8, 'boss')
+      }
+
+      // Retire a missed/grace-passed gate behind the plane so bossActive can
+      // never pin. Also free the mesh once it is well past the camera.
+      if (!e.cleared && m.position.z < -2.5) {
+        e.cleared = true
+        bossActive = false
+        releaseEntity(e)
+        entities.splice(i, 1)
+        continue
+      }
+      if (m.position.z < -25) {
+        releaseEntity(e)
+        entities.splice(i, 1)
+        bossActive = false
+        continue
       }
       continue
     }
@@ -7771,8 +7877,14 @@ document.addEventListener('visibilitychange', () => {
   // Flush background time on the next apply so resume doesn't eat a huge delta.
   applyPauseState()
 })
+// The iOS shell sends this when the app resigns active (Control Center, call
+// banner, backgrounding) because WebKit does not always emit visibilitychange.
+window.addEventListener('paperplane:native-paused', () => {
+  if (state === 'playing') setManualPause(true)
+})
 function frame() {
-  if (renderer.getContext && renderer.getContext().isContextLost()) return
+  pollShellGamepad()
+  if (renderer.getContext && renderer.getContext().isContextLost()) { requestAnimationFrame(frame); return }
   if (!simulationPaused && state !== 'menu') {
     try {
       timer.update()

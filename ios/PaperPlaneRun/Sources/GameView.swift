@@ -120,6 +120,12 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
         contentController.add(scriptMessageHandler, name: "haptics")
         contentController.add(scriptMessageHandler, name: "shareBackup")
+        // Custom-scheme pages are not secure contexts, so navigator.share,
+        // navigator.clipboard and <a download> cannot be relied on. These
+        // handlers back the web build's share/copy/save actions natively.
+        contentController.add(scriptMessageHandler, name: "shareText")
+        contentController.add(scriptMessageHandler, name: "sharePhoto")
+        contentController.add(scriptMessageHandler, name: "copyText")
         // The web build posts true while a flight is on screen; the idle timer
         // stays off for that stretch so the screen never sleeps mid-flight.
         contentController.add(scriptMessageHandler, name: "screenAwake")
@@ -215,7 +221,16 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         ]
         runtimeObservers.append(contentsOf: pauseNotifications.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.webView?.pauseAllMediaPlayback()
+                guard let self else { return }
+                // A backgrounded game must not hold the display awake, and a
+                // transient resign (Control Center, call banner) may not fire
+                // visibilitychange inside WebKit — ask the engine to pause.
+                UIApplication.shared.isIdleTimerDisabled = false
+                self.webView?.pauseAllMediaPlayback()
+                self.webView?.evaluateJavaScript(
+                    "window.dispatchEvent(new Event('paperplane:native-paused'));",
+                    completionHandler: nil
+                )
             }
         })
     }
@@ -326,6 +341,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     private func presentLoadFailure() {
+        UIApplication.shared.isIdleTimerDisabled = false
         loadingView.layer.removeAllAnimations()
         loadingView.isHidden = false
         loadingView.alpha = 1
@@ -371,6 +387,32 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         if message.name == "shareBackup" {
             guard let backup = message.body as? String else { return }
             DispatchQueue.main.async { [weak self] in self?.presentBackupShareSheet(backup) }
+            return
+        }
+        if message.name == "copyText" {
+            guard let text = message.body as? String, text.count <= 20_000 else { return }
+            UIPasteboard.general.string = text
+            return
+        }
+        if message.name == "shareText" {
+            guard
+                let payload = message.body as? [String: Any],
+                let text = payload["text"] as? String,
+                text.count <= 20_000
+            else { return }
+            let urlString = (payload["url"] as? String) ?? ""
+            DispatchQueue.main.async { [weak self] in self?.presentTextShareSheet(text: text, urlString: urlString) }
+            return
+        }
+        if message.name == "sharePhoto" {
+            guard
+                let payload = message.body as? [String: Any],
+                let dataUrl = payload["dataUrl"] as? String,
+                let filename = payload["filename"] as? String
+            else { return }
+            DispatchQueue.main.async { [weak self] in
+                self?.presentPhotoShareSheet(dataUrl: dataUrl, filename: filename)
+            }
             return
         }
         guard message.name == "haptics", let pattern = message.body as? String else { return }
@@ -444,11 +486,13 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code == NSURLErrorCancelled { return }
         print("[Nav] provisional navigation failed: \(error)")
         presentLoadFailure()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code == NSURLErrorCancelled { return }
         print("[Nav] navigation failed: \(error)")
         presentLoadFailure()
     }
@@ -459,6 +503,60 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         hideLoadingView()
     }
 
+    private func presentTextShareSheet(text: String, urlString: String) {
+        guard viewIfLoaded?.window != nil else { return }
+        var items: [Any] = [text]
+        if let url = URL(string: urlString), url.scheme == "https" { items.append(url) }
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.title = "Paper Plane Run"
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        topPresenter?.present(controller, animated: true)
+    }
+
+    private func presentPhotoShareSheet(dataUrl: String, filename: String) {
+        guard viewIfLoaded?.window != nil else { return }
+        let marker = "base64,"
+        guard
+            dataUrl.count <= 12 * 1024 * 1024,
+            let range = dataUrl.range(of: marker),
+            let data = Data(base64Encoded: String(dataUrl[range.upperBound...])),
+            data.count <= 8 * 1024 * 1024
+        else {
+            print("[SharePhoto] rejected invalid or oversized image")
+            return
+        }
+        let safeName = filename.replacingOccurrences(of: "/", with: "-")
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(safeName.isEmpty ? "paper-plane.png" : safeName)
+        do {
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            print("[SharePhoto] could not stage image: \(error)")
+            return
+        }
+        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        controller.title = "Paper Plane Run"
+        controller.completionWithItemsHandler = { _, _, _, _ in
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        topPresenter?.present(controller, animated: true)
+    }
+
+    private var topPresenter: UIViewController? {
+        var top: UIViewController? = self
+        while let presented = top?.presentedViewController { top = presented }
+        return top
+    }
+
     // MARK: - WKUIDelegate
 
     // The game's share/photo panel calls navigator.share / clipboard; WKWebView
@@ -466,5 +564,47 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     // just let the system share sheet present over this view controller.
     func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo, completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
         completionHandler(nil) // no long-press context menus over game canvas
+    }
+
+    // WKWebView returns cancel/false when these delegate methods are absent.
+    // The shell confirms restarting a Journey, so without these the button did
+    // nothing at all. Present the standard UIKit panels over the game.
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        topPresenter?.present(alert, animated: true)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        topPresenter?.present(alert, animated: true)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+        alert.addTextField { field in field.text = defaultText }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+            completionHandler(alert.textFields?.first?.text)
+        })
+        topPresenter?.present(alert, animated: true)
     }
 }

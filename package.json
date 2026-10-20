@@ -9,7 +9,7 @@
     "verify:bundle-budget": "node scripts/bundle-budget.mjs",
     "build:ios": "BASE_PATH=./ VITE_API_BASE=https://paper-plane-run.vercel.app vite build --outDir ios-dist --emptyOutDir && node scripts/postprocess-ios.mjs && node scripts/sync-ios-web.mjs",
     "verify:ios-parity": "node scripts/verify-ios-parity.mjs",
-    "ios:generate": "npm run build:ios && cd ios && xcodegen generate",
+    "ios:generate": "npm run build:ios && npm run verify:ios-parity && cd ios && xcodegen generate",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,5 +23,8 @@
   },
   "dependencies": {
     "three": "^0.185.1"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

@@ -1,8 +1,9 @@
+import { safeStorage } from './game/safe-storage.js'
 import { createMasteryState, normalizeMasteryState } from './journey-mastery.js'
 
 export const JOURNEY_MASTERY_STORAGE_KEY = 'paper-plane-run-journey-mastery-v1'
 
-export function loadMastery(storage = localStorage) {
+export function loadMastery(storage = safeStorage) {
   const raw = storage.getItem(JOURNEY_MASTERY_STORAGE_KEY)
   if (!raw) return { mastery: createMasteryState(), recovered: false }
   let parsed
@@ -21,7 +22,7 @@ export function loadMastery(storage = localStorage) {
   return { mastery: createMasteryState(), recovered: true }
 }
 
-export function saveMastery(storage = localStorage, mastery) {
+export function saveMastery(storage = safeStorage, mastery) {
   const normalized = normalizeMasteryState(mastery)
   if (!normalized) return false
   storage.setItem(JOURNEY_MASTERY_STORAGE_KEY, JSON.stringify(normalized))

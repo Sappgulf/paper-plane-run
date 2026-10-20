@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { loadSettings } from '../src/settings.js'
+import { loadSettings, prefersReducedMotion } from '../src/settings.js'
 
 describe('first-run settings defaults', () => {
   let originalMaxTouchPoints
@@ -24,6 +24,14 @@ describe('first-run settings defaults', () => {
     const s = loadSettings()
     expect(s.controlMode).toBe('mouse')
     expect(s.lowPower).toBe(false)
+  })
+
+  test('first run follows the OS reduced-motion preference', () => {
+    const original = globalThis.matchMedia
+    globalThis.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
+    expect(prefersReducedMotion()).toBe(true)
+    expect(loadSettings().reducedMotion).toBe(true)
+    globalThis.matchMedia = original
   })
 
   test('never overrides a saved preference on later loads', () => {

@@ -4,7 +4,8 @@ import { GameAudio } from './audio.js'
 import { PLANE_PORTRAIT_PREFIX, planePortraitUrl } from './game/plane-portrait.js'
 import { PLANE_TRAITS } from './plane-models.js'
 import { Haptic } from './haptics.js'
-import { isNativeShell } from './native-shell.js'
+import { copyNative, isNativeShell, shareNative } from './native-shell.js'
+import { shareBaseUrl } from './share-url.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
 import { getFunnelSummary, track } from './analytics.js'
@@ -17,7 +18,6 @@ import {
   getRunCount,
 } from './achievements.js'
 import { claimMission, getDailyMissions, getPlayStreak, unclaimedRewards } from './missions.js'
-import { createNotificationQueue } from './game/notification-queue.js'
 import {
   addLifetimeStars,
   claimPlane,
@@ -82,7 +82,7 @@ import {
   normalizeLeaderboardInteger,
   normalizeLeaderboardName,
 } from './leaderboard.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { safeGetItem, safeRemoveItem, safeSessionStorage, safeSetItem, safeStorage } from './game/safe-storage.js'
 import { bindDialogFocus } from './game/dialog-focus.js'
 import { initProgressKit } from './ui/progress-kit.js'
 
@@ -124,8 +124,8 @@ const installBtn = $('install-btn')
 
 let settings = loadSettings()
 let season = seasonInfo(settings.forceSeason)
-let journey = loadJourney(localStorage).journey
-let mastery = loadMastery(localStorage).mastery
+let journey = loadJourney(safeStorage).journey
+let mastery = loadMastery(safeStorage).mastery
 let journeyRunConfig = null
 let postcardFocusReturn = null
 let activePlanePreview = null
@@ -138,7 +138,7 @@ let previewPointerReady = false
 let planePreviewSelection = 0
 const missionBadge = $('mission-badge')
 const pilotNameInput = $('pilot-name')
-let difficulty = { id: localStorage.getItem('paper-plane-run-diff') || 'normal' }
+let difficulty = { id: safeGetItem('paper-plane-run-diff', 'normal') }
 
 const DIFFICULTY_COPY = Object.freeze({
   easy: { label: 'Easy', blurb: 'Slower · roomier · more pickups' },
@@ -155,22 +155,6 @@ const flightEngineWarningState = {
   at: 0,
 }
 
-const settingsToastQueue = createNotificationQueue({
-  show: (message) => {
-    const toast = $('challenge-toast')
-    if (!toast || !message) return
-    toast.textContent = message
-    toast.classList.remove('hidden')
-  },
-  hide: () => {
-    $('challenge-toast')?.classList.add('hidden')
-  },
-})
-
-function showSettingsToast(message, { durationMs = 2600, dedupeMs = 1500 } = {}) {
-  settingsToastQueue.show(message, { duration: durationMs, dedupeMs })
-}
-
 function reportFlightEngineWarning(message, error) {
   const now = performance.now ? performance.now() : Date.now()
   const signature = `${error?.name || ''}|${error?.cause?.name || ''}|${error?.message || ''}`
@@ -183,26 +167,34 @@ function reportFlightEngineWarning(message, error) {
 applyDocumentA11y(settings)
 
 if (pilotNameInput) {
-  pilotNameInput.value = localStorage.getItem('paper-plane-run-name') || ''
+  pilotNameInput.value = safeGetItem('paper-plane-run-name', '')
   pilotNameInput.addEventListener('change', () => {
     pilotNameInput.value = normalizeLeaderboardName(pilotNameInput.value)
     safeSetItem('paper-plane-run-name', pilotNameInput.value)
   })
 }
 
+function syncMuteUi(muted) {
+  if (!muteBtn) return
+  muteBtn.textContent = muted ? '🔇' : '🔊'
+  muteBtn.setAttribute('aria-pressed', String(muted))
+  muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute')
+}
+
 if (muteBtn) {
-  muteBtn.textContent = shellAudio.muted ? '🔇' : '🔊'
-  muteBtn.setAttribute('aria-pressed', String(shellAudio.muted))
-  muteBtn.setAttribute('aria-label', shellAudio.muted ? 'Unmute' : 'Mute')
+  syncMuteUi(shellAudio.muted)
   muteBtn.addEventListener('click', async (event) => {
     event.stopPropagation()
     try { await shellAudio.unlock() } catch {}
-    const muted = shellAudio.toggleMute()
-    muteBtn.textContent = muted ? '🔇' : '🔊'
-    muteBtn.setAttribute('aria-pressed', String(muted))
-    muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute')
+    shellAudio.toggleMute()
   })
 }
+
+// The engine toggles the same audio object (or its own instance) from the
+// keyboard, pause menu and gamepad; this keeps the shell button in sync.
+window.addEventListener('paperplane:mute-changed', (event) => {
+  syncMuteUi(Boolean(event.detail?.muted))
+})
 
 // Install and offline startup belong to the always-loaded shell. Deferring
 // these listeners with Three.js can miss both beforeinstallprompt and load.
@@ -219,10 +211,10 @@ let deferredInstall = null
 let installHintFocusReturn = null
 
 bindDialogFocus($('pause-overlay'), { onEscape: () => $('pause-resume')?.click(), returnFocus: () => $('c') })
-bindDialogFocus(installHint, { onEscape: () => installHint.classList.add('hidden') })
+bindDialogFocus(installHint, { onEscape: () => closeInstallHint() })
 bindDialogFocus($('flight-guide'), { onEscape: () => $('flight-guide').classList.add('hidden') })
 bindDialogFocus($('postcard-detail'), { restoreFocus: false, onEscape: () => closePostcardOverlay($('postcard-detail')) })
-bindDialogFocus($('postcard-reveal'), { restoreFocus: false })
+bindDialogFocus($('postcard-reveal'), { restoreFocus: false, onEscape: () => closePostcardOverlay($('postcard-reveal')) })
 $('flight-guide-btn')?.addEventListener('click', () => $('flight-guide').classList.remove('hidden'))
 $('flight-guide-close')?.addEventListener('click', () => $('flight-guide').classList.add('hidden'))
 $('flight-guide')?.addEventListener('click', (event) => {
@@ -278,7 +270,12 @@ function swScriptUrl() {
 }
 
 let pendingSwWorker = null
-const disableServiceWorker = localStorage.getItem('paper-plane-run-disable-sw') === '1'
+let updateRequested = false
+const disableServiceWorker = safeGetItem('paper-plane-run-disable-sw') === '1'
+
+function hideSwUpdateBanner() {
+  $('sw-update-banner')?.classList.add('hidden')
+}
 
 function showSwUpdateBanner(worker) {
   const banner = $('sw-update-banner')
@@ -288,9 +285,14 @@ function showSwUpdateBanner(worker) {
   // Never interrupt an active flight — only surface on menu/hangar shells.
   if (!$('hud')?.classList.contains('hidden')) return
   banner.classList.remove('hidden')
+  btn.disabled = false
+  btn.textContent = 'Restart to update'
   btn.onclick = () => {
     btn.disabled = true
     btn.textContent = 'Updating…'
+    // The controllerchange listener above owns the reload. It only fires from
+    // this explicit request, never from the first-install claim.
+    updateRequested = true
     worker.postMessage({ type: 'SKIP_WAITING' })
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Retry update' }, 8000)
   }
@@ -300,8 +302,16 @@ function showSwUpdateBanner(worker) {
 // page and reload it once while the module graph is still loading.
 if (!import.meta.env.DEV && !disableServiceWorker && 'serviceWorker' in navigator) {
   let refreshing = false
+  // `clients.claim()` on a first install fires controllerchange for a page that
+  // was previously uncontrolled. That is not an update: reloading here wasted
+  // a full boot and could interrupt a run started before activation.
+  let wasControlled = Boolean(navigator.serviceWorker.controller)
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return
+    if (!wasControlled) {
+      wasControlled = true
+      return
+    }
+    if (!updateRequested || refreshing) return
     refreshing = true
     window.location.reload()
   })
@@ -310,7 +320,7 @@ if (!import.meta.env.DEV && !disableServiceWorker && 'serviceWorker' in navigato
     navigator.serviceWorker
       .register(scriptUrl)
       .then((registration) => {
-        if (registration.waiting) showSwUpdateBanner(registration.waiting)
+        if (registration.waiting && navigator.serviceWorker.controller) showSwUpdateBanner(registration.waiting)
         registration.addEventListener('updatefound', () => {
           const installing = registration.installing
           if (!installing) return
@@ -346,17 +356,30 @@ function hideAllPanels() {
   }
 }
 
+// Panels replace one another wholesale, so the old focused control is hidden
+// and the browser drops focus to <body>. Move it to the new panel heading (a
+// stable landmark) instead of leaving keyboard and screen-reader users adrift.
+function focusPanel(panel, selector = 'h1, h2, [role="heading"]') {
+  const target = panel?.querySelector?.(selector)
+  if (!target) return
+  if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+  requestAnimationFrame(() => target.focus({ preventScroll: true }))
+}
+
 function showMenu() {
   hideAllPanels()
   menu?.classList.remove('hidden')
   hud?.classList.add('hidden')
-  refreshHangarWallet()
+  // Journey/mastery progress can change while the shell is hidden; keep the
+  // primary CTA and wallet honest when the player returns.
+  refreshProgression()
+  focusPanel(menu)
   if (pendingSwWorker) showSwUpdateBanner(pendingSwWorker)
 }
 
 function getJourneyStampCount() {
   const stamps = new Set(journey?.earnedStampIds || [])
-  for (const postcard of loadPostcardAlbum(localStorage)) {
+  for (const postcard of loadPostcardAlbum(safeStorage)) {
     for (const stamp of postcard.stampIds || []) stamps.add(stamp)
   }
   return stamps.size
@@ -364,13 +387,13 @@ function getJourneyStampCount() {
 
 function startJourneyChapter(chapter = 1) {
   const chapterId = chapter === 2 ? 2 : 1
-  if (chapterId === 2 && !isChapterUnlocked(localStorage, 2)) {
+  if (chapterId === 2 && !isChapterUnlocked(safeStorage, 2)) {
     // Completing any Chapter 1 postcard unlocks Ch2; also allow if player has stamps.
     if (getJourneyStampCount() < 4) return false
-    unlockJourneyChapter(localStorage, 2)
+    unlockJourneyChapter(safeStorage, 2)
   }
   journey = createJourney(Date.now(), Date.now(), chapterId)
-  saveJourney(localStorage, journey)
+  saveJourney(safeStorage, journey)
   track('journey_chapter_started', { chapter: chapterId, journeyId: journey.id })
   return true
 }
@@ -383,14 +406,14 @@ function renderJourney() {
   renderJourneyBrief($('journey-brief'), journey)
   renderPilotChoices($('journey-pilots'), journey, getJourneyStampCount(), (pilotId) => {
     journey = selectJourneyPilot(journey, pilotId, getJourneyStampCount())
-    saveJourney(localStorage, journey)
+    saveJourney(safeStorage, journey)
     renderJourney()
   }, mastery)
   const routes = $('journey-route-choices')
   if (journey.status === 'complete') {
     const chapter = journey.chapter || 1
-    const ch2Ready = chapter === 1 || isChapterUnlocked(localStorage, 2) || getJourneyStampCount() >= 4
-    if (chapter === 1) unlockJourneyChapter(localStorage, 2)
+    const ch2Ready = chapter === 1 || isChapterUnlocked(safeStorage, 2) || getJourneyStampCount() >= 4
+    if (chapter === 1) unlockJourneyChapter(safeStorage, 2)
     routes.innerHTML = `
       <div class="journey-empty">
         <span>💌</span>
@@ -435,7 +458,7 @@ function renderJourney() {
     objective: buildRunConfiguration({ ...journey, selectedRouteId: route.id })?.objective,
   })), (routeId) => {
     journey = selectJourneyRoute(journey, routeId)
-    saveJourney(localStorage, journey)
+    saveJourney(safeStorage, journey)
     journeyRunConfig = buildRunConfiguration(journey)
     track('journey_route_selected', { routeId, step: journey.stepIndex, chapter: journey.chapter || 1 })
     void startMode('journey', { journeyConfig: journeyRunConfig })
@@ -451,7 +474,9 @@ function renderJourney() {
 function openJourney() {
   hideAllPanels()
   renderJourney()
-  $('journey-panel')?.classList.remove('hidden')
+  const panel = $('journey-panel')
+  panel?.classList.remove('hidden')
+  focusPanel(panel)
   track('journey_started', { journeyId: journey.id, step: journey.stepIndex })
 }
 
@@ -478,14 +503,23 @@ document.addEventListener('keydown', (event) => {
 })
 
 async function sharePostcard(card, root) {
-  const model = buildPostcardShareModel(card, location.origin + location.pathname)
+  const model = buildPostcardShareModel(card, shareBaseUrl())
   if (!model) return
   const status = root?.querySelector?.('[data-postcard-status]')
   try {
-    if (navigator.share) await navigator.share(model)
-    else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(`${model.text}\n${model.url}`)
-    else if (status) status.textContent = `${model.text} · ${model.url}`
-    if (status) status.textContent = navigator.share ? 'Postcard shared.' : 'Postcard summary copied.'
+    if (shareNative(model)) {
+      if (status) status.textContent = 'Share sheet opened.'
+    } else if (navigator.share) {
+      await navigator.share(model)
+      if (status) status.textContent = 'Postcard shared.'
+    } else if (copyNative(`${model.text}\n${model.url}`)) {
+      if (status) status.textContent = 'Postcard summary copied.'
+    } else if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(`${model.text}\n${model.url}`)
+      if (status) status.textContent = 'Postcard summary copied.'
+    } else if (status) {
+      status.textContent = `${model.text} · ${model.url}`
+    }
     track('journey_postcard_shared', { postcardId: card.id })
   } catch (error) {
     if (error?.name !== 'AbortError' && status) status.textContent = `Share unavailable. ${model.text}`
@@ -588,7 +622,7 @@ function showHangarTab(tab) {
   if (nextTab === 'board') renderBoard('local')
   if (nextTab === 'settings') renderSettings()
   if (nextTab === 'stats') renderStats()
-  if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(localStorage), openPostcardDetail)
+  if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(safeStorage), openPostcardDetail)
   if (nextTab === 'editor') setupEditor()
   refreshHangarWallet()
 }
@@ -964,6 +998,13 @@ function renderSkins(statusMessage = '', forcedPlaneId = null) {
     }
     grid.appendChild(card)
   }
+  // Purchase/equip re-renders the whole grid; put keyboard focus back on the
+  // plane the player just acted on instead of dropping it to <body>.
+  if (forcedPlaneId) {
+    requestAnimationFrame(() => {
+      grid.querySelector(`[data-plane-id="${CSS.escape(forcedPlaneId)}"]`)?.focus?.({ preventScroll: true })
+    })
+  }
 }
 
 let hangarFocusUpgradeId = null
@@ -1169,6 +1210,7 @@ function renderUpgrades() {
   if (hangarFocusUpgradeId) {
     const focused = grid.querySelector(`[data-upgrade-id="${hangarFocusUpgradeId}"]`)
     focused?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    focused?.focus?.({ preventScroll: true })
   }
 }
 
@@ -1228,7 +1270,7 @@ function renderStats() {
   const totalGauntlets = getLifetimeGauntlets()
   const totalFever = getLifetimeFever()
   const streak = getPlayStreak()
-  const postcards = loadPostcardAlbum(localStorage).length
+  const postcards = loadPostcardAlbum(safeStorage).length
   const skins = listSkins()
   const ownedSkins = skins.filter((s) => s.owned).length
   const localTop = getLocalTop(1)
@@ -1350,26 +1392,37 @@ async function renderBoard(tab = 'local') {
   if (!list) return
   const token = ++boardRenderToken
   list.innerHTML = ''
-  document.querySelectorAll('[data-board]').forEach((t) =>
-    t.classList.toggle('active', t.dataset.board === tab),
-  )
+  document.querySelectorAll('[data-board]').forEach((t) => {
+    const selected = t.dataset.board === tab
+    t.classList.toggle('active', selected)
+    t.setAttribute('aria-pressed', String(selected))
+  })
   let rows = []
+  let remoteFailed = false
   if (tab === 'local') rows = getLocalTop(12)
   else if (tab === 'daily') rows = getDailyTop(dailyKey(), difficulty.id, 12)
   else if (tab === 'weekly') {
     rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
     if (!rows.length) {
+      list.innerHTML = '<li class="board-loading">Loading weekly scores…</li>'
       const remote = await fetchRemoteTop(difficulty.id, { weekly: true })
+      if (token !== boardRenderToken) return
+      remoteFailed = remote === null
       rows = remote?.scores || []
     }
   }
   else {
+    list.innerHTML = '<li class="board-loading">Loading global scores…</li>'
     const remote = await fetchRemoteTop(difficulty.id, false)
+    if (token !== boardRenderToken) return
+    remoteFailed = remote === null
     rows = remote?.scores || []
   }
   if (token !== boardRenderToken) return
   if (!rows.length) {
-    if (tab === 'weekly') {
+    if (remoteFailed) {
+      list.innerHTML = '<li class="board-error">Scores are taking a nap — try again in a moment.</li>'
+    } else if (tab === 'weekly') {
       const fold = thisWeeksFold()
       list.innerHTML = `<li>No scores for ${weeklyKey()} · ${fold.name} yet — go fly!</li>`
     } else if (tab === 'remote') {
@@ -1571,7 +1624,11 @@ $('editor-clear')?.addEventListener('click', () => {
 })
 $('editor-export')?.addEventListener('click', async () => {
   const code = layoutToShareCode(editorLayout)
-  const url = `${location.origin}${location.pathname}?layout=${encodeURIComponent(code)}`
+  const url = `${shareBaseUrl()}?layout=${encodeURIComponent(code)}`
+  if (copyNative(url)) {
+    $('editor-status').textContent = 'Share link copied!'
+    return
+  }
   try {
     await navigator.clipboard.writeText(url)
     $('editor-status').textContent = 'Share link copied!'
@@ -1596,8 +1653,10 @@ $('editor-play')?.addEventListener('click', () => {
 function openHangar(tab = 'upgrades', options = {}) {
   hangarFocusUpgradeId = options?.focusUpgradeId || null
   hideAllPanels()
-  $('hangar-panel')?.classList.remove('hidden')
+  const panel = $('hangar-panel')
+  panel?.classList.remove('hidden')
   showHangarTab(tab || 'upgrades')
+  focusPanel(panel)
 }
 
 let pendingStart = null
@@ -1654,6 +1713,9 @@ function restoreActionableMenu() {
 }
 
 async function startMode(kind, options = {}) {
+  // The update banner belongs to menu chrome; a delayed preload can surface it
+  // right as a flight begins, where its restart action would kill the run.
+  hideSwUpdateBanner()
   // Snapshot which panel the user is on when the start is requested — if the
   // engine fails we should only yank them back to the menu if they never
   // navigated elsewhere during the await (e.g. opened the Hangar).
@@ -1754,7 +1816,7 @@ document.querySelector('.hangar-tabs')?.addEventListener('keydown', (event) => {
 engineRetry?.addEventListener('click', () => {
   if (engineFailed) {
     if (pendingStart) {
-      try { sessionStorage.setItem('paper-plane-engine-retry', JSON.stringify(pendingStart)) } catch {}
+      safeSetItem('paper-plane-engine-retry', JSON.stringify(pendingStart), safeSessionStorage)
     }
     location.reload()
     return
@@ -1857,7 +1919,7 @@ syncShellControlUi()
   const hint = $('landscape-hint')
   if (!hint || !isTouchPrimary) return
   const seenKey = 'paper-plane-run-landscape-hint-seen'
-  if (localStorage.getItem(seenKey)) return
+  if (safeGetItem(seenKey)) return
   if (innerHeight > innerWidth) hint.classList.remove('hidden')
   hint.addEventListener('click', () => {
     hint.classList.add('hidden')
@@ -1867,16 +1929,16 @@ syncShellControlUi()
 
 $('journey-restart')?.addEventListener('click', () => {
   if (journey?.status === 'active' && journey.stepIndex > 0 && !confirm('Start a new Journey? Current map progress will be replaced.')) return
-  clearJourney(localStorage)
+  clearJourney(safeStorage)
   journey = createJourney(Date.now(), Date.now())
-  saveJourney(localStorage, journey)
+  saveJourney(safeStorage, journey)
   track('journey_restarted', { journeyId: journey.id })
   renderJourney()
 })
 
 function refreshProgression() {
-  journey = loadJourney(localStorage).journey
-  mastery = loadMastery(localStorage).mastery
+  journey = loadJourney(safeStorage).journey
+  mastery = loadMastery(safeStorage).mastery
   refreshMissionBadge()
   refreshHangarWallet()
   const launchCopy = $('journey-launch-copy')
@@ -1946,9 +2008,9 @@ function consumeLaunchMode() {
 // and never saw the affordability highlight.
 refreshProgression()
 
-const retryRequest = sessionStorage.getItem('paper-plane-engine-retry')
+const retryRequest = safeGetItem('paper-plane-engine-retry', null, safeSessionStorage)
 if (retryRequest) {
-  sessionStorage.removeItem('paper-plane-engine-retry')
+  safeRemoveItem('paper-plane-engine-retry', safeSessionStorage)
   try {
     const request = JSON.parse(retryRequest)
     queueMicrotask(() => startMode(request.kind, request.options))

@@ -13,13 +13,16 @@ re-deriving every formula in a separate native engine.
 - **Native (Swift)**: app shell, launch screen, icon, haptics bridge
   (WKWebView never implemented `navigator.vibrate`, so `Haptic.*` calls are
   forwarded to `UIImpactFeedbackGenerator`/`UINotificationFeedbackGenerator`
-  via a `WKScriptMessageHandler`), lifecycle and performance signals, and a
-  progress-backup share sheet that exports a temporary JSON file to Files,
-  AirDrop, or another iOS share target.
+  via a `WKScriptMessageHandler`), lifecycle and performance signals, a
+  progress-backup share sheet, native share/copy and photo-save sheets, and
+  `alert`/`confirm`/`prompt` panels (WKWebView cancels JS dialogs when its
+  `WKUIDelegate` methods are absent).
 - **Web (unchanged game code)**: everything else — flight physics, all
   modes, upgrades, missions, achievements, the route editor, leaderboards.
-  `navigator.share` and the clipboard API work natively in WKWebView on
-  iOS 15+, so the share/photo panel needs no bridge at all.
+  Because `paper-plane://` is not a secure context, `navigator.share` and
+  `navigator.clipboard` cannot be relied on; `native-shell.js` routes those
+  actions through the Swift handlers instead. Shared links always use the
+  canonical HTTPS origin, never `paper-plane://`.
 
 ## One-time setup
 
@@ -39,7 +42,9 @@ open ios/PaperPlaneRun.xcodeproj        # or: xcodebuild -project ios/PaperPlane
 Re-run `npm run build:ios` after any change to `src/`, `index.html`, or
 `public/`. It creates the iOS-specific Vite build and refreshes the app's
 bundled `web/` copy. `npm run verify:ios-parity` provides a byte-for-byte drift
-check; it is also useful in CI or before archiving the native app.
+check, and `npm run ios:generate` now runs it before regenerating the Xcode
+project. CI also compiles the Swift app on macOS so a broken `project.yml` or
+Swift source cannot merge green.
 
 ## Why this needed real fixes, not just "wrap it"
 
@@ -51,9 +56,8 @@ deployment, so the iOS build and native shell establish equivalent contracts:
    texture/image loader in `src/main.js` now resolves through
    `resolveAssetUrl()`, which is a no-op on the web build (`import.meta.env.BASE_URL === '/'`)
    and rewrites to `./assets/...` when `BASE_PATH=./` is set (`build:ios`).
-   CSS's one `url(/assets/menu-bg.jpg)` became a bare relative reference
-   instead, since CSS `url()` resolution is relative to the stylesheet's own
-   location regardless of origin scheme.
+   CSS asset references resolve relative to the stylesheet's own location,
+   independent of the origin scheme.
 2. **`/api/leaderboard` and `/api/analytics`** — relative fetches with no
    server to resolve against. `build:ios` sets `VITE_API_BASE` to the
    production URL so remote leaderboard/analytics calls still work from the
@@ -64,9 +68,8 @@ deployment, so the iOS build and native shell establish equivalent contracts:
    `log stream`: correct MIME type, correct byte count) and then silently
    refuses to apply/execute it as a CORS-mode load — no catchable JS error,
    the page just never renders styled or scripted. `scripts/postprocess-ios.mjs`
-   strips `crossorigin` from those two local tags after each `build:ios` run
-   (the external Google Fonts `preconnect` keeps it, since that one's a real
-   cross-origin request). The native shell serves all bundled resources from
+   strips `crossorigin` from those two local tags after each `build:ios` run.
+   The native shell serves all bundled resources from
    one `paper-plane://game/` origin with `WKURLSchemeHandler`, allowing current
    WebKit to execute the ES module while the game remains fully offline.
 

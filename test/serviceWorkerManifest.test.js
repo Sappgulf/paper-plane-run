@@ -22,6 +22,9 @@ describe('service worker build manifest', () => {
     writeFileSync(join(directory, 'assets', 'bosses', 'wind.webp'), 'wind')
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'plane')
     writeFileSync(join(directory, 'sw.js'), 'template')
+    writeFileSync(join(directory, 'sw 2.js'), 'copy junk')
+    writeFileSync(join(directory, 'assets', 'flight-engine-abc 2.js'), 'copy junk')
+    writeFileSync(join(directory, 'assets', 'bosses', 'wind 3.webp'), 'copy junk')
     mkdirSync(join(directory, '.vite'), { recursive: true })
     writeFileSync(join(directory, '.vite', 'manifest.json'), '{"x":1}')
     writeFileSync(join(directory, 'manifest.json'), '{"vite":true}')
@@ -39,6 +42,9 @@ describe('service worker build manifest', () => {
     expect(manifest.urls).not.toContain('/.vite/manifest.json')
     expect(manifest.urls).not.toContain('/manifest.json')
     expect(manifest.urls).not.toContain('/chunk.js.map')
+    expect(manifest.urls).not.toContain('/sw 2.js')
+    expect(manifest.urls).not.toContain('/assets/flight-engine-abc 2.js')
+    expect(manifest.urls).not.toContain('/assets/bosses/wind 3.webp')
     expect(manifest.version).toMatch(/^paper-plane-run-[a-f0-9]{12}$/)
 
     writeFileSync(join(directory, 'assets', 'planes', 'classic.webp'), 'changed plane')
@@ -85,9 +91,10 @@ describe('service worker build manifest', () => {
     writeFileSync(join(directory, 'assets', 'paper-flight-hero.webp'), 'hero')
     writeFileSync(join(directory, 'assets', 'paper-world-backdrop.webp'), 'backdrop')
 
-    const { shell } = buildPrecacheManifest(directory)
+    const { shell, warm } = buildPrecacheManifest(directory)
 
     expect(shell).toContain('/assets/paper-flight-hero.webp')
-    expect(shell).toContain('/assets/paper-world-backdrop.webp')
+    // The world backdrop paints the Journey panel, not the first screen.
+    expect(warm).toContain('/assets/paper-world-backdrop.webp')
   })
 })

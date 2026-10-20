@@ -14,10 +14,13 @@ export function buildPrecacheManifest(directory) {
   const files = walk(root)
     .filter((path) => statSync(path).isFile())
     .filter((path) => {
-      if (path.endsWith(`${sep}sw.js`) || path.endsWith('.map')) return false
       const rel = relative(root, path).split(sep).join('/')
-      // Build tooling only — not needed for offline play
+      // The template itself, source maps and Vite tooling are not play assets.
+      if (/(^|\/)sw(?:\.js| \d+\.js)$/.test(rel) || path.endsWith('.map')) return false
       if (rel === 'manifest.json' || rel.startsWith('.vite/')) return false
+      // macOS Finder copy junk ("index 2.html", "wind 3.webp"). It must never
+      // be hashed into a cache release or precached as if it were real art.
+      if (/(^|\/)[^/]* \d+\.[^/]*$/.test(rel)) return false
       return true
     })
     .sort()
@@ -43,7 +46,6 @@ export function buildPrecacheManifest(directory) {
 // bosses and postcards warm in the background after activation.
 const FIRST_RUN_ART = new Set([
   '/assets/paper-flight-hero.webp',
-  '/assets/paper-world-backdrop.webp',
   '/assets/zone-stamp-sheet.webp',
 ])
 

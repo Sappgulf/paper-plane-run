@@ -1,5 +1,5 @@
 import { JOURNEY_VERSION, PILOTS, stepsForChapter } from './journey.js'
-import { safeSetItem } from './game/safe-storage.js'
+import { safeSetItem, safeStorage } from './game/safe-storage.js'
 
 export const JOURNEY_STORAGE_KEY = 'paper-plane-run-journey-v1'
 export const JOURNEY_RECEIPTS_KEY = 'paper-plane-run-journey-receipts-v1'
@@ -45,7 +45,7 @@ function migrateJourney(value) {
   return value
 }
 
-export function loadUnlockedChapters(storage = localStorage) {
+export function loadUnlockedChapters(storage = safeStorage) {
   try {
     const raw = JSON.parse(storage.getItem(JOURNEY_CHAPTER_UNLOCK_KEY) || '[1]')
     const set = new Set(Array.isArray(raw) ? raw.map(Number).filter((n) => n === 1 || n === 2) : [1])
@@ -56,7 +56,7 @@ export function loadUnlockedChapters(storage = localStorage) {
   }
 }
 
-export function unlockJourneyChapter(storage = localStorage, chapter = 2) {
+export function unlockJourneyChapter(storage = safeStorage, chapter = 2) {
   const unlocked = new Set(loadUnlockedChapters(storage))
   unlocked.add(Number(chapter) === 2 ? 2 : 1)
   const list = [...unlocked].sort()
@@ -64,12 +64,12 @@ export function unlockJourneyChapter(storage = localStorage, chapter = 2) {
   return list
 }
 
-export function isChapterUnlocked(storage = localStorage, chapter = 1) {
+export function isChapterUnlocked(storage = safeStorage, chapter = 1) {
   if (chapter === 1) return true
   return loadUnlockedChapters(storage).includes(Number(chapter))
 }
 
-export function loadJourney(storage = localStorage) {
+export function loadJourney(storage = safeStorage) {
   const raw = storage.getItem(JOURNEY_STORAGE_KEY)
   if (!raw) return { journey: null, recovered: false }
   try {
@@ -83,7 +83,7 @@ export function loadJourney(storage = localStorage) {
   }
 }
 
-export function saveJourney(storage = localStorage, journey) {
+export function saveJourney(storage = safeStorage, journey) {
   if (!validJourney(journey)) return false
   safeSetItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey))
   // Completing Chapter 1 permanently unlocks Chapter 2.
@@ -93,11 +93,11 @@ export function saveJourney(storage = localStorage, journey) {
   return true
 }
 
-export function clearJourney(storage = localStorage) {
+export function clearJourney(storage = safeStorage) {
   storage.removeItem(JOURNEY_STORAGE_KEY)
 }
 
-export function applyJourneyRewardOnce(storage = localStorage, reward) {
+export function applyJourneyRewardOnce(storage = safeStorage, reward) {
   if (!reward?.id) return false
   let receipts = []
   try { receipts = JSON.parse(storage.getItem(JOURNEY_RECEIPTS_KEY) || '[]') } catch { receipts = [] }

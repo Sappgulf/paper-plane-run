@@ -1,4 +1,4 @@
-import { safeSetItem } from './game/safe-storage.js'
+import { safeGetItem, safeSetItem } from './game/safe-storage.js'
 import {
   LEADERBOARD_MODES,
   isLeaderboardMode,
@@ -26,7 +26,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 function load(key) {
   try {
-    return JSON.parse(localStorage.getItem(key) || '[]')
+    return JSON.parse(safeGetItem(key, '[]'))
   } catch {
     return []
   }
@@ -79,20 +79,24 @@ export function getWeeklyTop(weeklyKey, mode, limit = 10) {
 }
 
 /** Optional remote — fails soft if API unavailable */
-export async function fetchRemoteTop(mode = 'normal', opts = false) {
+export async function fetchRemoteTop(mode = 'normal', opts = false, { timeoutMs = 6000 } = {}) {
   const daily = opts === true || opts?.daily
   const weekly = !!opts?.weekly
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {
     const q = new URLSearchParams({
       mode,
       daily: daily ? '1' : '0',
       weekly: weekly ? '1' : '0',
     })
-    const res = await fetch(`${API_BASE}/api/leaderboard?${q}`)
+    const res = await fetch(`${API_BASE}/api/leaderboard?${q}`, controller ? { signal: controller.signal } : undefined)
     if (!res.ok) return null
     return await res.json()
   } catch {
     return null
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 }
 

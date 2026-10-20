@@ -15,12 +15,40 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm audit --audit-level=moderate
       - run: npm test
       - run: npm run build
       - run: npm run verify:bundle-budget
       - run: npm run build:ios
       - run: npm run verify:ios-parity
+
+  ios:
+    runs-on: macos-14
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: brew install xcodegen
+      - run: npm ci
+      - run: npm run build:ios
+      - run: npm run verify:ios-parity
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build iOS app (simulator, unsigned)
+        run: >-
+          xcodebuild
+          -project ios/PaperPlaneRun.xcodeproj
+          -scheme PaperPlaneRun
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath ios/build
+          CODE_SIGNING_ALLOWED=NO
+          build
 
   browser:
     runs-on: ubuntu-latest

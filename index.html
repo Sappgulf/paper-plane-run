@@ -8,7 +8,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,8 +28,6 @@
     <meta name="twitter:description" content="Soar through a paper world: dodge, collect stars, upgrade your plane." />
     <meta name="twitter:image" content="https://paper-plane-run.vercel.app/icon-512.png" />
     <title>Paper Plane Run</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   </head>
   <body>
     <div id="game-root" class="mouse-mode">
@@ -110,10 +108,10 @@
       <button id="pause-btn" type="button" class="icon-btn pause-btn hidden" title="Pause" aria-label="Pause flight">❚❚</button>
       <button id="install-btn" type="button" class="icon-btn install-btn hidden" title="Install" aria-label="Install Paper Plane Run">⬇️</button>
 
-      <div id="install-hint" class="hidden" role="dialog" aria-label="Install Paper Plane Run">
+      <div id="install-hint" class="hidden" role="dialog" aria-modal="true" aria-labelledby="install-hint-title" aria-label="Install Paper Plane Run">
         <div class="install-hint-card">
           <div class="install-hint-icon">✈️</div>
-          <h3>Add to Home Screen</h3>
+          <h3 id="install-hint-title">Add to Home Screen</h3>
           <p id="install-hint-body">Tap <b>Share</b>, then <b>Add to Home Screen</b> for a fullscreen, offline-ready app.</p>
           <button id="install-hint-close" type="button" class="cta-main install-hint-btn">Got it</button>
         </div>
@@ -152,7 +150,7 @@
           </div>
 
 
-          <button id="journey-btn" type="button" class="cta-main journey-main-cta" data-cta="primary" aria-label="Begin Journey — primary action"><span>Begin Journey <b aria-hidden="true">↗</b></span><small id="journey-launch-copy">A story in four flights. Two chapters of sky.</small></button>
+          <button id="journey-btn" type="button" class="cta-main journey-main-cta" data-cta="primary" aria-describedby="journey-launch-copy"><span>Begin Journey <b aria-hidden="true">↗</b></span><small id="journey-launch-copy">A story in four flights. Two chapters of sky.</small></button>
 
           <div class="menu-actions">
             <button id="start-btn" type="button" class="action-pill" title="The original endless flight"><span>Classic <b aria-hidden="true">↗</b></span><small>Chase your longest flight</small></button>
@@ -290,13 +288,13 @@
               <div id="achievements-list"></div>
             </section>
             <section id="tab-board" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-board">
-              <div class="tab-row">
-                <button type="button" class="tab active" data-board="local">Device</button>
-                <button type="button" class="tab" data-board="daily">Daily</button>
-                <button type="button" class="tab" data-board="weekly">Weekly</button>
-                <button type="button" class="tab" data-board="remote">Global</button>
+              <div class="tab-row" role="group" aria-label="Leaderboard scope">
+                <button type="button" class="tab active" data-board="local" aria-pressed="true">Device</button>
+                <button type="button" class="tab" data-board="daily" aria-pressed="false">Daily</button>
+                <button type="button" class="tab" data-board="weekly" aria-pressed="false">Weekly</button>
+                <button type="button" class="tab" data-board="remote" aria-pressed="false">Global</button>
               </div>
-              <ol id="board-list" class="list-card board-list"></ol>
+              <ol id="board-list" class="list-card board-list" aria-live="polite"></ol>
             </section>
             <section id="tab-settings" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-settings">
               <p class="tagline">Season: <strong id="season-now">—</strong></p>
@@ -375,7 +373,7 @@
             <section id="tab-editor" class="hangar-page hidden" role="tabpanel" aria-labelledby="hangar-tab-editor">
               <p class="page-intro">Place hazards, then play or share a code.</p>
               <div class="editor-toolbar" id="editor-palette"></div>
-              <canvas id="editor-canvas" width="360" height="200"></canvas>
+              <canvas id="editor-canvas" width="360" height="200" aria-label="Custom route canvas. Click to place the selected item."></canvas>
               <div class="btn-row wrap">
                 <button type="button" id="editor-undo" class="btn-secondary">Undo</button>
                 <button type="button" id="editor-clear" class="btn-secondary">Clear</button>
@@ -384,7 +382,7 @@
               </div>
               <input id="editor-import" class="import-input" placeholder="Paste layout code or link…" />
               <button type="button" id="editor-load" class="btn-secondary">Load</button>
-              <p id="editor-status" class="share-status"></p>
+              <p id="editor-status" class="share-status" role="status" aria-live="polite"></p>
             </section>
           </div>
           <button type="button" class="back-btn hangar-back" data-back>← Main menu</button>

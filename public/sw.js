@@ -8,6 +8,14 @@ const CACHE = self.__PPR_CACHE_VERSION__ || 'paper-plane-run-development'
 const PRECACHE = self.__PPR_PRECACHE__ || ['/', '/index.html', '/manifest.webmanifest']
 const WARM = self.__PPR_WARM__ || []
 
+// The blocking shell must be complete: a "successful" install missing its
+// entry JS/CSS leaves the player with no working offline app. WARM is optional
+// and may include art that a proxy or storage-quota limit rejects.
+async function cacheRequired(urls) {
+  const cache = await caches.open(CACHE)
+  await Promise.all(urls.map((url) => cache.add(url)))
+}
+
 async function cacheAllSettled(urls) {
   const cache = await caches.open(CACHE)
   await Promise.all(urls.map(async (url) => {
@@ -21,7 +29,7 @@ async function cacheAllSettled(urls) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    cacheAllSettled(PRECACHE).then(() => {
+    cacheRequired(PRECACHE).then(() => {
       // First install activates immediately; updates wait for the menu "Restart" prompt.
       if (!self.registration.active) return self.skipWaiting()
     }),
@@ -38,11 +46,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
-    ).then(() => self.clients.claim())
-      // Fill in the rest of the release for offline play. Deliberately not
-      // awaited into the activate lifetime — the page is already usable.
-      .then(() => { void cacheAllSettled(WARM) }),
+    ).then(() => self.clients.claim()),
   )
+  // Keep the warm fill inside the activation lifetime so the browser cannot
+  // terminate the worker midway through the later zones/skins/postcards.
+  event.waitUntil(cacheAllSettled(WARM))
 })
 
 self.addEventListener('fetch', (event) => {
