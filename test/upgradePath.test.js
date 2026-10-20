@@ -26,7 +26,7 @@ describe('upgrade early path', () => {
     expect(banner.title).toMatch(/Lift/)
   })
 
-  test('groups every upgrade into four spend trees', () => {
+  test('groups every upgrade into five spend trees', () => {
     const ids = UPGRADE_TREES.flatMap((tree) => tree.ids)
     expect(new Set(ids).size).toBe(UPGRADES.length)
     expect(ids).toHaveLength(UPGRADES.length)

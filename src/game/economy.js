@@ -20,6 +20,10 @@ export const FUTURE_PRICE_TABLE = Object.freeze({
     trail: Object.freeze([10, 22, 40]),
     turbo: Object.freeze([14, 28, 48]),
     guardian: Object.freeze([30, 60]),
+    // Weapons are a new axis: unlock first, then buy precision.
+    weapon: Object.freeze([20, 38, 60, 88]),
+    salvo: Object.freeze([30, 54]),
+    pierce: Object.freeze([38, 68]),
     flare: Object.freeze([22, 40, 65, 95]),
     // First ranks of the late tree stay inside a short normal-run save so the
     // newest upgrades never feel gated behind a long grind.

@@ -27,6 +27,7 @@ export function buildFlightDebrief({ reason = '', tucking = false, stats = {} } 
     ['threads', 'Gap threaded', 'Gaps threaded'],
     ['flares', 'Clean flare', 'Clean flares'],
     ['fevers', 'Fever burst', 'Fever bursts'],
+    ['weaponPops', 'Ink pop', 'Ink pops'],
     ['powers', 'Power pickup', 'Power pickups'],
   ].map(([id, singular, plural]) => {
     const value = count(stats?.[id])

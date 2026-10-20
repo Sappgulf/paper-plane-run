@@ -1123,7 +1123,9 @@ function renderUpgrades() {
     const card = document.createElement('div')
     card.className = 'upgrade-card'
     card.dataset.upgradeId = u.id
-    if (u.maxed) card.classList.add('maxed')
+    const lockedByRequirement = Boolean(u.requires && !u.requirementMet)
+    if (lockedByRequirement) card.classList.add('upgrade-requires', 'locked-funds')
+    else if (u.maxed) card.classList.add('maxed')
     else if (u.canAfford) card.classList.add('affordable')
     else card.classList.add('locked-funds')
     if (hangarFocusUpgradeId && hangarFocusUpgradeId === u.id) card.classList.add('upgrade-focus')
@@ -1137,8 +1139,10 @@ function renderUpgrades() {
     } else {
       action.type = 'button'
       action.className = 'u-buy'
-      action.textContent = `Upgrade ${u.cost}★`
-      action.disabled = !u.canAfford
+      action.textContent = lockedByRequirement
+        ? `Requires ${u.requiresName} Lv${u.requires.level}`
+        : `Upgrade ${u.cost}★`
+      action.disabled = !u.canAfford || lockedByRequirement
       action.onclick = () => {
         const res = buyUpgrade(u.id)
         if (res.ok) {
@@ -1172,7 +1176,7 @@ function renderUpgrades() {
     next.textContent = effect.next ? `Next: ${effect.next.label}` : 'Next: MAX — all ranks purchased'
     effects.append(current, next)
     card.appendChild(effects)
-    if (!u.maxed && !u.canAfford) {
+    if (!u.maxed && !u.canAfford && !lockedByRequirement) {
       const estimate = estimateRunsToAfford({ wallet, cost: u.cost })
       const progress = document.createElement('div')
       progress.className = 'u-progress'

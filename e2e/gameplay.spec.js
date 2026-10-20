@@ -141,6 +141,28 @@ test.describe('gameplay systems regression', () => {
     expect(control.lastReward ?? null).toBeNull()
   })
 
+  test('Ink Blast arms the plane, auto-fires darts, and pops enemies', async ({ page }, testInfo) => {
+    test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires development-only simulation fixtures or time stepping')
+    test.slow()
+    const errors = collectConsoleErrors(page)
+    await openApp(page, '/#test-weapon')
+    await page.waitForFunction(() => {
+      if (typeof window.render_game_to_text !== 'function') return false
+      try { return JSON.parse(window.render_game_to_text()).state === 'playing' } catch { return false }
+    }, null, { timeout: 30_000 })
+
+    const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    expect(before.weapon).toMatchObject({ unlocked: true, darts: 2, pierce: 1, damage: 2 })
+    expect(before.plane.armament).toBeGreaterThan(0)
+    expect(before.entities.counts.bird).toBeGreaterThanOrEqual(2)
+
+    const after = await page.evaluate(() => JSON.parse(window.advanceTime(2200)))
+    expect(after.weapon.pops).toBeGreaterThanOrEqual(2)
+    expect(after.stars).toBeGreaterThanOrEqual(2)
+    expect(after.entities.counts.bird || 0).toBeLessThan(before.entities.counts.bird)
+    expect(errors.filter((message) => !/GPU stall|WebGL/i.test(message))).toEqual([])
+  })
+
   test('duplicate power orb refreshes the timer to full instead of wiping it', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
     const errors = collectConsoleErrors(page)

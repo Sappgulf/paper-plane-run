@@ -393,6 +393,10 @@ html.a11y-reduced-motion .guardian-chip.guardian-save-flash { animation: none !i
 .edge-threat-left { left: 4px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 20px solid #e0573f; }
 .edge-threat-right { right: 4px; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-right: 20px solid #e0573f; }
 .power-hud[data-power="magnet"] #power-fill { background: #a489ce; }
+.weapon-hud[data-ready="true"] #weapon-fill { background: #7c5cbf; }
+.weapon-hud[data-ready="false"] #weapon-fill { background: #a99ec1; }
+.weapon-hud[data-ready="false"] { opacity: .82; }
+.weapon-hud.firing { transform: translateY(1px) scale(.97); }
 .power-bar { margin-top: 4px; height: 6px; border-radius: 99px; background: rgba(61,44,41,.1); overflow: hidden; }
 #power-fill {
   height: 100%; width: 100%; border-radius: 99px;

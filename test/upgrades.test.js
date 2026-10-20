@@ -95,6 +95,42 @@ const UPGRADE_CONTRACTS = [
     directions: { charges: 'up' },
   },
   {
+    id: 'weapon',
+    labels: [
+      'Ink Blast locked',
+      'Auto-fire 3.20s · 46m range',
+      'Auto-fire 2.75s · 52m range',
+      'Auto-fire 2.30s · 58m range',
+      'Auto-fire 1.85s · 64m range',
+    ],
+    values: [
+      { cooldownSeconds: 0, range: 0 },
+      { cooldownSeconds: 3.2, range: 46 },
+      { cooldownSeconds: 2.75, range: 52 },
+      { cooldownSeconds: 2.3, range: 58 },
+      { cooldownSeconds: 1.85, range: 64 },
+    ],
+    directions: { cooldownSeconds: 'down', range: 'up' },
+    // 0 means locked; the unlock transition is not a cooldown regression.
+    skipFirstDirection: true,
+  },
+  {
+    id: 'salvo',
+    labels: ['Darts per volley 1', 'Darts per volley 2', 'Darts per volley 3'],
+    values: [1, 2, 3].map((darts) => ({ darts })),
+    directions: { darts: 'up' },
+  },
+  {
+    id: 'pierce',
+    labels: [
+      'Pierce 0 targets · damage +0',
+      'Pierce 1 target · damage +0',
+      'Pierce 2 targets · damage +1',
+    ],
+    values: [0, 1, 2].map((pierce) => ({ pierce })),
+    directions: { pierce: 'up' },
+  },
+  {
     id: 'flare',
     labels: [
       'Flare pays base',
@@ -247,9 +283,17 @@ describe('upgrade purchases', () => {
     localStorage.setItem('paper-plane-run-wallet-migrated', '1')
   })
 
+  function seedRequirement(upgrade) {
+    if (!upgrade.requires) return
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({
+      [upgrade.requires.id]: upgrade.requires.level,
+    }))
+  }
+
   test.each(UPGRADES)('persists $id rank one and deducts its exact first price', (upgrade) => {
     const cost = upgrade.costs[0]
     addWallet(cost + 7)
+    seedRequirement(upgrade)
 
     expect(buyUpgrade(upgrade.id)).toEqual({ ok: true, level: 1, cost })
     expect(getWallet()).toBe(7)
@@ -260,11 +304,32 @@ describe('upgrade purchases', () => {
   test.each(UPGRADES)('rejects $id without mutating persistence when one wallet star short', (upgrade) => {
     const cost = upgrade.costs[0]
     addWallet(cost - 1)
+    seedRequirement(upgrade)
+    const before = localStorage.getItem('paper-plane-run-upgrades')
 
     expect(buyUpgrade(upgrade.id)).toEqual({ ok: false, reason: 'poor', need: 1 })
     expect(getWallet()).toBe(cost - 1)
     expect(getUpgradeLevel(upgrade.id)).toBe(0)
-    expect(localStorage.getItem('paper-plane-run-upgrades')).toBeNull()
+    expect(localStorage.getItem('paper-plane-run-upgrades')).toBe(before)
+  })
+
+  test('weapon ranks gate salvo and pierce until their prerequisites are met', () => {
+    addWallet(300)
+    expect(buyUpgrade('salvo')).toEqual({
+      ok: false,
+      reason: 'requires',
+      requires: { id: 'weapon', level: 1 },
+    })
+    expect(buyUpgrade('pierce')).toEqual({
+      ok: false,
+      reason: 'requires',
+      requires: { id: 'weapon', level: 2 },
+    })
+    expect(buyUpgrade('weapon').ok).toBe(true)
+    expect(buyUpgrade('salvo').ok).toBe(true)
+    expect(buyUpgrade('pierce').reason).toBe('requires')
+    expect(buyUpgrade('weapon').ok).toBe(true)
+    expect(buyUpgrade('pierce').ok).toBe(true)
   })
 
   test('stops purchases at the rank cap', () => {
@@ -363,7 +428,7 @@ describe('exact upgrade contracts', () => {
           },
         })
 
-        if (level > 0) {
+        if (level > 0 && !(contract.skipFirstDirection && level === 1)) {
           const priorValues = describeUpgradeEffect(contract.id, level - 1).current.values
           for (const [valueKey, direction] of Object.entries(contract.directions)) {
             const prior = priorValues[valueKey]
@@ -409,6 +474,12 @@ describe('exact upgrade contracts', () => {
           expect(effects.boostHitboxScale).toBe(values.boostHitboxScale)
         }
         if (contract.id === 'guardian') expect(effects.guardianCharges).toBe(values.charges)
+        if (contract.id === 'weapon') {
+          expect(effects.weaponCooldown).toBeCloseTo(values.cooldownSeconds)
+          expect(effects.weaponRange).toBe(values.range)
+        }
+        if (contract.id === 'salvo') expect(effects.weaponSalvo).toBe(values.darts - 1)
+        if (contract.id === 'pierce') expect(effects.weaponPierce).toBe(values.pierce)
         if (contract.id === 'flare') {
           expect(effects.flareChargeRate).toBeCloseTo(values.chargeRate)
           expect(effects.flarePayoutMul).toBeCloseTo(values.payoutMul)

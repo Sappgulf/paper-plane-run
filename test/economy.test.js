@@ -106,7 +106,7 @@ describe('economy progression model', () => {
   test('keeps every non-premium first rank inside five normal runs after the late-tree additions', () => {
     const earlyIds = UPGRADES
       .map(({ id }) => id)
-      .filter((id) => id !== 'guardian' && id !== 'flare')
+      .filter((id) => !['guardian', 'flare', 'salvo', 'pierce'].includes(id))
     for (const id of earlyIds) {
       const firstRank = FUTURE_PRICE_TABLE.upgrades[id][0]
       expect(firstRank).toBeLessThanOrEqual(21)
@@ -123,8 +123,9 @@ describe('economy progression model', () => {
     // Gust Reader and Gate Bounty raised the first-rank total past 35 runs, so
     // every first rank is now reachable in about 38 normal runs, not 35.
     // Fog Lens and Skim Purse nudge it again; 42 runs keeps the guard honest.
-    // Fan Mail and Patient Fold make it 45; the guard now allows 46.
-    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 46 }).walletStars)
+    // Fan Mail and Patient Fold made it 45; the weapons tree adds three more
+    // first ranks, so the guard now allows 58 normal runs for every first rank.
+    expect(tree.firstRankTotal).toBeLessThanOrEqual(estimateProgression({ starsPerRun: 7, runs: 58 }).walletStars)
     expect(tree.total).toBeGreaterThan(tree.firstRankTotal)
     expect(runsToAfford(tree.total)).toBeGreaterThan(runsToAfford(tree.firstRankTotal))
   })

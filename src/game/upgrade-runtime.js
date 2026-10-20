@@ -221,6 +221,8 @@ export function getGlideWispBoost({ speedMul = 1, sinkMul = 1 } = {}) {
  * Concise, deterministic runtime contract used by tests and render_game_to_text.
  * The flight loop calls the same small helpers for each live calculation.
  */
+import { getWeaponTuning } from './weapon-runtime.js'
+
 export function getUpgradeRuntimeSnapshot({
   effects = {},
   controlMode = 'keyboard',
@@ -267,6 +269,11 @@ export function getUpgradeRuntimeSnapshot({
   })
   const turbo = getBoostSafety(effects)
   const guardian = getGuardianState({ charges: effects.guardianCharges, remaining: guardianLeft })
+  const weapon = getWeaponTuning({
+    level: effects.weaponLevel,
+    salvo: effects.weaponSalvo,
+    pierce: effects.weaponPierce,
+  })
   const flare = getFlareTuning(effects)
   const trail = getTrailFeedback(effects)
   const fever = getFeverTuning(effects)
@@ -289,6 +296,7 @@ export function getUpgradeRuntimeSnapshot({
     trail,
     turbo,
     guardian,
+    weapon,
     flare,
     fever: { ...fever, comboHold: comboHold.windowSeconds },
     streak,

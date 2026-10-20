@@ -2,6 +2,7 @@
  * Spendable plane upgrades — paid with wallet stars earned in runs.
  */
 import { FUTURE_PRICE_TABLE } from './game/economy.js'
+import { getWeaponTuning } from './game/weapon-runtime.js'
 import { safeSetItem } from './game/safe-storage.js'
 
 const LEVELS_KEY = 'paper-plane-run-upgrades'
@@ -93,6 +94,32 @@ export const UPGRADES = [
     blurb: 'Auto-save from a crash once per run',
     max: 2,
     costs: FUTURE_PRICE_TABLE.upgrades.guardian,
+  },
+  {
+    id: 'weapon',
+    name: 'Ink Blast',
+    icon: '🖋️',
+    blurb: 'Wing pods auto-fire paper darts at the nearest hazard ahead — pops pay +1★',
+    max: 4,
+    costs: FUTURE_PRICE_TABLE.upgrades.weapon,
+  },
+  {
+    id: 'salvo',
+    name: 'Wing Salvo',
+    icon: '🪶',
+    blurb: 'Extra darts per volley and a wider forward cone · Requires Ink Blast Lv1',
+    max: 2,
+    costs: FUTURE_PRICE_TABLE.upgrades.salvo,
+    requires: { id: 'weapon', level: 1 },
+  },
+  {
+    id: 'pierce',
+    name: 'Ink Piercer',
+    icon: '🎯',
+    blurb: 'Darts punch through extra targets and hit armored flyers harder · Requires Ink Blast Lv2',
+    max: 2,
+    costs: FUTURE_PRICE_TABLE.upgrades.pierce,
+    requires: { id: 'weapon', level: 2 },
   },
   {
     id: 'flare',
@@ -290,6 +317,29 @@ const UPGRADE_FORMULAS = {
   // into it rather than into a second, unrelated verb. Charge rate and payout
   // scale together: a shorter hold for the same flare, which is a real change
   // in how close to the ground you are willing to take it.
+  weapon(level) {
+    const tuning = getWeaponTuning({ level })
+    const label = level === 0
+      ? 'Ink Blast locked'
+      : `Auto-fire ${tuning.cooldownSeconds.toFixed(2)}s · ${tuning.range}m range`
+    return effect(label, {
+      cooldownSeconds: roundedEffectValue(tuning.cooldownSeconds),
+      range: tuning.range,
+    }, {
+      weaponLevel: tuning.level,
+    })
+  },
+  salvo(level) {
+    const darts = 1 + level
+    return effect(`Darts per volley ${darts}`, { darts }, {
+      weaponSalvo: level,
+    })
+  },
+  pierce(level) {
+    return effect(`Pierce ${level} target${level === 1 ? '' : 's'} · damage +${Math.floor(level / 2)}`, { pierce: level }, {
+      weaponPierce: level,
+    })
+  },
   flare(level) {
     const chargeRate = roundedEffectValue(1 + level * 0.16)
     const payoutMul = roundedEffectValue(1 + level * 0.18)
@@ -481,6 +531,9 @@ export function buyUpgrade(id) {
   if (!u) return { ok: false, reason: 'missing' }
   const lv = getUpgradeLevel(id)
   if (lv >= u.max) return { ok: false, reason: 'max' }
+  if (u.requires && getUpgradeLevel(u.requires.id) < u.requires.level) {
+    return { ok: false, reason: 'requires', requires: u.requires }
+  }
   const cost = u.costs[lv]
   if (!spendWallet(cost)) return { ok: false, reason: 'poor', need: cost - getWallet() }
   const levels = loadLevels()
@@ -526,6 +579,14 @@ export function getUpgradeEffects() {
   const trail = formulas.trail
   const turbo = formulas.turbo
   const guardian = formulas.guardian
+  const weapon = formulas.weapon
+  const salvo = formulas.salvo
+  const pierce = formulas.pierce
+  const weaponTuning = getWeaponTuning({
+    level: getUpgradeLevel('weapon'),
+    salvo: getUpgradeLevel('salvo'),
+    pierce: getUpgradeLevel('pierce'),
+  })
   const flare = formulas.flare
   const fever = formulas.fever
   const streak = formulas.streak
@@ -553,6 +614,21 @@ export function getUpgradeEffects() {
     ...trail.runtime,
     ...turbo.runtime,
     ...guardian.runtime,
+    ...weapon.runtime,
+    ...salvo.runtime,
+    ...pierce.runtime,
+    weaponLevel: weaponTuning.level,
+    weaponCooldown: weaponTuning.cooldownSeconds,
+    weaponRange: weaponTuning.range,
+    weaponDarts: weaponTuning.darts,
+    weaponPierce: weaponTuning.pierce,
+    weaponPierceCount: weaponTuning.pierceCount,
+    weaponDamage: weaponTuning.damage,
+    weaponShotSpeed: weaponTuning.shotSpeed,
+    weaponMinRange: weaponTuning.minRange,
+    weaponMaxLateral: weaponTuning.maxLateral,
+    weaponMaxVertical: weaponTuning.maxVertical,
+    weaponHoming: weaponTuning.homing,
     ...flare.runtime,
     ...fever.runtime,
     ...streak.runtime,
@@ -577,12 +653,16 @@ export function listUpgrades() {
   return UPGRADES.map((u) => {
     const level = getUpgradeLevel(u.id)
     const cost = level >= u.max ? null : u.costs[level]
+    const requiresName = u.requires ? (findUpgrade(u.requires.id)?.name || u.requires.id) : null
+    const requirementMet = !u.requires || getUpgradeLevel(u.requires.id) >= u.requires.level
     return {
       ...u,
       level,
       cost,
       maxed: level >= u.max,
-      canAfford: cost != null && wallet >= cost,
+      requirementMet,
+      requiresName,
+      canAfford: requirementMet && cost != null && wallet >= cost,
       wallet,
     }
   })

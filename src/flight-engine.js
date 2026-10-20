@@ -233,6 +233,8 @@ import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from 
 import { pickFlightFocus, shouldTelegraphHazard } from './game/flight-focus.js'
 import { buildingOverlapsPlane } from './game/building-hitbox.js'
 import { crossedPassLine } from './game/gate-crossing.js'
+import { hazardWarningScale } from './game/hazard-readability.js'
+import { advanceHomingShot, getWeaponState, getWeaponTuning, resolveWeaponHit, selectWeaponTargets, shotHitsTargetSwept, WEAPON_POP_STARS } from './game/weapon-runtime.js'
 import {
   describeNearMissFloat,
   feverConfettiOffsets,
@@ -357,6 +359,9 @@ const feverVal = $('fever-val')
 const powerHud = $('power-hud')
 const powerLabel = $('power-label')
 const powerFill = $('power-fill')
+const weaponHud = $('weapon-hud')
+const weaponValEl = $('weapon-val')
+const weaponFillEl = $('weapon-fill')
 const comboHud = $('combo-hud')
 const comboVal = $('combo-val')
 const comboFillEl = $('combo-fill')
@@ -847,7 +852,7 @@ let comboFloatTimeout = null
 let starStreak = 0
 let starStreakTimer = 0
 let starStreakWindow = 0
-let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0 }
+let runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0, weaponPops: 0 }
 let lastFlightDebrief = null
 let tutorialDone = safeGetItem('paper-plane-run-tutorial') === '1'
 let lastPhotoDataUrl = null
@@ -955,6 +960,10 @@ canvas.addEventListener('webglcontextlost', (e) => {
 let _webglRestoreDebounced = false
 canvas.addEventListener('webglcontextrestored', () => {
   if (_webglRestoreDebounced) return
+  // DEV test fixtures span repeated navigations in one page; a recovery
+  // reload would strip the fixture hash and cancel the next scene capture.
+  // Production still reloads (the in-memory run cannot be safely revived).
+  if (import.meta.env.DEV && devTestState) return
   _webglRestoreDebounced = true
   setTimeout(() => location.reload(), 300)
 }, false)
@@ -2190,6 +2199,7 @@ function applySkin(skinId) {
   planeAccentMat.needsUpdate = true
   activePlaneSkinId = skin.id
   activePlaneSilhouette = skin.silhouette
+  syncPlaneArmament()
   return skin
 }
 
@@ -2257,6 +2267,8 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
       materials: previewMaterials,
       withShield: false,
     })
+    const armament = createPlaneArmament(getUpgradeEffects(), previewMaterials.body, previewMaterials.accent)
+    if (armament) model.add(armament)
     model.rotation.x = 0.1
     model.rotation.z = -0.04
     previewScene.add(model)
@@ -2710,6 +2722,12 @@ const lethalOutlineMat = new THREE.MeshBasicMaterial({
 const lethalGlowMat = new THREE.MeshBasicMaterial({
   color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false, fog: false,
 })
+// Armored flyers wear a second brass ring inside the danger ring. It is a
+// readability cue, not a second hitbox: two darts (or a stronger Ink Blast)
+// are needed to pop them.
+const armorRingMat = new THREE.MeshBasicMaterial({
+  color: 0xe6b950, transparent: true, opacity: 0.85, depthWrite: false, fog: false,
+})
 /**
  * The warning ring is the only cue for a hazard that thick fog or a low-power
  * device is hiding, so it is always attached. The soft halo around it is a
@@ -2828,6 +2846,17 @@ function createFlyer(kindId) {
   const bill = createBillboardFlyer(def.scale || 1.5, def.id)
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
+  const hp = Math.max(1, Math.floor(Number(def.armor) || 1))
+  g.userData.hp = hp
+  g.userData.maxHp = hp
+  if (hp > 1) {
+    const armor = new THREE.Mesh(lethalOutlineGeo, armorRingMat)
+    armor.name = 'armorRing'
+    armor.rotation.y = Math.PI / 2
+    armor.visible = false
+    g.add(armor)
+    g.userData.armorRing = armor
+  }
   return g
 }
 
@@ -2847,7 +2876,22 @@ function createScissors() {
   const bill = createBillboardFlyer(3.15, 'scissors')
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
+  g.userData.hp = 1
   return g
+}
+
+// Ink Blast dart — shared geometry/material, since a run fires dozens.
+const weaponShotGeo = new THREE.ConeGeometry(0.16, 0.58, 6)
+weaponShotGeo.rotateX(Math.PI / 2)
+const weaponShotMat = new THREE.MeshStandardMaterial({
+  color: 0x2b2540,
+  emissive: 0x6d50b8,
+  emissiveIntensity: 0.9,
+  roughness: 0.35,
+  metalness: 0.15,
+})
+function createWeaponShot() {
+  return new THREE.Mesh(weaponShotGeo, weaponShotMat)
 }
 
 // Shared paper cards keep pickup geometry and textures constant across waves.
@@ -4345,8 +4389,227 @@ function updateMagnetPullFeedback(target, magnet) {
   if (active) magnetPullTrail.textContent = `🧲 Pulling a star · ${Math.round(magnet.visualStrength * 100)}%`
 }
 
+let weaponCooldownLeft = 0
+
+function currentWeaponTuning(effects = activeUpgradeEffects) {
+  return getWeaponTuning({
+    level: effects.weaponLevel,
+    salvo: effects.weaponSalvo,
+    pierce: effects.weaponPierce,
+  })
+}
+
+/**
+ * Visible wing armament. The pods are the purchase made physical: one per
+ * wing at rank 1-2, wider twin pods at rank 3+, one barrel per salvo dart,
+ * with ink tips when Piercer is owned.
+ */
+function createPlaneArmament(effects, bodyMaterial = planeBodyMat, accentMaterial = planeAccentMat) {
+  const tuning = currentWeaponTuning(effects)
+  if (!tuning.unlocked) return null
+  const group = new THREE.Group()
+  group.name = 'armament'
+  const podCount = tuning.level >= 3 ? 2 : 1
+  const darts = Math.max(1, tuning.darts)
+  for (const side of [-1, 1]) {
+    for (let podIndex = 0; podIndex < podCount; podIndex += 1) {
+      const pod = new THREE.Group()
+      pod.position.set(side * (0.58 + podIndex * 0.26), -0.03 - podIndex * 0.06, 0.04)
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.5), accentMaterial)
+      shell.name = 'armamentPod'
+      pod.add(shell)
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.34), bodyMaterial)
+      rail.position.set(0, 0.06, -0.02)
+      pod.add(rail)
+      for (let barrel = 0; barrel < darts; barrel += 1) {
+        const barrelMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.34, 6), bodyMaterial)
+        barrelMesh.rotation.x = Math.PI / 2
+        barrelMesh.position.set((barrel - (darts - 1) / 2) * 0.1, -0.02, 0.27)
+        pod.add(barrelMesh)
+      }
+      if (tuning.pierce > 0) {
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.2, 6), weaponShotMat)
+        tip.rotation.x = Math.PI / 2
+        tip.position.set(0, -0.02, 0.52)
+        pod.add(tip)
+      }
+      group.add(pod)
+    }
+  }
+  return group
+}
+
+function syncPlaneArmament(effects = activeUpgradeEffects) {
+  if (!plane) return
+  const key = `${effects.weaponLevel || 0}:${effects.weaponDarts || 0}:${effects.weaponPierce || 0}`
+  if (plane.userData.armamentKey === key) return
+  plane.userData.armamentKey = key
+  const old = plane.getObjectByName('armament')
+  if (old) {
+    plane.remove(old)
+    old.traverse((child) => child.geometry?.dispose?.())
+  }
+  const armament = createPlaneArmament(effects)
+  if (armament) plane.add(armament)
+}
+
+function updateWeaponHud(tuning = currentWeaponTuning()) {
+  if (!weaponHud) return
+  const hud = getWeaponState({ tuning, cooldownLeft: weaponCooldownLeft })
+  const visible = tuning.unlocked && state === 'playing'
+  weaponHud.classList.toggle('hidden', !visible)
+  if (!visible) return
+  weaponHud.dataset.ready = String(hud.ready)
+  if (weaponValEl) weaponValEl.textContent = hud.ready ? 'Ready' : `${hud.cooldownRemaining.toFixed(1)}s`
+  if (weaponFillEl) weaponFillEl.style.width = `${(hud.ready ? 1 : hud.cooldownProgress) * 100}%`
+}
+
+function fireWeapon(tuning = currentWeaponTuning()) {
+  if (!tuning.unlocked || state !== 'playing' || simulationPaused) return false
+  const records = []
+  for (const e of entities) {
+    if (e.type !== 'bird' && e.type !== 'scissors') continue
+    if (!e.mesh?.parent) continue
+    records.push({
+      entity: e,
+      type: e.type,
+      x: e.mesh.position.x,
+      y: e.mesh.position.y,
+      z: e.mesh.position.z,
+    })
+  }
+  const targets = selectWeaponTargets({
+    targets: records,
+    x: planeX,
+    y: planeY,
+    range: tuning.range,
+    maxLateral: tuning.maxLateral,
+    maxVertical: tuning.maxVertical,
+    minRange: tuning.minRange,
+    limit: tuning.darts,
+  })
+  if (!targets.length) return false
+  for (let index = 0; index < tuning.darts; index += 1) {
+    const target = targets[index % targets.length].entity
+    const shot = createWeaponShot()
+    shot.position.set(planeX + (index - (tuning.darts - 1) / 2) * 0.18, planeY - 0.02, 1.6)
+    scene.add(shot)
+    entities.push({
+      mesh: shot,
+      type: 'weapon-shot',
+      radius: 0.28,
+      ttl: tuning.range / Math.max(1, tuning.shotSpeed) + 1.1,
+      speed: tuning.shotSpeed,
+      homing: tuning.homing,
+      damage: tuning.damage,
+      pierceLeft: tuning.pierceCount,
+      target,
+    })
+  }
+  weaponCooldownLeft = tuning.cooldownSeconds
+  audio.shoot()
+  if (settings.haptics) Haptic.tap()
+  weaponHud?.classList.add('firing')
+  setTimeout(() => weaponHud?.classList.remove('firing'), 90)
+  return true
+}
+
+function damageWeaponTarget(target, damage, toRemove) {
+  const data = target.mesh.userData
+  const hit = resolveWeaponHit({ hp: data.hp ?? 1, damage })
+  data.hp = hit.hp
+  data.hitPulse = 0.24
+  if (!hit.killed) {
+    showFlightFeedback('ARMORED HIT', 'hazard', 0.42)
+    audio.paperRustle(0.05, 0.035)
+    return false
+  }
+  toRemove.add(target)
+  releaseEntity(target)
+  stars += WEAPON_POP_STARS
+  runStats.stars = stars
+  runStats.popped = (runStats.popped || 0) + 1
+  runStats.weaponPops = (runStats.weaponPops || 0) + 1
+  starsEl.textContent = String(stars)
+  spawnConfetti(target.mesh.position.x, target.mesh.position.y, target.mesh.position.z)
+  audio.popTarget()
+  if (settings.haptics) Haptic.collect()
+  showFlightFeedback(`INK POP · +${WEAPON_POP_STARS}★`, 'star', 0.55)
+  track('weapon_pop', { type: target.type, flyerId: target.flyerId || '' })
+  return true
+}
+
+function updateWeaponShots(dt) {
+  const toRemove = new Set()
+  for (const shot of entities) {
+    if (shot.type !== 'weapon-shot' || toRemove.has(shot)) continue
+    const target = shot.target
+    const targetAlive = Boolean(target?.mesh?.parent) && !toRemove.has(target)
+    const from = { x: shot.mesh.position.x, y: shot.mesh.position.y, z: shot.mesh.position.z }
+    const next = advanceHomingShot({
+      x: shot.mesh.position.x,
+      y: shot.mesh.position.y,
+      z: shot.mesh.position.z,
+      dt,
+      speed: shot.speed,
+      targetX: targetAlive ? target.mesh.position.x : null,
+      targetY: targetAlive ? target.mesh.position.y : null,
+      homing: shot.homing,
+    })
+    shot.mesh.position.set(next.x, next.y, next.z)
+    shot.ttl -= dt
+    if (shot.ttl <= 0) {
+      toRemove.add(shot)
+      continue
+    }
+    for (const candidate of entities) {
+      if (candidate === shot || toRemove.has(candidate)) continue
+      if (candidate.type !== 'bird' && candidate.type !== 'scissors') continue
+      if (!candidate.mesh?.parent) continue
+      if (!shotHitsTargetSwept({
+        fromX: from.x,
+        fromY: from.y,
+        fromZ: from.z,
+        toX: shot.mesh.position.x,
+        toY: shot.mesh.position.y,
+        toZ: shot.mesh.position.z,
+        shotRadius: shot.radius,
+        targetX: candidate.mesh.position.x,
+        targetY: candidate.mesh.position.y,
+        targetZ: candidate.mesh.position.z,
+        targetRadius: candidate.radius || 0.7,
+      })) continue
+      const killed = damageWeaponTarget(candidate, shot.damage, toRemove)
+      if (killed && shot.pierceLeft > 0) {
+        shot.pierceLeft -= 1
+        continue
+      }
+      toRemove.add(shot)
+      break
+    }
+  }
+  if (!toRemove.size) return
+  for (let index = entities.length - 1; index >= 0; index -= 1) {
+    const entity = entities[index]
+    if (!toRemove.has(entity)) continue
+    scene.remove(entity.mesh)
+    entities.splice(index, 1)
+  }
+}
+
+function updateWeapon(dt) {
+  const tuning = currentWeaponTuning()
+  updateWeaponShots(dt)
+  if (state === 'playing' && !simulationPaused && tuning.unlocked) {
+    weaponCooldownLeft = Math.max(0, weaponCooldownLeft - dt)
+    if (weaponCooldownLeft <= 0) fireWeapon(tuning)
+  }
+  updateWeaponHud(tuning)
+}
+
 function applyUpgradeVisuals(fx = activeUpgradeEffects) {
   plane.scale.setScalar(fx.planeScale * 1.12)
+  syncPlaneArmament(fx)
   const trail = upgradeTrail
   const trailFeedback = getTrailFeedback(fx)
   if (trail) {
@@ -4400,6 +4663,7 @@ function resetGame() {
   pendingWindActive = 0
   pendingWindForce = 0
   nextSpawnZ = 35
+  weaponCooldownLeft = 0
   bossCamPullback = 1
   shake = 0
   hitStopTimer = 0
@@ -4422,7 +4686,7 @@ function resetGame() {
   feverTimer = 0
   feverFx?.classList.remove('fever-active')
   feverHud?.classList.add('hidden')
-  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0 }
+  runStats = { stars: 0, powers: 0, winds: 0, maxCombo: 0, popped: 0, fevers: 0, gauntlets: 0, threads: 0, centerThreads: 0, weaponPops: 0 }
   journeyTimeline = runKind === 'journey' && journeyRunConfig ? buildEncounterTimeline(journeyRunConfig) : null
   journeyTelemetry = journeyTimeline ? {
     nearMisses: 0,
@@ -6057,6 +6321,7 @@ const HUD_CHIP_ELEMENTS = [
   ['tuck', () => tuckHud],
   ['guardian', () => $('guardian-hud')],
   ['power', () => $('power-hud')],
+  ['weapon', () => weaponHud],
   ['skim', () => skimHud],
   ['fever', () => $('fever-hud')],
   ['combo', () => comboHud],
@@ -6346,6 +6611,7 @@ function animateHazards(dt) {
         })
         e.mesh.position.x = u.anchorX + offset.x
         e.mesh.position.y = u.anchorY + offset.y
+        u.lastOffsetY = offset.y
         const roll = resolveHazardRoll({
           pattern: u.pattern, hazardClock, phase: u.phase, speed: u.motionSpeed,
         })
@@ -6380,18 +6646,37 @@ function animateHazards(dt) {
         const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
         outline.visible = near
         outline.material.opacity = pulse
-        // The ring grows with distance so its on-screen size — the only size
-        // that matters for "I can see it" — stays roughly constant from the
-        // moment a hazard appears to the moment it passes.
-        const approach = THREE.MathUtils.clamp(e.mesh.position.z / 60, 0.85, 2.6)
-        const base = e.mesh.userData.lethalRadius || 0.85
-        outline.scale.setScalar(base * approach)
+        // The ring is the *collision* boundary, not a decoration: at close
+        // range it must never be smaller than the radius that kills. It only
+        // grows beyond that with distance so its on-screen size stays legible
+        // through haze ("open air" deaths were the old 0.85x close-range ring
+        // sitting inside a 1.06-1.96 unit hitbox).
+        const hitRadius = (e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.52
+        const diving = (u.pattern === 'dive' || e.type === 'scissors') && (u.lastOffsetY || 0) < -0.15
+        const warningScale = hazardWarningScale({
+          z: e.mesh.position.z,
+          hitRadius,
+          diving,
+          clock: hazardClock,
+        })
+        outline.scale.setScalar(warningScale)
         const glow = e.mesh.userData.lethalGlow
         if (glow) {
           glow.visible = near && renderQuality.secondaryEffects
           glow.material.opacity = pulse * 0.38
-          glow.scale.setScalar(base * approach)
+          glow.scale.setScalar(warningScale)
         }
+        const armorRing = e.mesh.userData.armorRing
+        if (armorRing) {
+          armorRing.visible = near && (e.mesh.userData.hp || 1) > 1
+          if (armorRing.visible) armorRing.scale.setScalar(warningScale * 1.04)
+        }
+      }
+      if (e.mesh.userData.hitPulse > 0) {
+        e.mesh.userData.hitPulse = Math.max(0, e.mesh.userData.hitPulse - dt * 3)
+        const pulseScale = 1 + e.mesh.userData.hitPulse * 0.22
+        const billboard = e.mesh.userData.billboard
+        if (billboard) billboard.scale.setScalar(pulseScale)
       }
     if (e.type === 'boss') {
       const u = e.mesh.userData
@@ -7475,6 +7760,7 @@ function update(dt) {
   animateHazards(slowmo ? dt * SLOWMO_WORLD_SCALE : dt)
   updateEdgeThreats()
   updateFlightReadability(zp)
+  updateWeapon(dt)
 
   if (runKind !== 'tutorial' && runKind !== 'layout') {
     // Hazards spawn just up to the readable fog depth: past it a silhouette is
@@ -8112,6 +8398,30 @@ window.render_game_to_text = () => JSON.stringify({
   power: activePower
     ? { kind: activePower.kind, timeLeft: Math.round(activePower.timeLeft * 10) / 10 }
     : null,
+  weapon: (() => {
+    const tuning = currentWeaponTuning()
+    const hud = getWeaponState({ tuning, cooldownLeft: weaponCooldownLeft })
+    return {
+      unlocked: tuning.unlocked,
+      ready: hud.ready,
+      cooldown: Number(hud.cooldownRemaining.toFixed(2)),
+      range: tuning.range,
+      darts: tuning.darts,
+      pierce: tuning.pierceCount,
+      damage: tuning.damage,
+      shots: entities.filter((entity) => entity.type === 'weapon-shot').length,
+      pops: runStats.weaponPops || 0,
+      shotPositions: entities
+        .filter((entity) => entity.type === 'weapon-shot')
+        .map((entity) => ({
+          x: Number(entity.mesh.position.x.toFixed(2)),
+          y: Number(entity.mesh.position.y.toFixed(2)),
+          z: Number(entity.mesh.position.z.toFixed(2)),
+          ttl: Number((entity.ttl || 0).toFixed(2)),
+          target: entity.target?.flyerId || '',
+        })),
+    }
+  })(),
   banners: {
     zone: zoneBannerTimer > 0 ? zoneBanner.textContent : null,
     action: bannerTimer > 0 ? powerBanner.textContent : null,
@@ -8120,6 +8430,7 @@ window.render_game_to_text = () => JSON.stringify({
     skinId: activePlaneSkinId,
     silhouette: activePlaneSilhouette,
     collisionRadius: PLANE_COLLISION_RADIUS,
+    armament: plane?.getObjectByName('armament')?.children.length || 0,
   },
   entities: {
     counts: entities.reduce((counts, entity) => {
@@ -8129,6 +8440,16 @@ window.render_game_to_text = () => JSON.stringify({
     visibleTypes: entities
       .filter((entity) => entity.mesh.position.z > -25 && entity.mesh.position.z < 220)
       .map((entity) => entity.type),
+    hazards: entities
+      .filter((entity) => entity.type === 'bird' || entity.type === 'scissors')
+      .map((entity) => ({
+        type: entity.type,
+        flyerId: entity.flyerId || '',
+        hp: entity.mesh.userData.hp ?? 1,
+        x: Number(entity.mesh.position.x.toFixed(2)),
+        y: Number(entity.mesh.position.y.toFixed(2)),
+        z: Number(entity.mesh.position.z.toFixed(2)),
+      })),
   },
   endless: {
     tier: endlessTier().tier,
@@ -8662,6 +8983,39 @@ if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
   mouseTarget.y = 9
   plane.position.set(planeX, planeY, 0)
   hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-weapon') {
+  // Ink Blast proof: wings armed at rank 4, a normal bird and an armored
+  // biplane ahead, invulnerable so the test observes the darts rather than a
+  // collision. The first update fires; advanceTime lets the darts land.
+  localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 4, salvo: 1, pierce: 1 }))
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  simulationPaused = false
+  invuln = 999
+  nextSpawnZ = 1e9
+  windTimer = 999
+  planeX = 0
+  planeY = 8
+  mouseTarget.x = 0
+  mouseTarget.y = 8
+  plane.position.set(planeX, planeY, 0)
+  hudEl?.classList.remove('hidden')
+  applyUpgradeVisuals()
+  const bird = createFlyer('bird')
+  bird.position.set(0, 8, 22)
+  scene.add(bird)
+  entities.push({ mesh: bird, type: 'bird', flyerId: 'bird', label: 'paper bird', radius: 0.7 })
+  const armored = createFlyer('biplane')
+  armored.position.set(0, 8, 42)
+  scene.add(armored)
+  entities.push({ mesh: armored, type: 'bird', flyerId: 'biplane', label: 'toy biplane', radius: 0.9 })
+  updateWeaponHud()
 }
 
 if (import.meta.env.DEV && devTestState === '#test-power-refresh') {

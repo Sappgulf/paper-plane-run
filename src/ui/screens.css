@@ -123,7 +123,7 @@
 .page-intro { font-size: 13px; font-weight: 800; color: #6b554f; margin-bottom: 12px; line-height: 1.35; }
 
 /* On a desktop the Hangar was a 480px column in the middle of a 1280px window,
-   so a fourteen-node upgrade tree read as an endless one-per-row scroll with
+   so the full upgrade tree read as an endless one-per-row scroll with
    two thirds of the screen unused beside it. Given the room, take it: the card
    widens, the grids go two-up, and the whole tree is close to one screen. */
 @media (min-width: 880px) and (min-height: 640px) {
@@ -331,6 +331,8 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 .skin-card.affordable .meta { color: #92400e; }
 .skin-card.locked-funds { border-style: dashed; }
 .skin-card.locked { opacity: .72; filter: saturate(.72); }
+.upgrade-card.upgrade-requires { opacity: .72; border-style: dashed; }
+.upgrade-card.upgrade-requires .u-buy { filter: saturate(.4); }
 .skin-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
 .skin-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
 .skin-card .name { font-weight: 900; font-size: 13px; }

@@ -36,6 +36,14 @@ describe('generated obstacle flyers', () => {
     expect(flyerPoolForSeason(FLYER_DEFS, 'default').map((flyer) => flyer.weight)).toEqual(before)
   })
 
+  test('heavy divers carry armor while light flyers stay one-hit pops', () => {
+    expect(byId.biplane.armor).toBe(2)
+    expect(byId.hawk.armor).toBe(2)
+    for (const id of ['bird', 'balloon', 'kite', 'dragonfly', 'wasp']) {
+      expect(byId[id].armor ?? 1).toBe(1)
+    }
+  })
+
   test('gives each silhouette a distinct motion personality', () => {
     expect(byId.hawk.dive).toBe(true)
     expect(byId.balloon.floaty).toBe(true)

@@ -162,9 +162,10 @@ and results share ivory stock, ink type, rust actions, and blue/sage cues.
 | **Altitude tiers** — the endless long tail: past 1000m, speed, wave spacing and hazard mix step every 900m under a named modifier, all capped at tier 8 |
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
 | **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
-| **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, and season-weighted spawn bias |
+| **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, season-weighted spawn bias, and armored biplanes/hawks that take two Ink Blast hits |
 | **Boss gates** every 500m (scissors · wind tunnel · stapler jaws · the Punch), all with procedural cut-paper emblems; a centered thread pays a +2★ precision bounty |
-| **Plane upgrades** — 14-node tree incl. Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
+| **Ink Blast weapons tree** — purchasable wing pods auto-fire homing paper darts, with Salvo and Piercer ranks that visibly add barrels and ink tips; bosses stay immune |
+| **Plane upgrades** — 25-node tree incl. the Ink Blast weapons branch, Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
 | Daily missions, achievements |
 | **Gauntlet Runner** lifetime award; unfinished missions for retired mechanics migrate without resetting other progress |
