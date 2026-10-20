@@ -1568,13 +1568,14 @@ function updateGroundLife(time) {
         groundLifeDummy.position.set(instance.x, speciesDef.y, instance.z)
         if (['road','crossroad'].includes(speciesDef.shape)) {
           // Flat on the ground and running down the field, not fanned out.
-          groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0)
+          groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0, 'XYZ')
         } else if (speciesDef.shape === 'car') {
-          groundLifeDummy.rotation.set(0,speciesDef.zSpeedMul > 1 ? Math.PI : 0,0)
+          groundLifeDummy.rotation.set(0,speciesDef.zSpeedMul > 1 ? Math.PI : 0,0,'XYZ')
         } else if (speciesDef.flat) {
-          groundLifeDummy.rotation.set(-Math.PI / 2, instance.phase, 0)
+          // Same fix as the moving path: tilt flat first, then yaw about the world up axis.
+          groundLifeDummy.rotation.set(-Math.PI / 2, instance.phase, 0, 'YXZ')
         } else {
-          groundLifeDummy.rotation.set(0, 0, 0)
+          groundLifeDummy.rotation.set(0, 0, 0, 'XYZ')
         }
         groundLifeDummy.scale.setScalar(instance.scale)
         groundLifeDummy.updateMatrix()
@@ -1594,13 +1595,14 @@ function updateGroundLife(time) {
       )
       if (speciesDef.shape === 'road') {
         // Flat on the ground and running down the field, not fanned out.
-        groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0)
+        groundLifeDummy.rotation.set(-Math.PI / 2, 0, 0, 'XYZ')
       } else if (speciesDef.flat) {
-        // Rotate onto the ground plane; the motion rotation becomes yaw so
-        // decals fan out instead of all pointing down the same axis.
-        groundLifeDummy.rotation.set(-Math.PI / 2, motion.rotation + instance.phase, 0)
+        // Lay the decal flat, then yaw it about the world up axis so decals fan out.
+        // XYZ applies the yaw before the tilt and leans every decal that has a yaw,
+        // so some stood up as blank cream walls beside the road. YXZ applies the tilt first.
+        groundLifeDummy.rotation.set(-Math.PI / 2, motion.rotation + instance.phase, 0, 'YXZ')
       } else {
-        groundLifeDummy.rotation.set(0, 0, motion.rotation)
+        groundLifeDummy.rotation.set(0, 0, motion.rotation, 'XYZ')
       }
       groundLifeDummy.scale.setScalar(instance.scale * motion.scale)
       groundLifeDummy.updateMatrix()

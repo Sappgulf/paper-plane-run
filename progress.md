@@ -2,6 +2,25 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-20 — Flat street decals stopped standing up as cream walls
+
+Direction: "Another round." The art item the notes had carried for several rounds was a blank cream wall beside the road in the City view. It was never identified, and the earlier attempt to name it was wrong.
+
+- **Root cause:** the flat ground decals (City street seams, Harbor wave caps and tide marks, and every other flat species) were rotated with Euler's default XYZ order: `rotation.set(-π/2, yaw, 0)`. XYZ applies the yaw before the tilt, so any decal with a yaw leaned, and some stood nearly upright. The City street seam stood up as the windowless cream slab beside the road.
+- **Fix:** flat decals use the YXZ order, which tilts first and then yaws about the world up axis. The fix covers both placement paths in `src/flight-engine.js`, the moving one and the static one. Road and car placement set XYZ explicitly, so nothing else changes.
+- **Test:** `test/ground-decal-orientation.test.js` checks that a flat decal's normal stays vertical for 64 yaw values under YXZ, and documents that XYZ tilts it.
+- **Checked:** City and Harbor frames at 1280×720. The seams and wave caps now lie on the road and the water.
+- **How it was found:** a visibility bisection in the deterministic capture harness. Hiding the ground-life families removed the slab, and hiding the street-seams family alone removed it too.
+- **Ruled out on the way:** the vista house (its windows were added and then reverted, since the slab was not the house), the rooftop pennants, the crates, the buildings, the sprites, the sky dome and the landscape ridges.
+
+Verification:
+- Vitest: 102 files, 748 tests passed (was 101 files, 745 tests).
+- Dev Playwright lane (150 tests): 111 passed, 39 skipped, 0 failed. It ran on two workers, because three workers stalled on the six-landscape test under load.
+- Production Playwright lane (`npm run test:e2e:prod`): 49 passed, 101 skipped (dev-hook suites), 0 failed.
+- Production build and bundle budget: 947,634 of 983,040 total bytes, initial 150,160 of 163,840. PASS.
+- iOS web bundle: `build:ios` ok, `verify:ios-parity` 26 files match exactly.
+- Frame rate on the City fixture: 60 fps on both the previous commit and this one, so the decal change adds no rendering cost.
+
 ## 2026-10-20 — Hawks stoop: a telegraphed lock, a committed dive, and a lane the gap cannot close
 
 Direction: "another round! Then push commit and deploy." The stoop was the open proposal from the last round, so this round builds it under the same rules: the gap guarantee holds, every warning has a visible tell, and nothing is judged without a probe.
