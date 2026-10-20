@@ -237,6 +237,7 @@ import { crossedPassLine } from './game/gate-crossing.js'
 import { hazardWarningScale } from './game/hazard-readability.js'
 import { HAZARD_SHADOW_CAPACITY, hazardShadowForAltitude } from './game/hazard-shadow.js'
 import { diveLeanOffset } from './game/dive-lean.js'
+import { STOOP_SHIVER, advanceStoop } from './game/hawk-stoop.js'
 import { advanceHomingShot, getWeaponState, getWeaponTuning, resolveWeaponHit, selectWeaponTargets, shotHitsTargetSwept, WEAPON_POP_STARS } from './game/weapon-runtime.js'
 import {
   describeNearMissFloat,
@@ -1850,8 +1851,12 @@ function updateHazardShadows() {
     const p = e.mesh.position
     const shadow = hazardShadowForAltitude({ altitude: p.y, radius: e.radius })
     if (!shadow.visible || p.z < -4) continue
-    hazardShadowPos.set(p.x, 0.075, p.z)
-    hazardShadowScale.set(shadow.scale, 1, shadow.scale)
+    // A locked hawk's shadow marks the lane it will stoop onto: a ground cue on the
+    // street that reads far ahead, where the hawk itself is still a small sprite.
+    const locked = e.mesh.userData.stoopPhase === 'lock' && e.stoopState?.lockX != null
+    const grow = locked ? 1.25 : 1
+    hazardShadowPos.set(locked ? e.mesh.userData.anchorX + e.stoopState.lockX : p.x, 0.075, p.z)
+    hazardShadowScale.set(shadow.scale * grow, 1, shadow.scale * grow)
     hazardShadowMatrix.compose(hazardShadowPos, hazardShadowQuat, hazardShadowScale)
     hazardShadows.setMatrixAt(slot, hazardShadowMatrix)
     slot += 1
@@ -6671,10 +6676,35 @@ function animateHazards(dt) {
           amplitudeX: u.amplitudeX,
           amplitudeY: u.amplitudeY,
         })
-        // Dive flyers close on the plane's lane during the lower half of each dip,
-        // bounded by their own wave's gap so the lean never closes it (dive-lean.js).
+        // A hawk stoops in place of the dive lean: a stoop is a committed attack with
+        // its own telegraph, and its clamp cannot stack with the lean's (hawk-stoop.js).
+        // Biplanes keep the lean, bounded by their own wave's gap (dive-lean.js).
         const patternX = u.anchorX + offset.x
-        const lean = u.pattern === 'dive'
+        const stooping = e.flyerId === 'hawk' && !e.journeyMotion && runKind !== 'tutorial' && runKind !== 'journey'
+        const stoop = stooping
+          ? advanceStoop(e.stoopState, {
+            ahead: e.mesh.position.z,
+            anchorX: u.anchorX,
+            anchorY: u.anchorY,
+            planeX,
+            planeY,
+            gapCenter: e.passageGapX ?? lastGapCenter,
+            gapWidth: 5.5,
+            // The envelope the clamp must hold: pattern drift and the shiver included.
+            damageRadius: (e.radius || 0.9) + Math.abs(u.amplitudeX || 0) * getPatternReach('dive').x + STOOP_SHIVER,
+          })
+          : null
+        if (stoop) {
+          e.stoopState = stoop.state
+          // The hawk rears up through the lock and settles as it stoops. The sprite grows
+          // only far from the plane, so the enlarged art is never inside the hit envelope.
+          if (u.billboard) u.billboard.scale.setScalar(1 + 0.35 * stoop.rear)
+          if (stoop.phase === 'lock' && u.stoopPhase !== 'lock') {
+            audio.paperRustle(0.16, 0.06)
+            if (settings.haptics) Haptic.tap()
+          }
+        }
+        const lean = u.pattern === 'dive' && !stooping
           ? diveLeanOffset({
             diveDepth: -offset.y / Math.max(0.01, u.amplitudeY || 0),
             planeX,
@@ -6683,9 +6713,11 @@ function animateHazards(dt) {
             damageRadius: e.radius || 0.7,
           })
           : 0
-        e.mesh.position.x = patternX + lean
-        e.mesh.position.y = u.anchorY + offset.y
-        u.lastOffsetY = offset.y
+        e.mesh.position.x = patternX + lean + (stoop ? stoop.offsetX : 0)
+        e.mesh.position.y = u.anchorY + offset.y + (stoop ? stoop.offsetY : 0)
+        // The warning ring reads a committed stoop as a dive, so it grows as the hawk commits.
+        u.lastOffsetY = stoop && stoop.phase !== 'idle' ? Math.min(offset.y, -0.4) : offset.y
+        u.stoopPhase = stoop ? stoop.phase : 'idle'
         const roll = resolveHazardRoll({
           pattern: u.pattern, hazardClock, phase: u.phase, speed: u.motionSpeed,
         })
@@ -6716,7 +6748,7 @@ function animateHazards(dt) {
         // A hazard sitting deeper than the readable fog depth also rings —
         // the ring ignores fog, so it reads through haze.
         const hazy = e.mesh.position.z > fogReadabilityDepth()
-        const near = e.mesh.position.z < 36 || hazy
+        const near = e.mesh.position.z < 36 || hazy || u.stoopPhase === 'lock'
         const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
         outline.visible = near
         outline.material.opacity = pulse
@@ -8616,6 +8648,16 @@ window.render_game_to_text = () => JSON.stringify({
   upgrades: upgradeRuntimeTextState(),
   boss: bossTextState(),
   hazardShadows: { visible: hazardShadows.visible, live: hazardShadowLive },
+  hawkStoops: entities
+    .filter((entity) => entity.flyerId === 'hawk')
+    .slice(0, 4)
+    .map((entity) => ({
+      ahead: Number(entity.mesh.position.z.toFixed(1)),
+      x: Number(entity.mesh.position.x.toFixed(2)),
+      y: Number(entity.mesh.position.y.toFixed(2)),
+      phase: entity.mesh.userData.stoopPhase || 'idle',
+      lockX: entity.stoopState?.lockX ?? null,
+    })),
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
     itemTypes: layoutPlay.items.map((item) => item.t),
@@ -8717,6 +8759,37 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   scissors.position.set(6, 7, 18)
   scene.add(scissors)
   entities.push({ mesh: scissors, type: 'scissors', radius: 1.6 })
+  needsRender = true
+}
+
+// A diving hawk stoops on a plane that has left the gap: the lock telegraphs the
+// lane and the stoop reaches the plane. The `-gap` variant parks the plane dead
+// centre in the gap, where the same hawk must not reach it.
+if (import.meta.env.DEV && ['#test-hawk-stoop', '#test-hawk-stoop-gap'].includes(devTestState)) {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  spawnUnfold = 1
+  nextSpawnZ = 9999
+  windTimer = 999
+  launchGraceSeconds = 0
+  invuln = 0
+  planeX = devTestState === '#test-hawk-stoop-gap' ? 0 : 5
+  planeY = 9
+  plane.position.set(planeX, planeY, 0)
+  mouseTarget.x = planeX
+  mouseTarget.y = planeY
+  const hawk = createFlyer('hawk')
+  hawk.position.set(6, 10, 110)
+  Object.assign(hawk.userData, { anchorX: 6, anchorY: 10, amplitudeX: 0.6, amplitudeY: 0.8, motionSpeed: 7 })
+  scene.add(hawk)
+  entities.push({ mesh: hawk, type: 'bird', flyerId: 'hawk', label: 'diving origami hawk', radius: 0.9, passageGapX: 0 })
+  // Stepped only by advanceTime, so the real-time loop cannot carry the hawk past its lock while a test boots.
+  simulationPaused = true
+  hudEl?.classList.remove('hidden')
   needsRender = true
 }
 

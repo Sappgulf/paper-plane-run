@@ -2,6 +2,29 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-20 — Hawks stoop: a telegraphed lock, a committed dive, and a lane the gap cannot close
+
+Direction: "another round! Then push commit and deploy." The stoop was the open proposal from the last round, so this round builds it under the same rules: the gap guarantee holds, every warning has a visible tell, and nothing is judged without a probe.
+
+- **Hawk stoop** (`src/game/hawk-stoop.js`, wired into `animateHazards`). A hawk that spots the plane from beyond 72 m rears up, locks onto the lane the plane is in, and stoops at it. The beats are timed by distance ahead, not by the clock: the lock begins at 72 m, the stoop at 30 m, and the hawk is on its lane as it crosses the plane. A hawk first seen closer than 72 m never stoops.
+- **Telegraph:** the lock is the first beat. The hawk's ground shadow slides to the lane it will hit, which puts a cue on the street. Its sprite rears up by up to 35 % and settles as it dives, its warning ring grows, and a paper rustle plays. The sprite only grows far from the plane, so the enlarged art never sits inside the hit envelope.
+- **Fairness:** the lane comes from `stoopLockX`, the same gap clamp as every other hazard motion, applied to the hawk's full envelope (pattern drift and shiver included). A stoop can reach a plane that has left the gap. It cannot close a gap the plane is flying through. A property test sweeps gap centres, anchors and plane positions.
+- **Hawks no longer lean.** The dive lean now belongs to biplanes only, because a stoop replaces it for hawks and the two lateral clamps cannot stack.
+- **Judgment calls:** the lock starts at 72 m, not earlier. At 60 m a hawk is a sprite a few pixels tall, so the stoop (30 m) is the clear beat and the lock is the subtle first beat. The ground shadow marks the lane, which keeps the early beat readable on the street.
+- **Dev fixtures:** `#test-hawk-stoop` puts the plane outside the gap, and `#test-hawk-stoop-gap` puts it inside. Both fixtures pause the real-time loop, so a test that is still booting cannot carry the hawk past its lock.
+- **Tests:** 13 unit tests in `test/hawk-stoop.test.js` and 2 browser tests in `e2e/gameplay.spec.js`.
+
+Probes (DEV build, the same 21,600-frame runs as the last round):
+- Autopilot, six seeds: four deaths, with two seeds flying to the frame cap. One death was by a hawk, against none in the last round. The mean went from 20.9 km (origin) to 19.3 km (last round) to 22.2 km (this round). The spread between seeds is far larger than any of those shifts, so I read them as noise.
+- Hands-off, six seeds: identical to origin on every seed, with the same two hawk deaths. The hands-off plane sits near the gap centre, where the lean was already clamped to zero, and most of its hawks spawn inside the arming distance.
+
+Verification:
+- Vitest: 101 files, 745 tests passed (was 100 files, 732 tests).
+- Dev Playwright lane (150 tests): 111 passed, 39 skipped, 0 failed, including the two new hawk tests on desktop.
+- Production Playwright lane (`npm run test:e2e:prod`): 49 passed, 101 skipped (dev-hook suites), 0 failed.
+- Production build and bundle budget: 947,592 of 983,040 total bytes, initial 150,160 of 163,840. PASS.
+- iOS web bundle: `build:ios` ok, `verify:ios-parity` 26 files match exactly.
+
 ## 2026-10-20 — Enemies that telegraph: ground shadows, flinches, dive leans, and loaded boss gates
 
 Direction: “get all of the gameplay better than ever, like AAA gameplay … flight engine upgrades, enemies … assets, test it … push, commit and deploy.” This round took the enemies, the bosses and the sky's readability, plus an asset and layout QA pass. The flight model was reviewed and left alone (see the judgment calls below).

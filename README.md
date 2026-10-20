@@ -66,15 +66,18 @@ Snowfold flurries, Love Notes hearts — and re-weight the roster: spring sends
 the dragonflies, summer the kites and balloons. See
 [`src/game/flyers.js`](src/game/flyers.js).
 
-Three more things make the sky legible and alive. A flyer below the ceiling
+A few more things make the sky legible and alive. A flyer below the ceiling
 casts a soft ground shadow that spreads as it climbs, so its height reads from
 the street, and the deck lane is where that matters most
 ([`src/game/hazard-shadow.js`](src/game/hazard-shadow.js)). A flyer the plane
 squeezes past flinches — the card jolts and the wings quicken — without its
 hit envelope moving at all. And diving biplanes and hawks drift toward your lane
-during the lower half of each dip, but a lean can never carry them into the
-wave's gap, because it is bounded by the same clamp as every other hazard
-([`src/game/dive-lean.js`](src/game/dive-lean.js)).
+during the lower half of each dip, bounded by the same gap clamp as every other
+hazard ([`src/game/dive-lean.js`](src/game/dive-lean.js)). A hawk does something
+sharper. Once it has spotted you from far ahead, it rears up and locks onto the
+lane you are in, and its ground shadow marks that lane on the street before it
+stoops. The stoop can reach a plane that has left the gap, and it cannot close
+the gap you are flying through ([`src/game/hawk-stoop.js`](src/game/hawk-stoop.js)).
 
 ### Boss gates load before they strike
 

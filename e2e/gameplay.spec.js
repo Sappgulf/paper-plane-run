@@ -486,4 +486,64 @@ test.describe('gameplay systems regression', () => {
     })
     expect(errors).toEqual([])
   })
+
+  test('a diving hawk locks its lane, stoops, and takes a plane that has left the gap', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop')
+    const errors = collectConsoleErrors(page)
+    await withEnvRetries(async () => {
+      await openFixture(page, '/?seed=stoop-proof#test-hawk-stoop')
+      const run = await page.evaluate(() => {
+        const phases = []
+        let end = null
+        for (let step = 0; step < 400; step += 1) {
+          const snapshot = JSON.parse(window.advanceTime(50))
+          const hawk = snapshot.hawkStoops?.[0]
+          if (hawk && phases[phases.length - 1] !== hawk.phase) phases.push(hawk.phase)
+          if (snapshot.state !== 'playing') {
+            end = { state: snapshot.state, cause: window.__paperDeathCause }
+            break
+          }
+        }
+        return { phases, end }
+      })
+      // The telegraph is ordered: lock, then the stoop, then the hold on the lane.
+      expect(run.phases).toEqual(expect.arrayContaining(['lock', 'stoop', 'hold']))
+      expect(run.phases.indexOf('lock')).toBeLessThan(run.phases.indexOf('stoop'))
+      expect(run.phases.indexOf('stoop')).toBeLessThan(run.phases.indexOf('hold'))
+      // The plane sits outside the gap, so the locked lane is the plane itself.
+      expect(run.end?.state).toBe('dead')
+      expect(run.end.cause).toMatchObject({ type: 'bird', label: 'diving origami hawk' })
+    })
+    expect(errors).toEqual([])
+  })
+
+  test('the same diving hawk cannot reach a plane flying inside the gap', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop')
+    const errors = collectConsoleErrors(page)
+    await withEnvRetries(async () => {
+      await openFixture(page, '/?seed=stoop-gap-proof#test-hawk-stoop-gap')
+      const run = await page.evaluate(() => {
+        const phases = []
+        let state = null
+        let passed = false
+        for (let step = 0; step < 400; step += 1) {
+          const snapshot = JSON.parse(window.advanceTime(50))
+          const hawk = snapshot.hawkStoops?.[0]
+          if (hawk && phases[phases.length - 1] !== hawk.phase) phases.push(hawk.phase)
+          state = snapshot.state
+          if (hawk && hawk.ahead < -6) {
+            passed = true
+            break
+          }
+          if (state !== 'playing') break
+        }
+        return { phases, state, passed }
+      })
+      // It still telegraphs and stoops, but the locked lane stops at the gap edge.
+      expect(run.phases).toEqual(expect.arrayContaining(['lock', 'stoop', 'hold']))
+      expect(run.passed).toBe(true)
+      expect(run.state).toBe('playing')
+    })
+    expect(errors).toEqual([])
+  })
 })
