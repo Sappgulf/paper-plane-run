@@ -7,7 +7,6 @@
 // WebKit's own network log: the .js/.css requests complete with the right
 // MIME type and byte count, the page just never renders styled or scripted.
 // Stripping crossorigin only from the *local* module script and stylesheet
-// (not the external Google Fonts preconnect, which legitimately needs it)
 // fixes this without touching the web build at all.
 import { readFileSync, writeFileSync } from 'node:fs'
 

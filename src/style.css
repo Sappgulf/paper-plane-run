@@ -1,3 +1,4 @@
+@import './ui/fonts.css';
 /* Ownership: flight overlays, screen structure, journey, adaptation, then club theme. */
 @import './ui/flight.css';
 @import './ui/screens.css';

@@ -86,20 +86,6 @@ import { safeGetItem, safeRemoveItem, safeSessionStorage, safeSetItem, safeStora
 import { bindDialogFocus } from './game/dialog-focus.js'
 import { initProgressKit } from './ui/progress-kit.js'
 
-// Nunito is requested only after the page's load event. A font stylesheet in the
-// document holds that event back, and on a slow network the menu stayed blank
-// until the font arrived. display=optional keeps the fallback if it is late.
-{
-  const loadFontSheet = () => {
-    const fontSheet = document.createElement('link')
-    fontSheet.rel = 'stylesheet'
-    fontSheet.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=optional'
-    document.head.append(fontSheet)
-  }
-  if (document.readyState === 'complete') loadFontSheet()
-  else window.addEventListener('load', loadFontSheet, { once: true })
-}
-
 /** Tree chip text: its name, plus ranks owned over ranks available in that tree (or all folds). */
 function upgradeChipParts(treeId, levels) {
   const tree = UPGRADE_TREES.find((entry) => entry.id === treeId)
