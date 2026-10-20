@@ -2,6 +2,34 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-20 — Enemies that telegraph: ground shadows, flinches, dive leans, and loaded boss gates
+
+Direction: “get all of the gameplay better than ever, like AAA gameplay … flight engine upgrades, enemies … assets, test it … push, commit and deploy.” This round took the enemies, the bosses and the sky's readability, plus an asset and layout QA pass. The flight model was reviewed and left alone (see the judgment calls below).
+
+- **Ground shadows under airborne hazards** (`src/game/hazard-shadow.js`, `hazardShadows` in `src/flight-engine.js`). One instanced mesh with 48 slots draws a soft blob beneath every bird and scissors below the 13 m ceiling. It spreads as the flyer climbs, so its height reads from the street, and it switches off with the other secondary effects at `low` quality.
+- **Near-miss flinch** (birds only). A flyer the plane squeezes past jolts sideways for 0.7 s and flaps faster. The jolt moves the card's local offset, so the hit envelope and the lethal ring stay put.
+- **Dive lean** (`src/game/dive-lean.js`). Biplanes and hawks on the dive pattern drift toward the plane's lane during the lower half of each dip. The lean is capped by the wave's own gap through the existing `clampAmplitudeToGap`, so a diver never closes the gap it was spawned beside. A property test sweeps gap centres, anchors, plane positions and dive depths.
+- **Boss gates load before they strike** (`src/game/boss-choreography.js`). Warning: blades, jaws, press heads and fans sit open and slow. Pressure: they close in with the meter. Final pass: a 0.35 s snap, then the closed pose. Every press is clamped at the passage lip, blade tilt is capped at ±0.18 rad, and reduced motion holds one still pose.
+- **Launch menu fits on short screens.** On main, the launch card at 1280×720 ran 22 px past the fold, so Flight Guide was off screen. On the touch project, landscape 844×390 and 320×568 pushed Hangar and Flight Guide below the fold too. A short-desktop rule and tighter touch-regime gaps fix all four sizes on both projects, with a seeded returning-player journey present.
+- **Flight Guide focus test.** It failed once in the full dev lane: a tap was lost while the dev server was still transforming modules. The open now retries until the dialog answers. It passed three of three alone before the change and two of two after.
+- **Stale boss clear expectation.** `smoke.spec.js` expected 5★ after a scissors clear. The center-thread bounty (+2★, added 10-19) makes 7★ correct for the dead-centre fixture, so the test now says why.
+- **Tests:** 27 new unit tests (8 hazard-shadow, 12 boss-choreography, 7 dive-lean) and 2 new browser tests in `e2e/gameplay.spec.js` (shadows, boss pose ordering).
+
+Judgment calls and what I did not do:
+- Flight handling (banking, glide, tuck, skim) is unchanged. In the probes every death was on screen when it happened, which is what the forensics round was for, and the skim band did not dominate as a strategy.
+- I dropped a telegraphed hawk stoop (a committed lunge at the plane) as too risky to tune without a playtest. The dive lean covers the "enemies react to you" idea inside the fairness rules.
+- Boss passages, pacing and the star economy are unchanged apart from the test correction above.
+
+Probes (DEV build, a scratch Playwright harness kept outside the repo, the same six seeds and 21,600 frames on both sides): autopilot mean 20,896 m → 19,312 m (median 15,665 → 16,929 m), which sits inside the seed-to-seed spread; hands-off mean 2,893 → 2,878 m, with one seed changed. All 11 deaths were on screen when they happened. Six seeds is a small sample and the autopilot is not a human player, so treat these as regression checks rather than balance evidence.
+
+Verification:
+- Vitest: 100 files, 732 tests passed (was 97 files, 705 tests).
+- Dev Playwright lane (146 tests): 108 passed, 37 skipped, 1 failed before the Flight Guide retry. The retry and the two comment fixes landed after that run; the flight guide test then passed on both projects.
+- Production Playwright lane (`npm run test:e2e:prod`): 49 passed, 97 skipped (dev-hook suites), 0 failed.
+- Production build and bundle budget: 945,298 of 983,040 total bytes, initial 150,160 of 163,840. PASS.
+- iOS web bundle: `build:ios` ok, `verify:ios-parity` 26 files match exactly.
+- Asset check: the production build served without a failed request or console error on desktop and phone-sized flights.
+
 ## 2026-10-19 — Round: gates that read, an opening that never starves, and the protections pinned
 
 Direction: “another round!” Four subagents ran in parallel (gate meshes, opening pacing, seasonal art, e2e coverage); the pacing wiring and verification ran inline.

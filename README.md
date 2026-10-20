@@ -66,6 +66,25 @@ Snowfold flurries, Love Notes hearts — and re-weight the roster: spring sends
 the dragonflies, summer the kites and balloons. See
 [`src/game/flyers.js`](src/game/flyers.js).
 
+Three more things make the sky legible and alive. A flyer below the ceiling
+casts a soft ground shadow that spreads as it climbs, so its height reads from
+the street, and the deck lane is where that matters most
+([`src/game/hazard-shadow.js`](src/game/hazard-shadow.js)). A flyer the plane
+squeezes past flinches — the card jolts and the wings quicken — without its
+hit envelope moving at all. And diving biplanes and hawks drift toward your lane
+during the lower half of each dip, but a lean can never carry them into the
+wave's gap, because it is bounded by the same clamp as every other hazard
+([`src/game/dive-lean.js`](src/game/dive-lean.js)).
+
+### Boss gates load before they strike
+
+Every gate now has three readable poses, driven by its encounter phase. The
+blades, jaws, press heads and fans load open through the warning, close in as
+the pressure meter fills, and snap shut for a beat when the final pass begins.
+Each pose is clamped at the passage lip, so no moving part can reach the hole;
+the collision envelope is unchanged
+([`src/game/boss-choreography.js`](src/game/boss-choreography.js)).
+
 ### Fairness
 
 Every wave contains at least one continuous horizontal gap wide enough for the

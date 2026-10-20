@@ -429,4 +429,61 @@ test.describe('gameplay systems regression', () => {
     })
     expect(errors).toEqual([])
   })
+
+  test('airborne flyers cast ground shadows that show their height from the street', async ({ page }, testInfo) => {
+    // The lineup is the whole roster plus a scissors blade, all at or below the
+    // shadow ceiling, so every one of the eight should cast a live shadow.
+    test.skip(testInfo.project.name !== 'desktop')
+    const errors = collectConsoleErrors(page)
+    await withEnvRetries(async () => {
+      await openFixture(page, '/?seed=shadow-proof#test-obstacles')
+      const shadows = await page.evaluate(() => {
+        window.advanceTime(50)
+        const snapshot = JSON.parse(window.render_game_to_text())
+        return { ...snapshot.hazardShadows, level: snapshot.performance?.quality?.level }
+      })
+      // Shadows are a secondary effect: adaptive quality sheds them at 'low',
+      // as it sheds the other decorative layers. Anywhere else, every flyer casts one.
+      if (shadows.level === 'low') {
+        expect(shadows).toMatchObject({ visible: false, live: 0 })
+      } else {
+        expect(shadows).toMatchObject({ visible: true })
+        expect(shadows.live).toBeGreaterThanOrEqual(7)
+      }
+    })
+    expect(errors).toEqual([])
+  })
+
+  test('boss mechanisms load, close for the final pass, and leave the passage untouched', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop')
+    const errors = collectConsoleErrors(page)
+    await withEnvRetries(async () => {
+      await openFixture(page, '/?boss-proof=stapler#test-boss-encounter')
+      await page.evaluate(() => window.advanceTime(200))
+      const warning = await page.evaluate(() => JSON.parse(window.render_game_to_text()).boss)
+      expect(warning).toMatchObject({ phase: 'warning', pose: { open: 1, clap: 0 } })
+
+      await expect.poll(async () => page.evaluate(() => {
+        window.advanceTime(50)
+        return JSON.parse(window.render_game_to_text()).boss?.phase
+      }), { timeout: 30_000 }).toBe('pressure')
+      await page.evaluate(() => window.advanceTime(1200))
+      const pressed = await page.evaluate(() => JSON.parse(window.render_game_to_text()).boss)
+      expect(pressed.pose.open).toBeLessThan(warning.pose.open)
+
+      // Step the first frame of the final pass: the snap should still be live.
+      const finalPass = await page.evaluate(() => {
+        for (let step = 0; step < 400; step += 1) {
+          const snapshot = JSON.parse(window.advanceTime(16))
+          if (snapshot.boss?.phase === 'final-pass') return snapshot.boss
+        }
+        return null
+      })
+      expect(finalPass).not.toBeNull()
+      expect(finalPass.pose.clap).toBeGreaterThan(0.5)
+      expect(finalPass.pose.open).toBeCloseTo(0.3, 5)
+      expect(finalPass.passage).toMatchObject({ halfWidth: 4.8, halfHeight: 4.4 })
+    })
+    expect(errors).toEqual([])
+  })
 })

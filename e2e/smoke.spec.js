@@ -790,7 +790,9 @@ test('existing bosses expose deterministic readable phases and accessibility cue
   const cleared = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(cleared.state).toBe('playing')
   expect(cleared.boss).toMatchObject({ kind: 'scissors', completed: true })
-  expect(cleared.stars).toBe(5)
+  // 5 for the clear, plus 2 for the centred line: this fixture flies dead centre,
+  // which pays the center-thread bounty.
+  expect(cleared.stars).toBe(7)
 })
 
 test('native performance pressure lowers visual cost without changing gameplay state', async ({ page }, testInfo) => {

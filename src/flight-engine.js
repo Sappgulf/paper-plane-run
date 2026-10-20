@@ -110,6 +110,7 @@ import {
   resolveBossGapY,
   shouldClearForBossApproach,
 } from './game/boss-director.js'
+import { bossBladeTilt, bossChoreography, bossLipOffset } from './game/boss-choreography.js'
 import {
   getAdaptiveQuality,
   installNativePerformanceListener,
@@ -234,6 +235,8 @@ import { pickFlightFocus, shouldTelegraphHazard } from './game/flight-focus.js'
 import { buildingOverlapsPlane } from './game/building-hitbox.js'
 import { crossedPassLine } from './game/gate-crossing.js'
 import { hazardWarningScale } from './game/hazard-readability.js'
+import { HAZARD_SHADOW_CAPACITY, hazardShadowForAltitude } from './game/hazard-shadow.js'
+import { diveLeanOffset } from './game/dive-lean.js'
 import { advanceHomingShot, getWeaponState, getWeaponTuning, resolveWeaponHit, selectWeaponTargets, shotHitsTargetSwept, WEAPON_POP_STARS } from './game/weapon-runtime.js'
 import {
   describeNearMissFloat,
@@ -1810,6 +1813,52 @@ function updatePlaneMarker() {
   const height = THREE.MathUtils.clamp((planeY - GROUND_HEIGHT) / (MAX_Y - GROUND_HEIGHT), 0, 1)
   planeMarker.scale.setScalar(0.62 + height * 1.5)
   planeMarkerMat.opacity = 0.34 - height * 0.2
+}
+
+// Airborne hazards cast the same kind of blob as the plane, so a flyer's height
+// reads from the street. One instanced mesh draws the whole pool. A flyer that
+// is too high, or already behind the plane, collapses to a zero matrix instead
+// of leaving the pool, so the draw count never changes mid-flight.
+const hazardShadowMat = new THREE.MeshBasicMaterial({
+  color: 0x2b2015, transparent: true, opacity: 0.16, depthWrite: false,
+})
+const hazardShadows = new THREE.InstancedMesh(
+  new THREE.CircleGeometry(1, 18).rotateX(-Math.PI / 2),
+  hazardShadowMat,
+  HAZARD_SHADOW_CAPACITY,
+)
+hazardShadows.renderOrder = 1
+hazardShadows.frustumCulled = false
+hazardShadows.visible = false
+scene.add(hazardShadows)
+const hazardShadowHidden = new THREE.Matrix4().makeScale(0, 0, 0)
+const hazardShadowMatrix = new THREE.Matrix4()
+const hazardShadowPos = new THREE.Vector3()
+const hazardShadowScale = new THREE.Vector3()
+const hazardShadowQuat = new THREE.Quaternion()
+
+let hazardShadowLive = 0
+
+function updateHazardShadows() {
+  hazardShadows.visible = state === 'playing' && renderQuality.secondaryEffects
+  hazardShadowLive = 0
+  if (!hazardShadows.visible) return
+  let slot = 0
+  for (const e of entities) {
+    if (slot >= HAZARD_SHADOW_CAPACITY) break
+    if (e.type !== 'bird' && e.type !== 'scissors') continue
+    const p = e.mesh.position
+    const shadow = hazardShadowForAltitude({ altitude: p.y, radius: e.radius })
+    if (!shadow.visible || p.z < -4) continue
+    hazardShadowPos.set(p.x, 0.075, p.z)
+    hazardShadowScale.set(shadow.scale, 1, shadow.scale)
+    hazardShadowMatrix.compose(hazardShadowPos, hazardShadowQuat, hazardShadowScale)
+    hazardShadows.setMatrixAt(slot, hazardShadowMatrix)
+    slot += 1
+  }
+  hazardShadowLive = slot
+  for (; slot < HAZARD_SHADOW_CAPACITY; slot += 1) hazardShadows.setMatrixAt(slot, hazardShadowHidden)
+  hazardShadows.instanceMatrix.needsUpdate = true
 }
 
 // Confetti — a persistent pooled ring buffer instead of allocating 10 fresh
@@ -6568,6 +6617,9 @@ function fogReadabilityDepth() {
   return near + 0.35 * (far - near)
 }
 
+/** How long a flyer keeps flinching after the plane squeezes past it. */
+const STARTLE_SECONDS = 0.7
+
 function animateHazards(dt) {
   for (const e of entities) {
     if (e.journeyMotion) {
@@ -6586,7 +6638,7 @@ function animateHazards(dt) {
     }
     if (e.type === 'bird') {
       const u = e.mesh.userData
-      u.phase = (u.phase || 0) + dt * 8
+      u.phase = (u.phase || 0) + dt * ((u.startle || 0) > 0 ? 17 : 8)
       // Steep gull-wing baseline (not just a shallow tilt) so the wings
       // still show real frontal cross-section head-on, where the player
       // actually meets these hazards — a flat/shallow dihedral collapses
@@ -6594,6 +6646,16 @@ function animateHazards(dt) {
       const flap = Math.sin(u.phase) * 0.35
       if (u.wingL) u.wingL.rotation.z = 0.85 + flap
       if (u.wingR) u.wingR.rotation.z = -0.85 - flap
+      // A flyer the plane just squeezed past flinches: the card jolts sideways
+      // and the flap quickens. It is the card's local offset, not the mesh's,
+      // so the hit envelope and the lethal ring never move with it.
+      const card = e.mesh.userData.billboard
+      if (u.startle > 0 && card) {
+        u.startle = Math.max(0, u.startle - dt)
+        card.position.x = Math.sin(u.startle * 34) * 0.14 * (u.startle / STARTLE_SECONDS)
+      } else if (card && card.position.x !== 0) {
+        card.position.x = 0
+      }
       // Motion is an absolute offset from the spawn anchor, recomputed from
       // the clock every frame rather than accumulated into the position.
       // Integrating `sin(phase) * dt` does not average out — it built up a
@@ -6609,7 +6671,19 @@ function animateHazards(dt) {
           amplitudeX: u.amplitudeX,
           amplitudeY: u.amplitudeY,
         })
-        e.mesh.position.x = u.anchorX + offset.x
+        // Dive flyers close on the plane's lane during the lower half of each dip,
+        // bounded by their own wave's gap so the lean never closes it (dive-lean.js).
+        const patternX = u.anchorX + offset.x
+        const lean = u.pattern === 'dive'
+          ? diveLeanOffset({
+            diveDepth: -offset.y / Math.max(0.01, u.amplitudeY || 0),
+            planeX,
+            anchorX: patternX,
+            gapCenter: e.passageGapX ?? lastGapCenter,
+            damageRadius: e.radius || 0.7,
+          })
+          : 0
+        e.mesh.position.x = patternX + lean
         e.mesh.position.y = u.anchorY + offset.y
         u.lastOffsetY = offset.y
         const roll = resolveHazardRoll({
@@ -6692,6 +6766,7 @@ function animateHazards(dt) {
       u.encounter = encounter
       if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
+        u.poseClock = 0
         const presentation = describeBossPhase(encounter)
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
@@ -6706,9 +6781,19 @@ function animateHazards(dt) {
         if (settings.haptics) Haptic.tap()
       }
       const halfH = encounter?.passage?.halfHeight ?? u.halfHeight ?? 3.7
+      // Mechanisms load in the warning, close in through the pressure meter and
+      // snap at the final pass. The pose never reaches the passage lip.
+      u.poseClock = (u.poseClock || 0) + dt
+      const pose = bossChoreography({
+        phase: encounter?.phase,
+        pressure: encounter?.pressure,
+        sincePhase: u.poseClock,
+        motionAllowed: encounter?.motionAllowed !== false,
+      })
+      u.pose = pose
       if (u.kind === 'wind') {
-        if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 7
-        if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 7
+        if (encounter?.motionAllowed !== false && u.fanL) u.fanL.rotation.z += dt * 7 * pose.spin
+        if (encounter?.motionAllowed !== false && u.fanR) u.fanR.rotation.z -= dt * 7 * pose.spin
         if (u.fanL) u.fanL.position.y = u.gapY
         if (u.fanR) u.fanR.position.y = u.gapY
         if (u.debris) {
@@ -6728,7 +6813,7 @@ function animateHazards(dt) {
         // Mild press animation that never closes the open slot.
         const press = encounter?.motionAllowed === false
           ? 0.15
-          : 0.45 + Math.sin(u.phase * 2.1) * 0.28
+          : bossLipOffset(pose) + Math.sin(u.phase * 2.1 * pose.rate) * 0.04
         if (u.topJaw) u.topJaw.position.y = u.gapY + halfH + 0.85 + press
         if (u.bottomJaw) u.bottomJaw.position.y = u.gapY - halfH - 0.85 - press
       } else if (u.kind === 'punch') {
@@ -6737,7 +6822,7 @@ function animateHazards(dt) {
         // wind-tunnel debris contract.
         const press = encounter?.motionAllowed === false
           ? 0.12
-          : 0.4 + Math.sin(u.phase * 1.9) * 0.3
+          : bossLipOffset(pose) + Math.sin(u.phase * 1.9 * pose.rate) * 0.04
         if (u.topHead) u.topHead.position.y = u.gapY + halfH + 2 + press
         if (u.bottomHead) u.bottomHead.position.y = u.gapY - halfH - 2 - press
         if (u.dots?.length) {
@@ -6752,16 +6837,17 @@ function animateHazards(dt) {
           }
         }
       } else {
-        // Scissors side blades: gentle bob only — never tilt into the portal.
+        // Scissors side blades: a bob and a capped tilt, paced by the boss pose —
+        // the tilt never reaches the portal.
         if (u.left) {
-          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2) * 0.55
+          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2 * pose.rate) * 0.55
           u.left.position.y = u.gapY + snap
-          u.left.rotation.z = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 2.4) * 0.18
+          u.left.rotation.z = encounter?.motionAllowed === false ? 0 : bossBladeTilt(pose)
         }
         if (u.right) {
-          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2 + 1.2) * 0.55
+          const snap = encounter?.motionAllowed === false ? 0 : Math.sin(u.phase * 3.2 * pose.rate + 1.2) * 0.55
           u.right.position.y = u.gapY + snap
-          u.right.rotation.z = encounter?.motionAllowed === false ? 0 : -Math.sin(u.phase * 2.4) * 0.18
+          u.right.rotation.z = encounter?.motionAllowed === false ? 0 : -bossBladeTilt(pose)
         }
       }
       if (u.leftLip) u.leftLip.position.y = u.gapY
@@ -6808,6 +6894,7 @@ function animateHazards(dt) {
       c.visible = false
     }
   }
+  updateHazardShadows()
 }
 
 function registerNearMiss(kind = null) {
@@ -8193,6 +8280,7 @@ function update(dt) {
         tighten: nmTighten,
       })
       if (dist2 < graze ** 2 && m.position.z > -1 && m.position.z < 7) {
+        if (e.type === 'bird') m.userData.startle = STARTLE_SECONDS
         const last = nearMissCooldown.get(m) || 0
         if (elapsed - last > 1.0) {
           nearMissCooldown.set(m, elapsed)
@@ -8361,6 +8449,13 @@ function bossTextState() {
     completed: boss.completed,
     shapeCue: boss.shapeCue,
     passage: boss.passage,
+    pose: entity.mesh.userData.pose
+      ? {
+        open: Number(entity.mesh.userData.pose.open.toFixed(3)),
+        clap: Number(entity.mesh.userData.pose.clap.toFixed(3)),
+        rate: Number(entity.mesh.userData.pose.rate.toFixed(3)),
+      }
+      : null,
   }
 }
 
@@ -8520,6 +8615,7 @@ window.render_game_to_text = () => JSON.stringify({
   },
   upgrades: upgradeRuntimeTextState(),
   boss: bossTextState(),
+  hazardShadows: { visible: hazardShadows.visible, live: hazardShadowLive },
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
     itemTypes: layoutPlay.items.map((item) => item.t),

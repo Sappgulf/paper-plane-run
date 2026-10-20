@@ -43,8 +43,13 @@ test('warm engine shortcuts preserve text entry and native button activation', a
 
 test('flight guide contains keyboard focus and returns it on close', async ({ page }, testInfo) => {
   await openApp(page)
-  await tap(page.locator('#flight-guide-btn'))
-  await expect(page.getByRole('dialog', { name: 'A good fold goes further.' })).toBeVisible()
+  // A tap can be lost while the dev server is still transforming modules (the
+  // lane's first minutes), so retry the open until the dialog answers, as a
+  // player tapping again would.
+  await expect(async () => {
+    await tap(page.locator('#flight-guide-btn'))
+    await expect(page.getByRole('dialog', { name: 'A good fold goes further.' })).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 30_000 })
   await expect(page.locator('#flight-guide-close')).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.locator('#flight-guide-close')).toBeFocused()
