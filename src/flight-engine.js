@@ -4414,7 +4414,7 @@ function createPlaneArmament(effects, bodyMaterial = planeBodyMat, accentMateria
   for (const side of [-1, 1]) {
     for (let podIndex = 0; podIndex < podCount; podIndex += 1) {
       const pod = new THREE.Group()
-      pod.position.set(side * (0.58 + podIndex * 0.26), -0.03 - podIndex * 0.06, 0.04)
+      pod.position.set(side * (0.82 + podIndex * 0.18), -0.04 - podIndex * 0.05, 0.06)
       const shell = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.5), accentMaterial)
       shell.name = 'armamentPod'
       pod.add(shell)
