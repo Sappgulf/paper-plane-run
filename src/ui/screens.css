@@ -67,7 +67,7 @@
 }
 
 /* Hangar */
-.hangar { justify-content: flex-start; padding-top: var(--panel-top-clear); overscroll-behavior: contain; }
+.hangar { touch-action: pan-x pan-y pinch-zoom; justify-content: flex-start; padding-top: var(--panel-top-clear); overscroll-behavior: contain; }
 .hangar-card {
   display: flex; flex-direction: column;
   max-width: min(480px, 100%);

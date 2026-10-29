@@ -789,3 +789,16 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 #slingshot-help span { font-size:10px; opacity:.72; }
 .slingshot[data-charged="true"] .launch-grip { border-style:solid; border-color:#ffcf83; }
 @media(max-height:520px) { .launch-heading { top:19%; } .slingshot h2 { font-size:24px; } .launch-dock { bottom:6%; left:20%; width:180px; } #slingshot-help { font-size:11px; } .sling-trajectory { opacity:.3; } }
+
+/* One encounter strip replaces repeated boss banners and keeps the hoop clear. */
+.boss-flight { width:min(290px,88vw); padding:10px 14px; color:#fff8e7; background:#233f49f2; border:1px solid #fff8e74d; border-left:3px solid #efc573; border-radius:10px; box-shadow:0 4px 12px #163b4933; }
+.boss-flight-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.boss-flight-heading strong { font:20px Georgia,serif; letter-spacing:-.02em; }
+.boss-flight-heading > span { font-size:11px; font-variant-numeric:tabular-nums; color:#efc573; }
+.boss-flight-phase { display:block; font-size:10px; letter-spacing:.04em; margin-top:3px; color:#d2e2dd; }
+.boss-flight-track { height:3px; margin:8px 0 6px; background:#fff8e726; overflow:hidden; border-radius:3px; }
+.boss-flight-track i { display:block; height:100%; background:#efc573; transform-origin:left; }
+.boss-flight p { margin:0; font-size:10px; font-weight:800; color:#d2e2dd; }
+.boss-flight[data-centered="true"] p { color:#ffe0a1; }
+#banner-stack:has(.boss-flight:not(.hidden)) #zone-banner { display:none; }
+@media (max-height:520px) { .boss-flight { padding:7px 12px; } .boss-flight-heading strong { font-size:17px; } .boss-flight-track { margin:5px 0; } }

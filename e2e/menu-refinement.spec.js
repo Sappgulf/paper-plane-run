@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test'
+import { openApp, tap, launchPlane, waitForGameText, collectConsoleErrors } from './smoke-helpers.js'
+
+test('an upgrade purchase keeps the bought rank visible and restores search ownership',async({page})=>{
+ await page.addInitScript(()=>{localStorage.setItem('paper-plane-run-wallet','60');localStorage.setItem('paper-plane-run-wallet-migrated','1')})
+ await openApp(page);await tap(page.locator('#hangar-btn'))
+ const card=page.locator('.upgrade-card[data-upgrade-id="mail"]')
+ await tap(card.locator('.u-buy'))
+ await expect(page.locator('#hangar-wallet')).toHaveText('50')
+ await expect(card.locator('.u-bars')).toHaveAttribute('aria-label','1 of 3')
+ await expect(card).toBeFocused()
+ await expect(card).toBeInViewport({ratio:1})
+ const search=page.locator('#upgrade-search');await search.pressSequentially('Lift')
+ await expect(search).toHaveValue('Lift');await expect(search).toBeFocused()
+})
+
+test('Journey offers a route before optional pilot setup and native keyboard disclosure stays in the menu',async({page})=>{
+ await openApp(page);await waitForGameText(page)
+ await tap(page.locator('#journey-btn'))
+ await expect(page.locator('.journey-route-card').first()).toBeInViewport({ratio:.5})
+ const picker=page.locator('.journey-pilot-picker')
+ await expect(picker).not.toHaveAttribute('open','')
+ const summary=picker.locator('summary');await summary.focus();await summary.press('Space')
+ await expect(picker).toHaveAttribute('open','')
+ await expect(page.locator('.journey-pilot').first()).toBeVisible()
+ expect(await page.evaluate(()=>JSON.parse(window.render_game_to_text()).state)).toBe('menu')
+ await summary.press('Enter');await expect(picker).not.toHaveAttribute('open','')
+})
+
+test('the editor course reaches a clean finish and can be launched again',async({page})=>{
+ test.skip(process.env.PLAYWRIGHT_PREVIEW==='1','fixed time stepping')
+ const errors=collectConsoleErrors(page)
+ await openApp(page);await tap(page.locator('#hangar-btn'));await tap(page.locator('#hangar-group-meta'));await tap(page.locator('#hangar-tab-editor'))
+ await tap(page.locator('#editor-play'));await launchPlane(page);await waitForGameText(page)
+ const before=await page.evaluate(()=>{window.__paperFreeze(true);return JSON.parse(window.render_game_to_text())})
+ expect(before.mode).toBe('layout');expect(before.layout.finish).toBe(200)
+ await page.evaluate(()=>window.advanceTime(10_000))
+ await expect(page.locator('#gameover-title')).toHaveText('Custom route complete!')
+ await expect(page.locator('#flight-debrief')).toContainText('A clean finish')
+ await expect(page.locator('#run-summary')).not.toContainText('Personal best')
+ await tap(page.locator('#retry-btn'))
+ await expect(page.locator('#slingshot-plane')).toBeVisible()
+ const retry=await page.evaluate(()=>JSON.parse(window.render_game_to_text()))
+ expect(retry.mode).toBe('layout');expect(retry.layout.traveled).toBe(0)
+ expect(errors).toEqual([])
+})
+
+test('the impact stage clears tutorial instructions and Tuck release prompts immediately',async({page})=>{
+ test.skip(process.env.PLAYWRIGHT_PREVIEW==='1','fixed time stepping')
+ await openApp(page);await tap(page.locator('#tutorial-btn'));await launchPlane(page)
+ await expect(page.locator('#tutorial-hint')).toBeVisible()
+ await page.evaluate(()=>window.__paperFreeze(true));await page.keyboard.down('Space')
+ const impact=await page.evaluate(()=>{for(let step=0;step<160;step++){window.advanceTime(50);const state=JSON.parse(window.render_game_to_text());if(state.state==='dead')return state}return JSON.parse(window.render_game_to_text())})
+ await page.keyboard.up('Space')
+ expect(impact.state).toBe('dead')
+ await expect(page.locator('#tutorial-hint')).toBeHidden();await expect(page.locator('#tuck-hud')).toBeHidden()
+})

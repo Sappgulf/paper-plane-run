@@ -127,6 +127,12 @@
       </div>
 
       <div id="banner-stack">
+        <aside id="boss-flight" class="boss-flight hidden" aria-label="Boss encounter">
+          <div class="boss-flight-heading"><strong id="boss-flight-name"></strong><span id="boss-flight-range" aria-hidden="true"></span></div>
+          <span id="boss-flight-phase" class="boss-flight-phase" role="status"></span>
+          <div class="boss-flight-track" aria-hidden="true"><i id="boss-flight-fill"></i></div>
+          <p id="boss-flight-guidance"></p>
+        </aside>
         <div id="wind-banner" class="hidden">💨 Wind gust!</div>
         <div id="power-banner" class="hidden"></div>
         <div id="zone-banner" class="hidden"></div>
@@ -184,7 +190,7 @@
               <p id="ctrl-blurb" class="diff-blurb">Move cursor to bank · arrows work too</p>
               <label class="inline-check"><input type="checkbox" id="menu-invert-y" /> Invert up/down</label>
             </div>
-            <label class="name-row">Callsign <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label>
+            <div class="menu-footer"><label class="name-row">Callsign <input id="pilot-name" maxlength="16" placeholder="Pilot" autocomplete="nickname" /></label><button id="flight-guide-btn" type="button" class="linkish flight-guide-link">How to fly <span aria-hidden="true">↗</span></button></div>
           </div>
 
           <div id="engine-status" class="engine-status hidden" role="status" aria-live="polite">
@@ -196,7 +202,6 @@
             <p id="daily-hint" class="mini-hint">📅 Daily route races a ghost of your best fold</p>
             <p id="weekly-hint" class="mini-hint">📆 Weekly Fold rotates the opening sky</p>
           </div>
-          <button id="flight-guide-btn" type="button" class="linkish flight-guide-link">How to fly <span aria-hidden="true">↗</span></button>
           <button id="landscape-hint" type="button" class="landscape-hint hidden">📱↔️ Tip: rotate to landscape for a wider view — tap to dismiss</button>
         </div>
       </div>
@@ -227,10 +232,10 @@
           </div>
           <div id="journey-map"></div>
           <div id="journey-brief" class="journey-brief"></div>
-          <div class="journey-section">
-            <h3>Choose your pilot</h3>
+          <details class="journey-section journey-pilot-picker">
+            <summary><span>Flying with <strong id="journey-pilot-summary">Milo</strong></span><span>Change pilot <b class="pilot-disclosure" aria-hidden="true">⌄</b></span></summary>
             <div id="journey-pilots" class="journey-pilots"></div>
-          </div>
+          </details>
           <div class="journey-section">
             <h3 id="journey-choice-title">Choose the next route</h3>
             <div id="journey-route-choices" class="journey-route-choices"></div>

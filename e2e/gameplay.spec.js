@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { collectConsoleErrors, openApp, openFixture, tap, waitForGameText } from './smoke-helpers.js'
+import { launchPlane, collectConsoleErrors, openApp, openFixture, tap, waitForGameText } from './smoke-helpers.js'
 
 function snapshot(page) {
   return page.evaluate(() => JSON.parse(window.render_game_to_text()))
@@ -224,6 +224,7 @@ test.describe('gameplay systems regression', () => {
     // Tutorial: rings only, no hazards — fly up through them until it ends.
     await openApp(page)
     await tap(page.locator('#tutorial-btn'))
+    await launchPlane(page)
     await waitForGameText(page)
     await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
     await page.keyboard.down('ArrowUp')
@@ -238,6 +239,7 @@ test.describe('gameplay systems regression', () => {
     // the first gauntlet cadence point and accrue real distance.
     await openApp(page)
     await tap(page.locator('#start-btn'))
+    await launchPlane(page)
     await waitForGameText(page)
     await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
     let sawGauntletOrBoss = false

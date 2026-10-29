@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import {
   UPGRADE_CARD_CONTRACTS,
   collectConsoleErrors,
+  launchPlane,
   openApp,
   tap,
   waitForGameText,
@@ -25,6 +26,7 @@ async function pickJourneyRouteCard(page, targetRisk = 'Risky') {
     return { index: chosenIndex, rewardCopy, riskCopy }
   }, targetRisk)
   if (!selected) return null
+  await launchPlane(page)
   return {
     route: page.locator('.journey-route-card').nth(selected.index),
     rewardCopy: selected.rewardCopy,
@@ -288,6 +290,7 @@ test('Plane Collection previews the shared equipped silhouette across card state
 
   await tap(page.getByRole('button', { name: '← Main menu' }))
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   const gameState = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   expect(gameState.plane).toMatchObject({ skinId: 'coral', silhouette: 'dart', collisionRadius: 0.7 })
@@ -331,6 +334,7 @@ test('Plane Collection releases each preview WebGL context without losing gamepl
 
   await tap(page.getByRole('button', { name: '← Main menu' }))
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 3_000 })
   await expect.poll(() => page.evaluate(() => ({
@@ -485,6 +489,7 @@ test('first flight starts with launch protection', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
 
   await expect(page.locator('#hud')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('#power-banner')).toContainText('launch protection active')
@@ -801,6 +806,7 @@ test('native performance pressure lowers visual cost without changing gameplay s
   test.skip(testInfo.project.name !== 'desktop')
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   const before = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
   await page.evaluate(() => {
@@ -829,6 +835,7 @@ test('Living Journey chooses a route and starts the shared game loop', async ({ 
   await expect(page.locator('.route-objective').first()).toContainText('Goal')
   await expect(page.locator('#journey-panel')).toHaveCSS('touch-action', 'pan-y')
   await tap(page.locator('.journey-route-card').first())
+  await launchPlane(page)
 
   await expect(page.locator('#hud')).toBeVisible({ timeout: 45_000 })
   await expect(page.locator('#journey-objective-hud')).toBeVisible()
@@ -901,6 +908,7 @@ test('visibility pause freezes and resumes flight distance', async ({ page }, te
   test.skip(testInfo.project.name !== 'desktop')
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await expect(page.locator('#distance')).not.toHaveText('0m', { timeout: 15_000 })
 
   await page.evaluate(() => {
@@ -926,6 +934,7 @@ test('mobile flight hides secondary HUD chips', async ({ page }, testInfo) => {
   // and the emoji this used to match has not been in the markup for a while.
   await tap(page.locator('.ctrl-btn[data-ctrl="joystick"]'))
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
 
   await expect(page.locator('#distance')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('#stars')).toBeVisible()
@@ -1070,6 +1079,7 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
 
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   const skimHud = page.locator('#skim-hud')
@@ -1117,6 +1127,7 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
     if (!alive) {
       await page.evaluate(() => window.advanceTime(2500))
       await tap(page.locator('#retry-btn'))
+      await launchPlane(page)
       await expect.poll(async () => (await page.evaluate(() => JSON.parse(window.render_game_to_text()).state))).toBe('playing')
     }
     const next = await holdLow(12_000)
@@ -1139,7 +1150,7 @@ test('ground skim rewards flying the low lane and releases when you climb', asyn
   // a race against how fast the plane happened to climb.
   const climbed = await expect.poll(async () => {
     await page.mouse.move(viewport.width / 2, 90)
-    const snapshot = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
+    const snapshot = await page.evaluate(() => {window.advanceTime(250);return JSON.parse(window.render_game_to_text())})
     climbedSnapshot = snapshot
     return snapshot.state === 'playing' ? snapshot.groundSkim.active : false
   }, { timeout: 15_000, intervals: [80] }).toBe(false).then(() => climbedSnapshot)
@@ -1159,6 +1170,7 @@ test('ground life dresses each zone without entering the flight corridor', async
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   const life = await page.evaluate(() => JSON.parse(window.render_game_to_text()).groundLife)
@@ -1219,7 +1231,10 @@ async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempt
       // The restart lands on a later frame, not synchronously on the click.
       for (let waited = 0; waited < 40; waited += 1) {
         await nextFrame()
-        if (snapshot().state === 'playing') return true
+        if (snapshot().state === 'playing') {
+          if (snapshot().launch.pending) document.getElementById('slingshot-plane').click()
+          return true
+        }
       }
       return snapshot().state === 'playing'
     }
@@ -1235,6 +1250,7 @@ async function flyAutopilot(page, { untilDistance, maxFrames = 60 * 900, attempt
     // and an autopilot that hugs the ground is testing the skim mechanic rather
     // than the tier escalation this harness exists to reach.
     const aim = (state) => {
+      if (state.boss && state.boss.z > 0) return {x:state.boss.x,y:state.boss.gapY}
       const hazards = state.fairness.visibleHazards.filter((h) => h.z > 1 && h.z < 75)
       let best = { x: 0, y: 9, score: -Infinity }
       for (let x = -6; x <= 6; x += 0.5) {
@@ -1316,6 +1332,7 @@ test('endless tiers keep escalating the run past the point every other dial caps
   const errors = collectConsoleErrors(page)
   await openApp(page, '/?seed=endless-tier-smoke')
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   const opening = await page.evaluate(() => JSON.parse(window.render_game_to_text()).endless)
@@ -1369,6 +1386,7 @@ test('the endless route cycles zones instead of freezing on the final one', asyn
   const errors = collectConsoleErrors(page)
   await openApp(page, '/?seed=endless-route-smoke')
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   const run = await flyAutopilot(page, { untilDistance: 6_500 })
@@ -1417,6 +1435,7 @@ test('an in-flight notification clears the HUD chip row instead of covering it',
   expect(menuBoxes.toast.top).toBeGreaterThanOrEqual(menuBoxes.hero.bottom)
 
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   // In flight, even a wrapped multi-line toast over a fully expanded HUD row
@@ -1467,6 +1486,7 @@ test('hazard motion never carries a hazard into the guaranteed passage gap', asy
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   // Step the run deterministically and check every airborne hazard against the
@@ -1498,6 +1518,7 @@ test('hazard motion never carries a hazard into the guaranteed passage gap', asy
         restart()
         continue
       }
+      if (state.launch.pending) document.getElementById('slingshot-plane').click()
       for (const hazard of state.fairness.visibleHazards) {
         if (hazard.type !== 'bird' || hazard.passageGapX == null) continue
         // Each hazard's own envelope, not the snapshot's fixed sample radius.
@@ -1535,6 +1556,7 @@ test('stars spread across the corridor instead of stacking in the guaranteed gap
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
 
   // Sample stars while they are still far ahead, before the plane's magnet or
@@ -1592,6 +1614,7 @@ test('corner buttons stay where they belong (install/pause/tuck)', async ({ page
   }
 
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await expect(page.locator('#pause-btn')).toBeVisible()
   // The Tuck is a core verb, so its button is present for the whole run rather
   // than gated on an unlock.

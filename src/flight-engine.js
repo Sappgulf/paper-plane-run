@@ -1,5 +1,6 @@
+import { createFoldedFlyer, poseFoldedFlyer } from './game/folded-flyer.js'
 import { createBossWorkshop } from './game/boss-workshop.js'
-import { committedBossGap } from './game/boss-director.js'
+import { committedBossGap, bossAssistY, bossFlightReadout, getBossFlightPattern } from './game/boss-director.js'
 import { paperFragmentPose } from './game/crash-paper.js'
 import { createSlingshot } from './game/slingshot.js'
 import { createPaperLandscape } from './paper-landscape-renderer.js'
@@ -78,7 +79,7 @@ import {
   startRemoteRun,
   submitRemoteScore,
 } from './leaderboard.js'
-import { parseCompact } from './editor.js'
+import { parseCompact, getLayoutFinishDistance } from './editor.js'
 import { loadSettings, saveSettings, applyDocumentA11y, powerColors } from './settings.js'
 import { seasonInfo } from './seasonal.js'
 import { track } from './analytics.js'
@@ -109,6 +110,7 @@ import {
   describeBossPhase,
   getBossApproachSpeedScale,
   BOSS_CENTER_THREAD_BONUS,
+  BOSS_CENTER_THREAD_THRESHOLD,
   getBossClearReward,
   getGateClearStars,
   isBossCenterThread,
@@ -175,7 +177,7 @@ import { routeRiskLabel, stampSpriteZone, zoneStampLabel } from './game/zone-sta
 import { selectLayoutForStart, synchronizeRuntimeSettings } from './engine-runtime.js'
 import { PLANE_COLLISION_RADIUS, applyPlaneTraits, createPaperPlane, getPaperFlightPose } from './plane-models.js'
 import { buildRunSummary } from './game/run-summary.js'
-import { buildFlightDebrief } from './game/flight-debrief.js'
+import { buildFlightDebrief, isCleanFlightEnd } from './game/flight-debrief.js'
 import { renderFlightDebrief } from './ui/flight-debrief.js'
 import { createWorldCanvas } from './game/paper-world-art.js'
 import { createStreetCanvas, STREET_BLOCK_SIZE, STREET_WIDTH } from './game/paper-streets.js'
@@ -333,6 +335,12 @@ const speedFxEl = $('speed-fx')
 const windBanner = $('wind-banner')
 const powerBanner = $('power-banner')
 const zoneBanner = $('zone-banner')
+const bossFlightEl = $('boss-flight')
+const bossFlightNameEl = $('boss-flight-name')
+const bossFlightRangeEl = $('boss-flight-range')
+const bossFlightPhaseEl = $('boss-flight-phase')
+const bossFlightFillEl = $('boss-flight-fill')
+const bossFlightGuidanceEl = $('boss-flight-guidance')
 const boostSafetyCue = $('boost-safety-cue')
 const magnetPullTrail = $('magnet-pull-trail')
 
@@ -510,6 +518,7 @@ function hideEdgeIndicators() {
 }
 
 function hideFlightReadability() {
+  bossFlightEl?.classList.add('hidden')
   flightRouteEl?.classList.add('hidden')
   flightFocusEl?.classList.add('hidden')
 }
@@ -554,7 +563,24 @@ function showPowerBanner(text, duration, kind = 'power') {
   bannerTimer = Math.max(bannerTimer, duration)
 }
 
+function updateBossReadability() {
+  const boss = state === 'playing' && !launcher?.pending && entities.find(entity => entity.type === 'boss' && !entity.cleared)
+  bossFlightEl?.classList.toggle('hidden', !boss)
+  if (!boss || !bossFlightEl) return
+  const data = boss.mesh.userData
+  const centered = isBossCenterThread({playerX:planeX, playerY:planeY, bossX:boss.mesh.position.x, gapY:data.gapY, passage:boss.director?.snapshot().passage})
+  const view = bossFlightReadout({kind:boss.kind, bossZ:boss.mesh.position.z, initialZ:data.initialZ, locked:Number.isFinite(data.lockedGapY), centered})
+  bossFlightEl.dataset.centered = String(centered)
+  bossFlightEl.dataset.kind = boss.kind
+  if (bossFlightNameEl.textContent !== view.name) bossFlightNameEl.textContent = view.name
+  if (bossFlightPhaseEl.textContent !== view.phase) bossFlightPhaseEl.textContent = view.phase
+  if (bossFlightRangeEl.textContent !== view.range) bossFlightRangeEl.textContent = view.range
+  if (bossFlightGuidanceEl.textContent !== view.guidance) bossFlightGuidanceEl.textContent = view.guidance
+  bossFlightFillEl.style.transform = `scaleX(${view.progress})`
+}
+
 function updateFlightReadability(routeState = null) {
+  updateBossReadability()
   const playing = state === 'playing'
   flightRouteEl?.classList.toggle('hidden', !playing || bossActive || distance < 28)
   flightFocusEl?.classList.toggle('hidden', !playing)
@@ -2486,7 +2512,7 @@ function createSafePortalRing(tone, halfWidth = 4, halfHeight = 3.7) {
   return group
 }
 
-/** Shared open hoop — no picture-frame, no side towers. */
+/** Shared safe hoop, precision target and workshop assembly. */
 function createBossPortalBase(kind, passage) {
   const halfWidth = passage?.halfWidth ?? 4
   const halfHeight = passage?.halfHeight ?? 3.7
@@ -2514,6 +2540,16 @@ function createBossPortalBase(kind, passage) {
   g.userData.gapY = 10
   g.userData.kind = kind
   g.userData.safeRing = safeRing
+  // The small dashed target shows the existing precision bonus, not a hitbox.
+  const points = Array.from({length:65}, (_,i) => {
+    const angle = i / 64 * Math.PI * 2
+    return new THREE.Vector3(Math.cos(angle)*halfWidth*BOSS_CENTER_THREAD_THRESHOLD, Math.sin(angle)*halfHeight*BOSS_CENTER_THREAD_THRESHOLD, 0)
+  })
+  const target = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineDashedMaterial({color:0xffdf91, dashSize:.16, gapSize:.13, transparent:true, opacity:.85, depthWrite:false}))
+  target.computeLineDistances()
+  target.position.set(0,10,-.15)
+  g.add(target)
+  g.userData.precisionTarget = target
   g.userData.halfWidth = halfWidth
   g.userData.halfHeight = halfHeight
   return g
@@ -2916,7 +2952,8 @@ function flyerCardMaterial(kind) {
 
 function createBillboardFlyer(scale = 1.5, kind = 'flyer') {
   const g = new THREE.Group()
-  const card = new THREE.Mesh(flyerCardGeometry(scale), flyerCardMaterial(kind))
+  const material = flyerCardMaterial(kind)
+  const card = createFoldedFlyer({kind, scale, material}) || new THREE.Mesh(flyerCardGeometry(scale), material)
   // Face the player (camera comes from -Z looking +Z)
   card.rotation.y = Math.PI
   g.add(card)
@@ -3121,6 +3158,7 @@ let manualPause = false
 const pauseOverlay = $('pause-overlay')
 const pauseBtn = $('pause-btn')
 let distance = 0
+let layoutTravel = 0
 let stars = 0
 let speed = 28
 let planeY = 8
@@ -3746,7 +3784,10 @@ function spawnBoss(z = 70, forcedKind = null) {
   const openingSnap = director.snapshot()
   // Build the open portal to the *same* passage the collision test uses.
   const gate = createBossMesh(kind, openingSnap.passage)
-  gate.position.set(0, 0, z)
+  const pattern = runKind === 'journey' ? {x:0,tracking:.82} : getBossFlightPattern({kind,index:encounterIndex,difficulty:difficulty.id})
+  gate.position.set(pattern.x, 0, z)
+  gate.userData.tracking = pattern.tracking
+  gate.userData.initialZ = z
   gate.userData.gapY = openingSnap.safeY
   if (gate.userData.safeRing) gate.userData.safeRing.position.y = openingSnap.safeY
   // Park side décor relative to the committed lane immediately.
@@ -4754,6 +4795,7 @@ function resetGame() {
   flightFeedbackEl?.classList.add('hidden')
   updateMagnetPullFeedback(null, { active: false })
   distance = 0
+  layoutTravel = 0
   stars = 0
   speed = difficulty.speedBase
   // Dead-center spawn every run
@@ -5566,6 +5608,7 @@ function showMenu() {
   // values so dying deep in a run doesn't haunt the menu background with
   // midnight-zone/Tier-N hazards.
   distance = 0
+  layoutTravel = 0
   currentTier = ZERO_TIER
   activeTwist = null
   bossActive = false
@@ -5999,7 +6042,7 @@ function die(reason) {
   // Clean, non-crash endings: the tutorial finish line and a Time Attack
   // clock running out. Neither should be absorbed by shield/guardian, and
   // neither plays the tumble-crash animation.
-  const isCleanEnd = reason === 'Tutorial complete!' || reason === 'Journey route complete!'
+  const isCleanEnd = isCleanFlightEnd(reason)
 
   // Invulnerability (after shield break / boost start)
   if (invuln > 0 && !isCleanEnd) return
@@ -6061,6 +6104,9 @@ function die(reason) {
   // Capture the actual ending before the crash cleanup resets the held Tuck.
   lastFlightDebrief = buildFlightDebrief({ reason, tucking: tuckState.phase === 'tucking', stats: runStats })
   state = 'dead'
+  hideFlightReadability()
+  tutorialHintEl?.classList.add('hidden')
+  tuckHud?.classList.add('hidden')
   updateMagnetPullFeedback(null, { active: false })
   // A dead run is not skimming or tucking. `updateGroundSkim` and `advanceTuck`
   // only run while playing, so without this the last live frame's chain would
@@ -6234,7 +6280,7 @@ function finalizeDeathUnsafe() {
   guardianHud?.classList.add('hidden')
   tutorialHintEl?.classList.add('hidden')
   const reason = crashReason
-  const isWin = reason === 'Tutorial complete!' || reason === 'Journey route complete!'
+  const isWin = isCleanFlightEnd(reason)
   // Time Attack scores on stars-in-60s, not distance, so it shouldn't
   // pollute the distance best/ghost/leaderboards the other modes share.
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'journey'
@@ -6771,6 +6817,7 @@ function animateHazards(dt) {
       // actually meets these hazards — a flat/shallow dihedral collapses
       // to a thin edge-on line from that angle and reads as a spike.
       if (u.billboard) {
+        poseFoldedFlyer(u.billboard, {kind:u.flyerId, phase:u.phase, reducedMotion:settings.reducedMotion})
         const flutter = settings.reducedMotion ? 0 : Math.sin(u.phase)
         const insect = ['wasp','dragonfly'].includes(u.flyerId)
         u.billboard.scale.set(1 + (insect ? flutter * .045 : 0), 1 + (!insect && ['bird','hawk'].includes(u.flyerId) ? flutter * .07 : 0), 1)
@@ -6921,10 +6968,12 @@ function animateHazards(dt) {
         playerY: planeY,
         safeY: encounter?.safeY ?? 10,
         bossZ: e.mesh.position.z,
+        tracking: u.tracking,
       })
       u.gapY = committedBossGap({targetY:targetGapY, previousY:u.gapY, lockedY:u.lockedGapY, bossZ:e.mesh.position.z})
       if (e.mesh.position.z <= 22) u.lockedGapY = u.gapY
       if (u.workshop) u.workshop.position.y = u.gapY
+      if (u.precisionTarget) u.precisionTarget.position.y = u.gapY
       u.encounter = encounter
       if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
@@ -7219,7 +7268,7 @@ function update(dt) {
   if (state === 'dead') {
     hideFlightReadability()
     // Dramatic crash: tumble, drop, paper spin
-    const isWin = crashReason === 'Tutorial complete!' || crashReason === 'Journey route complete!'
+    const isWin = isCleanFlightEnd(crashReason)
     if (!isWin) {
       const crease = Math.min(1, (1.2 - crashT) / .45)
       if (!crashLanded && !settings.reducedMotion) {
@@ -7757,18 +7806,14 @@ function update(dt) {
   const approachingBoss = entities.find((entity) => entity.type === 'boss' && !entity.cleared)
   const bossZ = approachingBoss?.mesh.position.z
   if (approachingBoss && Number(bossZ) < 28 && Number(bossZ) > 0) {
-    const assistY = resolveBossGapY({
-      playerY: planeY,
-      safeY: approachingBoss.director?.snapshot()?.safeY ?? 10,
-      bossZ,
-    })
-    planeY += (assistY - planeY) * Math.min(1, dt * 2.4)
+    planeY = bossAssistY({playerY:planeY, gapY:approachingBoss.mesh.userData.gapY, dt})
   }
   updateGroundSkim(dt)
   // Bullet-time: slow-mo dilates how fast the world streams past and how
   // hazards move (via hazardClock), while plane controls stay at full rate —
   // you think faster than the world for six seconds.
   const move = speed * dt * getBossApproachSpeedScale({ bossZ }) * (slowmo ? SLOWMO_WORLD_SCALE : 1)
+  if (runKind === 'layout') layoutTravel += move
   const scoreFactor =
     cfg.scoreMul * ufx.scoreMul *
     (activePower?.kind === 'boost' ? 1.25 : activePower?.kind === 'slow' ? 0.85 : 1) *
@@ -8487,6 +8532,11 @@ function update(dt) {
 
   updateMagnetPullFeedback(magnetTarget, magnet)
 
+  if (runKind === 'layout' && layoutTravel >= getLayoutFinishDistance(layoutPlay)) {
+    die('Custom route complete!')
+    return
+  }
+
   const finalTutorialHintRead = tutorialLessonIndex === TUTORIAL_LESSONS.length - 1
     && elapsed - tutorialLessonShownAt >= TUTORIAL_LESSON_MIN_SECONDS
   if (runKind === 'tutorial' && finalTutorialHintRead && ringsLeft === 0 && distance >= TUTORIAL_LENGTH) {
@@ -8646,7 +8696,9 @@ function bossTextState() {
     passage: boss.passage,
     gapY: entity.mesh.userData.gapY,
     locked: Number.isFinite(entity.mesh.userData.lockedGapY),
+    x: entity.mesh.position.x,
     workshop: Boolean(entity.mesh.userData.workshop),
+    precisionTarget: Boolean(entity.mesh.userData.precisionTarget),
     z: entity.mesh.position.z,
     pose: entity.mesh.userData.pose
       ? {
@@ -8829,6 +8881,8 @@ window.render_game_to_text = () => JSON.stringify({
     })),
   layout: runKind === 'layout' && layoutPlay ? {
     name: layoutPlay.name,
+    traveled: layoutTravel,
+    finish: getLayoutFinishDistance(layoutPlay),
     itemTypes: layoutPlay.items.map((item) => item.t),
   } : null,
   settings: {
@@ -9220,7 +9274,7 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   if (devBossPass) {
     const boss = entities.find((entity) => entity.type === 'boss')
     const safeY = boss?.director?.snapshot().safeY ?? 10
-    planeX = 0
+    planeX = boss?.mesh.position.x ?? 0
     planeY = safeY
     plane.position.set(planeX, planeY, 0)
     mouseTarget.x = planeX
@@ -9245,6 +9299,7 @@ if (import.meta.env.DEV && devTestState === '#test-tier-climb') {
   nextSpawnZ = 1e9 // fully park the spawn pump for this proof
   windTimer = 999
   distance = 985
+  simulationPaused = true
   hudEl?.classList.remove('hidden')
 }
 

@@ -171,7 +171,16 @@ async function openFixture(page, path) {
   throw new Error(`fixture ${path} never reached a playing state`)
 }
 
+/** Complete the visible ready stage before testing airborne behavior. */
+async function launchPlane(page) {
+  const plane = page.locator('#slingshot-plane')
+  await expect(plane).toBeVisible({timeout:45_000})
+  await plane.press('Space')
+  await expect(page.locator('#slingshot')).toBeHidden()
+}
+
 export {
+  launchPlane,
   UPGRADE_CARD_CONTRACTS,
   collectConsoleErrors,
   openApp,

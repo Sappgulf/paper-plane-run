@@ -52,6 +52,12 @@ flyable and stops being free. It ramps in after 240m, because a player should
 meet the cushion before they meet its price. See
 [`src/game/deck-lane.js`](src/game/deck-lane.js).
 
+Boss workshops use distinct approach lines, mirrored on the next circuit.
+Normal and Hard ask for earlier alignment; Easy keeps a more forgiving follow.
+The final passage locks in place, and its small gold target marks the existing
++2★ precision bonus. The encounter strip shows distance, line commitment and
+current alignment.
+
 ### Enemies that read at a glance
 
 The seven evergreen flyers — bird, runaway balloon, loose kite, toy biplane,
@@ -59,8 +65,9 @@ paper dragonfly, paper wasp and the rare diving hawk — each cut from paper wit
 their own silhouette in [`src/game/paper-art.js`](src/game/paper-art.js), so a
 threat is nameable before it is reachable (the roster's movement signatures are
 only worth their tuning if the art names the mover). Every kind still shares
-the zone's reserved accent and the ink outline, so danger stays one learnable
-colour; only the silhouette carries the identity. Seasons re-cut the most
+authored paper stocks, a dark cut edge and the zone's danger ring. Birds and
+insects have hinged wing strips that fold in 3D while retaining the original
+art silhouette and collision envelope; reduced motion holds a still pose. Seasons re-cut the most
 frequent hazard rather than repainting the world — Halloween birds are bats,
 Snowfold flurries, Love Notes hearts — and re-weight the roster: spring sends
 the dragonflies, summer the kites and balloons. See

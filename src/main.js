@@ -395,6 +395,8 @@ function renderJourney() {
     saveJourney(safeStorage, journey)
     renderJourney()
   }, mastery)
+  const pilotSummary = $('journey-pilot-summary')
+  if (pilotSummary) pilotSummary.textContent = document.querySelector('.journey-pilot.selected strong')?.textContent || 'Choose your pilot'
   const routes = $('journey-route-choices')
   if (journey.status === 'complete') {
     const chapter = journey.chapter || 1
@@ -608,6 +610,7 @@ function showHangarTab(tab) {
   if (nextTab === 'stats') renderStats()
   if (nextTab === 'postcards') renderPostcardAlbum($('postcard-album'), loadPostcardAlbum(safeStorage), openPostcardDetail)
   if (nextTab === 'editor') setupEditor()
+  document.querySelector('.hangar-tab.active')?.scrollIntoView({block:'nearest',inline:'nearest'})
   refreshHangarWallet()
 }
 
@@ -1124,6 +1127,7 @@ function renderUpgrades() {
     const effect = describeUpgradeEffect(u.id, u.level)
     const card = document.createElement('div')
     card.className = 'upgrade-card'
+    card.tabIndex = -1
     card.dataset.upgradeId = u.id
     const lockedByRequirement = Boolean(u.requires && !u.requirementMet)
     if (lockedByRequirement) card.classList.add('upgrade-requires', 'locked-funds')
@@ -1150,7 +1154,7 @@ function renderUpgrades() {
         if (res.ok) {
           shellAudio.uiClick()
           if (settings.haptics) Haptic.collect()
-          hangarFocusUpgradeId = null
+          hangarFocusUpgradeId = u.id
           renderUpgrades()
         }
       }
@@ -1201,8 +1205,9 @@ function renderUpgrades() {
   }
   if (hangarFocusUpgradeId) {
     const focused = grid.querySelector(`[data-upgrade-id="${hangarFocusUpgradeId}"]`)
-    focused?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    focused?.scrollIntoView?.({ block: 'nearest', behavior: settings.reducedMotion ? 'auto' : 'smooth' })
     focused?.focus?.({ preventScroll: true })
+    hangarFocusUpgradeId = null
   }
 }
 
@@ -1229,6 +1234,8 @@ function renderSettings() {
     }
   }
   bind('set-control-mode', 'controlMode')
+  const aimOption = document.querySelector('#set-control-mode option[value="mouse"]')
+  if (aimOption) aimOption.textContent = isTouchPrimary ? 'Touch Aim' : 'Mouse aim'
   bind('set-invert-y', 'invertY')
   bind('set-invert-x', 'invertX')
   bind('set-mouse-sens', 'mouseSensitivity', { number: true })
@@ -1266,7 +1273,8 @@ function renderStats() {
   const skins = listSkins()
   const ownedSkins = skins.filter((s) => s.owned).length
   const localTop = getLocalTop(1)
-  const bestRecord = localTop.length ? `${localTop[0].score}m` : '0m'
+  const recordDistance = Number(localTop[0]?.distance)
+  const bestRecord = `${Number.isFinite(recordDistance) ? Math.max(0,Math.floor(recordDistance)) : 0}m`
 
   const formattedDist = lifetimeDist >= 1000
     ? `${(lifetimeDist / 1000).toFixed(1)} km`
@@ -1285,20 +1293,25 @@ function renderStats() {
 
   const wallet = getWallet()
   const nextMilestones = []
+  const estimateLabel = ({runs}) => runs === 0 ? 'Ready to buy' : `~${runs} run${runs === 1 ? '' : 's'}`
   const affordableUpgrades = listUpgrades().filter((u) => !u.maxed).sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity)).slice(0, 2)
   for (const u of affordableUpgrades) {
     const est = estimateRunsToAfford({ wallet, cost: u.cost })
-    nextMilestones.push({ icon: u.icon, label: u.name, detail: `${u.cost}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / u.cost) * 100) })
+    nextMilestones.push({ icon: u.icon, label: u.name, detail: `${u.cost}★ · ${estimateLabel(est)}`, progress: Math.min(100, (wallet / u.cost) * 100) })
   }
   const nextPlane = listSkins().filter((s) => s.state === 'available' && s.price).sort((a, b) => (a.price.value ?? Infinity) - (b.price.value ?? Infinity))[0]
   if (nextPlane) {
     const est = estimateRunsToAfford({ wallet, cost: nextPlane.price.value })
-    nextMilestones.push({ icon: '🎨', label: nextPlane.name, detail: `${nextPlane.price.value}★ · ~${est.runs} run${est.runs === 1 ? '' : 's'}`, progress: Math.min(100, (wallet / nextPlane.price.value) * 100) })
+    nextMilestones.push({ icon: '🎨', label: nextPlane.name, detail: `${nextPlane.price.value}★ · ${estimateLabel(est)}`, progress: Math.min(100, (wallet / nextPlane.price.value) * 100) })
   }
   while (nextMilestones.length < 3) {
     nextMilestones.push({ icon: '✅', label: 'All in reach', detail: 'Keep flying for endgame cosmetics', progress: 100 })
     if (nextMilestones.length >= 3) break
   }
+  const cheapest = affordableUpgrades[0]
+  const walletProgress = !cheapest ? 'Every fold is maxed' : wallet >= cheapest.cost
+    ? 'Upgrades ready to buy'
+    : `${estimateLabel(estimateRunsToAfford({wallet,cost:cheapest.cost}))} to your cheapest fold`
   const milestonesHtml = nextMilestones.slice(0, 3).map((m) => `
     <div class="milestone-card">
       <span class="milestone-icon">${m.icon}</span>
@@ -1313,12 +1326,12 @@ function renderStats() {
     <p class="page-intro">Pilot Dossier · Lifetime flight records &amp; accomplishments.</p>
     <h3 style="text-align:left;font-size:13px;margin:10px 0 6px;color:var(--ink)">Next on the runway</h3>
     <div class="milestones-row">${milestonesHtml}</div>
-    <p class="tagline" style="text-align:left;margin:2px 0 10px">Wallet ${wallet}★ · ~${estimateRunsToAfford({ wallet, cost: 10 }).runs || 1} run to your cheapest fold · Lifetime ${lifetimeStars}★ gates your hangar</p>
+    <p class="tagline" style="text-align:left;margin:2px 0 10px">Wallet ${wallet}★ · ${walletProgress}. Lifetime ${lifetimeStars}★ unlocks new planes.</p>
     <div class="pilot-logbook-grid">
       <div class="logbook-card">
         <span class="logbook-icon">🌍</span>
         <strong class="logbook-num">${formattedDist}</strong>
-        <span class="logbook-label">Lifetime Airtime</span>
+        <span class="logbook-label">Lifetime Distance</span>
       </div>
       <div class="logbook-card">
         <span class="logbook-icon">⭐</span>

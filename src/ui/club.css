@@ -309,8 +309,8 @@ html.a11y-reduced-motion #menu * { animation: none; }
 
 /* ---------------------------------------------------------------------------
    Cut-paper menus. Every card, button and field is one material: ivory stock,
-   a 2px ink edge and a hard offset shadow with no blur. A pressed control drops
-   its shadow and moves into it; a selected control is pressed in.
+   a fine ink edge and a restrained layered shadow. Strong color belongs to
+   actions; navigation and filters stay quiet until selected.
    Layout (sizes, paddings, media queries) stays in screens/adaptive.css.
    --------------------------------------------------------------------------- */
 :root {
@@ -318,12 +318,12 @@ html.a11y-reduced-motion #menu * { animation: none; }
   --cut-ink-soft: #4a6166;
   --cut-stock: #fffdf5;
   --cut-well: #ebe5d2;
-  --cut-edge: 2px solid var(--cut-ink);
-  --cut-edge-soft: 2px solid var(--cut-ink-soft);
-  --cut-shadow: 3px 4px 0 var(--cut-ink);
-  --cut-shadow-lg: 5px 6px 0 var(--cut-ink);
-  --cut-shadow-sm: 2px 3px 0 var(--cut-ink);
-  --cut-radius: 8px;
+  --cut-edge: 1px solid #a8b7b0;
+  --cut-edge-soft: 1px solid #b6c1b7;
+  --cut-shadow: 0 4px 14px #263d4314;
+  --cut-shadow-lg: 0 16px 50px #183d4930;
+  --cut-shadow-sm: 0 2px 6px #263d430b;
+  --cut-radius: 12px;
   --cut-focus: #1d3f4a;
 }
 
@@ -342,11 +342,11 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
 .cta-main, .journey-main-cta {
   border: var(--cut-edge); border-radius: var(--cut-radius);
   background: #b64a33; color: var(--paper);
-  box-shadow: 4px 5px 0 var(--cut-ink);
+  box-shadow: 0 4px 0 #843e2f, 0 8px 20px #843e2f24;
   transition: transform .08s ease, box-shadow .08s ease;
 }
-.cta-main:hover { background: #a3412e; filter: none; transform: translate(-1px,-1px); box-shadow: 5px 6px 0 var(--cut-ink); }
-.cta-main:active { transform: translate(3px,4px); box-shadow: 1px 1px 0 var(--cut-ink); }
+.cta-main:hover { background: #a3412e; filter: none; transform: translate(-1px,-1px); box-shadow: 0 5px 0 #843e2f, 0 10px 22px #843e2f24; }
+.cta-main:active { transform: translateY(3px); box-shadow: 0 1px 0 #843e2f; }
 .cta-main:disabled { opacity: .55; box-shadow: none; }
 
 /* Secondary buttons: ivory stock, same edge and shadow as the cards. */
@@ -360,7 +360,7 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
   transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--cut-ink);
 }
 .tab.active, .editor-toolbar button.active {
-  background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; transform: translate(2px,2px);
+  background: var(--club-blue); color: var(--paper); border-color: var(--club-blue); box-shadow: none; transform: none;
 }
 .back-btn { margin: 14px auto 0; min-width: 180px; align-self: center; }
 
@@ -396,13 +396,13 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
 #menu .ctrl-btn { white-space: normal; line-height: 1.15; padding-inline: 4px; }
 #menu .diff-btn, #menu .ctrl-btn {
   border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-stock); color: var(--ink);
-  box-shadow: 2px 2px 0 var(--cut-ink); transition: transform .08s ease, box-shadow .08s ease;
+  box-shadow: none; transition: transform .08s ease, box-shadow .08s ease;
 }
 /* Selected buttons are pressed in with an inset edge, never shifted off their row. */
-#menu .diff-btn.active { background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: inset 2px 2px 0 rgba(0,0,0,.22); }
+#menu .diff-btn.active { background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; }
 #menu .diff-btn[data-diff=easy].active { background: var(--club-sage); }
 #menu .diff-btn[data-diff=hard].active { background: var(--coral); }
-#menu .ctrl-btn.active { background: var(--club-blue) !important; box-shadow: inset 2px 2px 0 rgba(0,0,0,.22) !important; }
+#menu .ctrl-btn.active { background: var(--club-blue) !important; box-shadow: none !important; }
 #menu .name-row input {
   background: #fff; border: var(--cut-edge-soft); border-radius: 6px; padding: 5px 8px; color: var(--ink);
 }
@@ -416,13 +416,13 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
   background: var(--cut-stock); border: var(--cut-edge-soft); border-radius: var(--cut-radius);
   box-shadow: var(--cut-shadow-sm);
 }
-.upgrade-card.affordable, .skin-card.affordable { background: #fff4cf; border-color: #8a6a2a; box-shadow: 2px 3px 0 #8a6a2a; }
-.upgrade-card.upgrade-recommended { border-color: var(--club-sage); box-shadow: 2px 3px 0 var(--club-sage); }
-.upgrade-card.upgrade-focus { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
-.skin-card.equipped { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
+.upgrade-card.affordable, .skin-card.affordable { background: #fff4cf; border-color: #8a6a2a; box-shadow: 0 2px 8px #8a6a2a12; }
+.upgrade-card.upgrade-recommended { border-color: var(--club-sage); box-shadow: 0 2px 8px #426d5412; }
+.upgrade-card.upgrade-focus { border-color: var(--club-blue); box-shadow: 0 0 0 1px var(--club-blue); }
+.skin-card.equipped { border-color: var(--club-blue); box-shadow: 0 0 0 1px var(--club-blue); }
 .skin-card.locked-funds { border-style: dashed; }
-.journey-route-card.risky { background: #fbebd9; border-color: #8a4a36; box-shadow: 2px 3px 0 #8a4a36; }
-.journey-route-card.selected, .journey-pilot.selected { border-color: var(--club-blue); box-shadow: 2px 3px 0 var(--club-blue); }
+.journey-route-card.risky { background: #fbebd9; border-color: #8a4a36; box-shadow: 0 2px 8px #8a4a3612; }
+.journey-route-card.selected, .journey-pilot.selected { border-color: var(--club-blue); box-shadow: 0 0 0 1px var(--club-blue); }
 .journey-route-card:hover { background: #f5f1e2; }
 .journey-route-card.risky:hover { background: #f8e0c9; }
 .journey-pilot { border-width: 2px; }
@@ -448,7 +448,7 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
   border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-well); padding: 3px;
 }
 .hangar-group-btn { border-radius: 4px; min-height: 36px; }
-.hangar-tabs { gap: 8px; padding-bottom: 6px; }
+.hangar-tabs { gap: 4px; padding-bottom: 0; }
 .hangar-tab {
   border: var(--cut-edge-soft); border-radius: 6px; background: var(--cut-stock); color: var(--ink);
   box-shadow: var(--cut-shadow-sm); font-weight: 900; font-size: 12px;
@@ -456,7 +456,7 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
 }
 .hangar-tab:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--cut-ink); }
 .hangar-tab.active {
-  background: var(--club-blue); color: var(--paper); border-color: var(--cut-ink); box-shadow: none; transform: translate(2px,2px);
+  background: var(--club-blue); color: var(--paper); border-color: var(--club-blue); box-shadow: none; transform: none;
 }
 .hangar-search-input { min-height: 42px; border-radius: 6px; }
 .hangar-search-clear { border: var(--cut-edge-soft); border-radius: 6px; box-shadow: var(--cut-shadow-sm); }
@@ -520,4 +520,68 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
 /* Very narrow phones: the difficulty row keeps a little more room between its buttons. */
 @media (max-width: 360px) {
   #menu .diff-row { gap: 4px; }
+}
+
+/* Workshop navigation spends its space on the collection, rather than chrome. */
+.hangar-top { padding-bottom: 10px; margin-bottom: 10px; }
+.hangar-top h2 { margin-bottom: 6px; }
+.hangar-group-switch { border: 0; padding: 2px; margin-bottom: 4px; }
+.hangar-tab { border-color: transparent; box-shadow: none; border-radius: 6px; }
+.hangar-tab:not(.active):hover { background: #e9eddf; }
+.hangar-tab:active { transform: none; box-shadow: none; }
+.upgrade-tree-row { flex-wrap: nowrap; overflow-x: auto; padding: 2px 0 5px; scrollbar-width: thin; }
+.upgrade-tree-chip { flex: 0 0 auto; }
+.upgrade-path-banner { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; margin-bottom: 10px; }
+.upgrade-path-banner > strong, .upgrade-path-banner > span { grid-column: 1; }
+.upgrade-path-banner .path-buy { grid-column: 2; grid-row: 1 / 3; margin: 0; max-width: 150px; }
+.hangar-back { border: 0; box-shadow: none; background: transparent; margin-top: 8px; }
+.upgrade-card .u-blurb { line-height: 1.45; font-weight: 600; }
+.upgrade-card .u-title { margin-bottom: 4px; }
+.upgrade-card { scroll-margin-block: 12px; }
+#menu .action-pill { box-shadow: 0 2px 0 #263d4312; }
+#menu .menu-setup { box-shadow: none; background: #fffdf5ed; }
+@media (max-width:700px) {
+  .hangar-card { padding: 14px; }
+  .hangar-top { column-gap: 8px; }
+  .hangar-wallet { font-size: 10px; }
+  .hangar-top .chip-label { font-size: 9px; }
+  .hangar-body .page-intro { font-size: 12px; margin-bottom: 8px; }
+  .upgrade-path-banner { font-size: 11px; gap: 3px 8px; }
+  .upgrade-path-banner .path-buy { padding-inline: 8px; max-width: 110px; }
+}
+
+/* Callsign and field notes share a footer, including the iPhone safe area. */
+#menu .menu-footer { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; border-top:1px dashed #c4cbbd; padding-top:5px; }
+#menu .menu-footer .name-row { grid-column:auto; border:0; padding:0; }
+#menu .menu-footer #flight-guide-btn { grid-column:auto; grid-row:auto; margin:0; align-self:center; font-size:11px; }
+
+/* Route selection stays ahead of optional pilot setup. */
+.journey-pilot-picker summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; color:var(--ink); font-size:12px; cursor:pointer; list-style:none; }
+.journey-pilot-picker summary::-webkit-details-marker { display:none; }
+.journey-pilot-picker summary > span:last-child { color:var(--club-blue); font-size:11px; }
+.journey-pilot-picker .journey-pilots { margin-top:10px; }
+.pilot-disclosure { display:inline-block; }
+.journey-pilot-picker[open] .pilot-disclosure { transform:rotate(180deg); }
+@media(max-width:700px) {
+  .journey-heading { padding-bottom:10px; margin-bottom:12px; }
+  .journey-summary { gap:5px; margin-bottom:10px; }
+  .journey-summary span { font-size:10px; padding:4px 7px; }
+  .journey-map-line { margin-bottom:8px; }
+  .journey-premise { font-size:11.5px; line-height:1.4; }
+  .journey-stop-brief { padding:10px 12px; }
+  .journey-stop-brief strong { font-size:12px; }
+  .journey-stop-brief p { font-size:11.5px; line-height:1.45; }
+  .journey-section { margin:10px 0; padding-top:10px; }
+  .journey-pilot-picker { padding-top:0; margin:6px 0; }
+}
+
+/* A journal spread on wide screens: the map and route choices share the first view. */
+@media (min-width:1000px) and (min-height:600px) {
+  .journey-card { width:min(1040px,100%); display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:12px 28px; align-items:start; }
+  .journey-heading { grid-column:1; margin:0; }
+  #journey-map, #journey-brief, .journey-pilot-picker { grid-column:1; }
+  .journey-card > .journey-section:has(#journey-route-choices) { grid-column:2; grid-row:1 / span 4; border-top:0; padding-top:0; margin:0; }
+  .journey-route-choices { grid-template-columns:1fr; }
+  #journey-restart, .journey-card > .back-btn { grid-column:1 / -1; margin:0; }
+  .journey-card > .back-btn { justify-self:center; }
 }

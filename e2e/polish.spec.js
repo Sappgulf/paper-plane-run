@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
+import { launchPlane, collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
 import { createJourney } from '../src/journey.js'
 
 const snapshot = (page) => page.evaluate(() => JSON.parse(window.render_game_to_text()))
@@ -74,6 +74,7 @@ test('pause freezes the run, contains focus and resumes through native Space', a
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
   await expect(page.locator('#altitude-hud')).toHaveAttribute('title', /^sink \d+\.\d\/s \(base \d+\.\d \+ bank \d+\.\d \+ tuck \d+\.\d\)$/)
@@ -116,6 +117,7 @@ test('tutorial guidance clears the resting touch controls', async ({ page }, tes
   })
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await expect(page.locator('#tutorial-hint')).toBeVisible({ timeout: 45_000 })
   await waitForGameText(page)
   await page.evaluate(() => window.__paperFreeze(true))
@@ -162,6 +164,7 @@ test('a fresh flight clears a held tuck and starts with neutral momentum', async
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
   await page.keyboard.down('Space')
@@ -199,6 +202,7 @@ test('tutorial teaches the current flight loop and reaches a complete result', a
   const errors = collectConsoleErrors(page)
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect.poll(async () => (await snapshot(page)).state).toBe('playing')
   const first = await snapshot(page)

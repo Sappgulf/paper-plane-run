@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { buildFlightDebrief } from '../src/game/flight-debrief.js'
+import { buildFlightDebrief, isCleanFlightEnd } from '../src/game/flight-debrief.js'
 
 describe('flight debrief', () => {
   test('distinguishes a held tuck from an ordinary loss of height', () => {
     expect(buildFlightDebrief({ reason: 'Nosed into the paper ground', tucking: true }).advice).toContain('Release Tuck')
     expect(buildFlightDebrief({ reason: 'Nosed into the paper ground', tucking: false }).advice).toContain('green UPDRAFT columns')
   })
-  test.each(['wind', 'stapler', 'scissors'])('explains the %s boss passage', kind => {
+  test.each(['wind', 'stapler', 'scissors', 'punch'])('explains the %s boss passage', kind => {
     expect(buildFlightDebrief({ reason: `Missed the ${kind} ring!` }).title).toBe('Read the passage early')
   })
   test('a dive into a boss gate is named as the cause, not just the passage', () => {
@@ -34,4 +34,11 @@ describe('flight debrief', () => {
     expect(buildFlightDebrief({ stats: { flares: NaN, fevers: Infinity, threads: -1, powers: 0 } }).highlights).toEqual([])
     expect(buildFlightDebrief({ stats: null }).highlights).toEqual([])
   })
+})
+
+
+test('custom course completion is a clean ending and gets route-specific advice', () => {
+  expect(isCleanFlightEnd('Custom route complete!')).toBe(true)
+  expect(isCleanFlightEnd('Nosed into the paper ground')).toBe(false)
+  expect(buildFlightDebrief({reason:'Custom route complete!'})).toMatchObject({title:'A clean finish'})
 })

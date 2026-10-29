@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { openApp, tap, waitForGameText } from './smoke-helpers.js'
+import { launchPlane, openApp, tap, waitForGameText } from './smoke-helpers.js'
 
 const flight = page => page.evaluate(() => JSON.parse(window.render_game_to_text()).flight)
 
@@ -8,6 +8,7 @@ test('an unrelated finger cannot release a held tuck', async ({ page }, testInfo
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'uses deterministic flight stepping')
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).state)).toBe('playing')
   await page.evaluate(() => {
@@ -41,6 +42,7 @@ test('an unrelated finger cannot release a held tuck', async ({ page }, testInfo
 test('tutorial card stays centered while it appears', async ({ page }) => {
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await expect(page.locator('#tutorial-hint')).toBeVisible({ timeout: 45_000 })
   const offset = await page.locator('#tutorial-hint').evaluate(element => {
     element.style.animation = 'none'
@@ -65,6 +67,7 @@ for (const [controlMode, expected] of [['joystick', /drag the stick/i], ['mouse'
     }, controlMode)
     await openApp(page)
     await tap(page.locator('#tutorial-btn'))
+    await launchPlane(page)
     await expect(page.locator('#tutorial-copy')).toHaveText(expected, { timeout: 45_000 })
     await waitForGameText(page)
     const reached = await page.evaluate(() => {
@@ -88,6 +91,7 @@ test('holding Tuck while steering works with two touch contacts', async ({ page 
   })
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect(page.locator('#stick-base')).toBeVisible({ timeout: 45_000 })
   const tuck = await page.locator('#fire-btn').boundingBox()
@@ -115,6 +119,7 @@ test('holding Tuck while steering works with two touch contacts', async ({ page 
 test('the focused Tuck button remains usable with the keyboard', async ({ page }) => {
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect(page.locator('#fire-btn')).toBeVisible({ timeout: 45_000 })
   await page.locator('#fire-btn').focus()
@@ -129,6 +134,7 @@ test('tutorial state reports the lesson actually shown on screen', async ({ page
   test.skip(testInfo.project.name !== 'desktop', 'the lesson timeline is shared across devices')
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect(page.locator('#tutorial-hint')).toBeVisible({ timeout: 45_000 })
   const result = await page.evaluate(() => {
@@ -146,6 +152,7 @@ test('Tuck keyboard holds clear on focus loss and release independently', async 
   test.skip(testInfo.project.name !== 'desktop', 'exercises physical keyboard interaction')
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await expect(page.locator('#fire-btn')).toBeVisible({ timeout: 45000 })
   await page.locator('#fire-btn').focus()

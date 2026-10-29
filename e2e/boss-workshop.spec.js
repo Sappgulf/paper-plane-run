@@ -16,6 +16,9 @@ for(const kind of ['scissors','wind','stapler','punch']) {
    return JSON.parse(window.render_game_to_text()).boss
   })
   expect(locked.workshop).toBe(true)
+  expect(locked.precisionTarget).toBe(true)
+  await expect(page.locator('#boss-flight')).toBeVisible()
+  await expect(page.locator('#boss-flight-phase')).toHaveText('Line set · hold course')
   expect(locked.locked).toBe(true)
   await page.screenshot({path:`output/workshop-${kind}-${info.project.name}.png`})
   await page.keyboard.down('ArrowUp')

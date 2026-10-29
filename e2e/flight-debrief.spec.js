@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
+import { launchPlane, collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
 
 test('leaving a flight clears active magnet feedback', async ({ page }) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires a development-only simulation fixture')
@@ -32,6 +32,7 @@ test('a completed flight reports when its online score was submitted', async ({ 
   await openApp(page)
   const started = page.waitForResponse(response => response.url().includes('/api/leaderboard') && response.request().postDataJSON()?.action === 'start')
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await started
   await page.keyboard.down('Space')
@@ -45,6 +46,7 @@ test('an unavailable leaderboard leaves the flight score on the device', async (
   await page.route('**/api/leaderboard', route => route.fulfill({ status: 503, json: { error: 'unavailable' } }))
   await openApp(page)
   await tap(page.locator('#start-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await page.keyboard.down('Space')
   await finishFlight(page)
@@ -87,6 +89,7 @@ for (const [kind, startDate, storageKey] of [
 test('quitting a resumed flight clears every flight banner and its timer', async ({ page }) => {
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await page.keyboard.press('Escape')
   await tap(page.locator('#pause-resume'))
@@ -109,6 +112,7 @@ test('a held tuck ends with useful advice, an accurate summary and keyboard reco
   })
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await page.keyboard.down('Space')
   await finishFlight(page)
@@ -134,6 +138,7 @@ test('completed practice offers Classic and a deliberate practice replay', async
   })
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
+  await launchPlane(page)
   await waitForGameText(page)
   await finishFlight(page)
   await expect(page.locator('#gameover-title')).toHaveText('Tutorial complete!')
@@ -145,6 +150,7 @@ test('completed practice offers Classic and a deliberate practice replay', async
   await expect(page.locator('#final-score')).toContainText(`${finished.distance}m`)
   await page.screenshot({ path: `output/round-two-${testInfo.project.name}-tutorial-debrief.png` })
   await tap(page.locator('#practice-again-btn'))
+  await launchPlane(page)
   await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).mode)).toBe('tutorial')
   await expect(page.locator('#practice-again-btn')).toBeHidden()
   await finishFlight(page)

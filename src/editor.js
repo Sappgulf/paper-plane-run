@@ -51,3 +51,12 @@ export const EDITOR_PALETTE = [
   { t: 'star', label: '⭐ Star' },
   { t: 'power', label: '💎 Power' },
 ]
+
+
+export const EDITOR_ROUTE_LENGTH = 200
+
+/** Imported routes may extend past the editor's standard 200m canvas. */
+export function getLayoutFinishDistance(layout) {
+  return (Array.isArray(layout?.items) ? layout.items : []).reduce((end,item) =>
+    Number.isFinite(item?.z) ? Math.max(end,item.z) : end, EDITOR_ROUTE_LENGTH)
+}

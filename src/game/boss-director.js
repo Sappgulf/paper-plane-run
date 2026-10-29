@@ -82,11 +82,14 @@ export function resolveBossGapY({
   lockZ = 22,
   minY = 6.2,
   maxY = 14.8,
+  tracking,
 } = {}) {
   const py = Number(playerY)
   const sy = Number(safeY)
   const z = Number(bossZ)
-  const towardPlayer = Number.isFinite(z) && z > lockZ ? 0.82 : 0.55
+  const towardPlayer = Number.isFinite(tracking)
+    ? Math.min(1, Math.max(0, tracking))
+    : Number.isFinite(z) && z > lockZ ? 0.82 : 0.55
   const blended = (Number.isFinite(py) ? py : 10) * towardPlayer + (Number.isFinite(sy) ? sy : 10) * (1 - towardPlayer)
   return Math.min(maxY, Math.max(minY, blended))
 }
@@ -257,4 +260,33 @@ export function createBossEncounter({
 export function committedBossGap({ targetY = 10, previousY = 10, lockedY = null, bossZ = 60 } = {}) {
   if (Number.isFinite(lockedY)) return lockedY
   return bossZ <= 22 ? previousY : targetY
+}
+
+
+/** Final-approach lift assists the passage the player actually sees. */
+export function bossAssistY({ playerY, gapY, dt }) {
+  if (![playerY, gapY, dt].every(Number.isFinite)) return playerY
+  return playerY + (gapY - playerY) * Math.min(1, Math.max(0, dt) * 2.4)
+}
+
+export function bossFlightReadout({ kind, bossZ, initialZ, locked, centered } = {}) {
+  const names = { scissors: 'Scissor Works', wind: 'Crosswind Mill', stapler: 'Staple Press', punch: 'Punch Foundry' }
+  const z = Math.max(0, Number(bossZ) || 0)
+  return {
+    name: names[kind] || names.scissors,
+    phase: locked ? 'Line set · hold course' : 'Approach · line up',
+    progress: Math.min(1, Math.max(0, 1 - z / Math.max(1, Number(initialZ) || 120))),
+    range: `${Math.ceil(z)}m`,
+    guidance: centered ? 'On line · +2★ center bonus' : 'Aim for the small gold ring',
+  }
+}
+
+
+/** Authored approach lines repeat predictably, mirrored on the next circuit. */
+export function getBossFlightPattern({kind = 'scissors', index = 0, difficulty = 'normal'} = {}) {
+  const tuning = {easy:{shift:3.4,tracking:.82}, normal:{shift:4.4,tracking:.35}, hard:{shift:5.5,tracking:.15}}[difficulty] || {shift:4.4,tracking:.35}
+  const circuit = Math.floor(Math.max(0, Number(index) || 0) / BOSS_KINDS.length)
+  const mirror = circuit % 2 ? -1 : 1
+  const profile = {scissors:-1,wind:.65,stapler:.7,punch:-.9}[kind] ?? -1
+  return {x:profile*tuning.shift*mirror, tracking:tuning.tracking}
 }
