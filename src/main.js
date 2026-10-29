@@ -462,6 +462,7 @@ function openJourney() {
   renderJourney()
   const panel = $('journey-panel')
   panel?.classList.remove('hidden')
+  if (panel) panel.scrollTop = 0
   focusPanel(panel)
   track('journey_started', { journeyId: journey.id, step: journey.stepIndex })
 }

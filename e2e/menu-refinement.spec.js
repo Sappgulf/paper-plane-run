@@ -36,6 +36,7 @@ test('the editor course reaches a clean finish and can be launched again',async(
  expect(before.mode).toBe('layout');expect(before.layout.finish).toBe(200)
  await page.evaluate(()=>window.advanceTime(10_000))
  await expect(page.locator('#gameover-title')).toHaveText('Custom route complete!')
+ await expect(page.locator('#final-score')).toContainText('200m')
  await expect(page.locator('#flight-debrief')).toContainText('A clean finish')
  await expect(page.locator('#run-summary')).not.toContainText('Personal best')
  await tap(page.locator('#retry-btn'))

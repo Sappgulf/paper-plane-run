@@ -6285,6 +6285,11 @@ function finalizeDeathUnsafe() {
   // pollute the distance best/ghost/leaderboards the other modes share.
   const isDistanceRun = runKind !== 'tutorial' && runKind !== 'layout' && runKind !== 'journey'
   const d = Math.floor(distance)
+  // Custom course markers describe world travel, while score multipliers can
+  // make the scored distance differ. Show the distance the editor authored.
+  const shownDistance = runKind === 'layout'
+    ? Math.floor(isWin ? Math.min(layoutTravel, getLayoutFinishDistance(layoutPlay)) : layoutTravel)
+    : d
   lastRun = {
     d,
     s: stars,
@@ -6449,7 +6454,7 @@ function finalizeDeathUnsafe() {
     $('gameover-title').textContent = runKind === 'journey' && completedJourneyRoute
       ? (journey.status === 'complete' ? 'Journey complete!' : 'Route complete!')
       : isWin ? reason : 'Crashed!'
-    animateCountUp(finalScoreEl, d, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
+    animateCountUp(finalScoreEl, shownDistance, `m · ${stars}★ · ${difficulty.label}${runKind === 'daily' ? ' · Daily' : ''}`)
     finalDetailEl.textContent = runKind === 'journey' && completedJourneyRoute
       ? `Stamp earned${journeyBonus ? ` · +${journeyBonus}★ route bonus` : ''}`
       : reason === 'Tutorial complete!'
@@ -8547,7 +8552,7 @@ function update(dt) {
     }
   }
 
-  distanceEl.textContent = `${Math.floor(distance)}m`
+  distanceEl.textContent = `${Math.floor(runKind === 'layout' ? Math.min(layoutTravel, getLayoutFinishDistance(layoutPlay)) : distance)}m`
   if (distance > bestDistance) bestEl.textContent = `${Math.floor(distance)}m`
 }
 
