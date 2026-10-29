@@ -13,6 +13,8 @@ test('leaving a flight clears active magnet feedback', async ({ page }) => {
 })
 
 async function finishFlight(page) {
+  const launcher = page.locator('#slingshot-plane')
+  if (await launcher.isVisible()) await launcher.press('Space')
   if (process.env.PLAYWRIGHT_PREVIEW !== '1') {
     // Exercise the complete real simulation without tying completion to
     // software WebGL frame rates. Production retains real-time flight.
@@ -30,8 +32,8 @@ test('a completed flight reports when its online score was submitted', async ({ 
   await openApp(page)
   const started = page.waitForResponse(response => response.url().includes('/api/leaderboard') && response.request().postDataJSON()?.action === 'start')
   await tap(page.locator('#start-btn'))
-  await started
   await waitForGameText(page)
+  await started
   await page.keyboard.down('Space')
   await finishFlight(page)
   await page.keyboard.up('Space')

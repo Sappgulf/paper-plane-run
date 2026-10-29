@@ -144,6 +144,9 @@ async function waitForGameText(page) {
     }),
     { timeout: 45_000 },
   ).toBe('function')
+  // Flight scenarios enter gameplay through the interactive launcher.
+  const launch = page.locator('#slingshot-plane')
+  if (await launch.isVisible()) await launch.press('Space')
 }
 
 /**

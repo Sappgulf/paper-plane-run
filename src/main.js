@@ -196,7 +196,7 @@ const installHintBody = $('install-hint-body')
 let deferredInstall = null
 let installHintFocusReturn = null
 
-bindDialogFocus($('pause-overlay'), { onEscape: () => $('pause-resume')?.click(), returnFocus: () => $('c') })
+bindDialogFocus($('pause-overlay'), { onEscape: () => $('pause-resume')?.click(), returnFocus: () => $('slingshot')?.classList.contains('hidden') === false ? $('slingshot-plane') : $('c') })
 bindDialogFocus(installHint, { onEscape: () => closeInstallHint() })
 bindDialogFocus($('flight-guide'), { onEscape: () => $('flight-guide').classList.add('hidden') })
 bindDialogFocus($('postcard-detail'), { restoreFocus: false, onEscape: () => closePostcardOverlay($('postcard-detail')) })

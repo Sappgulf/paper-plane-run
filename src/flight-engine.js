@@ -1,3 +1,4 @@
+import { createSlingshot } from './game/slingshot.js'
 import { createPaperLandscape } from './paper-landscape-renderer.js'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
@@ -3072,6 +3073,7 @@ const mouseScreen = { x: 0.5, y: 0.5, has: false }
 /** Target world position for mouse-aim mode */
 const mouseTarget = { x: 0, y: 8 }
 
+let launcher = null
 let state = 'menu'
 let simulationPaused = false
 let manualPause = false
@@ -4686,6 +4688,7 @@ function applyUpgradeVisuals(fx = activeUpgradeEffects) {
 }
 
 function resetGame() {
+  launcher?.hide()
   remoteRunPromise = null
   scoreSubmissionGeneration += 1
   const scoreStatus = $('score-sync-status')
@@ -4928,6 +4931,8 @@ function resetGame() {
   comboFloat.classList.add('hidden')
   photoWrap.classList.add('hidden')
   lastPhotoDataUrl = null
+  updateAltitudeHud()
+  updateTuckHud()
   updateJourneyObjectiveHud()
 }
 
@@ -5196,7 +5201,7 @@ function releaseFloatingBase(baseEl) {
 // Wind stick (co-op P2)
 if (stickZone && stickBase) {
   stickZone.addEventListener('pointerdown', (e) => {
-    if (stick.active) return
+    if (stick.active || launcher?.pending) return
     e.preventDefault()
     e.stopPropagation()
     stick.active = true
@@ -5229,6 +5234,7 @@ function pollShellGamepad() {
     ? pollFirstActiveGamepad(navigator.getGamepads())
     : null
   if (!gp) {
+    launcher?.gamepad(null)
     lastGamepadButtons.pause = false
     lastGamepadButtons.mute = false
     lastGamepadButtons.startFly = false
@@ -5245,6 +5251,7 @@ function pollShellGamepad() {
     if (state === 'menu') startGame(runKind === 'layout' ? 'layout' : 'classic')
     else if (state === 'dead' && crashT <= 0) retryCurrentRun()
   }
+  if (launcher?.pending && !simulationPaused) launcher.gamepad(gp.tuck)
   lastGamepadButtons.pause = gp.pause
   lastGamepadButtons.mute = gp.mute
   lastGamepadButtons.startFly = gp.startFly
@@ -5329,6 +5336,7 @@ function applyPauseState({ banner = true } = {}) {
     }
   }
   syncPauseUi()
+  launcher?.setPaused(simulationPaused)
 }
 
 function setManualPause(on) {
@@ -5349,6 +5357,7 @@ window.addEventListener('keydown', (e) => {
   if (isUiKeyboardTarget(e.target)) return
   if (manualPause && state === 'playing') return
   if (state === 'playing') {
+    if (launcher?.pending) return
     keys.add(e.code)
     if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault()
   }
@@ -5386,7 +5395,7 @@ function clearTuckInput() {
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
-  if (state === 'playing' && !simulationPaused && tuckPointerId === null) {
+  if (state === 'playing' && !simulationPaused && !launcher?.pending && tuckPointerId === null) {
     tuckPointerId = e.pointerId
     tuckPointerHeld = true
   }
@@ -5395,7 +5404,7 @@ fireBtn?.addEventListener('keydown', (event) => {
   if (!['Space', 'Enter'].includes(event.code) || !isGameShortcut(event)) return
   event.preventDefault()
   event.stopPropagation()
-  if (state === 'playing' && !simulationPaused) tuckButtonKeys.add(event.code)
+  if (state === 'playing' && !simulationPaused && !launcher?.pending) tuckButtonKeys.add(event.code)
 })
 fireBtn?.addEventListener('keyup', (event) => {
   if (!['Space', 'Enter'].includes(event.code)) return
@@ -5439,6 +5448,27 @@ window.addEventListener(
 // ---------------------------------------------------------------------------
 // Shell bridge and runtime-only controls
 // ---------------------------------------------------------------------------
+launcher = createSlingshot({
+  onRelease() {
+    const now = new Date()
+    const period = runKind === 'daily' ? dailyKey(now) : runKind === 'weekly' ? weeklyKey(now) : null
+    if (period && period !== activeRunPeriod) resetGame()
+    keys.clear()
+    clearTuckInput()
+    resetStick()
+    spawnUnfold = 0
+    timer?.reset?.()
+    if (['classic', 'daily', 'weekly'].includes(runKind)) {
+      remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind: runKind, seed: activeRunSeed })
+    }
+    audio.startFlight()
+    if (settings.haptics) Haptic.tap()
+    showStick(true)
+    canvas.focus({ preventScroll: true })
+  },
+  onCharge() { needsRender = true },
+})
+
 function hideAllPanels() {
   for (const id of ['menu', 'journey-panel', 'gameover', 'hangar-panel']) {
     $(id)?.classList.add('hidden')
@@ -5450,6 +5480,7 @@ function openJourney() {
 }
 
 function showMenu() {
+  launcher?.hide()
   stopScoreCountUp()
   clearFlightBanners()
   updateMagnetPullFeedback(null, { active: false })
@@ -5692,9 +5723,7 @@ async function startGame(kind = 'classic', opts = {}) {
     $('sw-update-banner')?.classList.add('hidden')
     manualPause = false
     resetGame()
-    if (['classic', 'daily', 'weekly'].includes(kind)) {
-      remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind, seed: activeRunSeed })
-    }
+
     state = 'playing'
     canvas.focus({ preventScroll: true })
     // Hydrate the route strip immediately so the shell never exposes an
@@ -5704,7 +5733,8 @@ async function startGame(kind = 'classic', opts = {}) {
     showStick(true)
     syncPauseUi()
     applyPauseState({ banner: false })
-    audio.startFlight()
+    launcher.prepare()
+    showStick(false)
     if (kind === 'daily') {
       showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
     }
@@ -7070,6 +7100,16 @@ function registerStarStreak() {
 }
 
 function update(dt) {
+  if (launcher?.pending && state === 'playing') {
+    const pull = settings.reducedMotion ? 0 : launcher.charge
+    plane.visible = true
+    plane.position.set(0, 8 - pull, -pull * 2)
+    plane.rotation.set(-pull * .2, 0, 0)
+    plane.scale.setScalar(activeUpgradeEffects.planeScale * 1.12)
+    camera.position.set(0, 12, -14)
+    camera.lookAt(0, 8, 8)
+    return
+  }
   elapsed += dt
   const slowmo = activePower?.kind === 'slow'
   if (slowmo !== slowmoActive) {
@@ -8419,7 +8459,7 @@ function frame() {
       console.error('update error', err)
     }
   }
-  if (needsRender || (!simulationPaused && state !== 'menu')) {
+  if (needsRender || (!simulationPaused && state !== 'menu' && !launcher?.pending)) {
     try {
       renderer.render(scene, camera)
       needsRender = false
@@ -8547,6 +8587,7 @@ window.render_game_to_text = () => JSON.stringify({
   crash: state === 'dead' ? { landed: crashLanded, y: plane.position.y } : null,
   mode: runKind,
   paused: simulationPaused,
+  launch: { pending: Boolean(launcher?.pending), charge: launcher?.charge || 0 },
   tutorialLesson: runKind === 'tutorial' ? (TUTORIAL_LESSONS[tutorialLessonIndex]?.title ?? null) : null,
   seed: devSeedLabel,
   runSeed: activeRunSeed,
