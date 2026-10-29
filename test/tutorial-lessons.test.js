@@ -33,3 +33,16 @@ test('lesson text stays readable and catches up one step at a time', () => {
   expect(nextReadableTutorialLessonIndex({ distance: 420, elapsed: 20, currentIndex: 1, shownAt: 5 })).toBe(2)
   expect(nextReadableTutorialLessonIndex({ distance: 420, elapsed: 20, currentIndex: 5, shownAt: 18 })).toBe(5)
 })
+
+test('tutorial instructions match the chosen steering and tuck controls', async () => {
+  const { tutorialLessonText } = await import('../src/game/tutorial-lessons.js')
+  const first = TUTORIAL_LESSONS[0]
+  const tuck = TUTORIAL_LESSONS[3]
+  expect(tutorialLessonText(first, { touch: true, joystick: true })).toMatch(/stick/i)
+  expect(tutorialLessonText(first, { touch: true, joystick: false })).toMatch(/drag/i)
+  expect(tutorialLessonText(first, { touch: false, joystick: false })).toMatch(/mouse|arrow/i)
+  expect(tutorialLessonText(tuck, { touch: true })).not.toMatch(/Space/)
+  expect(tutorialLessonText(tuck, { touch: true })).toMatch(/Tuck/)
+  expect(tutorialLessonText(tuck, { touch: false })).toMatch(/Space/)
+  expect(tutorialLessonText(TUTORIAL_LESSONS[1], { touch: true })).toBe(TUTORIAL_LESSONS[1].text)
+})

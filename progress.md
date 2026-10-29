@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-29 — Two-finger flight and tutorial polish
+
+- Keep a Tuck held until its own pointer ends, even when a steering finger is lifted; keyboard button holds remain independent and pause/blur reset the inputs. The tutorial now names the selected steering control and presents touch-specific Tuck guidance.
+- Center the tutorial entrance animation and report the displayed lesson in the text game state. Captured and inspected a tutorial flight on a dedicated iPhone 16 Pro simulator, including the Tuck lesson and pause/resume.
+- Verified 754 unit tests; the affected development browser suite had 43 passes, 13 skips and two local-server interruptions, both passing on isolated rerun. The production phone suite had 8 passes and 4 development-only skips, including a real two-contact gesture. Web bundle budget and iOS parity passed; a signed iPhone Release build compiled.
+
 ## 2026-10-29 — Live leaderboard and touch audit
 
 - Verified real Classic flights on the production web app and the iPhone simulator: both submitted and displayed their exact scores on the Global board. Removed only the two disposable test scores and their tickets. Fixed the loading message persisting above fetched scores.

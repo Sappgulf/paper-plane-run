@@ -2,14 +2,22 @@
 export const TUTORIAL_LENGTH = 600
 export const TUTORIAL_LESSON_MIN_SECONDS = 3.5
 export const TUTORIAL_LESSONS = Object.freeze([
-  { at: 0, title: 'Find your line', text: 'Bank toward the rings. Start each turn early; your wings take a moment to roll.' },
+  { at: 0, title: 'Find your line', text: 'Bank toward the rings with your mouse or arrow keys. Start turns early.', touchText: 'Drag on the sky to bank toward the rings. Start turns early.', joystickText: 'Drag the stick or use the arrows to bank toward the rings. Start turns early.', touchJoystickText: 'Drag the stick to bank toward the rings. Start turns early.' },
   { at: 65, title: 'Height is fuel', text: 'Your plane always sinks. Gentle turns keep more height than hard banks.' },
   { at: 135, title: 'Ride the rising air', text: 'Green arrow columns marked UPDRAFT are updrafts: rising air. Fly through one to regain height.' },
-  { at: 210, title: 'Tuck, then flare', text: 'Hold Space or the Tuck button for a short dive. Release to climb and bank bonus meters.' },
+  { at: 210, title: 'Tuck, then flare', text: 'Hold Space or the Tuck button for a short dive. Release to climb and bank bonus meters.', touchText: 'Hold the Tuck button for a short dive. Release to climb and bank bonus meters.' },
   { at: 270, title: 'Ride the wind', text: 'In Classic and Journey, gusts shove you sideways. The banner names the side before it lands, so lean the other way early.' },
   { at: 330, title: 'Release while you have height', text: 'A longer tuck pays more. Release before the ground; watch for the RELEASE cue.' },
   { at: 390, title: 'Take it into the open sky', text: 'Collect stars for upgrades. In Classic, dodge the ink-edged hazards—even down near the ground.' },
 ])
+
+/** Explain the active controls without asking touch players to find a keyboard. */
+export function tutorialLessonText(lesson, { touch = false, joystick = false } = {}) {
+  if (touch && joystick && lesson.touchJoystickText) return lesson.touchJoystickText
+  if (touch && lesson.touchText) return lesson.touchText
+  if (joystick && lesson.joystickText) return lesson.joystickText
+  return lesson.text
+}
 
 export function tutorialLessonAt(distance) {
   return TUTORIAL_LESSONS.findLast((lesson) => distance >= lesson.at) || TUTORIAL_LESSONS[0]

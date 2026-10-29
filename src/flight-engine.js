@@ -8,7 +8,7 @@ import {
   TUTORIAL_LESSONS,
   TUTORIAL_LESSON_MIN_SECONDS,
   nextReadableTutorialLessonIndex,
-  tutorialLessonAt,
+  tutorialLessonText,
 } from './game/tutorial-lessons.js'
 import { Haptic } from './haptics.js'
 import { dailyKey, dailySeed, hashString, mulberry32 } from './rng.js'
@@ -3094,6 +3094,8 @@ let zoneBannerKind = 'zone'
 let powerBannerKind = 'power'
 /** Pointer/touch hold for the Tuck, mirroring the Space key. */
 let tuckPointerHeld = false
+let tuckPointerId = null
+let tuckButtonKeyHeld = false
 /** This frame's resolved tuck modifiers, shared with the camera/pose pass. */
 let tuckFxForFrame = tuckFlightModifiers(null)
 /** The Tuck: hold to trade height for speed, release to flare. */
@@ -4042,7 +4044,7 @@ function checkTutorialHints() {
   tutorialLessonShownAt = elapsed
   const lesson = TUTORIAL_LESSONS[tutorialLessonIndex]
   $('tutorial-title').textContent = `${tutorialLessonIndex + 1} / ${TUTORIAL_LESSONS.length} · ${lesson.title}`
-  $('tutorial-copy').textContent = lesson.text
+  $('tutorial-copy').textContent = tutorialLessonText(lesson, { touch: isTouchPrimary, joystick: wantsJoystick() })
   tutorialHintEl.classList.remove('hidden')
 }
 
@@ -4711,7 +4713,7 @@ function resetGame() {
   velX = 0
   keys.clear()
   resetStick()
-  tuckPointerHeld = false
+  clearTuckInput()
   tuckState = createTuckState()
   tuckGroundCueArmed = true
   tuckFxForFrame = tuckFlightModifiers(null)
@@ -5306,7 +5308,7 @@ function applyPauseState({ banner = true } = {}) {
   if (simulationPaused) {
     keys.clear()
     resetStick()
-    tuckPointerHeld = false
+    clearTuckInput()
     audio.ctx?.suspend().catch(() => {})
   } else {
     timer?.reset?.()
@@ -5372,28 +5374,41 @@ window.addEventListener('blur', () => {
   releaseFloatingBase(stickBase)
 })
 // The action button is the Tuck: press and hold to dive, release to flare.
+function clearTuckInput() {
+  tuckPointerHeld = false
+  tuckPointerId = null
+  tuckButtonKeyHeld = false
+}
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
   e.stopPropagation()
-  if (state === 'playing' && !simulationPaused) tuckPointerHeld = true
+  if (state === 'playing' && !simulationPaused && tuckPointerId === null) {
+    tuckPointerId = e.pointerId
+    tuckPointerHeld = true
+  }
 })
 fireBtn?.addEventListener('keydown', (event) => {
   if (!['Space', 'Enter'].includes(event.code) || !isGameShortcut(event)) return
   event.preventDefault()
   event.stopPropagation()
-  if (state === 'playing' && !simulationPaused) tuckPointerHeld = true
+  if (state === 'playing' && !simulationPaused) tuckButtonKeyHeld = true
 })
 fireBtn?.addEventListener('keyup', (event) => {
   if (!['Space', 'Enter'].includes(event.code)) return
   event.preventDefault()
-  tuckPointerHeld = false
+  tuckButtonKeyHeld = false
 })
-const releaseTuckPointer = () => { tuckPointerHeld = false }
+const releaseTuckPointer = (event) => {
+  if (event.pointerId !== tuckPointerId) return
+  tuckPointerHeld = false
+  tuckPointerId = null
+}
 fireBtn?.addEventListener('pointerup', releaseTuckPointer)
 fireBtn?.addEventListener('pointercancel', releaseTuckPointer)
 fireBtn?.addEventListener('pointerleave', releaseTuckPointer)
 window.addEventListener('pointerup', releaseTuckPointer)
-window.addEventListener('blur', releaseTuckPointer)
+window.addEventListener('pointercancel', releaseTuckPointer)
+window.addEventListener('blur', clearTuckInput)
 window.addEventListener('pointerdown', (e) => {
   if (state !== 'playing' || simulationPaused) return
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
@@ -7426,7 +7441,7 @@ function update(dt) {
   // being spilled sideways, and only then is there a sink figure to integrate.
   // -------------------------------------------------------------------------
   const tuckHeld = state === 'playing' && !manualPause &&
-    (keys.has('Space') || tuckPointerHeld || Boolean(gpState?.tuck))
+    (keys.has('Space') || tuckPointerHeld || tuckButtonKeyHeld || Boolean(gpState?.tuck))
   tuckState = advanceTuck(tuckState, {
     held: tuckHeld,
     dt,
@@ -8518,7 +8533,7 @@ window.render_game_to_text = () => JSON.stringify({
   state,
   mode: runKind,
   paused: simulationPaused,
-  tutorialLesson: runKind === 'tutorial' ? tutorialLessonAt(distance).title : null,
+  tutorialLesson: runKind === 'tutorial' ? (TUTORIAL_LESSONS[tutorialLessonIndex]?.title ?? null) : null,
   seed: devSeedLabel,
   runSeed: activeRunSeed,
   weeklyFold: activeFold?.id || null,
@@ -8541,7 +8556,7 @@ window.render_game_to_text = () => JSON.stringify({
   flight: {
     tuckPhase: tuckState.phase,
     tuckCharge: Number(tuckState.charge.toFixed(3)),
-    tuckHeld: tuckPointerHeld || keys.has('Space'),
+    tuckHeld: tuckPointerHeld || tuckButtonKeyHeld || keys.has('Space'),
     diveSpeed: Number(diveSpeed.toFixed(2)),
   },
   power: activePower
