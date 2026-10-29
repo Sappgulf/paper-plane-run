@@ -3095,7 +3095,7 @@ let powerBannerKind = 'power'
 /** Pointer/touch hold for the Tuck, mirroring the Space key. */
 let tuckPointerHeld = false
 let tuckPointerId = null
-let tuckButtonKeyHeld = false
+const tuckButtonKeys = new Set()
 /** This frame's resolved tuck modifiers, shared with the camera/pose pass. */
 let tuckFxForFrame = tuckFlightModifiers(null)
 /** The Tuck: hold to trade height for speed, release to flare. */
@@ -5377,7 +5377,7 @@ window.addEventListener('blur', () => {
 function clearTuckInput() {
   tuckPointerHeld = false
   tuckPointerId = null
-  tuckButtonKeyHeld = false
+  tuckButtonKeys.clear()
 }
 fireBtn?.addEventListener('pointerdown', (e) => {
   e.preventDefault()
@@ -5391,13 +5391,14 @@ fireBtn?.addEventListener('keydown', (event) => {
   if (!['Space', 'Enter'].includes(event.code) || !isGameShortcut(event)) return
   event.preventDefault()
   event.stopPropagation()
-  if (state === 'playing' && !simulationPaused) tuckButtonKeyHeld = true
+  if (state === 'playing' && !simulationPaused) tuckButtonKeys.add(event.code)
 })
 fireBtn?.addEventListener('keyup', (event) => {
   if (!['Space', 'Enter'].includes(event.code)) return
   event.preventDefault()
-  tuckButtonKeyHeld = false
+  tuckButtonKeys.delete(event.code)
 })
+fireBtn?.addEventListener('blur', () => tuckButtonKeys.clear())
 const releaseTuckPointer = (event) => {
   if (event.pointerId !== tuckPointerId) return
   tuckPointerHeld = false
@@ -7441,7 +7442,7 @@ function update(dt) {
   // being spilled sideways, and only then is there a sink figure to integrate.
   // -------------------------------------------------------------------------
   const tuckHeld = state === 'playing' && !manualPause &&
-    (keys.has('Space') || tuckPointerHeld || tuckButtonKeyHeld || Boolean(gpState?.tuck))
+    (keys.has('Space') || tuckPointerHeld || tuckButtonKeys.size > 0 || Boolean(gpState?.tuck))
   tuckState = advanceTuck(tuckState, {
     held: tuckHeld,
     dt,
@@ -8556,7 +8557,7 @@ window.render_game_to_text = () => JSON.stringify({
   flight: {
     tuckPhase: tuckState.phase,
     tuckCharge: Number(tuckState.charge.toFixed(3)),
-    tuckHeld: tuckPointerHeld || tuckButtonKeyHeld || keys.has('Space'),
+    tuckHeld: tuckPointerHeld || tuckButtonKeys.size > 0 || keys.has('Space'),
     diveSpeed: Number(diveSpeed.toFixed(2)),
   },
   power: activePower

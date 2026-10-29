@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-29 — Tuck input and feedback
+
+- Track Space and Enter separately on the focused Tuck button, clearing its keyboard holds when focus leaves. This prevents a stuck dive and preserves another held key. Added a distinct held-state color for immediate flight feedback.
+- The targeted keyboard regression failed before the fix and passed after it, including against the production bundle. The affected development browser pass had 29 passes, 14 skips and a startup timeout; the pause test passed on an isolated rerun. A dedicated iPhone 16 Pro simulator built and ran the updated app. Web and iOS builds and asset parity passed.
+- The host stalled while starting the full unit suite; the 10 directly affected Tuck unit tests passed on isolated retry.
+
 ## 2026-10-29 — Two-finger flight and tutorial polish
 
 - Keep a Tuck held until its own pointer ends, even when a steering finger is lifted; keyboard button holds remain independent and pause/blur reset the inputs. The tutorial now names the selected steering control and presents touch-specific Tuck guidance.
