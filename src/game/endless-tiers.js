@@ -38,10 +38,10 @@ const MAX_HAZARD_BONUS = 0.5
  * itself, not here, so a modifier can never spike difficulty on its own.
  */
 const MODIFIERS = Object.freeze([
-  Object.freeze({ id: 'headwind', name: 'Headwind', blurb: 'The air pushes back — waves arrive closer together.', bias: { building: 1.1, bird: 1, scissors: 1 } }),
-  Object.freeze({ id: 'flocking', name: 'Flocking Hour', blurb: 'Paper birds gather in denser flights.', bias: { building: 0.85, bird: 1.45, scissors: 0.95 } }),
-  Object.freeze({ id: 'scissor-storm', name: 'Scissor Storm', blurb: 'Open blades ride the updraft.', bias: { building: 0.9, bird: 0.95, scissors: 1.5 } }),
-  Object.freeze({ id: 'skyline', name: 'Rising Skyline', blurb: 'The city folds itself taller.', bias: { building: 1.4, bird: 0.9, scissors: 0.95 } }),
+  Object.freeze({ id: 'headwind', name: 'Paper Skyline', blurb: 'Buildings appear a little more often.', bias: { building: 1.1, bird: 1, scissors: 1 } }),
+  Object.freeze({ id: 'flocking', name: 'Flocking Hour', blurb: 'Paper birds appear more often.', bias: { building: 0.85, bird: 1.45, scissors: 0.95 } }),
+  Object.freeze({ id: 'scissor-storm', name: 'Scissor Storm', blurb: 'More scissors share the sky.', bias: { building: 0.9, bird: 0.95, scissors: 1.5 } }),
+  Object.freeze({ id: 'skyline', name: 'Rising Skyline', blurb: 'More buildings fill the flight path.', bias: { building: 1.4, bird: 0.9, scissors: 0.95 } }),
 ])
 
 function tierIndexFrom(value) {
@@ -153,18 +153,27 @@ export function getTierScoreMultiplierSmooth(distance = 0) {
   return 1 + (tier + progress * 0.5) * 0.06
 }
 
+/** Rotate the hazard mix indefinitely, even after numeric difficulty caps. */
+export function endlessPhaseAt(distance = 0) {
+  const meters = Number(distance)
+  if (!Number.isFinite(meters) || meters < TIER_START) return 0
+  return Math.floor((meters - TIER_START) / TIER_SPAN) % MODIFIERS.length + 1
+}
+
 /** Everything the run loop needs for one tier, resolved once per tier change. */
 export function resolveTier(distance = 0) {
   const tier = endlessTierAt(distance)
-  const modifier = tierModifier(tier)
+  const phase = endlessPhaseAt(distance)
+  const modifier = phase ? MODIFIERS[phase - 1] : null
   return Object.freeze({
     tier,
+    phase,
     modifier,
     name: modifier ? `Tier ${tier} · ${modifier.name}` : null,
     speedBonus: getTierSpeedBonus(tier),
     spacingScale: getTierSpacingScale(tier),
     hazardBonus: getTierHazardBonus(tier),
-    hazardBias: getTierHazardBias(tier),
+    hazardBias: modifier?.bias || null,
     scoreMultiplier: getTierScoreMultiplier(tier),
     capped: tier >= MAX_TIER,
   })

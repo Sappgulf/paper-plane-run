@@ -614,3 +614,9 @@ Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
 - **HUD/feedback:** new Ink cooldown chip with ready/seconds and fill, included in the HUD budget, plus firing pulse and +1★ pop ribbon.
 - **Tests:** new weapon-runtime (13), hazard-readability (4), armored-roster, prerequisite, upgrade-contract, runtime-snapshot, and Ink Blast browser fixture coverage.
 - **Verification:** 97 Vitest files / 705 tests green; build + budget PASS (150,160 initial / 941,802 total bytes); focused desktop+mobile Playwright green for Ink Blast, Hangar contracts, max upgrades, mobile HUD budget, hazard fairness, boss gates, and all six landscape captures.
+
+## 2026-10-29 — Endless hazard variety and Hangar search clarity
+
+- Endless flights now rotate the hazard mix every 900 m after the tier cap, keeping capped difficulty, safe-gap behavior and tier-climb rewards unchanged. Hazard descriptions now match the actual weighting.
+- Hangar search and tree filters distinguish a maxed subset and empty results from a fully maxed collection. Added boundary, spawn-pump and desktop/mobile search regression coverage.
+- Verification: 756 unit tests passed (7 skipped); final bundle and 26-file iOS parity checks passed. The full browser run recorded 142 passes, 54 skips and two desktop failures; both failures passed in isolated reruns. The first trace showed an extra page load, and the second collected too few hazard samples on that run. Dedicated iPhone simulator: inspected Hangar search and a Classic flight with pause and return to menu. Signed iPhone build 1.0.1 (5) succeeded.

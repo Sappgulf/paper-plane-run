@@ -1097,15 +1097,19 @@ function renderUpgrades() {
   const affordableCount = upgrades.filter((u) => u.canAfford).length
   const intro = $('upgrades-intro')
   if (intro) {
+    const filtered = Boolean(hangarUpgradeTree || hangarUpgradeSearch.trim())
     const allFresh = upgrades.every((u) => u.level === 0)
-    if (affordableCount > 0) {
-      intro.textContent = affordableCount === 1
-        ? 'You can buy 1 upgrade right now — affordable cards are highlighted.'
-        : `You can buy ${affordableCount} upgrades right now — affordable cards are highlighted.`
-    } else if (wallet >= 10 && allFresh) {
+    if (!upgrades.length) {
+      intro.textContent = 'No folds match these filters.'
+    } else if (affordableCount > 0) {
+      const label = filtered ? 'matching upgrade' : 'upgrade'
+      intro.textContent = `You can buy ${affordableCount} ${label}${affordableCount === 1 ? '' : 's'} right now — affordable cards are highlighted.`
+    } else if (upgrades.every((u) => u.maxed)) {
+      intro.textContent = filtered
+        ? 'All matching folds are maxed. Clear the filter to see other upgrades.'
+        : 'Every fold maxed. The rest of the ladder is cosmetic now.'
+    } else if (wallet >= 10 && allFresh && !filtered) {
       intro.textContent = 'Tip: Fold Handling or Lift Crease first — sharper control makes longer runs.'
-    } else if (upgrades.length && upgrades.every((u) => u.maxed)) {
-      intro.textContent = 'Every fold maxed. The rest of the ladder is cosmetic now.'
     } else {
       intro.textContent = 'Spend flight stars. Each rank sharpens the plane.'
     }

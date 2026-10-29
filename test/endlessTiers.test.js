@@ -4,6 +4,7 @@ import {
   TIER_SPAN,
   TIER_START,
   endlessTierAt,
+  endlessPhaseAt,
   getTierHazardBias,
   getTierHazardBonus,
   getTierScoreMultiplier,
@@ -149,5 +150,34 @@ describe('resolveTier', () => {
 
   it('flags the capped tier so the HUD can stop promising more', () => {
     expect(resolveTier(1_000_000).capped).toBe(true)
+  })
+})
+
+describe('endless variety after the difficulty cap', () => {
+  it('keeps exact boundaries and cycles safely in very long runs', () => {
+    const boundary = tierStartDistance(MAX_TIER) + TIER_SPAN
+    expect(endlessPhaseAt(TIER_START - 1)).toBe(0)
+    expect(endlessPhaseAt(boundary - 1)).not.toBe(endlessPhaseAt(boundary))
+    expect(endlessPhaseAt(boundary)).toBe(endlessPhaseAt(boundary + 4 * TIER_SPAN))
+    expect(endlessPhaseAt(NaN)).toBe(0)
+    expect(endlessPhaseAt(Infinity)).toBe(0)
+    expect(resolveTier(boundary).hazardBias).toEqual(resolveTier(boundary).modifier.bias)
+  })
+
+  it('rotates hazard mixes after the final tier without increasing difficulty', () => {
+    const capStart = tierStartDistance(MAX_TIER)
+    const first = resolveTier(capStart)
+    const second = resolveTier(capStart + TIER_SPAN)
+    const third = resolveTier(capStart + 2 * TIER_SPAN)
+    expect(second.modifier.id).not.toBe(first.modifier.id)
+    expect(third.modifier.id).not.toBe(second.modifier.id)
+    for (const next of [second, third, resolveTier(1_000_000)]) {
+      expect(next.tier).toBe(MAX_TIER)
+      expect(next.capped).toBe(true)
+      expect(next.speedBonus).toBe(first.speedBonus)
+      expect(next.spacingScale).toBe(first.spacingScale)
+      expect(next.hazardBonus).toBe(first.hazardBonus)
+      expect(next.scoreMultiplier).toBe(first.scoreMultiplier)
+    }
   })
 })

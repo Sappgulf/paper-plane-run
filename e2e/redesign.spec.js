@@ -171,3 +171,18 @@ test('every active hazard paints a distinct transparent paper silhouette', async
   }
   await page.screenshot({path:`output/round-two-${testInfo.project.name}-hazards.png`})
 })
+
+test('upgrade search describes filtered results without claiming the whole collection is maxed', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ handling: 5 }))
+    localStorage.setItem('paper-plane-run-wallet', '0')
+    localStorage.setItem('paper-plane-run-wallet-migrated', '1')
+  })
+  await openApp(page)
+  await tap(page.locator('#hangar-btn'))
+  const search = page.getByRole('searchbox', { name: 'Search upgrades' })
+  await search.fill('Fold Handling')
+  await expect(page.locator('#upgrades-intro')).toHaveText('All matching folds are maxed. Clear the filter to see other upgrades.')
+  await search.fill('unfindable fold')
+  await expect(page.locator('#upgrades-intro')).toHaveText('No folds match these filters.')
+})

@@ -37,6 +37,7 @@ import {
 import { ZONES, cyclicZoneAt, cyclicZoneProgress } from './zones.js'
 import {
   endlessTierAt,
+  endlessPhaseAt,
   endlessTierProgress,
   getTierHazardBonusSmooth,
   getTierScoreMultiplierSmooth,
@@ -4398,15 +4399,14 @@ function updateEndlessTier() {
   if (!tiersApply()) return
   // Cheap index probe first — resolveTier builds a frozen descriptor, so it
   // should only run on a real tier change, not once per frame.
-  if (endlessTierAt(distance) === currentTier.tier) return
+  if (endlessTierAt(distance) === currentTier.tier && endlessPhaseAt(distance) === currentTier.phase) return
   const next = resolveTier(distance)
-  if (next.tier === currentTier.tier) return
   const climbed = next.tier > currentTier.tier
   currentTier = next
-  if (!climbed || !next.name) return
+  if (!next.name) return
   // Same courtesy the zone banner gets: a brief grace so a tier change never
   // lands the player straight into a hazard they could not have read.
-  invuln = Math.max(invuln, 0.55)
+  if (climbed) invuln = Math.max(invuln, 0.55)
   zoneBanner.textContent = next.name
   zoneBannerKind = 'zone'
   zoneBanner.classList.remove('hidden')
@@ -4416,6 +4416,7 @@ function updateEndlessTier() {
   notifications.show(`${next.name} — ${next.modifier.blurb}`, { duration: 3600 })
   audio.setAltitudeTier(next.tier)
   audio.zoneTransition()
+  if (!climbed) return
   // A tier climb now drops a short arc of golden stars (5★ each) along the
   // guaranteed gap — deep runs get a visible payday instead of only numbers.
   const laneX = activePassageGap.center
@@ -9115,6 +9116,24 @@ if (import.meta.env.DEV && devTestState === '#test-tier-climb') {
   windTimer = 999
   distance = 985
   hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && ['#test-endless-rotation', '#test-endless-live'].includes(devTestState)) {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  invuln = 999
+  nextSpawnZ = devTestState === '#test-endless-live' ? 180 : 1e9
+  nextBossAt = 1e9
+  nextGauntletAt = 1e9
+  windTimer = 999
+  distance = 8190
+  currentTier = resolveTier(distance)
+  hudEl?.classList.remove('hidden')
+  simulationPaused = true
 }
 
 if (import.meta.env.DEV && devTestState === '#test-gauntlet-payoff') {
