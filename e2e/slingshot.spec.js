@@ -5,6 +5,7 @@ async function ready(page) {
   await openApp(page)
   await tap(page.locator('#tutorial-btn'))
   await expect(page.locator('#slingshot-plane')).toBeVisible({ timeout: 45000 })
+  await expect(page.locator('#power-banner')).toBeHidden()
 }
 
 test('pull and release starts the run, while a cancelled pull stays ready', async ({ page, isMobile }) => {

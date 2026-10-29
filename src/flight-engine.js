@@ -1,3 +1,6 @@
+import { createBossWorkshop } from './game/boss-workshop.js'
+import { committedBossGap } from './game/boss-director.js'
+import { paperFragmentPose } from './game/crash-paper.js'
 import { createSlingshot } from './game/slingshot.js'
 import { createPaperLandscape } from './paper-landscape-renderer.js'
 import * as THREE from 'three'
@@ -881,6 +884,7 @@ const devUpgradeProof = import.meta.env.DEV
 const devCollisionProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('collision')
   : null
+const devBossPose = import.meta.env.DEV && new URLSearchParams(location.search).has('boss-pose')
 const devBossProof = import.meta.env.DEV
   ? new URLSearchParams(location.search).get('boss-proof')
   : null
@@ -2397,6 +2401,39 @@ function createPlanePreview({ canvas, skinId, reducedMotion = false }) {
   return previewSession
 }
 
+// A small reusable set of folded fragments: breakup reads as paper, not sparkles.
+const crashFragmentGeo = new THREE.BufferGeometry()
+crashFragmentGeo.setAttribute('position', new THREE.Float32BufferAttribute([-.7,0,0, 0,.55,.15, .7,0,0, 0,.18,-.16],3))
+crashFragmentGeo.setIndex([0,1,3,1,2,3]); crashFragmentGeo.computeVertexNormals()
+const crashPieces = Array.from({length:18}, () => {
+  const piece = new THREE.Mesh(crashFragmentGeo, new THREE.MeshStandardMaterial({color:0xfff6ec,side:THREE.DoubleSide,roughness:1,transparent:true}))
+  piece.visible = false; scene.add(piece); return piece
+})
+let crashPaperAge = 2
+let crashPaperX = 0, crashPaperY = 8, crashPaperScale = 1
+function scatterCrashPaper() {
+  crashPaperAge = 0; crashPaperX = planeX; crashPaperY = planeY
+  crashPaperScale = activeUpgradeEffects.planeScale
+  crashPieces.forEach((piece,index) => {
+    piece.visible = !settings.reducedMotion
+    piece.material.color.copy(index % 4 === 0 ? planeAccentMat.color : planeBodyMat.color)
+  })
+  updateCrashPaper(0)
+}
+function updateCrashPaper(dt) {
+  if (crashPaperAge > 1.5) return
+  crashPaperAge += dt
+  crashPieces.forEach((piece,index) => {
+    if (!piece.visible) return
+    const pose = paperFragmentPose({index,age:crashPaperAge,x:crashPaperX,y:crashPaperY,scale:crashPaperScale})
+    piece.position.set(pose.x,pose.y,pose.z)
+    piece.rotation.set(pose.fold,0,pose.turn)
+    piece.scale.setScalar(pose.scale)
+    piece.material.opacity = pose.opacity
+    if (!pose.opacity) piece.visible = false
+  })
+}
+
 // Builders
 
 /**
@@ -2468,6 +2505,10 @@ function createBossPortalBase(kind, passage) {
   safeRing.position.set(0, 10, -0.05)
   g.add(safeRing)
 
+  const workshop = createBossWorkshop({kind, halfWidth, halfHeight})
+  workshop.position.y = 10
+  g.add(workshop)
+  g.userData.workshop = workshop
   addBossArtOverlay(g, kind, 10, halfWidth, halfHeight)
   g.userData.phase = 0
   g.userData.gapY = 10
@@ -3126,6 +3167,7 @@ let activeTwist = null
 let nextSpawnZ = 40
 let shake = 0
 let hitStopTimer = 0
+let launchStrength = 1
 let spawnUnfold = 1
 let elapsed = 0
 // Slow-mo is a real time-dilation power, not just a cruise-speed tweak: the
@@ -3234,6 +3276,8 @@ function clearEntities() {
     ghostMesh = null
   }
   for (const s of windStreaks) s.visible = false
+  for (const piece of crashPieces) piece.visible = false
+  crashPaperAge = 2
   for (const c of confetti) {
     c.visible = false
     c.userData.life = 0
@@ -4813,6 +4857,7 @@ function resetGame() {
   applySkin(getEquippedSkinId())
   applyUpgradeVisuals(upgradeEffects)
   spawnUnfold = 0
+  launchStrength = 1
   plane.scale.setScalar(upgradeEffects.planeScale * launchPose(0, settings.reducedMotion).scale * 1.12)
 
   // RNG
@@ -5326,7 +5371,7 @@ function applyPauseState({ banner = true } = {}) {
     audio.ctx?.resume().catch(() => {})
     if (transition.resumed && state === 'playing') {
       invuln = Math.max(invuln, transition.graceSeconds || 0)
-      if (banner) {
+      if (banner && !launcher?.pending) {
         powerBanner.textContent = '▶ Resumed'
         powerBannerKind = 'status'
         powerBanner.classList.remove('hidden')
@@ -5448,8 +5493,32 @@ window.addEventListener(
 // ---------------------------------------------------------------------------
 // Shell bridge and runtime-only controls
 // ---------------------------------------------------------------------------
+function announceFlightStart() {
+    if (runKind === 'daily') {
+      showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
+    }
+    if (runKind === 'weekly') {
+      const fold = activeFold || thisWeeksFold()
+      showFlightFeedback(`${fold.icon} ${fold.name.toUpperCase()}`, 'route', 2.2)
+    }
+    if (launchChallenge?.path?.length) {
+      notifications.show(describeChallenge(launchChallenge), { duration: 3600 })
+    }
+    if (launchGraceSeconds > 0) {
+      powerBanner.textContent = '✈️ Get ready — launch protection active'
+      powerBannerKind = 'status'
+      powerBanner.classList.remove('hidden')
+      bannerTimer = launchGraceSeconds
+    }
+    if (journeyRivalState) {
+      notifications.show(getRivalCallout(journeyRivalState, 'start'), {
+        duration: settings.reducedMotion ? 2200 : 3600,
+      })
+    }
+}
+
 launcher = createSlingshot({
-  onRelease() {
+  onRelease(power) {
     const now = new Date()
     const period = runKind === 'daily' ? dailyKey(now) : runKind === 'weekly' ? weeklyKey(now) : null
     if (period && period !== activeRunPeriod) resetGame()
@@ -5457,11 +5526,14 @@ launcher = createSlingshot({
     clearTuckInput()
     resetStick()
     spawnUnfold = 0
+    launchStrength = power
+    speedBoost = power * 8
     timer?.reset?.()
     if (['classic', 'daily', 'weekly'].includes(runKind)) {
       remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind: runKind, seed: activeRunSeed })
     }
     audio.startFlight()
+    announceFlightStart()
     if (settings.haptics) Haptic.tap()
     showStick(true)
     canvas.focus({ preventScroll: true })
@@ -5734,28 +5806,8 @@ async function startGame(kind = 'classic', opts = {}) {
     syncPauseUi()
     applyPauseState({ banner: false })
     launcher.prepare()
+    hideFlightReadability()
     showStick(false)
-    if (kind === 'daily') {
-      showFlightFeedback('DAILY ROUTE · BEAT THE GHOST', 'route', 2)
-    }
-    if (kind === 'weekly') {
-      const fold = activeFold || thisWeeksFold()
-      showFlightFeedback(`${fold.icon} ${fold.name.toUpperCase()}`, 'route', 2.2)
-    }
-    if (launchChallenge?.path?.length) {
-      notifications.show(describeChallenge(launchChallenge), { duration: 3600 })
-    }
-    if (launchGraceSeconds > 0) {
-      powerBanner.textContent = '✈️ Get ready — launch protection active'
-      powerBannerKind = 'status'
-      powerBanner.classList.remove('hidden')
-      bannerTimer = launchGraceSeconds
-    }
-    if (journeyRivalState) {
-      notifications.show(getRivalCallout(journeyRivalState, 'start'), {
-        duration: settings.reducedMotion ? 2200 : 3600,
-      })
-    }
     if (settings.haptics) Haptic.tap()
     track('game_start', { kind, mode: difficulty.id, season: season.id, routeId: journeyRunConfig?.routeId })
   } catch (err) {
@@ -6018,7 +6070,7 @@ function die(reason) {
   groundSkim = createGroundSkimState()
   tuckState = createTuckState()
   updateTuckButton(false)
-  crashT = isWin ? 0.35 : 1.05
+  crashT = isWin ? 0.35 : 1.2
   crashReason = reason
   shake = isWin ? 0.2 : 1.1
   hitStopTimer = isWin ? 0 : 0.09
@@ -6036,9 +6088,7 @@ function die(reason) {
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
-    spawnConfetti(planeX, planeY, 0, 'aero')
-    spawnConfetti(planeX, planeY + 0.6, 0.4, 'aero')
-    spawnConfetti(planeX, planeY + 1.1, 0.9, 'aero')
+    scatterCrashPaper()
     // paper burst velocity
     velX = (rng() - 0.5) * 20
     velY = 3 + rng() * 2
@@ -6720,6 +6770,11 @@ function animateHazards(dt) {
       // still show real frontal cross-section head-on, where the player
       // actually meets these hazards — a flat/shallow dihedral collapses
       // to a thin edge-on line from that angle and reads as a spike.
+      if (u.billboard) {
+        const flutter = settings.reducedMotion ? 0 : Math.sin(u.phase)
+        const insect = ['wasp','dragonfly'].includes(u.flyerId)
+        u.billboard.scale.set(1 + (insect ? flutter * .045 : 0), 1 + (!insect && ['bird','hawk'].includes(u.flyerId) ? flutter * .07 : 0), 1)
+      }
       const flap = Math.sin(u.phase) * 0.35
       if (u.wingL) u.wingL.rotation.z = 0.85 + flap
       if (u.wingR) u.wingR.rotation.z = -0.85 - flap
@@ -6810,7 +6865,7 @@ function animateHazards(dt) {
       // Power symbols stay face-on; a gentle bob conveys collectibility.
     }
     if (e.type === 'scissors') {
-      e.mesh.rotation.z += dt * 1.2
+      if (!settings.reducedMotion) e.mesh.rotation.z += dt * 1.2
       if (e.mesh.userData.billboard) e.mesh.userData.billboard.rotation.y = Math.PI
     }
       const outline = e.mesh.userData.lethalOutline
@@ -6862,11 +6917,14 @@ function animateHazards(dt) {
       u.phase += dt * 2.2
       // The director commits to one readable lane. Timing varies by
       // difficulty, while the existing collision opening stays unchanged.
-      u.gapY = resolveBossGapY({
+      const targetGapY = resolveBossGapY({
         playerY: planeY,
         safeY: encounter?.safeY ?? 10,
         bossZ: e.mesh.position.z,
       })
+      u.gapY = committedBossGap({targetY:targetGapY, previousY:u.gapY, lockedY:u.lockedGapY, bossZ:e.mesh.position.z})
+      if (e.mesh.position.z <= 22) u.lockedGapY = u.gapY
+      if (u.workshop) u.workshop.position.y = u.gapY
       u.encounter = encounter
       if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
@@ -6875,7 +6933,7 @@ function animateHazards(dt) {
         u.bossIntensity = presentation.intensity
         document.documentElement.dataset.bossPhase = encounter.phase
         zoneBannerKind = 'boss'
-        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} Fly the glowing ring — hold GO!`
+        zoneBanner.textContent = `${bossBannerEmoji(u.kind)} ${presentation.headline}`
         zoneBanner.classList.remove('hidden')
         zoneBannerTimer = settings.reducedMotion ? 1.2 : 1.7
         hitStopTimer = Math.max(hitStopTimer, presentation.hitStopSeconds)
@@ -6998,6 +7056,7 @@ function animateHazards(dt) {
       c.visible = false
     }
   }
+  updateCrashPaper(dt)
   updateHazardShadows()
 }
 
@@ -7099,6 +7158,7 @@ function registerStarStreak() {
   }
 }
 
+const launchProjection = new THREE.Vector3()
 function update(dt) {
   if (launcher?.pending && state === 'playing') {
     const pull = settings.reducedMotion ? 0 : launcher.charge
@@ -7108,6 +7168,12 @@ function update(dt) {
     plane.scale.setScalar(activeUpgradeEffects.planeScale * 1.12)
     camera.position.set(0, 12, -14)
     camera.lookAt(0, 8, 8)
+    camera.updateMatrixWorld()
+    const width = canvas.clientWidth, height = canvas.clientHeight
+    launchProjection.set(0, 8, 0).project(camera)
+    const baseY = (1 - launchProjection.y) * height / 2
+    launchProjection.copy(plane.position).project(camera)
+    launcher.setAnchor((launchProjection.x + 1) * width / 2, (1 - launchProjection.y) * height / 2, baseY, width, height)
     return
   }
   elapsed += dt
@@ -7155,10 +7221,17 @@ function update(dt) {
     // Dramatic crash: tumble, drop, paper spin
     const isWin = crashReason === 'Tutorial complete!' || crashReason === 'Journey route complete!'
     if (!isWin) {
+      const crease = Math.min(1, (1.2 - crashT) / .45)
       if (!crashLanded && !settings.reducedMotion) {
-        plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
-        plane.rotation.x += dt * 2.2
-        plane.rotation.y += dt * 1.4
+        plane.rotation.z += dt * (2.4 + Math.abs(velX) * 0.06) * (1 - crease * .5)
+        plane.rotation.x += dt * 1.4
+        plane.rotation.y += dt * .6
+        const left = plane.userData.wingL, right = plane.userData.wingR
+        if (left) left.rotation.z = crease * .95
+        if (right) right.rotation.z = -crease * 1.1
+        if (left?.userData.outline) left.userData.outline.quaternion.copy(left.quaternion)
+        if (right?.userData.outline) right.userData.outline.quaternion.copy(right.quaternion)
+        plane.scale.z = activeUpgradeEffects.planeScale * 1.12 * (1 - crease * .28)
       }
       plane.position.x += velX * dt * (settings.reducedMotion ? 0.25 : 1)
       plane.position.y = Math.max(0.3, plane.position.y + velY * dt)
@@ -7793,7 +7866,7 @@ function update(dt) {
   }
 
   const launch = launchPose(spawnUnfold, settings.reducedMotion)
-  plane.position.set(planeX, planeY, launch.depth)
+  plane.position.set(planeX, planeY, launch.depth * (.8 + launchStrength * .4))
   // Visual bank from motion (clamped so mouse snaps don't spin the plane)
   const flightPose = getPaperFlightPose({
     horizontalVelocity: velX,
@@ -7828,7 +7901,7 @@ function update(dt) {
   if (wingR?.userData.outline) wingR.userData.outline.quaternion.copy(wingR.quaternion)
 
   // Invuln blink
-  if (invuln > 0) {
+  if (invuln > 0 && elapsed >= SPAWN_INVULN_SECONDS) {
     plane.visible = Math.sin(elapsed * 28) > -0.2
   } else {
     plane.visible = true
@@ -8571,6 +8644,10 @@ function bossTextState() {
     completed: boss.completed,
     shapeCue: boss.shapeCue,
     passage: boss.passage,
+    gapY: entity.mesh.userData.gapY,
+    locked: Number.isFinite(entity.mesh.userData.lockedGapY),
+    workshop: Boolean(entity.mesh.userData.workshop),
+    z: entity.mesh.position.z,
     pose: entity.mesh.userData.pose
       ? {
         open: Number(entity.mesh.userData.pose.open.toFixed(3)),
@@ -8584,7 +8661,7 @@ function bossTextState() {
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
-  crash: state === 'dead' ? { landed: crashLanded, y: plane.position.y } : null,
+  crash: state === 'dead' ? { landed: crashLanded, y: plane.position.y, fragments: crashPieces.filter(piece=>piece.visible).length } : null,
   mode: runKind,
   paused: simulationPaused,
   launch: { pending: Boolean(launcher?.pending), charge: launcher?.charge || 0 },
@@ -9139,7 +9216,7 @@ if (import.meta.env.DEV && devTestState === '#test-boss-encounter') {
   nextSpawnZ = 1000
   windTimer = 999
   bossCount = devBossProof === 'wind' ? 1 : devBossProof === 'stapler' ? 2 : devBossProof === 'punch' ? 3 : 0
-  spawnBoss(60)
+  spawnBoss(devBossPose ? 120 : 60)
   if (devBossPass) {
     const boss = entities.find((entity) => entity.type === 'boss')
     const safeY = boss?.director?.snapshot().safeY ?? 10

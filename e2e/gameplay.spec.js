@@ -192,6 +192,8 @@ test.describe('gameplay systems regression', () => {
           if (attempt === 1) throw new Error(`mode ${name} did not start after two taps`)
         }
       }
+      await expect(page.locator('#slingshot-plane')).toBeVisible({ timeout: 45000 })
+      await page.locator('#slingshot-plane').press('Space')
       await page.evaluate(() => window.advanceTime(1200))
       const mid = await snapshot(page)
       expect(mid.mode).toBe(name)
@@ -458,15 +460,19 @@ test.describe('gameplay systems regression', () => {
     test.skip(testInfo.project.name !== 'desktop')
     const errors = collectConsoleErrors(page)
     await withEnvRetries(async () => {
-      await openFixture(page, '/?boss-proof=stapler#test-boss-encounter')
+      await openFixture(page, '/?boss-proof=stapler&boss-pose=1#test-boss-encounter')
       await page.evaluate(() => window.advanceTime(200))
       const warning = await page.evaluate(() => JSON.parse(window.render_game_to_text()).boss)
       expect(warning).toMatchObject({ phase: 'warning', pose: { open: 1, clap: 0 } })
 
-      await expect.poll(async () => page.evaluate(() => {
-        window.advanceTime(50)
-        return JSON.parse(window.render_game_to_text()).boss?.phase
-      }), { timeout: 30_000 }).toBe('pressure')
+      const pressurePhase = await page.evaluate(() => {
+        for (let step=0;step<40;step++) {
+          const state = JSON.parse(window.advanceTime(50))
+          if (state.boss?.phase === 'pressure') return state.boss.phase
+        }
+        return null
+      })
+      expect(pressurePhase).toBe('pressure')
       await page.evaluate(() => window.advanceTime(1200))
       const pressed = await page.evaluate(() => JSON.parse(window.render_game_to_text()).boss)
       expect(pressed.pose.open).toBeLessThan(warning.pose.open)

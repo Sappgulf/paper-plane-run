@@ -10,6 +10,8 @@ test('the opening throw settles while the flight continues', async ({ page }) =>
     window.advanceTime(600)
     return { first, last: { state: JSON.parse(window.render_game_to_text()), pose: window.__paperPose() } }
   })
+  expect(result.first.pose.planeVisible).toBe(true)
+  expect(result.last.pose.planeVisible).toBe(true)
   expect(result.first.pose.planePos[2]).toBeLessThan(0)
   expect(result.last.pose.planePos[2]).toBe(0)
   expect(result.last.state.distance).toBeGreaterThan(result.first.state.distance)
@@ -29,6 +31,7 @@ for (const reducedMotion of [false, true]) {
       window.advanceTime(400)
       return { impact, finished: JSON.parse(window.render_game_to_text()) }
     })
+    expect(result.impact.crash.fragments).toBe(reducedMotion ? 0 : 18)
     expect(result.impact.crash.landed).toBe(true)
     expect(result.impact.crash.y).toBeLessThan(0.4)
     expect(result.finished.state).toBe('dead')

@@ -339,6 +339,18 @@ const HAZARD_PIECES = Object.freeze({
   ],
 })
 
+// Authored paper stocks give the roster identity; the zone accent remains on
+// each threat and the common ink silhouette / danger ring carries collision meaning.
+const HAZARD_STOCKS = Object.freeze({
+  bird: ['#fff1d3','#fff1d3','#e3c393',null,'#fff1d3','#d6a349'],
+  hawk: ['#ac6244','#ac6244',null,'#ffe8b8','#d6a349'],
+  kite: [null,'#fff1d3','#fff1d3','#e3c393','#e3c393','#283b4b'],
+  biplane: ['#354b60','#fff1d3','#354b60','#354b60',null,null,'#d6a349','#354b60'],
+  dragonfly: ['#b0dce0','#b0dce0','#d4ece3','#d4ece3',null,'#dab55d','#dab55d'],
+  wasp: ['#fff1d3','#fff1d3','#283b4b','#283b4b','#283b4b','#e5b74e',null,null],
+  balloon: [null,'#354b60','#354b60','#d5a56b'],
+})
+
 /** Lookup for `HAZARD_PROFILES`: the outline of each piece, grouped by kind. */
 export const HAZARD_PROFILES = Object.freeze(Object.fromEntries(
   Object.entries(HAZARD_PIECES).map(([kind, pieces]) => [
@@ -516,7 +528,7 @@ function hashLabel(label) {
  * outline, because the art rule gives every plane of colour grain. Only paths
  * and fills are used; nothing is blurred.
  */
-function drawHazardPieces(ctx, size, accent, pieces, grainSeed = 1) {
+function drawHazardPieces(ctx, size, accent, pieces, grainSeed = 1, stocks = []) {
   const scale = size / SHEET
   const edge = HAZARD_OUTLINE * SHEET
   const offset = HAZARD_SHADOW_OFFSET * SHEET
@@ -536,23 +548,24 @@ function drawHazardPieces(ctx, size, accent, pieces, grainSeed = 1) {
   }
 
   pieces.forEach((cut, index) => {
+    const cutTones = stocks[index] ? hazardTones(stocks[index]) : tones
     // The stroke is centred on the outline, so only its outer half shows.
     ctx.strokeStyle = HAZARD_INK
     ctx.lineWidth = edge * 2 * cut.ink
     cut.build(ctx)
     ctx.stroke()
 
-    ctx.fillStyle = tones.lit
+    ctx.fillStyle = cutTones.lit
     cut.build(ctx)
     ctx.fill(cut.rule)
 
     ctx.save()
     cut.build(ctx)
     ctx.clip(cut.rule)
-    ctx.fillStyle = tones.shade
+    ctx.fillStyle = cutTones.shade
     fillShadedFacet(ctx, cut.crease || autoCrease(cut.points))
     if (cut.stripes) {
-      ctx.fillStyle = tones.stripe
+      ctx.fillStyle = cutTones.stripe
       for (const [y0, y1] of cut.stripes) ctx.fillRect(-SHEET, y0, SHEET * 2, y1 - y0)
     }
     drawGrain(ctx, SHEET, SHEET, 0.05, grainSeed + index * 131)
@@ -564,9 +577,8 @@ function drawHazardPieces(ctx, size, accent, pieces, grainSeed = 1) {
 /**
  * A hazard sprite, cut from paper rather than photographed.
  *
- * `kind` picks the silhouette; everything else is the zone accent plus ink, so
- * a new hazard type cannot accidentally arrive in a colour that means
- * something else. `seasonId` optionally re-cuts the bird into its seasonal
+ * `kind` picks the silhouette and authored paper stocks. The zone accent,
+ * common ink edge and runtime danger ring tie the threats together. `seasonId` optionally re-cuts the bird into its seasonal
  * silhouette.
  */
 export function createHazardCanvas({
@@ -586,7 +598,7 @@ export function createHazardCanvas({
   if (kind === 'scissors') pieces = scissorsPieces()
   else if (kind === 'bird' && seasonId && SEASONAL_BIRD_PIECES[seasonId]) pieces = SEASONAL_BIRD_PIECES[seasonId]
   else if (Object.prototype.hasOwnProperty.call(HAZARD_PIECES, kind)) pieces = HAZARD_PIECES[kind]
-  drawHazardPieces(ctx, width, fill, pieces, hashLabel(kind))
+  drawHazardPieces(ctx, width, fill, pieces, hashLabel(kind), kind === 'bird' && SEASONAL_BIRD_PIECES[seasonId] ? [] : HAZARD_STOCKS[kind] || (kind === 'scissors' ? ['#d7e4e5','#d7e4e5',null,null] : []))
   // Small ink details give the silhouettes character without changing their
   // outlines or the warning colour players use to identify danger.
   ctx.save()
@@ -617,6 +629,20 @@ export function createHazardCanvas({
     ctx.beginPath()
     ctx.arc(0, 0, 1.3, 0, Math.PI * 2)
     ctx.fill()
+  }
+  ctx.strokeStyle = HAZARD_INK
+  ctx.lineWidth = .8
+  if ((kind === 'bird' && !SEASONAL_BIRD_PIECES[seasonId]) || kind === 'hawk') {
+    for (const side of [-1,1]) for (let index=0;index<3;index++) {
+      ctx.beginPath();ctx.moveTo(side*(14+index*6),-4-index*2);ctx.lineTo(side*(18+index*6),3-index*2);ctx.stroke()
+    }
+  } else if (kind === 'balloon') {
+    ctx.strokeStyle = '#fff1d3';ctx.lineWidth = 1.5
+    ctx.beginPath();ctx.ellipse(0,-12,12,25,0,0,Math.PI*2);ctx.stroke()
+    ctx.beginPath();ctx.moveTo(0,-37);ctx.lineTo(0,15);ctx.stroke()
+  } else if (kind === 'biplane') {
+    ctx.fillStyle='#fff1d3';ctx.beginPath();ctx.arc(-5,0,4,0,Math.PI*2);ctx.fill()
+    ctx.fillStyle=fill;ctx.beginPath();ctx.arc(-5,0,2.2,0,Math.PI*2);ctx.fill()
   }
   ctx.restore()
   return canvas

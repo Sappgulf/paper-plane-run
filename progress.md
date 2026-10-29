@@ -634,3 +634,14 @@ Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
 - Native simulator testing exposed a WKWebView drag problem; explicit touch tracking fixed it. Retry now resets altitude/Tuck HUD before waiting at the launcher, and the ready stage avoids continuous WebGL rendering.
 - Final verification: 758 unit tests passed (7 skipped); all 8 production desktop/mobile launcher tests passed. Earlier mode/Hangar touch-navigation checks passed, with desktop-only skips. Dedicated QA simulator: short pull, pause/resume, full touch release into flight, crash and retry with clean HUD observed. Builds, bundle budget, 26-file iOS parity and signed iPhone build 1.0.1 (7) passed.
 - The Documents checkout had cloud-file read stalls, so final builds/tests used an identical temporary source checkout with freshly installed lockfile dependencies.
+
+
+## 2026-10-29 — In-world launch, workshop bosses and folded-paper impact
+
+- The slingshot now grabs the actual 3D plane in the open scene, with projected elastic bands, a tension meter and a modest power-dependent starting boost. Launch protection and route notices begin on release so they cannot cover the ready heading. The plane remains visible throughout the opening throw.
+- Reworked enemy paper stocks and cut details: cream/coral birds, copper hawks, navy/coral biplanes, translucent-looking insect wings, balloon seams and steel scissors. Subtle bird/insect flutter respects reduced motion; collision silhouettes remain unchanged.
+- All four bosses have physical workshop frames with distinct material colors. The opening commits at the final approach and remains fixed while steering; phase banners describe the actual boss phase. Tests verify the decorative frame never covers the authored passage.
+- Crashes crease the wings, compress the fuselage and scatter 18 pooled folded-paper fragments using the equipped skin colors, then settle before results. Reduced motion avoids the fragments and spin.
+- Final verification: 761 unit tests passed, 7 skipped (104 files passed, 1 skipped). Focused desktop/mobile browser regression: 33 passed, 7 intentional skips, covering all four bosses, opening visibility, crash/reduced motion, launcher input/cancellation, modes, Hangar and touch navigation. This was a targeted regression, not the entire browser suite.
+- Dedicated QA simulator: actual pull/release, practice flight, crash, results/retry, pause/return and a Classic flight clearing the first boss with CENTER THREAD were observed. Final portrait launch layout was inspected after moving the protection banner. Other simulators were left untouched.
+- Production build and bundle budget passed (151,089 initial / 959,092 total bytes); 26-file iOS parity and signed Release build 1.0.1 (8) passed. Source/build/test work used the temporary Git checkout because the Documents checkout still has cloud-file read stalls.

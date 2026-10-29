@@ -4,18 +4,20 @@ export function createSlingshot({ onRelease, onCharge = () => {} }) {
   panel.id = 'slingshot'
   panel.className = 'slingshot hidden'
   panel.setAttribute('aria-label', 'Launch your plane')
-  panel.innerHTML = `<div class="slingshot-card"><p class="slingshot-eyebrow">READY FOR TAKEOFF</p><h2>Pull back. Let fly.</h2><p id="slingshot-help">Drag the plane down, then release.<br>Keyboard: hold and release Space or Enter.</p><div class="slingshot-track"><svg viewBox="0 0 300 220" aria-hidden="true"><path class="sling-band" d="M50 65 L150 65 L250 65"/><circle cx="50" cy="65" r="7"/><circle cx="250" cy="65" r="7"/></svg><button id="slingshot-plane" type="button" aria-label="Pull plane to launch" aria-describedby="slingshot-help"><svg viewBox="0 0 100 80" aria-hidden="true"><path d="M50 5 L95 70 L50 53 L5 70 Z" fill="#fff8e7" stroke="#28434a" stroke-width="3"/><path d="M50 5 L50 53 L38 65 Z" fill="#dc7654"/></svg></button></div><p id="slingshot-status" role="status">Pull the plane toward you</p></div>`
+  panel.innerHTML = `<div class="launch-heading"><p class="slingshot-eyebrow">THE PAPER FLIGHT CLUB</p><h2>Your next great flight.</h2></div><div class="slingshot-track"><svg aria-hidden="true"><path class="sling-band"/><path class="sling-trajectory"/></svg><button id="slingshot-plane" type="button" aria-label="Pull plane to launch" aria-describedby="slingshot-help"><span class="launch-grip" aria-hidden="true"></span><span class="launch-pull-label" aria-hidden="true">PULL</span></button></div><div class="launch-dock"><p id="slingshot-status" role="status">Pull the plane toward you</p><div class="launch-meter" aria-hidden="true"><span></span></div><p id="slingshot-help">Pull down, then release to fly.<br><span>Space / Enter · hold and release</span></p></div>`
   document.getElementById('app')?.append(panel)
   if (!panel.isConnected) document.body.append(panel)
   const button = panel.querySelector('button')
   const band = panel.querySelector('.sling-band')
   const status = panel.querySelector('#slingshot-status')
+  const meter = panel.querySelector('.launch-meter span')
+  const trajectory = panel.querySelector('.sling-trajectory')
   let ready = false, pointer = null, origin = 0, charge = 0, heldKey = null, touchId = null
   function setCharge(value) {
     charge = Math.max(0, Math.min(1, value))
-    button.style.transform = `translate(-50%, ${charge * 95}px)`
-    band.setAttribute('d', `M50 65 L150 ${65 + charge * 95} L250 65`)
-    status.textContent = charge >= .18 ? 'Release to launch!' : 'Pull the plane toward you'
+    meter.style.width = `${charge * 100}%`
+    panel.dataset.charged = String(charge >= .18)
+    status.textContent = charge >= .8 ? 'Full tension · let it fly!' : charge >= .18 ? 'Release to launch!' : 'Pull the plane toward you'
     onCharge(charge)
   }
   function cancel() { touchId = null; pointer = null; heldKey = null; setCharge(0) }
@@ -77,6 +79,14 @@ export function createSlingshot({ onRelease, onCharge = () => {} }) {
     prepare() { ready = true; cancel(); panel.classList.remove('hidden'); button.focus({ preventScroll: true }) },
     hide() { ready = false; cancel(); panel.classList.add('hidden') },
     cancel,
+    setAnchor(x, y, baseY, width, height) {
+      button.style.left = `${x}px`; button.style.top = `${y}px`
+      const svg = panel.querySelector('.slingshot-track > svg')
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+      const span = Math.min(125, width * .28)
+      band.setAttribute('d', `M${x-span} ${baseY-12} L${x} ${y} L${x+span} ${baseY-12}`)
+      trajectory.setAttribute('d', `M${x} ${baseY-65} Q${x} ${baseY-150} ${x} ${Math.max(180,baseY-230)}`)
+    },
     gamepad(held) {
       if (held === null) { if (heldKey === 'gamepad') cancel(); return }
       if (!ready || pointer !== null) return

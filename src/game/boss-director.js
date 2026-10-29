@@ -252,3 +252,9 @@ export function createBossEncounter({
     },
   })
 }
+
+/** Once the final approach begins, keep the visible and lethal passage still. */
+export function committedBossGap({ targetY = 10, previousY = 10, lockedY = null, bossZ = 60 } = {}) {
+  if (Number.isFinite(lockedY)) return lockedY
+  return bossZ <= 22 ? previousY : targetY
+}

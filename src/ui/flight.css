@@ -768,16 +768,24 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 }
 #sw-update-btn:disabled { opacity: 0.7; cursor: wait; }
 
-.slingshot { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: none; padding: 60px 16px 16px; }
-.slingshot-card { width: min(360px, 88vw); text-align: center; color: #28434a; background: #fff8e7ed; border: 2px solid #28434a; box-shadow: 5px 7px 0 #28434a40; border-radius: 16px; padding: 20px 16px 12px; pointer-events: auto; }
-.slingshot-eyebrow { font-size: 11px; font-weight: 900; letter-spacing: .15em; margin: 0 0 8px; }
-.slingshot h2 { font-family: Georgia, serif; font-size: 30px; margin: 0 0 8px; }
-#slingshot-help { font-size: 13px; line-height: 1.5; margin: 0; }
-.slingshot-track { position: relative; height: 220px; max-width: 300px; margin: auto; touch-action: none; }
-.slingshot-track > svg { width: 100%; height: 220px; fill: #dc7654; }
-.sling-band { fill: none; stroke: #c36142; stroke-width: 5; stroke-linecap: round; }
-#slingshot-plane { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); width: 90px; height: 72px; padding: 0; border: 0; background: transparent; box-shadow: none; cursor: grab; touch-action: none; user-select: none; }
-#slingshot-plane:active { cursor: grabbing; }
-#slingshot-plane:focus-visible { outline: 3px solid #176b7a; outline-offset: 6px; border-radius: 10px; }
-#slingshot-status { font-weight: 900; min-height: 20px; font-size: 14px; margin: 0; }
-@media (max-height: 520px) { .slingshot { padding-top: 16px; } .slingshot-card { padding: 10px 16px; } .slingshot-track { height: 160px; } .slingshot-track > svg { height: 160px; } .slingshot h2 { font-size: 23px; } #slingshot-help { font-size: 11px; } }
+.slingshot { position:absolute; inset:0; z-index:30; pointer-events:none; color:#fff8e7; background:linear-gradient(0deg,#163b49b8,transparent 36%,transparent 75%,#163b4920); }
+.launch-heading { position:absolute; top:24%; left:0; width:100%; text-align:center; color:#28434a; text-shadow:0 1px 0 #fff8e780; }
+.slingshot-eyebrow { margin:0 0 9px; font-size:10px; font-weight:900; letter-spacing:.22em; }
+.slingshot h2 { font-family:Georgia,serif; font-size:clamp(26px,4vw,40px); font-weight:500; margin:0; }
+.slingshot-track { position:absolute; inset:0; touch-action:none; }
+.slingshot-track > svg { width:100%; height:100%; overflow:visible; }
+.sling-band { fill:none; stroke:#e7955f; stroke-width:5; stroke-linecap:round; filter:drop-shadow(0 2px 0 #28434a); }
+.sling-trajectory { fill:none; stroke:#fff8e7; stroke-width:2; stroke-dasharray:5 10; opacity:.65; }
+#slingshot-plane { position:absolute; top:58%; left:50%; transform:translate(-50%,-50%); width:120px; height:110px; padding:0; border:0; background:transparent; box-shadow:none; color:#fff8e7; cursor:grab; touch-action:none; user-select:none; -webkit-touch-callout:none; pointer-events:auto; }
+#slingshot-plane:active { cursor:grabbing; }
+.launch-grip { position:absolute; inset:2px 7px; border:1px dashed #fff8e7a6; border-radius:50%; }
+.launch-pull-label { position:absolute; bottom:-21px; left:0; width:100%; font-size:10px; letter-spacing:.2em; font-weight:900; text-shadow:0 2px 3px #143441; }
+#slingshot-plane:focus-visible { outline:3px solid #ffe7aa; outline-offset:5px; border-radius:50%; }
+.launch-dock { position:absolute; bottom:max(9%,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:min(330px,85vw); text-align:center; }
+#slingshot-status { font-size:16px; font-weight:900; margin:0 0 13px; }
+.launch-meter { width:130px; height:5px; margin:0 auto 14px; background:#fff8e730; overflow:hidden; border-radius:4px; }
+.launch-meter span { display:block; height:100%; width:0; background:#f7bb72; }
+#slingshot-help { font-size:13px; line-height:1.65; margin:0; }
+#slingshot-help span { font-size:10px; opacity:.72; }
+.slingshot[data-charged="true"] .launch-grip { border-style:solid; border-color:#ffcf83; }
+@media(max-height:520px) { .launch-heading { top:19%; } .slingshot h2 { font-size:24px; } .launch-dock { bottom:6%; left:20%; width:180px; } #slingshot-help { font-size:11px; } .sling-trajectory { opacity:.3; } }
