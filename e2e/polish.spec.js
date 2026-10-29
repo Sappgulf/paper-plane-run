@@ -41,6 +41,15 @@ test('warm engine shortcuts preserve text entry and native button activation', a
   expect(errors).toEqual([])
 })
 
+test('touch text fields stay readable without iOS focus zoom', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'touch input sizing is checked on mobile')
+  await openApp(page)
+  const fields = page.locator('#pilot-name, #upgrade-search, #editor-import, .backup-text, .set-row select')
+  const sizes = await fields.evaluateAll(nodes => nodes.map(node => ({ id: node.id, size: parseFloat(getComputedStyle(node).fontSize) })))
+  expect(sizes.length).toBeGreaterThan(0)
+  for (const { id, size } of sizes) expect(size, `${id} must be at least 16px`).toBeGreaterThanOrEqual(16)
+})
+
 test('flight guide contains keyboard focus and returns it on close', async ({ page }, testInfo) => {
   await openApp(page)
   // A tap can be lost while the dev server is still transforming modules (the
@@ -74,6 +83,13 @@ test('pause freezes the run, contains focus and resumes through native Space', a
   expect(paused.paused).toBe(true)
   await expect(page.locator('#pause-context')).toContainText('Tutorial')
   await expect(page.locator('#pause-distance')).toHaveText(`${paused.distance}m`)
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.locator('.pause-flight-tip')).not.toContainText('Space', { useInnerText: true })
+    await expect(page.locator('.pause-key-hint')).toBeHidden()
+  } else {
+    await expect(page.locator('.pause-flight-tip')).toContainText('Space', { useInnerText: true })
+    await expect(page.locator('.pause-key-hint')).toBeVisible()
+  }
   await page.keyboard.press('Shift+Tab')
   await expect(page.locator('#pause-menu')).toBeFocused()
   await page.keyboard.press('Tab')
@@ -90,6 +106,29 @@ test('pause freezes the run, contains focus and resumes through native Space', a
   await tap(page.locator('#pause-menu'))
   await expect(page.locator('#menu')).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('tutorial guidance clears the resting touch controls', async ({ page }, testInfo) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'uses development-only simulation controls')
+  test.skip(testInfo.project.name !== 'mobile', 'touch controls are checked on the mobile viewport')
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-plane-run-settings-v1', JSON.stringify({ controlMode: 'joystick' }))
+  })
+  await openApp(page)
+  await tap(page.locator('#tutorial-btn'))
+  await expect(page.locator('#tutorial-hint')).toBeVisible({ timeout: 45_000 })
+  await waitForGameText(page)
+  await page.evaluate(() => window.__paperFreeze(true))
+  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(viewport)
+    const hint = await page.locator('#tutorial-hint').boundingBox()
+    const stick = await page.locator('#stick-base').boundingBox()
+    const tuck = await page.locator('#fire-btn').boundingBox()
+    const hud = await page.locator('#hud').boundingBox()
+    expect(hint.y + hint.height).toBeLessThanOrEqual(stick.y - 4)
+    expect(hint.y + hint.height).toBeLessThanOrEqual(tuck.y - 4)
+    expect(hint.y).toBeGreaterThanOrEqual(hud.y + hud.height + 4)
+  }
 })
 
 test('menu actions fit phone portrait and landscape without horizontal overflow', async ({ page }, testInfo) => {

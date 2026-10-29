@@ -1406,6 +1406,7 @@ async function renderBoard(tab = 'local') {
     }
   }
   if (token !== boardRenderToken) return
+  list.innerHTML = ''
   if (!rows.length) {
     if (remoteFailed) {
       list.innerHTML = '<li class="board-error">Scores are taking a nap — try again in a moment.</li>'

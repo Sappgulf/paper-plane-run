@@ -2,6 +2,13 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-29 — Live leaderboard and touch audit
+
+- Verified real Classic flights on the production web app and the iPhone simulator: both submitted and displayed their exact scores on the Global board. Removed only the two disposable test scores and their tickets. Fixed the loading message persisting above fetched scores.
+- Kept tutorial guidance clear of the resting touch controls, made pause guidance appropriate for touch, and sized editable touch fields to prevent iOS focus zoom and cropped menus.
+- Verification: 753 unit tests passed; seven additional isolated Redis integration tests passed. The development browser matrix had 123 passes, 41 intentional skips and two dev-server interruptions; both interrupted cases passed on isolated rerun. Five new touch-navigation tests passed separately. The production browser matrix passed 59 tests with 117 intentional skips. The web bundle budget and iOS web parity passed, and the iPhone 18 Pro simulator build launched and exercised a real flight.
+- Practical score validation rejects malformed and grossly implausible submissions but cannot prove honest play. The iOS simulator build is not a signed App Store distribution.
+
 ## 2026-10-29 — Persistent leaderboard
 
 - Replaced instance-local boards with Upstash Redis; all-time, daily and weekly scores are isolated by difficulty and the run's starting UTC period. A one-use run ticket, current route seed, integer bounds, conservative elapsed-time limits and a shared per-IP rate limit reject malformed and grossly implausible submissions. They do not prove honest play.

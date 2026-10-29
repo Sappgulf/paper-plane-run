@@ -199,6 +199,9 @@ kbd {
 .pause-flight-stats b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .pause-flight-tip { margin: 14px 0 8px; font-size: 12px; line-height: 1.5; color: #50616c; }
 .pause-key-hint { font-size: 10px; color: var(--ink-soft); margin-top: 12px; }
+@media (pointer: coarse) {
+  .pause-key-option, .pause-key-hint { display: none; }
+}
 #tutorial-hint { width: min(450px, 78vw); padding: 12px 16px; font-size: 13px; text-align: left; background: rgba(29,48,62,.95); }
 #tutorial-title { display: block; font-size: 11px; letter-spacing: .04em; color: #ffe1a8; margin-bottom: 5px; }
 #tutorial-copy { display: block; font-weight: 700; }
@@ -211,7 +214,7 @@ kbd {
 .hud-card.tuck-hud[data-tuck='release'] #tuck-fill { background: #c34c30; }
 @media (max-width: 520px) {
   .manual-card { padding: 22px 18px; }
-  #tutorial-hint { bottom: max(128px, calc(env(safe-area-inset-bottom) + 105px)); width: min(360px, 84vw); }
+  #tutorial-hint { bottom: calc(max(20px, env(safe-area-inset-bottom)) + min(122px, 30vw) + 30px); width: min(360px, 84vw); }
 }
 @media (max-height: 470px) {
   .pause-card { padding: 12px 18px; }

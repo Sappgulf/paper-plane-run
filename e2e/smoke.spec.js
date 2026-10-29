@@ -1017,6 +1017,7 @@ test('daily scores come from the online board and weekly falls back when unavail
   await tap(page.getByRole('tab', { name: /Board/ }))
   await tap(page.getByRole('button', { name: 'Daily', exact: true }))
   await expect(page.locator('#board-list')).toContainText('Online Pilot')
+  await expect(page.locator('#board-list .board-loading')).toHaveCount(0)
   await expect(page.locator('#board-source')).toContainText('Online leaderboard')
   await tap(page.getByRole('button', { name: 'Weekly', exact: true }))
   await expect(page.locator('#board-source')).toContainText('Showing scores saved on this device')

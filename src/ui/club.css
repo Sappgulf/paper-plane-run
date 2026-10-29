@@ -481,6 +481,7 @@ textarea:focus-visible, summary:focus-visible, [tabindex]:not(canvas):focus-visi
   .set-row select, .import-input, .backup-text {
     min-height: 44px;
   }
+  #menu .name-row input, .hangar-search-input, .import-input, .backup-text, .set-row select { font-size: 16px; }
   #menu .diff-btn, #menu .ctrl-btn { min-height: 44px; }
   #menu .action-pill { min-height: 64px; }
   .set-row input[type=checkbox], #menu .inline-check input { width: 22px; height: 22px; }
