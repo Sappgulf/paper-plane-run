@@ -1370,7 +1370,7 @@ function renderStats() {
   `
 }
 
-// Generation token: a slow remote fetch (Global/Weekly) must never overwrite
+// Generation token: a slow remote fetch must never overwrite
 // a leaderboard rendered after it started, so every render captures a token
 // and bails before touching the DOM if a newer render has run since.
 let boardRenderToken = 0
@@ -1381,9 +1381,9 @@ async function renderBoard(tab = 'local') {
   const token = ++boardRenderToken
   list.innerHTML = ''
   const sourceNote = $('board-source')
-  if (sourceNote) sourceNote.textContent = tab === 'remote'
-    ? 'Online scores are temporary and can vary between sessions.'
-    : 'Scores saved on this device.'
+  if (sourceNote) sourceNote.textContent = tab === 'local'
+    ? 'Scores saved on this device.'
+    : 'Online leaderboard · scores are checked for plausibility; play is not independently verified.'
   document.querySelectorAll('[data-board]').forEach((t) => {
     const selected = t.dataset.board === tab
     t.classList.toggle('active', selected)
@@ -1392,24 +1392,18 @@ async function renderBoard(tab = 'local') {
   let rows = []
   let remoteFailed = false
   if (tab === 'local') rows = getLocalTop(12)
-  else if (tab === 'daily') rows = getDailyTop(dailyKey(), difficulty.id, 12)
-  else if (tab === 'weekly') {
-    rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
-    if (!rows.length) {
-      if (sourceNote) sourceNote.textContent = 'Online scores are temporary and can vary between sessions.'
-      list.innerHTML = '<li class="board-loading">Loading weekly scores…</li>'
-      const remote = await fetchRemoteTop(difficulty.id, { weekly: true })
-      if (token !== boardRenderToken) return
-      remoteFailed = remote === null
-      rows = remote?.scores || []
-    }
-  }
   else {
-    list.innerHTML = '<li class="board-loading">Loading global scores…</li>'
-    const remote = await fetchRemoteTop(difficulty.id, false)
+    list.innerHTML = '<li class="board-loading">Loading online scores…</li>'
+    const remote = await fetchRemoteTop(difficulty.id, { daily: tab === 'daily', weekly: tab === 'weekly' })
     if (token !== boardRenderToken) return
     remoteFailed = remote === null
     rows = remote?.scores || []
+    if (remoteFailed && tab !== 'remote') {
+      rows = tab === 'daily' ? getDailyTop(dailyKey(), difficulty.id, 12) : getWeeklyTop(weeklyKey(), difficulty.id, 12)
+      if (sourceNote) sourceNote.textContent = 'Online leaderboard unavailable. Showing scores saved on this device.'
+    } else if (remoteFailed && sourceNote) {
+      sourceNote.textContent = 'Online leaderboard unavailable. Scores stay on this device.'
+    }
   }
   if (token !== boardRenderToken) return
   if (!rows.length) {

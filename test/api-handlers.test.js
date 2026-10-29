@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import leaderboardHandler from '../api/leaderboard.js'
+import leaderboardHandler, { createLeaderboardHandler } from '../api/leaderboard.js'
 import analyticsHandler from '../api/analytics.js'
 
 function responseDouble() {
@@ -27,64 +27,78 @@ function responseDouble() {
 }
 
 beforeEach(() => {
-  globalThis.__pprBoard = { all: [], daily: {}, weekly: {} }
-  globalThis.__pprLeaderboardRate = new Map()
   globalThis.__pprAnalytics = { events: [], funnel: {} }
   globalThis.__pprAnalyticsRate = new Map()
 })
 
 describe('leaderboard API boundary', () => {
-  test('rejects invalid modes and bounds submissions', async () => {
-    const invalid = responseDouble()
-    await leaderboardHandler({ method: 'GET', query: { mode: 'admin' } }, invalid)
-    expect(invalid.statusCode).toBe(400)
-
-    const submitted = responseDouble()
-    await leaderboardHandler({
-      method: 'POST',
-      headers: { 'x-forwarded-for': 'test-leaderboard' },
-      body: {
-        name: '  <img src=x>\u0000',
-        distance: '42.9',
-        stars: '-3.4',
-        mode: 'normal',
-      },
-    }, submitted)
-
-    expect(submitted.statusCode).toBe(200)
-    expect(submitted.headers['Cache-Control']).toBe('no-store')
-    expect(submitted.payload.scores[0]).toMatchObject({
-      name: '<img src=x>',
-      distance: 42,
-      stars: 0,
-      mode: 'normal',
-    })
-  })
-
-  test('rejects oversized bodies', async () => {
+  test('rejects scores without a server-issued run', async () => {
     const result = responseDouble()
-    await leaderboardHandler({ method: 'POST', body: 'x'.repeat(16 * 1024 + 1) }, result)
-    expect(result.statusCode).toBe(413)
+    await leaderboardHandler({ method: 'POST', body: { name: 'Pilot', distance: 500, stars: 10, mode: 'normal' } }, result)
+    expect(result.statusCode).toBe(400)
   })
 
-  test('keeps a weekly bucket separate from daily and all-time', async () => {
-    const posted = responseDouble()
-    await leaderboardHandler({
-      method: 'POST',
-      headers: { 'x-forwarded-for': 'test-weekly' },
-      body: { name: 'Fold', distance: 880, stars: 9, mode: 'normal', weekly: true },
-    }, posted)
-    expect(posted.statusCode).toBe(200)
+  test('reports unavailable storage instead of accepting a run', async () => {
+    const result = responseDouble()
+    const handler = createLeaderboardHandler({ getStore: () => { throw new Error('offline') } })
+    await handler({ method: 'POST', body: { action: 'start', mode: 'normal', kind: 'classic' } }, result)
+    expect(result.statusCode).toBe(503)
+  })
 
-    const weekly = responseDouble()
-    await leaderboardHandler({ method: 'GET', query: { mode: 'normal', weekly: '1' } }, weekly)
-    expect(weekly.payload.weekly).toBe(true)
-    expect(weekly.payload.week).toMatch(/^\d{4}-W\d{2}$/)
-    expect(weekly.payload.scores.map((row) => row.distance)).toEqual([880])
+  test('rejects invalid board selectors, runs, scores and oversized bodies', async () => {
+    const cases = [
+      [{ method: 'GET', query: { mode: 'admin' } }, 400],
+      [{ method: 'GET', query: { mode: 'normal', daily: '1', weekly: '1' } }, 400],
+      [{ method: 'POST', body: { action: 'start', mode: 'normal', kind: 'layout' } }, 400],
+      [{ method: 'POST', body: { action: 'start', mode: 'normal', kind: 'daily', seed: 1 } }, 400],
+      [{ method: 'POST', body: { action: 'finish', runId: 'a'.repeat(32), name: 'Pilot', distance: '42', stars: 1 } }, 400],
+      [{ method: 'POST', body: { action: 'finish', runId: 'a'.repeat(32), name: 'Pilot', distance: 42, stars: -1 } }, 400],
+      [{ method: 'POST', body: 'x'.repeat(16 * 1024 + 1) }, 413],
+    ]
+    for (const [req, status] of cases) {
+      const result = responseDouble()
+      await leaderboardHandler(req, result)
+      expect(result.statusCode).toBe(status)
+    }
+  })
 
-    const daily = responseDouble()
-    await leaderboardHandler({ method: 'GET', query: { mode: 'normal', daily: '1' } }, daily)
-    expect(daily.payload.scores).toEqual([])
+  test('rejects expired tickets and enforces the shared rate limit', async () => {
+    let allowed = true
+    const store = { rateLimit: async () => allowed, getRun: async () => null, getReceipt: async () => null }
+    const handler = createLeaderboardHandler({ getStore: () => store })
+    const body = { action: 'finish', runId: 'a'.repeat(32), name: 'Pilot', distance: 42, stars: 1 }
+    const expired = responseDouble()
+    await handler({ method: 'POST', body }, expired)
+    expect(expired.statusCode).toBe(400)
+    allowed = false
+    const limited = responseDouble()
+    await handler({ method: 'POST', body }, limited)
+    expect(limited.statusCode).toBe(429)
+  })
+
+  test('a retry after a partial storage failure does not create a second score', async () => {
+    let clock = 100_000
+    const written = new Set()
+    let first = true
+    const store = {
+      rateLimit: async () => true,
+      getRun: async () => JSON.stringify({ mode: 'normal', kind: 'classic', period: '', startedAt: 90_000 }),
+      commit: async ({ entry }) => {
+        written.add(JSON.stringify(entry))
+        if (first) { first = false; throw new Error('interrupted') }
+        return 1
+      },
+    }
+    const handler = createLeaderboardHandler({ getStore: () => store, now: () => clock })
+    const body = { action: 'finish', runId: 'a'.repeat(32), name: 'Pilot', distance: 42, stars: 1 }
+    const failed = responseDouble()
+    await handler({ method: 'POST', body }, failed)
+    expect(failed.statusCode).toBe(503)
+    clock += 1000
+    const retried = responseDouble()
+    await handler({ method: 'POST', body }, retried)
+    expect(retried.statusCode).toBe(200)
+    expect(written.size).toBe(1)
   })
 })
 

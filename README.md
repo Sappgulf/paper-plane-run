@@ -271,12 +271,31 @@ Menu → **⚙️ Settings** for season override, graphics, accessibility.
 - `GET/POST /api/leaderboard`
 - `GET/POST /api/analytics`
 
-Both endpoints are optional best-effort Vercel functions: the browser keeps
-local progress when they are unavailable, and serverless memory is not a
-durable leaderboard database. Writes are bounded and rate-limited, while
-analytics reads return aggregate funnel counts only. Weekly Fold scores
-land in a server-computed ISO-week bucket (`?weekly=1`) in addition to the
-device board.
+The leaderboard uses Upstash Redis through Vercel's `KV_REST_API_URL` and
+`KV_REST_API_TOKEN` environment variables. All-time boards retain the best
+100 runs per difficulty; daily and weekly boards retain the best 30 per
+period and expire 90 days after their last submission. Reads return the top
+15. Daily and weekly runs are assigned to their server-issued start period,
+even if they finish after a UTC boundary. Device scores remain separate.
+
+An online run receives a single-use ticket at launch. The server checks the
+mode and current daily/weekly seed, integer score bounds (1–100,000,000m and
+0–1,000,000 stars), and conservative elapsed-time limits of 5,000m and 500
+stars per second with a 30-second allowance. Tickets expire after 48 hours;
+identical retries are idempotent. These checks reject malformed and grossly
+implausible results, but the client still reports its own score: they cannot
+prove a plausible run was played honestly. The API limits submissions to 60
+per IP per minute. If the service is unavailable, a flight remains playable
+and the app reports that the online score was not saved.
+
+The connected Redis resource uses the free plan with automatic upgrades and
+eviction disabled. Its quotas and availability are provider limits; once a
+limit is reached, online scores can be unavailable until capacity returns.
+Earlier memory-only global scores cannot be migrated. Existing iOS installs
+need an updated native bundle to submit using the ticket protocol.
+
+Analytics remains an optional best-effort Vercel function and returns aggregate
+funnel counts only.
 
 ## Verification
 

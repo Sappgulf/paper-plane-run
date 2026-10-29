@@ -1,13 +1,47 @@
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   getLocalTop,
+  fetchRemoteTop,
   getWeeklyTop,
+  startRemoteRun,
   submitLocalScore,
+  submitRemoteScore,
 } from '../src/leaderboard.js'
 
 describe('leaderboards', () => {
   beforeEach(() => {
     localStorage.clear()
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  test('submits a score against its run ticket and retries a lost response', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await submitRemoteScore({ runId: 'a'.repeat(32), name: 'Fold', distance: 42, stars: 2 })
+    expect(result).toEqual({ ok: true })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const bodies = fetchMock.mock.calls.map(([, options]) => JSON.parse(options.body))
+    expect(bodies).toEqual([
+      { action: 'finish', runId: 'a'.repeat(32), name: 'Fold', distance: 42, stars: 2 },
+      { action: 'finish', runId: 'a'.repeat(32), name: 'Fold', distance: 42, stars: 2 },
+    ])
+  })
+
+  test('starts a daily run with its route seed and fails safely on a rejected score', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ runId: 'b'.repeat(32) }) })
+      .mockResolvedValueOnce({ ok: false, status: 400 })
+    vi.stubGlobal('fetch', fetchMock)
+    const runId = await startRemoteRun({ kind: 'daily', mode: 'normal', seed: 123 })
+    expect(runId).toBe('b'.repeat(32))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ action: 'start', kind: 'daily', mode: 'normal', seed: 123 })
+    expect(await submitRemoteScore({ runId, name: 'Fold', distance: 99, stars: 1 })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('treats a malformed online leaderboard response as unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scores: 'invalid' }) }))
+    expect(await fetchRemoteTop('normal', { daily: true })).toBeNull()
   })
 
   test('keeps a weekly board separate from the daily list', () => {

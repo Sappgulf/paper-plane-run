@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-29 — Persistent leaderboard
+
+- Replaced instance-local boards with Upstash Redis; all-time, daily and weekly scores are isolated by difficulty and the run's starting UTC period. A one-use run ticket, current route seed, integer bounds, conservative elapsed-time limits and a shared per-IP rate limit reject malformed and grossly implausible submissions. They do not prove honest play.
+- Identical retries are idempotent, including recovery from partial writes. The app reports online submission status and falls back to device scores for daily and weekly reads when the service is unavailable.
+- Verified the complete unit suite, real Redis persistence across processes, concurrent and partial retries, ranking, rate limits and week boundaries; an isolated flight-to-Redis browser test; desktop/mobile save, failure and UTC-boundary flows; production bundle, budget and iOS web parity. The free Redis plan has automatic upgrades and eviction disabled. Old instance-local scores cannot be migrated; existing native installations need an updated bundle.
+
 ## 2026-10-29 — Release audit and flight feedback
 
 - Cleared magnet feedback when a flight ends or returns to the menu; the menu regression failed before the fix and passed on desktop and mobile afterward.

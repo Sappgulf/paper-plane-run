@@ -1,163 +1,124 @@
-/**
- * Lightweight global leaderboard for Vercel serverless.
- * In-memory per warm instance + best-effort durability via response merge.
- * Clients also keep a local leaderboard.
- */
+import { createHash } from 'node:crypto'
+import { isLeaderboardMode, normalizeLeaderboardName } from '../src/game/leaderboard-contract.js'
+import { dailyKey, dailySeed } from '../src/rng.js'
+import { weeklyKey, weeklySeed } from '../src/game/weekly-fold.js'
+import { createLeaderboardStore } from '../src/server/leaderboard-store.js'
 
-import {
-  isLeaderboardMode,
-  normalizeLeaderboardInteger,
-  normalizeLeaderboardMode,
-  normalizeLeaderboardName,
-} from '../src/game/leaderboard-contract.js'
-import { weeklyKey } from '../src/game/weekly-fold.js'
-
-const g = globalThis
 const MAX_BODY_BYTES = 16 * 1024
-const RATE_LIMIT_WINDOW_MS = 60 * 1000
-const RATE_LIMIT_MAX_REQUESTS = 60
-if (!g.__pprBoard) {
-  g.__pprBoard = {
-    all: [],
-    daily: {},
-    weekly: {},
-  }
-}
+const RUN_ID = /^[A-Za-z0-9_-]{32}$/
+const KINDS = new Set(['classic', 'daily', 'weekly'])
+const MAX_DISTANCE = 100_000_000
+const MAX_STARS = 1_000_000
 
-function sortTrim(list, n = 25) {
-  return list
-    .sort((a, b) => b.distance - a.distance || b.stars - a.stars)
-    .slice(0, n)
-}
-
-function dayKey() {
-  const d = new Date()
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
-}
-
-function sanitize(entry) {
-  return {
-    name: normalizeLeaderboardName(entry.name),
-    distance: Math.min(1e6, normalizeLeaderboardInteger(entry.distance)),
-    stars: Math.min(1e4, normalizeLeaderboardInteger(entry.stars)),
-    mode: normalizeLeaderboardMode(entry.mode),
-    daily: !!entry.daily,
-    weekly: !!entry.weekly && !entry.daily,
-    at: Date.now(),
-  }
-}
-
-function setSecurityHeaders(res) {
-  res.setHeader('Cache-Control', 'no-store')
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-}
-
-function requestKey(req) {
-  return String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'anonymous')
-    .split(',')[0]
-    .trim()
-    .slice(0, 80)
-}
-
-function isRateLimited(req) {
-  const now = Date.now()
-  const key = requestKey(req)
-  const state = g.__pprLeaderboardRate || (g.__pprLeaderboardRate = new Map())
-  const previous = state.get(key)
-  if (!previous || now - previous.startedAt >= RATE_LIMIT_WINDOW_MS) {
-    state.set(key, { startedAt: now, count: 1 })
-    return false
-  }
-  previous.count += 1
-  return previous.count > RATE_LIMIT_MAX_REQUESTS
-}
-
-function requestBodySize(req) {
-  if (typeof req.body === 'string') return new TextEncoder().encode(req.body).byteLength
-  if (req.body && typeof req.body === 'object') {
-    try {
-      return new TextEncoder().encode(JSON.stringify(req.body)).byteLength
-    } catch {
-      return MAX_BODY_BYTES + 1
-    }
-  }
-  return 0
-}
-
-function parseBody(req) {
-  if (requestBodySize(req) > MAX_BODY_BYTES) return null
-  if (!req.body) return {}
-  if (typeof req.body === 'object') {
-    return Array.isArray(req.body) ? null : req.body
-  }
+function parseBody(body) {
   try {
-    const body = JSON.parse(req.body)
-    return body && typeof body === 'object' && !Array.isArray(body) ? body : null
+    const raw = typeof body === 'string' ? body : JSON.stringify(body ?? {})
+    if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return { error: 413 }
+    const value = JSON.parse(raw)
+    return value && typeof value === 'object' && !Array.isArray(value) ? { value } : { error: 400 }
   } catch {
-    return null
+    return { error: 400 }
   }
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  setSecurityHeaders(res)
-  if (req.method === 'OPTIONS') return res.status(204).end()
-
-  const board = g.__pprBoard
-
-  if (req.method === 'GET') {
-    const mode = normalizeLeaderboardMode(req.query?.mode, 'normal')
-    if (req.query?.mode && !isLeaderboardMode(req.query.mode)) {
-      return res.status(400).json({ error: 'invalid mode' })
-    }
-    const daily = req.query?.daily === '1'
-    const weekly = req.query?.weekly === '1'
-    if (daily) {
-      const key = `${dayKey()}|${mode}`
-      const list = board.daily[key] || []
-      return res.status(200).json({ source: 'remote', daily: true, weekly: false, mode, day: dayKey(), scores: list })
-    }
-    if (weekly) {
-      const week = weeklyKey()
-      const key = `${week}|${mode}`
-      const list = (board.weekly || {})[key] || []
-      return res.status(200).json({ source: 'remote', daily: false, weekly: true, mode, week, scores: list })
-    }
-    const scores = board.all.filter((s) => s.mode === mode).slice(0, 15)
-    return res.status(200).json({ source: 'remote', daily: false, weekly: false, mode, scores })
-  }
-
-  if (req.method === 'POST') {
-    if (isRateLimited(req)) return res.status(429).json({ error: 'too many submissions' })
-    const body = parseBody(req)
-    if (!body) return res.status(413).json({ error: 'invalid or oversized body' })
-    const entry = sanitize(body)
-    if (entry.distance < 1) return res.status(400).json({ error: 'too low' })
-
-    board.all.push(entry)
-    board.all = sortTrim(board.all, 100)
-
-    if (entry.daily) {
-      const key = `${dayKey()}|${entry.mode}`
-      if (!board.daily[key]) board.daily[key] = []
-      board.daily[key].push(entry)
-      board.daily[key] = sortTrim(board.daily[key], 30)
-    }
-    if (entry.weekly) {
-      if (!board.weekly) board.weekly = {}
-      const key = `${weeklyKey()}|${entry.mode}`
-      if (!board.weekly[key]) board.weekly[key] = []
-      board.weekly[key].push(entry)
-      board.weekly[key] = sortTrim(board.weekly[key], 30)
-    }
-
-    return res.status(200).json({
-      ok: true,
-      scores: board.all.filter((s) => s.mode === entry.mode).slice(0, 15),
-    })
-  }
-
-  return res.status(405).json({ error: 'method' })
+function clientAddress(req) {
+  return String(req.headers?.['x-vercel-forwarded-for'] || req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'anonymous')
+    .split(',')[0].trim().slice(0, 80)
 }
+
+function fingerprint(id, name, distance, stars) {
+  return createHash('sha256').update(JSON.stringify([id, name, distance, stars])).digest('hex')
+}
+
+function configuredStore() {
+  return createLeaderboardStore({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN })
+}
+
+/** The browser supplies scores, so these bounds are plausibility checks, not
+ * proof of honest play. Generous margins preserve legitimate boosted runs. */
+function plausible(run, distance, stars, now) {
+  const seconds = Math.max(0, (now - run.startedAt) / 1000) + 30
+  return distance <= seconds * 5000 && stars <= seconds * 500
+}
+
+export function createLeaderboardHandler({ getStore = configuredStore, now = Date.now } = {}) {
+  return async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    res.setHeader('Cache-Control', 'no-store')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    if (req.method === 'OPTIONS') return res.status(204).end()
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'method' })
+
+    if (req.method === 'GET') {
+      const mode = req.query?.mode || 'normal'
+      const daily = req.query?.daily || '0'
+      const weekly = req.query?.weekly || '0'
+      if (!isLeaderboardMode(mode) || !['0', '1'].includes(daily) || !['0', '1'].includes(weekly) || (daily === '1' && weekly === '1')) {
+        return res.status(400).json({ error: 'invalid leaderboard selection' })
+      }
+      const kind = daily === '1' ? 'daily' : weekly === '1' ? 'weekly' : 'classic'
+      const date = new Date(now())
+      const period = kind === 'daily' ? dailyKey(date) : kind === 'weekly' ? weeklyKey(date) : ''
+      try {
+        const scores = await getStore().read(mode, kind, period)
+        return res.status(200).json({ source: 'remote', daily: kind === 'daily', weekly: kind === 'weekly', mode,
+          ...(kind === 'daily' ? { day: period } : kind === 'weekly' ? { week: period } : {}), scores })
+      } catch {
+        return res.status(503).json({ error: 'leaderboard unavailable' })
+      }
+    }
+
+    const parsed = parseBody(req.body)
+    if (parsed.error) return res.status(parsed.error).json({ error: 'invalid or oversized body' })
+    const body = parsed.value
+    if (body.action !== 'start' && body.action !== 'finish') return res.status(400).json({ error: 'run ticket required' })
+    if (body.action === 'start' && (!isLeaderboardMode(body.mode) || !KINDS.has(body.kind))) {
+      return res.status(400).json({ error: 'invalid run' })
+    }
+    const startedAt = now()
+    if (body.action === 'start' && body.kind !== 'classic') {
+      const date = new Date(startedAt)
+      const expected = body.kind === 'daily' ? dailySeed(body.mode, date) : weeklySeed(body.mode, date)
+      if (body.seed !== expected) return res.status(400).json({ error: 'run does not match the current route' })
+    }
+    if (body.action === 'finish' && (!RUN_ID.test(body.runId || '') || typeof body.name !== 'string'
+      || body.name.length > 128 || !Number.isSafeInteger(body.distance) || body.distance < 1 || body.distance > MAX_DISTANCE
+      || !Number.isSafeInteger(body.stars) || body.stars < 0 || body.stars > MAX_STARS)) {
+      return res.status(400).json({ error: 'invalid score' })
+    }
+
+    try {
+      const store = getStore()
+      if (!await store.rateLimit(clientAddress(req))) return res.status(429).json({ error: 'too many submissions' })
+      if (body.action === 'start') {
+        const date = new Date(startedAt)
+        const period = body.kind === 'daily' ? dailyKey(date) : body.kind === 'weekly' ? weeklyKey(date) : ''
+        const runId = await store.issue({ mode: body.mode, kind: body.kind, period, startedAt })
+        return res.status(201).json({ runId })
+      }
+
+      const name = normalizeLeaderboardName(body.name)
+      const hash = fingerprint(body.runId, name, body.distance, body.stars)
+      const rawRun = await store.getRun(body.runId)
+      if (!rawRun) {
+        const receipt = await store.getReceipt(body.runId)
+        return receipt === `c:${hash}` ? res.status(200).json({ ok: true }) : res.status(400).json({ error: 'run expired or already used' })
+      }
+      const run = JSON.parse(rawRun)
+      const completedAt = now()
+      if (!plausible(run, body.distance, body.stars, completedAt)) return res.status(400).json({ error: 'score outside plausible limits' })
+      const entry = { name, distance: body.distance, stars: body.stars, mode: run.mode,
+        daily: run.kind === 'daily', weekly: run.kind === 'weekly', at: run.startedAt, id: body.runId }
+      const result = await store.commit({ id: body.runId, rawRun, fingerprint: hash,
+        score: body.distance * (MAX_STARS + 1) + body.stars, entry, run })
+      if (result === 1 || result === 2) return res.status(200).json({ ok: true })
+      return res.status(400).json({ error: 'run expired or already used' })
+    } catch {
+      return res.status(503).json({ error: 'leaderboard unavailable' })
+    }
+  }
+}
+
+export default createLeaderboardHandler()

@@ -70,6 +70,7 @@ import {
 } from './upgrades.js'
 import {
   submitLocalScore,
+  startRemoteRun,
   submitRemoteScore,
 } from './leaderboard.js'
 import { parseCompact } from './editor.js'
@@ -798,6 +799,8 @@ updateDailyHint()
 // ---------------------------------------------------------------------------
 /** @type {'classic'|'daily'|'weekly'|'tutorial'|'layout'|'journey'} */
 let runKind = 'classic'
+let remoteRunPromise = null
+let scoreSubmissionGeneration = 0
 let journey = loadJourney(safeStorage).journey
 let journeyRunConfig = null
 let mastery = loadMastery(safeStorage).mastery
@@ -831,6 +834,7 @@ let lastRun = { d: 0, s: 0, m: 'normal', daily: false, weekly: false, seed: null
 let layoutPlay = null
 let rng = Math.random
 let activeRunSeed = null
+let activeRunPeriod = null
 let activeFold = null
 let ghostRecorder = null
 let ghostData = null
@@ -4677,6 +4681,10 @@ function applyUpgradeVisuals(fx = activeUpgradeEffects) {
 }
 
 function resetGame() {
+  remoteRunPromise = null
+  scoreSubmissionGeneration += 1
+  const scoreStatus = $('score-sync-status')
+  if (scoreStatus) { scoreStatus.textContent = ''; scoreStatus.classList.add('hidden') }
   stopScoreCountUp()
   lastFlightDebrief = null
   renderFlightDebrief(flightDebriefEl, null)
@@ -4800,18 +4808,20 @@ function resetGame() {
 
   // RNG
   activeFold = null
+  const runDate = new Date()
+  activeRunPeriod = runKind === 'daily' ? dailyKey(runDate) : runKind === 'weekly' ? weeklyKey(runDate) : null
   if (runKind === 'daily') {
     activeRunSeed = launchChallenge?.kind === 'daily' && launchChallenge.seed
       ? launchChallenge.seed
-      : dailySeed(difficulty.id)
+      : dailySeed(difficulty.id, runDate)
     rng = mulberry32(activeRunSeed)
-    activeTwist = todaysTwist()
+    activeTwist = todaysTwist(runDate)
   } else if (runKind === 'weekly') {
     activeFold = (launchChallenge?.kind === 'weekly' && foldById(launchChallenge.foldId))
-      || thisWeeksFold()
+      || thisWeeksFold(runDate)
     activeRunSeed = launchChallenge?.kind === 'weekly' && launchChallenge.seed
       ? launchChallenge.seed
-      : weeklySeed(difficulty.id)
+      : weeklySeed(difficulty.id, runDate)
     rng = mulberry32(activeRunSeed)
     activeTwist = activeFold
   } else if (runKind === 'journey' && journeyRunConfig) {
@@ -5662,6 +5672,9 @@ async function startGame(kind = 'classic', opts = {}) {
     $('sw-update-banner')?.classList.add('hidden')
     manualPause = false
     resetGame()
+    if (['classic', 'daily', 'weekly'].includes(kind)) {
+      remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind, seed: activeRunSeed })
+    }
     state = 'playing'
     canvas.focus({ preventScroll: true })
     // Hydrate the route strip immediately so the shell never exposes an
@@ -6270,14 +6283,19 @@ function finalizeDeathUnsafe() {
   if (isDistanceRun) {
     submitLocalScore({
       name, distance: d, stars, mode: difficulty.id,
-      daily: runKind === 'daily', dailyKey: dailyKey(),
-      weekly: runKind === 'weekly', weeklyKey: weeklyKey(),
+      daily: runKind === 'daily', dailyKey: activeRunPeriod,
+      weekly: runKind === 'weekly', weeklyKey: activeRunPeriod,
     })
-    submitRemoteScore({
-      name, distance: d, stars, mode: difficulty.id,
-      daily: runKind === 'daily',
-      weekly: runKind === 'weekly',
-    })
+    const run = remoteRunPromise
+    const generation = scoreSubmissionGeneration
+    const status = $('score-sync-status')
+    if (status) { status.textContent = 'Saving online score…'; status.classList.remove('hidden') }
+    void Promise.resolve(run).then(runId => submitRemoteScore({ runId, name, distance: d, stars }))
+      .then(result => {
+        if (status && generation === scoreSubmissionGeneration) {
+          status.textContent = result?.ok ? 'Online score submitted.' : 'Online score unavailable. Check the Device board.'
+        }
+      })
   }
 
   {

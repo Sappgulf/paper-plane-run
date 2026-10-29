@@ -1002,7 +1002,24 @@ test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
   await expect(row).toContainText('<b>pilot</b>')
   await expect(row.locator('b, img, script')).toHaveCount(0)
   await tap(page.getByRole('button', { name: 'Global', exact: true }))
-  await expect(page.locator('#board-source')).toContainText('Online scores are temporary')
+  await expect(page.locator('#board-source')).toContainText('Online leaderboard')
+})
+
+test('daily scores come from the online board and weekly falls back when unavailable', async ({ page }) => {
+  await page.route('**/api/leaderboard?*', async route => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('weekly') === '1') return route.fulfill({ status: 503, json: { error: 'unavailable' } })
+    return route.fulfill({ json: { scores: [{ name: 'Online Pilot', distance: 800, stars: 8, mode: 'normal' }] } })
+  })
+  await openApp(page)
+  await tap(page.getByRole('button', { name: /^Hangar/ }))
+  await tap(page.getByRole('button', { name: 'Logbook & tools' }))
+  await tap(page.getByRole('tab', { name: /Board/ }))
+  await tap(page.getByRole('button', { name: 'Daily', exact: true }))
+  await expect(page.locator('#board-list')).toContainText('Online Pilot')
+  await expect(page.locator('#board-source')).toContainText('Online leaderboard')
+  await tap(page.getByRole('button', { name: 'Weekly', exact: true }))
+  await expect(page.locator('#board-source')).toContainText('Showing scores saved on this device')
 })
 
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {

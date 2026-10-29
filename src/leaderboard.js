@@ -92,7 +92,8 @@ export async function fetchRemoteTop(mode = 'normal', opts = false, { timeoutMs 
     })
     const res = await fetch(`${API_BASE}/api/leaderboard?${q}`, controller ? { signal: controller.signal } : undefined)
     if (!res.ok) return null
-    return await res.json()
+    const result = await res.json()
+    return Array.isArray(result?.scores) ? result : null
   } catch {
     return null
   } finally {
@@ -100,16 +101,32 @@ export async function fetchRemoteTop(mode = 'normal', opts = false, { timeoutMs 
   }
 }
 
-export async function submitRemoteScore(entry) {
-  try {
-    const res = await fetch(`${API_BASE}/api/leaderboard`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry),
-    })
-    if (!res.ok) return null
-    return await res.json()
-  } catch {
-    return null
+async function postRemote(body, attempts = 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = controller ? setTimeout(() => controller.abort(), 6000) : null
+    try {
+      const res = await fetch(`${API_BASE}/api/leaderboard`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), ...(controller ? { signal: controller.signal } : {}),
+      })
+      if (res.ok) return await res.json()
+      if (res.status < 500) return null
+    } catch {
+      // A retry is safe for finish: the server makes identical submissions idempotent.
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
   }
+  return null
+}
+
+export async function startRemoteRun({ mode, kind, seed }) {
+  const result = await postRemote({ action: 'start', mode, kind, seed })
+  return typeof result?.runId === 'string' ? result.runId : null
+}
+
+export async function submitRemoteScore({ runId, name, distance, stars }) {
+  if (!runId) return null
+  return postRemote({ action: 'finish', runId, name, distance, stars }, 2)
 }
