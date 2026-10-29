@@ -620,3 +620,9 @@ Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
 - Endless flights now rotate the hazard mix every 900 m after the tier cap, keeping capped difficulty, safe-gap behavior and tier-climb rewards unchanged. Hazard descriptions now match the actual weighting.
 - Hangar search and tree filters distinguish a maxed subset and empty results from a fully maxed collection. Added boundary, spawn-pump and desktop/mobile search regression coverage.
 - Verification: 756 unit tests passed (7 skipped); final bundle and 26-file iOS parity checks passed. The full browser run recorded 142 passes, 54 skips and two desktop failures; both failures passed in isolated reruns. The first trace showed an extra page load, and the second collected too few hazard samples on that run. Dedicated iPhone simulator: inspected Hangar search and a Classic flight with pause and return to menu. Signed iPhone build 1.0.1 (5) succeeded.
+
+## 2026-10-29 — Launch, impact and hazard details
+
+- Replaced the tiny unfold pop with a brief automatic forward throw; it is a visual-only transition and does not delay control or alter collision coordinates. Reduced motion starts at the normal pose. A player-controlled slingshot remains a possible future interaction.
+- Crash motion now reaches the ground sooner, stops tumbling on impact and adds a scale-aware squash and paper burst. Reduced motion avoids the spin and limits sideways movement. Added eye and hinge details to the bird, hawk and scissors artwork without changing collision silhouettes.
+- Verification: 758 unit tests passed (7 skipped). A focused desktop/mobile browser run passed 15 tests with 5 intentional skips; artwork and launch/crash unit checks passed again after the last art correction. On the dedicated simulator, tutorial flight, a Tuck crash, the result and retry were observed. The final web build, bundle budget and 26-file iOS parity passed; signed iOS build 1.0.1 (6) verified.

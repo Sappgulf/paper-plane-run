@@ -587,6 +587,38 @@ export function createHazardCanvas({
   else if (kind === 'bird' && seasonId && SEASONAL_BIRD_PIECES[seasonId]) pieces = SEASONAL_BIRD_PIECES[seasonId]
   else if (Object.prototype.hasOwnProperty.call(HAZARD_PIECES, kind)) pieces = HAZARD_PIECES[kind]
   drawHazardPieces(ctx, width, fill, pieces, hashLabel(kind))
+  // Small ink details give the silhouettes character without changing their
+  // outlines or the warning colour players use to identify danger.
+  ctx.save()
+  ctx.setTransform(width / SHEET, 0, 0, width / SHEET, width / 2, width / 2)
+  if ((kind === 'bird' && !SEASONAL_BIRD_PIECES[seasonId]) || kind === 'hawk') {
+    ctx.fillStyle = '#fff6e5'
+    ctx.beginPath()
+    ctx.arc(1.2, -18, 2.8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = HAZARD_INK
+    ctx.beginPath()
+    ctx.arc(2, -18, 1.35, 0, Math.PI * 2)
+    ctx.fill()
+    if (kind === 'hawk') {
+      ctx.strokeStyle = HAZARD_INK
+      ctx.lineWidth = 1.8
+      ctx.beginPath()
+      ctx.moveTo(-1, -22)
+      ctx.lineTo(4, -20)
+      ctx.stroke()
+    }
+  } else if (kind === 'scissors') {
+    ctx.fillStyle = HAZARD_INK
+    ctx.beginPath()
+    ctx.arc(0, 0, 3.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#fff6e5'
+    ctx.beginPath()
+    ctx.arc(0, 0, 1.3, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
   return canvas
 }
 

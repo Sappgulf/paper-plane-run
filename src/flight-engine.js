@@ -257,6 +257,7 @@ import {
   applySoftBounds,
   groundEffectSpeedMul,
   integrateRelativeFlight,
+  launchPose,
 } from './game/paper-flight.js'
 import {
   getAltitudeRecovery,
@@ -3062,6 +3063,7 @@ const _damageTint = new THREE.Color(0x6b5648)
 const _zoneFogColor = new THREE.Color()
 /** Crash sequence timer before game-over UI settles */
 let crashT = 0
+let crashLanded = false
 let crashReason = ''
 let baseFov = 60
 let fovPunch = 0
@@ -4791,6 +4793,7 @@ function resetGame() {
   if (guardianHudVal) guardianHudVal.textContent = String(guardian.remaining)
   crashT = 0
   crashReason = ''
+  crashLanded = false
   fovPunch = 0
   mouseScreen.has = true
   mouseScreen.x = 0.5
@@ -4807,7 +4810,7 @@ function resetGame() {
   applySkin(getEquippedSkinId())
   applyUpgradeVisuals(upgradeEffects)
   spawnUnfold = 0
-  plane.scale.setScalar(upgradeEffects.planeScale * 0.15 * 1.12)
+  plane.scale.setScalar(upgradeEffects.planeScale * launchPose(0, settings.reducedMotion).scale * 1.12)
 
   // RNG
   activeFold = null
@@ -6008,7 +6011,7 @@ function die(reason) {
     spawnConfetti(planeX, planeY + 1.1, 0.9, 'aero')
     // paper burst velocity
     velX = (rng() - 0.5) * 20
-    velY = 6 + rng() * 4
+    velY = 3 + rng() * 2
   } else {
     audio.missionComplete()
     if (settings.haptics) Haptic.collect()
@@ -7112,17 +7115,24 @@ function update(dt) {
     // Dramatic crash: tumble, drop, paper spin
     const isWin = crashReason === 'Tutorial complete!' || crashReason === 'Journey route complete!'
     if (!isWin) {
-      plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
-      plane.rotation.x += dt * 2.2
-      plane.rotation.y += dt * 1.4
-      plane.position.x += velX * dt
+      if (!crashLanded && !settings.reducedMotion) {
+        plane.rotation.z += dt * (4 + Math.abs(velX) * 0.1)
+        plane.rotation.x += dt * 2.2
+        plane.rotation.y += dt * 1.4
+      }
+      plane.position.x += velX * dt * (settings.reducedMotion ? 0.25 : 1)
       plane.position.y = Math.max(0.3, plane.position.y + velY * dt)
-      velY -= 28 * dt
+      velY -= 54 * dt
       velX *= Math.pow(0.15, dt)
-      // squash on ground
       if (plane.position.y <= 0.35) {
-        plane.scale.y = THREE.MathUtils.lerp(plane.scale.y, 0.35, 1 - Math.pow(0.001, dt))
-        plane.scale.x = THREE.MathUtils.lerp(plane.scale.x, 1.35, 1 - Math.pow(0.001, dt))
+        if (!crashLanded) {
+          crashLanded = true
+          spawnConfetti(plane.position.x, 0.35, 0, 'aero')
+        }
+        const baseScale = activeUpgradeEffects.planeScale * 1.12
+        const squash = settings.reducedMotion ? 0.85 : 0.48
+        plane.scale.y = THREE.MathUtils.lerp(plane.scale.y, baseScale * squash, 1 - Math.pow(0.001, dt))
+        plane.scale.x = THREE.MathUtils.lerp(plane.scale.x, baseScale * (settings.reducedMotion ? 1 : 1.2), 1 - Math.pow(0.001, dt))
         velY = 0
       }
     } else {
@@ -7157,12 +7167,12 @@ function update(dt) {
   }
 
   // Playing
-  // Brief unfold flourish right after launch — the plane pops in from a
-  // crease instead of just appearing at full size.
+  // Throw the visible plane forward into its normal flight pose without
+  // delaying controls or changing collision coordinates.
   if (spawnUnfold < 1) {
     spawnUnfold = Math.min(1, spawnUnfold + dt / UNFOLD_SECONDS)
-    const eased = 1 - Math.pow(1 - spawnUnfold, 3)
-    plane.scale.setScalar(activeUpgradeEffects.planeScale * (0.15 + eased * 0.85) * 1.12)
+    const launch = launchPose(spawnUnfold, settings.reducedMotion)
+    plane.scale.setScalar(activeUpgradeEffects.planeScale * launch.scale * 1.12)
   }
   if (runKind === 'journey' && journeyRunConfig) {
     const target = journeyRunConfig.finale ? 500 : 350
@@ -7742,7 +7752,8 @@ function update(dt) {
     nextBossAt += 500
   }
 
-  plane.position.set(planeX, planeY, 0)
+  const launch = launchPose(spawnUnfold, settings.reducedMotion)
+  plane.position.set(planeX, planeY, launch.depth)
   // Visual bank from motion (clamped so mouse snaps don't spin the plane)
   const flightPose = getPaperFlightPose({
     horizontalVelocity: velX,
@@ -7765,7 +7776,7 @@ function update(dt) {
   // Fever adds a light shimmy on top of normal banking — a readable "turbo" feel
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
-  plane.rotation.x = THREE.MathUtils.clamp(pitch, -0.5, 0.45)
+  plane.rotation.x = THREE.MathUtils.clamp(pitch + launch.pitch, -0.5, 0.45)
   const handleMul = getHandlingRollMul(activeUpgradeEffects.handlingLevel)
   plane.rotation.z = THREE.MathUtils.clamp((roll + feverWobble) * handleMul, -0.9, 0.9)
   plane.rotation.y = flightPose.yaw
@@ -8533,6 +8544,7 @@ function bossTextState() {
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'origin is plane center; x increases left on screen, y increases up; encounter z approaches zero',
   state,
+  crash: state === 'dead' ? { landed: crashLanded, y: plane.position.y } : null,
   mode: runKind,
   paused: simulationPaused,
   tutorialLesson: runKind === 'tutorial' ? (TUTORIAL_LESSONS[tutorialLessonIndex]?.title ?? null) : null,
@@ -9116,6 +9128,26 @@ if (import.meta.env.DEV && devTestState === '#test-tier-climb') {
   windTimer = 999
   distance = 985
   hudEl?.classList.remove('hidden')
+}
+
+if (import.meta.env.DEV && devTestState === '#test-launch-throw') {
+  hideAllPanels()
+  runKind = 'tutorial'
+  resetGame()
+  state = 'playing'
+  hudEl?.classList.remove('hidden')
+  simulationPaused = true
+}
+
+if (import.meta.env.DEV && devTestState === '#test-crash-impact') {
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  state = 'playing'
+  invuln = 0
+  plane.position.set(0, planeY, 0)
+  die('Crashed into a building')
+  simulationPaused = true
 }
 
 if (import.meta.env.DEV && ['#test-endless-rotation', '#test-endless-live'].includes(devTestState)) {

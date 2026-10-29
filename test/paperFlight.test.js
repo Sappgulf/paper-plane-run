@@ -5,6 +5,7 @@ import {
   groundEffectSpeedMul,
   integrateAimFlight,
   integrateRelativeFlight,
+  launchPose,
 } from '../src/game/paper-flight.js'
 
 describe('paper flight integration', () => {
@@ -80,5 +81,20 @@ describe('paper flight integration', () => {
     expect(groundEffectSpeedMul(0)).toBe(1)
     expect(groundEffectSpeedMul(2)).toBeCloseTo(1.08)
     expect(groundEffectSpeedMul(9)).toBe(groundEffectSpeedMul(5))
+  })
+})
+
+
+describe('visual launch pose', () => {
+  test('throws forward and settles exactly into the normal flight pose', () => {
+    const start = launchPose(0)
+    const halfway = launchPose(0.5)
+    expect(start.depth).toBeLessThan(halfway.depth)
+    expect(start.scale).toBeLessThan(halfway.scale)
+    expect(launchPose(1)).toEqual({ depth: 0, pitch: 0, scale: 1 })
+    expect(launchPose(20)).toEqual(launchPose(1))
+  })
+  test('reduced motion starts immediately in the normal pose', () => {
+    expect(launchPose(0, true)).toEqual({ depth: 0, pitch: 0, scale: 1 })
   })
 })
