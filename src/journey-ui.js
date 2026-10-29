@@ -99,7 +99,7 @@ export function renderJourneyBrief(root, journey) {
 export function renderRouteChoices(root, cards, onSelect) {
   if (!root) return
   root.innerHTML = cards.map((card) => `
-    <button type="button" class="journey-route-card ${card.risk}${card.selected ? ' selected' : ''}" data-route-id="${escapeHtml(card.id)}" aria-pressed="${card.selected ? 'true' : 'false'}">
+    <button type="button" class="journey-route-card ${card.risk}${card.selected ? ' selected' : ''}" data-route-id="${escapeHtml(card.id)}">
       <span class="route-stamp zone-stamp" data-zone="${escapeHtml(stampSpriteZone(card.zone))}" role="img" aria-label="${escapeHtml(zoneStampLabel(card.zone))}"></span>
       <span class="route-risk">${card.risk === 'risky' ? '⚠ Risky' : '✓ Safe'}</span>
       <span class="route-icon">${card.icon}</span>
@@ -109,6 +109,7 @@ export function renderRouteChoices(root, cards, onSelect) {
       <small class="route-mechanic"><b>${escapeHtml(card.modifierLabel)}</b> · ${escapeHtml(card.description)}</small>
       ${card.objective ? `<small class="route-objective">Goal · ${escapeHtml(card.objective.label)}</small>` : ''}
       <span class="route-reward">${card.rewardMultiplier.toFixed(2)}× rewards · ${escapeHtml(stampLabel(card.stampId))}</span>
+      <span class="route-action">Fly this route →</span>
     </button>`).join('')
   root.onclick = (event) => {
     const button = event.target.closest?.('[data-route-id]')

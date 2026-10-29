@@ -59,6 +59,8 @@ test('Journey route cards and the live HUD expose stamps and shortcut risk', asy
   await tap(page.getByRole('button', { name: /Begin Journey/ }))
 
   await expect(page.locator('.journey-route-card')).toHaveCount(2)
+  await expect(page.locator('.journey-route-card').first()).toContainText('Fly this route')
+  await expect(page.locator('.journey-route-card').first()).not.toHaveAttribute('aria-pressed')
   await expect(page.locator('.journey-route-card .zone-stamp')).toHaveCount(2)
   await expect(page.locator('.journey-route-card .zone-stamp').first()).toHaveAttribute('data-zone', 'city')
 
@@ -815,9 +817,6 @@ test('native performance pressure lowers visual cost without changing gameplay s
 })
 
 test('Living Journey chooses a route and starts the shared game loop', async ({ page }) => {
-  // The production bundle strips the DEV-only hooks this test drives; it
-  // skips itself there rather than failing forty times on a missing hook.
-  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'drives DEV-only hooks stripped from the production bundle')
   test.slow()
   const errors = collectConsoleErrors(page)
   await openApp(page)
@@ -997,10 +996,13 @@ test('leaderboard renders pilot names as text', async ({ page }, testInfo) => {
   await tap(page.getByRole('button', { name: 'Logbook & tools' }))
   await tap(page.getByRole('tab', { name: /Board/ }))
   await expect(page.getByRole('button', { name: 'Weekly' })).toBeVisible()
+  await expect(page.locator('#board-source')).toHaveText('Scores saved on this device.')
 
   const row = page.locator('#board-list .board-row').first()
   await expect(row).toContainText('<b>pilot</b>')
   await expect(row.locator('b, img, script')).toHaveCount(0)
+  await tap(page.getByRole('button', { name: 'Global', exact: true }))
+  await expect(page.locator('#board-source')).toContainText('Online scores are temporary')
 })
 
 test('mobile Hangar tabs reset the shared scroll position', async ({ page }, testInfo) => {

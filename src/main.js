@@ -429,9 +429,7 @@ function renderJourney() {
     }
     return
   }
-  $('journey-choice-title').textContent = journey.selectedRouteId
-    ? 'Selected route'
-    : `Chapter ${journey.chapter || 1} · choose the next route`
+  $('journey-choice-title').textContent = `Chapter ${journey.chapter || 1} · choose a route to fly`
   renderRouteChoices(routes, getRouteChoices(journey).map((route) => ({
     ...route,
     selected: route.id === journey.selectedRouteId,
@@ -1382,6 +1380,10 @@ async function renderBoard(tab = 'local') {
   if (!list) return
   const token = ++boardRenderToken
   list.innerHTML = ''
+  const sourceNote = $('board-source')
+  if (sourceNote) sourceNote.textContent = tab === 'remote'
+    ? 'Online scores are temporary and can vary between sessions.'
+    : 'Scores saved on this device.'
   document.querySelectorAll('[data-board]').forEach((t) => {
     const selected = t.dataset.board === tab
     t.classList.toggle('active', selected)
@@ -1394,6 +1396,7 @@ async function renderBoard(tab = 'local') {
   else if (tab === 'weekly') {
     rows = getWeeklyTop(weeklyKey(), difficulty.id, 12)
     if (!rows.length) {
+      if (sourceNote) sourceNote.textContent = 'Online scores are temporary and can vary between sessions.'
       list.innerHTML = '<li class="board-loading">Loading weekly scores…</li>'
       const remote = await fetchRemoteTop(difficulty.id, { weekly: true })
       if (token !== boardRenderToken) return
@@ -1416,7 +1419,7 @@ async function renderBoard(tab = 'local') {
       const fold = thisWeeksFold()
       list.innerHTML = `<li>No scores for ${weeklyKey()} · ${fold.name} yet — go fly!</li>`
     } else if (tab === 'remote') {
-      list.innerHTML = '<li>No global scores yet — be the first!</li>'
+      list.innerHTML = '<li>No online scores available right now — go fly!</li>'
     } else {
       list.innerHTML = '<li>No scores yet — go fly!</li>'
     }

@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, openApp, tap, waitForGameText } from './smoke-helpers.js'
 
+test('leaving a flight clears active magnet feedback', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires a development-only simulation fixture')
+  await openApp(page, '/?upgrade-proof=max#test-upgrades-shield')
+  await expect(page.locator('#magnet-pull-trail')).toBeVisible({ timeout: 45_000 })
+  await page.keyboard.press('Escape')
+  await tap(page.locator('#pause-menu'))
+  await expect(page.locator('#menu')).toBeVisible()
+  await expect(page.locator('#magnet-pull-trail')).toBeHidden()
+  await expect(page.locator('#magnet-pull-trail')).toHaveAttribute('data-active', 'false')
+})
+
 async function finishFlight(page) {
   if (process.env.PLAYWRIGHT_PREVIEW !== '1') {
     // Exercise the complete real simulation without tying completion to

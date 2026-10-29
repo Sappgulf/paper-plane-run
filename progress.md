@@ -2,6 +2,14 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-29 — Release audit and flight feedback
+
+- Cleared magnet feedback when a flight ends or returns to the menu; the menu regression failed before the fix and passed on desktop and mobile afterward.
+- Clarified that Journey cards launch their routes, corrected their button semantics, and labeled the leaderboard's device and temporary online sources. The online leaderboard still needs durable shared storage and score validation.
+- Updated Vite and Vitest to patched compatible versions; `npm audit` reports zero vulnerabilities. The production Journey smoke test now runs instead of skipping its production branch.
+- Verified 748 unit tests, web build and bundle budget, iOS bundle parity, and an iPhone 18 Pro simulator build and launch. The development browser matrix had 111 passes, 39 intentional skips and two failures; both failures passed individually (one module-load timeout, one artifact collision from a concurrent rerun). Production menu, Journey and leaderboard checks passed 5 with 1 viewport skip.
+- GitHub Actions jobs are blocked by the account billing lock; they did not run. The global leaderboard remains best-effort serverless memory, not a durable or authoritative shared board.
+
 ## 2026-10-20 — Flat street decals stopped standing up as cream walls
 
 Direction: "Another round." The art item the notes had carried for several rounds was a blank cream wall beside the road in the City view. It was never identified, and the earlier attempt to name it was wrong.

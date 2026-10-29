@@ -5422,6 +5422,7 @@ function openJourney() {
 function showMenu() {
   stopScoreCountUp()
   clearFlightBanners()
+  updateMagnetPullFeedback(null, { active: false })
   setScreenAwake(false)
   state = 'menu'
   launchChallenge = null
@@ -5945,6 +5946,7 @@ function die(reason) {
   // Capture the actual ending before the crash cleanup resets the held Tuck.
   lastFlightDebrief = buildFlightDebrief({ reason, tucking: tuckState.phase === 'tucking', stats: runStats })
   state = 'dead'
+  updateMagnetPullFeedback(null, { active: false })
   // A dead run is not skimming or tucking. `updateGroundSkim` and `advanceTuck`
   // only run while playing, so without this the last live frame's chain would
   // survive into the game-over state — reported by the HUD and the snapshot as
