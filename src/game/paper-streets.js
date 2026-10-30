@@ -195,11 +195,18 @@ export function createStreetCanvas({zoneId = 'city',crossStreet = false,canvasFa
 }
 
 /** City floor is an aligned street grid with scalloped parks, lots and folded curbs. */
-export function paintCityBlocks(ctx,width,height) {
+export function paintCityBlocks(ctx,width,height,groundArt = null) {
   ctx.fillStyle = '#e6ddc9'; ctx.fillRect(0,0,width,height)
+  if (groundArt) {
+    // The illustrated stock sits beneath the street network; existing 3D
+    // buildings and collision geometry remain the foreground landmarks.
+    ctx.globalAlpha = .72
+    ctx.drawImage(groundArt, 0, 0, width, height)
+    ctx.globalAlpha = 1
+  }
   const road = STREET_WIDTH/STREET_BLOCK_SIZE*width, curb = width*.034
   const span = width*.32
-  for (let row=0;row<2;row++) for (let col=0;col<2;col++) {
+  if (!groundArt) for (let row=0;row<2;row++) for (let col=0;col<2;col++) {
     const x = col*width*.5+width*.05, y = row*height*.5+height*.05
     const fill = (row+col)%2 ? '#cfbba2' : '#a6baa3'
     // Each lot lifts off the ground with a hard shadow and carries a fold.

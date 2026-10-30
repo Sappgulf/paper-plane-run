@@ -16,6 +16,15 @@ function nonNegative(value, fallback = 0) {
   return Math.max(0, finite(value, fallback))
 }
 
+// Keep warnings for threats that can enter the current flight corridor; the
+// extra margin provides time to react as moving hazards approach.
+export function shouldShowHazardWarning({ z, dx, dy, hitRadius = 0.85, fogDepth = Infinity, locked = false } = {}) {
+  const ahead = finite(z, Infinity)
+  const margin = nonNegative(hitRadius, 0.85) + 3.2
+  return ahead > 0 && ahead < 60 && (ahead < 36 || ahead > fogDepth || locked)
+    && Math.abs(finite(dx, Infinity)) <= margin && Math.abs(finite(dy, Infinity)) <= margin
+}
+
 export function hazardWarningScale({
   z = 0,
   hitRadius = 0.85,

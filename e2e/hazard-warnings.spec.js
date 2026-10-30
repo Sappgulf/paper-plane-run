@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, openFixture } from './smoke-helpers.js'
 
-test('approaching flyers and scissors show camera-facing collision warnings', async ({ page }) => {
+test('approaching threats in the flight corridor show camera-facing collision warnings', async ({ page }) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'requires deterministic obstacle lineup')
   const errors = collectConsoleErrors(page)
   await openFixture(page, '/?warnings=1#test-obstacles')
@@ -14,15 +14,18 @@ test('approaching flyers and scissors show camera-facing collision warnings', as
     expect(group.length).toBeGreaterThan(0)
     for (const item of group) {
       expect(item.attached).toBe(true)
-      expect(item.visible).toBe(true)
-      expect(item.opacity).toBeGreaterThan(0.2)
-      expect(item.facing).toBeCloseTo(0)
-      expect(item.radius).toBeGreaterThanOrEqual(item.hitRadius)
+      const inCorridor = Math.abs(item.dx) <= item.hitRadius + 3.2 && Math.abs(item.dy) <= item.hitRadius + 3.2
+      expect(item.visible).toBe(inCorridor)
+      if (item.visible) {
+        expect(item.opacity).toBeGreaterThan(0.2)
+        expect(item.facing).toBeCloseTo(0)
+        expect(item.radius).toBeGreaterThanOrEqual(item.hitRadius)
+      }
     }
   }
   const armored = warnings.find(item => item.flyerId === 'biplane')
-  expect(armored.armorVisible).toBe(true)
-  expect(armored.armorRadius).toBeLessThan(armored.radius)
+  expect(armored.armorVisible).toBe(armored.visible)
+  if (armored.visible) expect(armored.armorRadius).toBeLessThan(armored.radius)
   expect(errors).toEqual([])
 })
 
@@ -56,6 +59,9 @@ test('an oncoming enemy takes priority over the opening star lesson', async ({ p
   })
   expect(position.x).toBeCloseTo(position.target.screenX, 0)
   expect(position.y).toBeCloseTo(position.target.screenY, 0)
+  expect(position.target.visible).toBe(true)
+  expect(position.target.armorVisible).toBe(true)
+  expect(position.target.radius).toBeGreaterThanOrEqual(position.target.hitRadius)
   await page.screenshot({ path: `output/focus-danger-${info.project.name}.png` })
   expect(errors).toEqual([])
 })

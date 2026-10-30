@@ -46,3 +46,12 @@ test('boss approach profiles ask for distinct lines, mirror on repeat, and scale
     expect(easy.tracking).toBeGreaterThan(hard.tracking)
   }
 })
+
+
+test('boss workshops have distinct physical silhouettes outside the passage', () => {
+  const signatures = { scissors: 'scissor-handle', wind: 'turbine-cowl', stapler: 'stapler-crown', punch: 'punch-die' }
+  for (const [kind, signature] of Object.entries(signatures)) {
+    const group = createBossWorkshop({ kind, halfWidth: 4.8, halfHeight: 4.4 })
+    expect(group.getObjectByName(signature), `${kind} signature`).toBeTruthy()
+  }
+})

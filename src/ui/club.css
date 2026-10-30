@@ -183,6 +183,35 @@ button { touch-action: manipulation; }
 #fire-btn[data-ready='true'] { box-shadow: 2px 3px 0 #263d4324, inset 0 0 0 2px #bf8267; }
 #fire-btn.firing { background: #2a6872; color: var(--paper); }
 #fire-btn[data-cue='release'] { background: #ac442e; color: var(--paper); }
+/* Paired paper controls keep charge and reload legible without another HUD card. */
+#fire-btn, #ink-btn { overflow: hidden; isolation: isolate; }
+#fire-btn > span:not(.action-meter), #ink-btn > span:not(.action-meter) { position: relative; z-index: 1; }
+.action-meter { position: absolute; inset: auto 0 0; height: var(--action-charge, 0%); pointer-events: none; z-index: 0; transition: height .08s linear; }
+#fire-btn .action-meter { background: rgba(103, 191, 176, .38); }
+#ink-btn {
+  position: absolute; z-index: 12; display: grid; place-content: center; gap: 1px;
+  right: max(86px, calc(env(safe-area-inset-right) + 76px));
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 12px));
+  width: clamp(46px, 9vh, 62px); height: clamp(46px, 9vh, 62px);
+  border: 2px solid #466073; border-radius: 10px 10px 4px 4px;
+  background: #263d4ff2; color: #fff5df; box-shadow: 2px 3px 0 #263d4324;
+  cursor: pointer; touch-action: manipulation; user-select: none;
+}
+#ink-btn .action-meter { background: rgba(118, 194, 211, .32); }
+#ink-btn[data-ready='true'] { border-color: #eecb78; }
+#ink-btn[data-ready='false'] { color: #d5d7d0; }
+#ink-btn:active { transform: scale(.92); }
+.ink-glyph { font: 900 24px/1 Georgia, serif; color: #ffe1a0; transform: rotate(-90deg); }
+.ink-button-label { font: 900 10px/1.4 'Nunito', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+@media (max-width: 820px) {
+  #ink-btn { width: 72px; height: 72px; right: max(16px, env(safe-area-inset-right)); bottom: calc(max(28px, env(safe-area-inset-bottom)) + 80px); }
+}
+@media (max-height: 470px) and (max-width: 820px) {
+  #fire-btn, #ink-btn { width: 52px; height: 52px; bottom: max(12px, env(safe-area-inset-bottom)); }
+  #ink-btn { right: calc(max(16px, env(safe-area-inset-right)) + 60px); }
+}
+@media (prefers-reduced-motion: reduce) { .action-meter { transition: none; } }
+
 #wind-banner, #power-banner, #zone-banner, #flight-feedback {
   border-radius: 5px; background: #fff9edf5; box-shadow: 2px 3px 0 #263d4324; backdrop-filter: none;
 }

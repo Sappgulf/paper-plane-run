@@ -231,14 +231,16 @@ function stripPoints([ax, ay], [bx, by], width) {
 // diamond body split down its middle, swept wings with two scalloped feather
 // notches, and a small fanned tail. The old cut was two wings and nothing
 // between them, which read as a moustache.
-const BIRD_WING = [[-3, -3], [-14, -12], [-33, -17], [-38, -10], [-27, -3], [-31, 7], [-20, 10], [-9, 14], [-3, 9]]
+const BIRD_WING = [[-3, -5], [-17, -16], [-38, -22], [-32, -12], [-38, -8], [-27, -3], [-31, 3], [-20, 8], [-22, 12], [-8, 14], [-3, 8]]
 const BIRD_BODY = [[0, -12], [7, 2], [0, 26], [-7, 2]]
 const BIRD_TAIL = [[-4, 22], [4, 22], [10, 33], [0, 29], [-10, 33]]
 const BIRD_HEAD = circlePoints(0, -17, 7, 12)
 const BIRD_BEAK = [[4, -19], [14, -15], [4, -11]]
 
-const HAWK_WING = [[-3, -8], [-20, -14], [-40, -24], [-35, -13], [-39, -8], [-30, -4], [-34, 2], [-24, 4], [-27, 11], [-14, 12], [-4, 6]]
-const HAWK_BODY = [[-4, -10], [4, -10], [6, 10], [9, 24], [0, 19], [-9, 24], [-6, 10]]
+const HAWK_WING = [[-3, -8], [-18, -18], [-41, -29], [-35, -17], [-40, -13], [-31, -7], [-36, -3], [-27, 1], [-30, 6], [-20, 9], [-23, 13], [-9, 12], [-3, 6]]
+const HAWK_BODY = [[-5, -12], [5, -12], [8, 4], [6, 17], [0, 27], [-6, 17], [-8, 4]]
+const HAWK_TAIL = [[-5, 16], [-15, 32], [-7, 28], [-4, 36], [0, 30], [4, 36], [7, 28], [15, 32], [5, 16]]
+const HAWK_TALON = [[-8, 8], [-16, 15], [-17, 21], [-13, 17], [-10, 22], [-7, 16], [-3, 13]]
 const HAWK_HEAD = circlePoints(0, -17, 6.5, 12)
 const HAWK_BEAK = [[2, -20], [13, -16], [2, -11]]
 
@@ -247,31 +249,34 @@ const KITE_DIAMOND = [[0, -37], [28, 0], [0, 26], [-28, 0]]
 // Biplane: the iconic side view — long fuselage, two stacked wing bands on
 // struts, a tail fin at the rear and a two-blade prop over the nose. The old
 // head-on cut was three slabs and read as a ladder.
-const BIPLANE_FUSELAGE = [[-28, -5], [24, -5], [30, -2], [30, 3], [24, 6], [-28, 6]]
-const BIPLANE_FIN = [[-38, -14], [-29, -12], [-27, 4], [-38, 8]]
-const BIPLANE_UPPER = [[-22, -17], [22, -17], [24, -11], [-24, -11]]
-const BIPLANE_LOWER = [[-18, 10], [18, 10], [20, 16], [-20, 16]]
+const BIPLANE_FUSELAGE = [[-31, -4], [-20, -7], [16, -7], [28, -4], [31, 0], [27, 6], [-21, 7], [-31, 3]]
+const BIPLANE_FIN = [[-39, -17], [-30, -14], [-25, -4], [-29, 4], [-39, 8], [-35, -2]]
+const BIPLANE_UPPER = [[-29, -19], [-20, -23], [17, -23], [27, -18], [25, -12], [-27, -12]]
+const BIPLANE_LOWER = [[-22, 9], [18, 9], [24, 13], [19, 18], [-20, 18], [-25, 14]]
 const BIPLANE_STRUT = [[-12, -11], [-10, -11], [-10, 10], [-12, 10]]
-const BIPLANE_NOSE = circlePoints(30, 0, 4.5, 12)
+const BIPLANE_NOSE = circlePoints(29, 0, 5.5, 12)
+const BIPLANE_COCKPIT = [[-14, -8], [-10, -12], [1, -12], [5, -8]]
+const BIPLANE_WHEEL = circlePoints(-12, 22, 4, 10)
 const BIPLANE_PROP = [[33, -13], [35, -13], [35, 13], [33, 13]]
 
 // Dragonfly: four long horizontal wing blades in an X around a pin-thin body
 // with big round eyes, so it reads as an insect, not a moth.
-const DRAGON_UPPER = [[-4, -16], [-26, -26], [-40, -21], [-35, -14], [-4, -8]]
-const DRAGON_LOWER = [[-4, -2], [-24, 0], [-36, 7], [-29, 13], [-4, 10]]
+const DRAGON_UPPER = [[-4, -16], [-26, -29], [-41, -25], [-35, -17], [-19, -11], [-4, -8]]
+const DRAGON_LOWER = [[-4, -2], [-22, -1], [-39, 8], [-32, 15], [-19, 13], [-4, 9]]
 const DRAGON_BODY = [[-2.5, -20], [2.5, -20], [3.5, 16], [2, 28], [0, 36], [-2, 28], [-3.5, 16]]
 
 // Wasp: striped teardrop abdomen hanging off a round thorax, small head with
 // antennae, and one pair of long slim wings swept out flat and straight. The
 // old cut curved the wings up like commas and they read as horns.
-const WASP_WING = [[-3, -6], [-18, -13], [-31, -19], [-34, -14], [-19, -8], [-4, -2]]
-const WASP_THORAX = circlePoints(0, -8, 8.5, 12)
+const WASP_WING = [[-3, -8], [-17, -21], [-34, -27], [-39, -22], [-27, -12], [-15, -5], [-4, -2]]
+const WASP_THORAX = [[0, -19], [9, -13], [10, -5], [5, 1], [-5, 1], [-10, -5], [-9, -13]]
+const WASP_LEG = stripPoints([-7, 1], [-18, 14], 1.8)
 const WASP_HEAD = circlePoints(0, -22, 6, 12)
 const WASP_ANTENNA_L = stripPoints([-1.5, -27], [-6, -38], 1.8)
-const WASP_ABDOMEN = [[-8, -2], [8, -2], [6, 12], [0, 34], [-6, 12]]
+const WASP_ABDOMEN = [[-8, -1], [8, -1], [10, 8], [7, 21], [0, 36], [-7, 21], [-10, 8]]
 const WASP_STINGER = [[-2, 31], [2, 31], [0, 40]]
 
-const BALLOON_ENVELOPE = circlePoints(0, 0, 1, 20).map(([x, y]) => [x * 24, -12 + y * 27])
+const BALLOON_ENVELOPE = [[0, -40], [16, -36], [25, -25], [27, -11], [23, 3], [13, 14], [7, 19], [-7, 19], [-13, 14], [-23, 3], [-27, -11], [-25, -25], [-16, -36]]
 const BALLOON_BASKET = [[-9, 20], [9, 20], [7, 31], [-7, 31]]
 const BALLOON_ROPE = [[-12, 10], [-10, 10], [-6, 20], [-8, 20]]
 
@@ -290,6 +295,9 @@ const HAZARD_PIECES = Object.freeze({
   hawk: [
     piece(HAWK_WING),
     piece(mirrorX(HAWK_WING)),
+    piece(HAWK_TAIL),
+    piece(HAWK_TALON, { ink: 0.55 }),
+    piece(mirrorX(HAWK_TALON), { ink: 0.55 }),
     piece(HAWK_BODY, { crease: [0, 0, 0, 1] }),
     piece(HAWK_HEAD),
     piece(HAWK_BEAK),
@@ -309,6 +317,8 @@ const HAZARD_PIECES = Object.freeze({
     piece(mirrorX(BIPLANE_STRUT), { ink: 0.5 }),
     piece(BIPLANE_LOWER, { crease: [0, 13, 1, 0] }),
     piece(BIPLANE_UPPER, { crease: [0, -14, 1, 0] }),
+    piece(BIPLANE_COCKPIT, { ink: 0.6 }),
+    piece(BIPLANE_WHEEL, { ink: 0.7 }),
     piece(BIPLANE_NOSE),
     piece(BIPLANE_PROP, { ink: 0.55, crease: [0, 0, 0, 1] }),
   ],
@@ -326,6 +336,8 @@ const HAZARD_PIECES = Object.freeze({
     piece(mirrorX(WASP_WING)),
     piece(WASP_ANTENNA_L, { ink: 0.5 }),
     piece(mirrorX(WASP_ANTENNA_L), { ink: 0.5 }),
+    piece(WASP_LEG, { ink: 0.45 }),
+    piece(mirrorX(WASP_LEG), { ink: 0.45 }),
     piece(WASP_STINGER, { ink: 0.6 }),
     piece(WASP_ABDOMEN, { crease: [0, 0, 0, 1], stripes: [[-1, 3], [6, 10], [13, 17], [20, 24]] }),
     piece(WASP_THORAX, { crease: [0, -8, 0, 1] }),
@@ -343,11 +355,11 @@ const HAZARD_PIECES = Object.freeze({
 // each threat and the common ink silhouette / danger ring carries collision meaning.
 const HAZARD_STOCKS = Object.freeze({
   bird: ['#fff1d3','#fff1d3','#e3c393',null,'#fff1d3','#d6a349'],
-  hawk: ['#ac6244','#ac6244',null,'#ffe8b8','#d6a349'],
+  hawk: ['#ac6244','#ac6244','#c5845f','#d6a349','#d6a349',null,'#ffe8b8','#d6a349'],
   kite: [null,'#fff1d3','#fff1d3','#e3c393','#e3c393','#283b4b'],
-  biplane: ['#354b60','#fff1d3','#354b60','#354b60',null,null,'#d6a349','#354b60'],
+  biplane: ['#354b60','#fff1d3','#354b60','#354b60',null,null,'#354b60','#354b60','#d6a349','#354b60'],
   dragonfly: ['#b0dce0','#b0dce0','#d4ece3','#d4ece3',null,'#dab55d','#dab55d'],
-  wasp: ['#fff1d3','#fff1d3','#283b4b','#283b4b','#283b4b','#e5b74e',null,null],
+  wasp: ['#fff1d3','#fff1d3','#283b4b','#283b4b','#283b4b','#283b4b','#283b4b','#e5b74e',null,null],
   balloon: [null,'#354b60','#354b60','#d5a56b'],
 })
 

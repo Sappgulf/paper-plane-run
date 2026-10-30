@@ -117,10 +117,25 @@ export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512
       const y = row * h / 9
       polygon(ctx, [[0,y+3],[w*.25,y-3],[w*.5,y+4],[w*.75,y-2],[w,y+3],[w,y+10],[w*.75,y+5],[w*.5,y+12],[w*.25,y+4],[0,y+9]], row%2 ? '#b5d5d8' : '#99c5cd')
     }
+    // Broken paper ripples give the water scale without introducing objects
+    // that might be mistaken for physical obstacles.
+    ctx.strokeStyle = '#d8e8e5'; ctx.globalAlpha = .38; ctx.lineWidth = 3
+    for (let i = 0; i < 24; i++) {
+      const x = random() * w, y = random() * h, length = 12 + random() * 28
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x + length,y); ctx.stroke()
+    }
+    ctx.globalAlpha = 1
   } else if (zoneId === 'sunset') {
     for (let row = 0; row < 7; row++) {
       const y = row*h/7
       polygon(ctx, [[0,y],[w*.3,y+15],[w*.65,y-8],[w,y+8],[w,y+28],[w*.65,y+12],[w*.3,y+35],[0,y+20]], row%2 ? '#e1b58a' : '#e8c59e')
+    }
+    // Low-contrast folded fields break up the long stripes of Golden Fold.
+    for (let i = 0; i < 14; i++) {
+      const x = random() * w, y = random() * h, span = 32 + random() * 54
+      polygon(ctx, [[x,y],[x+span,y-9],[x+span*1.3,y+span*.25],[x+span*.35,y+span*.42]], i%2 ? '#e5b18a' : '#f0cba2')
+      ctx.strokeStyle = '#f9ddba'; ctx.globalAlpha = .42; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+span,y-9); ctx.stroke(); ctx.globalAlpha = 1
     }
   } else {
     const count = zoneId === 'midnight' ? 14 : 24

@@ -126,7 +126,7 @@ export function advanceHomingShot({
   let nextY = finite(y)
   const tx = Number(targetX)
   const ty = Number(targetY)
-  if (Number.isFinite(tx) && Number.isFinite(ty)) {
+  if (targetX != null && targetY != null && Number.isFinite(tx) && Number.isFinite(ty)) {
     const dx = tx - nextX
     const dy = ty - nextY
     const length = Math.hypot(dx, dy)

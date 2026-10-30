@@ -92,6 +92,11 @@ describe('weapon darts', () => {
     expect(next).toEqual({ x: 1, y: 2, z: 13 })
   })
 
+  test('a free-fired dart does not steer toward the origin when it has no target', () => {
+    const next = advanceHomingShot({ x: 3, y: 8, z: 1, dt: 0.2, speed: 50, homing: 0.5, targetX: null, targetY: null })
+    expect(next).toEqual({ x: 3, y: 8, z: 11 })
+  })
+
   test('hit testing uses shot plus target radius', () => {
     expect(shotHitsTarget({ shotX: 0, shotY: 8, shotZ: 20, targetX: 1, targetY: 8, targetZ: 20, targetRadius: 0.7 })).toBe(true)
     expect(shotHitsTarget({ shotX: 0, shotY: 8, shotZ: 20, targetX: 3, targetY: 8, targetZ: 20, targetRadius: 0.7 })).toBe(false)

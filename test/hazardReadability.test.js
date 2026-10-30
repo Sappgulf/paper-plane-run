@@ -26,3 +26,12 @@ describe('lethal warning ring', () => {
     expect(scale).toBeGreaterThan(0)
   })
 })
+
+test('warnings prioritize nearby threats in the flight corridor', async () => {
+  const { shouldShowHazardWarning } = await import('../src/game/hazard-readability.js')
+  expect(shouldShowHazardWarning({ z: 25, dx: 0.8, dy: 0.5, hitRadius: 1.2 })).toBe(true)
+  expect(shouldShowHazardWarning({ z: 25, dx: 11, dy: 0, hitRadius: 1.2 })).toBe(false)
+  expect(shouldShowHazardWarning({ z: 25, dx: 0, dy: 9, hitRadius: 1.2 })).toBe(false)
+  expect(shouldShowHazardWarning({ z: -1, dx: 0, dy: 0, hitRadius: 1.2 })).toBe(false)
+  expect(shouldShowHazardWarning({ z: 80, dx: 0, dy: 0, hitRadius: 1.2, fogDepth: 50 })).toBe(false)
+})

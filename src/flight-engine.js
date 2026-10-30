@@ -180,7 +180,7 @@ import { buildRunSummary } from './game/run-summary.js'
 import { buildFlightDebrief, isCleanFlightEnd } from './game/flight-debrief.js'
 import { renderFlightDebrief } from './ui/flight-debrief.js'
 import { createWorldCanvas } from './game/paper-world-art.js'
-import { createStreetCanvas, STREET_BLOCK_SIZE, STREET_WIDTH } from './game/paper-streets.js'
+import { createStreetCanvas, paintCityBlocks, STREET_BLOCK_SIZE, STREET_WIDTH } from './game/paper-streets.js'
 import { createPaperCarGeometry, roadVehicleVariant } from './paper-car-models.js'
 import { PICKUP_LABELS, createPickupCanvas, createPickupLabelCanvas } from './game/pickup-art.js'
 import { createBannerState, resolveBanner } from './game/flight-banners.js'
@@ -242,7 +242,7 @@ import { applyStarLaneTelegraph, planStarSpawns, shouldTelegraphStarLane } from 
 import { pickFlightFocus, shouldTelegraphHazard } from './game/flight-focus.js'
 import { buildingOverlapsPlane } from './game/building-hitbox.js'
 import { crossedPassLine } from './game/gate-crossing.js'
-import { hazardWarningScale } from './game/hazard-readability.js'
+import { hazardWarningScale, shouldShowHazardWarning } from './game/hazard-readability.js'
 import { HAZARD_SHADOW_CAPACITY, hazardShadowForAltitude } from './game/hazard-shadow.js'
 import { diveLeanOffset } from './game/dive-lean.js'
 import { STOOP_SHIVER, advanceStoop } from './game/hawk-stoop.js'
@@ -657,6 +657,7 @@ const postcardDetailEl = $('postcard-detail')
 const newBestBadge = $('new-best-badge')
 const streakBadge = $('streak-badge')
 const fireBtn = $('fire-btn')
+const inkBtn = $('ink-btn')
 
 let scoreCountFrame = null
 function stopScoreCountUp() {
@@ -1135,6 +1136,19 @@ function createPaperTexture(spec) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() ?? 4)
   texture.needsUpdate = true
+  if (kind === 'ground' && zoneId === 'city') {
+    // Keep the synchronous procedural plate as a fallback if the bundled
+    // illustration is unavailable, including during offline startup.
+    const illustration = new Image()
+    illustration.onload = () => {
+      const context = canvas.getContext('2d')
+      if (!context) return
+      paintCityBlocks(context, canvas.width, canvas.height, illustration)
+      texture.userData.illustratedGround = true
+      texture.needsUpdate = true
+    }
+    illustration.src = resolveAssetUrl('/assets/paper-city-ground-v2.webp')
+  }
   return texture
 }
 
@@ -2465,7 +2479,7 @@ function updateCrashPaper(dt) {
 
 /**
  * Boss portal design rules:
- * 1. The flyable hole is an OPEN rectangle matching the collision passage.
+ * 1. The flyable hole is an OPEN ellipse matching the collision passage.
  * 2. Hazards live OUTSIDE that rectangle (left/right or above/below).
  * 3. A bright safe ring is scaled to the real opening (not a tiny fixed torus).
  * 4. Art is a small badge above the hole — never a full-face cover.
@@ -2508,6 +2522,24 @@ function createSafePortalRing(tone, halfWidth = 4, halfHeight = 3.7) {
   lit.scale.set(halfWidth, halfHeight, 1)
   lit.renderOrder = 5
   group.add(shadow, outline, rim, lit)
+  // Folded registration tabs sit outside the flyable ellipse. Their warm
+  // paper and inked edge give the hoop depth without narrowing the passage.
+  const tabGeo = new THREE.PlaneGeometry(0.32, 0.58)
+  const tabInk = new THREE.MeshBasicMaterial({ color: 0x29373e, side: THREE.DoubleSide, depthTest: false })
+  const tabFace = new THREE.MeshBasicMaterial({ color: 0xffe8b8, side: THREE.DoubleSide, depthTest: false })
+  for (let index = 0; index < 8; index++) {
+    const angle = index * Math.PI / 4
+    const tab = new THREE.Group()
+    const backing = new THREE.Mesh(tabGeo, tabInk)
+    backing.scale.set(1.28, 1.12, 1)
+    backing.position.z = 0.01
+    const face = new THREE.Mesh(tabGeo, tabFace)
+    tab.add(backing, face)
+    tab.position.set(Math.cos(angle) * halfWidth * 1.17, Math.sin(angle) * halfHeight * 1.17, -0.08)
+    tab.rotation.z = angle - Math.PI / 2
+    tab.renderOrder = 6
+    group.add(tab)
+  }
   group.userData.halfWidth = halfWidth
   group.userData.halfHeight = halfHeight
   return group
@@ -2851,20 +2883,15 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-// Lethal hazard read: a crisp inner ring plus a soft outer glow, so the
-// danger claims space instead of a thin hairline that vanishes into the sky.
-const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.12, 6, 20)
-const lethalGlowGeo = new THREE.TorusGeometry(1.16, 0.05, 6, 20)
-const armorRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 24)
+// A single outline marks the collision envelope of an approaching threat.
+const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.065, 6, 24)
+const armorRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 24, Math.PI * 0.8)
 // The warning rings ignore fog: when thick fog hides a hazard, its ring is the
 // one thing that still shows the player where the danger is.
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
   color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false, fog: false,
 })
-const lethalGlowMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.35, depthWrite: false, fog: false,
-})
-// Armored flyers wear a second brass ring inside the danger ring. It is a
+// Armored flyers wear a brass arc inside the danger ring. It is a
 // readability cue, not a second hitbox: two darts (or a stronger Ink Blast)
 // are needed to pop them.
 const armorRingMat = new THREE.MeshBasicMaterial({
@@ -2872,8 +2899,7 @@ const armorRingMat = new THREE.MeshBasicMaterial({
 })
 /**
  * The warning ring is the only cue for a hazard that thick fog or a low-power
- * device is hiding, so it is always attached. The soft halo around it is a
- * secondary effect and only exists while those are on.
+ * device is hiding, so it is always attached.
  */
 function attachLethalOutline(group, radius = 0.85) {
   if (!group || group.userData.lethalOutline) return group
@@ -2886,15 +2912,6 @@ function attachLethalOutline(group, radius = 0.85) {
   group.add(outline)
   group.userData.lethalOutline = outline
   group.userData.lethalRadius = radius
-  if (renderQuality.secondaryEffects) {
-    const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
-    glow.name = 'lethalGlow'
-    glow.position.z = -0.09
-    glow.scale.setScalar(radius)
-    glow.visible = false
-    group.add(glow)
-    group.userData.lethalGlow = glow
-  }
   return group
 }
 
@@ -3022,7 +3039,7 @@ function createScissors() {
 }
 
 // Ink Blast dart — shared geometry/material, since a run fires dozens.
-const weaponShotGeo = new THREE.ConeGeometry(0.16, 0.58, 6)
+const weaponShotGeo = new THREE.ConeGeometry(0.23, 0.86, 6)
 weaponShotGeo.rotateX(Math.PI / 2)
 const weaponShotMat = new THREE.MeshStandardMaterial({
   color: 0x2b2540,
@@ -3031,8 +3048,15 @@ const weaponShotMat = new THREE.MeshStandardMaterial({
   roughness: 0.35,
   metalness: 0.15,
 })
+const weaponFinGeo = new THREE.PlaneGeometry(0.72, 0.3)
+const weaponFinMat = new THREE.MeshBasicMaterial({ color: 0xe7d5ff, side: THREE.DoubleSide })
 function createWeaponShot() {
-  return new THREE.Mesh(weaponShotGeo, weaponShotMat)
+  const shot = new THREE.Mesh(weaponShotGeo, weaponShotMat)
+  const fin = new THREE.Mesh(weaponFinGeo, weaponFinMat)
+  fin.rotation.x = Math.PI / 2
+  fin.position.z = -0.22
+  shot.add(fin)
+  return shot
 }
 
 // Shared paper cards keep pickup geometry and textures constant across waves.
@@ -4623,14 +4647,21 @@ function updateWeaponHud(tuning = currentWeaponTuning()) {
   const hud = getWeaponState({ tuning, cooldownLeft: weaponCooldownLeft })
   const visible = tuning.unlocked && state === 'playing'
   weaponHud.classList.toggle('hidden', !visible)
+  const buttonVisible = visible && !simulationPaused && !launcher?.pending
+  inkBtn?.classList.toggle('hidden', !buttonVisible)
   if (!visible) return
+  if (inkBtn) {
+    inkBtn.dataset.ready = String(hud.ready)
+    inkBtn.style.setProperty('--action-charge', `${Math.round(hud.cooldownProgress * 100)}%`)
+    inkBtn.setAttribute('aria-label', hud.ready ? 'Ink Blaster ready — tap to fire' : `Ink Blaster recharging, ${hud.cooldownRemaining.toFixed(1)} seconds`)
+  }
   weaponHud.dataset.ready = String(hud.ready)
   if (weaponValEl) weaponValEl.textContent = hud.ready ? 'Ready' : `${hud.cooldownRemaining.toFixed(1)}s`
   if (weaponFillEl) weaponFillEl.style.width = `${(hud.ready ? 1 : hud.cooldownProgress) * 100}%`
 }
 
-function fireWeapon(tuning = currentWeaponTuning()) {
-  if (!tuning.unlocked || state !== 'playing' || simulationPaused) return false
+function fireWeapon(tuning = currentWeaponTuning(), { manual = false } = {}) {
+  if (!tuning.unlocked || state !== 'playing' || simulationPaused || launcher?.pending || weaponCooldownLeft > 0) return false
   const records = []
   for (const e of entities) {
     if (e.type !== 'bird' && e.type !== 'scissors') continue
@@ -4653,9 +4684,9 @@ function fireWeapon(tuning = currentWeaponTuning()) {
     minRange: tuning.minRange,
     limit: tuning.darts,
   })
-  if (!targets.length) return false
+  if (!targets.length && !manual) return false
   for (let index = 0; index < tuning.darts; index += 1) {
-    const target = targets[index % targets.length].entity
+    const target = targets.length ? targets[index % targets.length].entity : null
     const shot = createWeaponShot()
     shot.position.set(planeX + (index - (tuning.darts - 1) / 2) * 0.18, planeY - 0.02, 1.6)
     scene.add(shot)
@@ -4672,6 +4703,7 @@ function fireWeapon(tuning = currentWeaponTuning()) {
     })
   }
   weaponCooldownLeft = tuning.cooldownSeconds
+  if (manual) showFlightFeedback(targets.length ? 'INK LOCK · FIRE' : 'INK DART · FIRE', 'route', 0.55)
   audio.shoot()
   if (settings.haptics) Haptic.tap()
   weaponHud?.classList.add('firing')
@@ -5092,6 +5124,7 @@ function showStick(playing) {
   }
 
   updateTuckButton(playing)
+  if (!playing) inkBtn?.classList.add('hidden')
 }
 
 /**
@@ -5107,6 +5140,9 @@ function updateTuckButton(playing = state === 'playing') {
   fireBtn.dataset.ready = String(ready)
   fireBtn.classList.toggle('cooling', !ready && tuckState.phase !== 'tucking')
   fireBtn.classList.toggle('firing', tuckState.phase === 'tucking')
+  fireBtn.style.setProperty('--action-charge', `${Math.round(tuckState.charge * 100)}%`)
+  const label = fireBtn.querySelector('.tuck-button-label')
+  if (label) label.textContent = tuckState.phase === 'tucking' ? 'Release' : 'Tuck'
   if (tuckState.phase !== 'tucking') fireBtn.dataset.cue = ''
   fireBtn.setAttribute('aria-pressed', String(tuckState.phase === 'tucking'))
   fireBtn.setAttribute(
@@ -5435,6 +5471,7 @@ function applyPauseState({ banner = true } = {}) {
     }
   }
   syncPauseUi()
+  updateWeaponHud()
   launcher?.setPaused(simulationPaused)
 }
 
@@ -5497,6 +5534,7 @@ fireBtn?.addEventListener('pointerdown', (e) => {
   if (state === 'playing' && !simulationPaused && !launcher?.pending && tuckPointerId === null) {
     tuckPointerId = e.pointerId
     tuckPointerHeld = true
+    try { fireBtn.setPointerCapture(e.pointerId) } catch { /* Synthetic pointers may not be capturable. */ }
   }
 })
 fireBtn?.addEventListener('keydown', (event) => {
@@ -5518,10 +5556,14 @@ const releaseTuckPointer = (event) => {
 }
 fireBtn?.addEventListener('pointerup', releaseTuckPointer)
 fireBtn?.addEventListener('pointercancel', releaseTuckPointer)
-fireBtn?.addEventListener('pointerleave', releaseTuckPointer)
+fireBtn?.addEventListener('lostpointercapture', releaseTuckPointer)
 window.addEventListener('pointerup', releaseTuckPointer)
 window.addEventListener('pointercancel', releaseTuckPointer)
 window.addEventListener('blur', clearTuckInput)
+inkBtn?.addEventListener('click', (event) => {
+  event.stopPropagation()
+  if (fireWeapon(currentWeaponTuning(), { manual: true })) updateWeaponHud()
+})
 window.addEventListener('pointerdown', (e) => {
   if (state !== 'playing' || simulationPaused) return
   if (e.target.closest('button') || e.target.closest('#stick-zone') || e.target.closest('#wind-stick-zone') || e.target.closest('.panel')) return
@@ -6819,9 +6861,8 @@ const STARTLE_SECONDS = 0.7
 function animateHazards(dt) {
   // Materials are shared across the roster; a far-away hidden ring must not
   // make a nearby ring transparent by overwriting its opacity.
-  const warningOpacity = settings.reducedMotion ? 0.8 : 0.62 + Math.sin(hazardClock * 10) * 0.24
+  const warningOpacity = settings.reducedMotion ? 0.76 : 0.7 + Math.sin(hazardClock * 5) * 0.08
   lethalOutlineMat.opacity = warningOpacity
-  lethalGlowMat.opacity = warningOpacity * 0.38
   for (const e of entities) {
     if (e.journeyMotion) {
       const motion = e.journeyMotion
@@ -6946,19 +6987,16 @@ function animateHazards(dt) {
       const outline = e.mesh.userData.lethalOutline
       if (outline && (e.type === 'bird' || e.type === 'scissors')) {
         const u = e.mesh.userData
-        // Start ringing earlier (z<36) so the approach reads as pressure; the
-        // shared glow mesh mirrors the pulse without a second draw call.
-        // A hazard sitting deeper than the readable fog depth also rings —
-        // the ring ignores fog, so it reads through haze.
-        const hazy = e.mesh.position.z > fogReadabilityDepth()
-        const near = e.mesh.position.z > 0 && (e.mesh.position.z < 36 || hazy || u.stoopPhase === 'lock')
-        outline.visible = near
         // The ring is the *collision* boundary, not a decoration: at close
         // range it must never be smaller than the radius that kills. It only
         // grows beyond that with distance so its on-screen size stays legible
         // through haze ("open air" deaths were the old 0.85x close-range ring
         // sitting inside a 1.06-1.96 unit hitbox).
         const hitRadius = (e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.52
+        const near = shouldShowHazardWarning({ z: e.mesh.position.z,
+          dx: e.mesh.position.x - planeX, dy: e.mesh.position.y - planeY,
+          hitRadius, fogDepth: fogReadabilityDepth(), locked: u.stoopPhase === 'lock' })
+        outline.visible = near
         const diving = (u.pattern === 'dive' || e.type === 'scissors') && (u.lastOffsetY || 0) < -0.15
         const warningScale = hazardWarningScale({
           z: e.mesh.position.z,
@@ -6967,11 +7005,6 @@ function animateHazards(dt) {
           clock: hazardClock,
         })
         outline.scale.setScalar(warningScale)
-        const glow = e.mesh.userData.lethalGlow
-        if (glow) {
-          glow.visible = near && renderQuality.secondaryEffects
-          glow.scale.setScalar(warningScale)
-        }
         const armorRing = e.mesh.userData.armorRing
         if (armorRing) {
           armorRing.visible = near && (e.mesh.userData.hp || 1) > 1
@@ -9095,14 +9128,18 @@ if (import.meta.env.DEV && devTestState === '#test-fog-warning') {
   resetGame()
   clearEntities()
   state = 'playing'
+  simulationPaused = true
   invuln = 999
+  nextSpawnZ = 1e9
+  windTimer = 999
   scene.fog.far = 95
   hudEl?.classList.add('hidden')
   camera.position.set(0, 11, -11)
   camera.lookAt(0, 11, 18)
   FLYER_DEFS.forEach((def, index) => {
     const flyer = createFlyer(def.id)
-    flyer.position.set((index % 2 ? 3 : -3) + (index - 3) * 0.6, 8, 40 + index * 22)
+    // One known in-path threat is already close; the rest remain distant.
+    flyer.position.set(index === 0 ? 0 : (index % 2 ? 3 : -3) + (index - 3) * 0.6, 8, index === 0 ? 28 : 40 + index * 22)
     scene.add(flyer)
     entities.push({ mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius })
   })
@@ -9486,6 +9523,24 @@ if (import.meta.env.DEV && devTestState === '#test-thread-gap') {
   hudEl?.classList.remove('hidden')
 }
 
+if (import.meta.env.DEV && devTestState === '#test-manual-weapon') {
+  localStorage.setItem('paper-plane-run-upgrades', JSON.stringify({ weapon: 1 }))
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  simulationPaused = false
+  invuln = 999
+  nextSpawnZ = 1e9
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  showStick(true)
+  applyUpgradeVisuals()
+  updateWeaponHud()
+}
+
 if (import.meta.env.DEV && devTestState === '#test-weapon') {
   // Ink Blast proof: wings armed at rank 4, a normal bird and an armored
   // biplane ahead, invulnerable so the test observes the darts rather than a
@@ -9713,6 +9768,7 @@ if (import.meta.env.DEV) {
       const ring = e.mesh.userData.lethalOutline
       const projected = e.mesh.position.clone().project(camera)
       return { type: e.type, flyerId: e.flyerId || '', z: e.mesh.position.z,
+        dx: e.mesh.position.x - planeX, dy: e.mesh.position.y - planeY,
         screenX: (projected.x + 1) * innerWidth / 2, screenY: (1 - projected.y) * innerHeight / 2,
         attached: Boolean(ring), visible: Boolean(ring?.visible), opacity: ring?.material.opacity ?? 0,
         facing: ring?.rotation.y ?? null, radius: ring?.scale.x ?? 0,
@@ -9725,6 +9781,7 @@ if (import.meta.env.DEV) {
     state,
     groundUrl: currentGroundUrl,
     groundMapLoaded: ground?.material?.map?.image ? true : false,
+    groundIllustrated: Boolean(ground?.material?.map?.userData.illustratedGround),
     groundMapWidth: ground?.material?.map?.image?.width ?? null,
     groundColor: ground?.material?.color?.getHex?.() ?? null,
     skyUrl: currentSkyUrl,

@@ -210,7 +210,7 @@ kbd {
 #tutorial-title { display: block; font-size: 11px; letter-spacing: .04em; color: #ffe1a8; margin-bottom: 5px; }
 #tutorial-copy { display: block; font-weight: 700; }
 #fire-btn { gap: 0; align-content: center; line-height: .8; }
-#fire-btn > span:first-child { font-size: 30px; }
+#fire-btn .tuck-glyph { font-size: 30px; }
 .tuck-button-label { font: 900 10px/1.4 'Nunito', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
 #fire-btn[data-cue='release'] { background: #aa3e2b; box-shadow: 0 0 0 3px #ffdfae; }
 .hud-card.tuck-hud[data-tuck='release'] { border-color: #bd4b31; background: #fff0df; }

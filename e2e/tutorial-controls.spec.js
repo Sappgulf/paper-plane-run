@@ -19,6 +19,11 @@ test('an unrelated finger cannot release a held tuck', async ({ page }, testInfo
   })
   expect((await flight(page)).tuckPhase).toBe('tucking')
   await page.evaluate(() => {
+    document.getElementById('fire-btn').dispatchEvent(new PointerEvent('pointerleave', { bubbles: false, pointerType: 'touch', pointerId: 41 }))
+    window.advanceTime(100)
+  })
+  expect((await flight(page)).tuckPhase).toBe('tucking')
+  await page.evaluate(() => {
     window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 42 }))
     window.advanceTime(100)
   })

@@ -1,0 +1,5 @@
+# Paper City ground illustration
+
+Generated with the built-in image generation tool, using `public/assets/paper-flight-hero.webp` as a visual reference. The result was resized to 512 × 512 and compressed as WebP for the game; the procedural city plate remains the offline/load-error fallback. Roads are painted over the illustration to retain their existing alignment.
+
+Prompt: Create one seamless square top-down ground texture tile for a whimsical paper-plane flying game, matching the supplied reference image's tactile cut-paper diorama style. The texture is a bird's-eye patchwork of small cream and terracotta rooftops, planted green courtyards, tiny gardens, and a few irregular footpaths on warm paper stock. Organized but pleasantly varied neighborhoods, a quiet low-contrast backdrop that keeps flying hazards readable above it. Camera exactly orthographic straight down. Seamlessly tileable on all four edges, no perspective, no roads, no planes, no people, no text, no labels, no icons, no watermark.
