@@ -522,16 +522,35 @@ html.a11y-reduced-motion #combo-fill { transition: none; }
 }
 
 #editor-canvas {
-  width: 100%; height: auto; background: rgba(255,255,255,.85);
-  border-radius: 14px; border: 1.5px solid rgba(61,44,41,.1); margin: 8px 0; touch-action: none;
+  display: block; width: min(100%, 480px); height: auto; background: rgba(255,255,255,.85);
+  border-radius: 14px; border: 1.5px solid rgba(61,44,41,.1); margin: 8px auto; touch-action: none;
   cursor: crosshair;
 }
+#editor-canvas:focus-visible { outline: 3px solid #326778; outline-offset: 3px; }
 .editor-toolbar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .editor-toolbar button {
   font-family: inherit; font-weight: 800; font-size: 12px; padding: 7px 10px;
   border-radius: 10px; border: 1.5px solid rgba(61,44,41,.1); background: #fff; cursor: pointer;
 }
 .editor-toolbar button.active { background: #c4b5fd; border-color: #7c3aed; }
+.editor-height { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 2px; font-size: 12px; font-weight: 800; text-align: left; }
+.editor-height select { min-height: 40px; padding: 6px 10px; border: 1px solid #aab9a4; border-radius: 6px; background: #fffdf5; color: var(--ink); }
+.editor-height select:disabled { opacity: .55; }
+.editor-height-help { text-align: left; font-size: 11px; color: var(--ink-soft); }
+#editor-play { display: block; margin: 8px auto 4px; }
+@media (min-width: 880px) and (min-height: 640px) {
+  #tab-editor:not(.hidden) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 18px; align-items: start; }
+  #tab-editor .page-intro { grid-column: 1 / -1; }
+  #editor-palette { grid-column: 1; grid-row: 2; }
+  #tab-editor .editor-height { grid-column: 1; grid-row: 3; }
+  #editor-height-help { grid-column: 1; grid-row: 4; }
+  #editor-canvas { grid-column: 2; grid-row: 2 / span 4; margin: 0 auto; }
+  #editor-play { grid-column: 1; grid-row: 5; }
+  #tab-editor .btn-row { grid-column: 1; grid-row: 6; }
+  #editor-import { grid-column: 2; grid-row: 6; width: calc(100% - 82px); margin: 0; justify-self: start; }
+  #editor-load { grid-column: 2; grid-row: 6; width: 74px; justify-self: end; }
+  #editor-status { grid-column: 1 / -1; grid-row: 8; }
+}
 .import-input {
   width: 100%; margin: 8px 0; padding: 10px 12px; border-radius: 12px;
   border: 1.5px solid rgba(61,44,41,.12); font-family: inherit; font-size: 13px;

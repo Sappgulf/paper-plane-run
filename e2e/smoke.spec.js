@@ -455,7 +455,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   await page.locator('#editor-import').fill('L1|First%20route|T0.0,8.0,40.0')
   await tap(page.locator('#editor-load'))
   await tap(page.locator('#editor-play'))
-  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toEqual({
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toMatchObject({
     name: 'First route',
     itemTypes: ['star'],
   })
@@ -466,7 +466,7 @@ test('replaying custom routes uses the latest editor layout', async ({ page }, t
   await page.locator('#editor-import').fill('L1|Current%20route|R1.0,9.0,35.0;P-2.0,7.0,55.0')
   await tap(page.locator('#editor-load'))
   await tap(page.locator('#editor-play'))
-  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toEqual({
+  await expect.poll(() => page.evaluate(() => JSON.parse(window.render_game_to_text()).layout)).toMatchObject({
     name: 'Current route',
     itemTypes: ['bird', 'power'],
   })

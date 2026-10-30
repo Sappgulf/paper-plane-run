@@ -7,7 +7,7 @@ import { Haptic } from './haptics.js'
 import { copyNative, isNativeShell, shareNative } from './native-shell.js'
 import { shareBaseUrl } from './share-url.js'
 import { createEngineLoader } from './engine-contract.js'
-import { EDITOR_PALETTE, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
+import { EDITOR_PALETTE, editorPlacement, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
 import { getFunnelSummary, track } from './analytics.js'
 import {
   claimAchievementTier,
@@ -1475,6 +1475,8 @@ let editorLayout = emptyLayout()
 let editorTool = 'building'
 const editorCanvas = $('editor-canvas')
 const ectx = editorCanvas?.getContext?.('2d')
+let editorCursor = { x: 180, y: 100 }
+let editorKeyboardActive = false
 
 function drawEditorStar(ctx, cx, cy, r, color) {
   ctx.save()
@@ -1590,6 +1592,30 @@ function drawEditor() {
       ectx.fill()
     }
     ectx.restore()
+    if (it.t !== 'building' && Number.isFinite(it.y)) {
+      const label = `${Math.round(it.y)}m`
+      const labelX = Math.min(w - 24, Math.max(1, px + 13))
+      const labelY = Math.min(h - 2, Math.max(9, py + 3))
+      ectx.save()
+      ectx.font = 'bold 9px Nunito, sans-serif'
+      ectx.textAlign = 'left'
+      ectx.lineWidth = 3
+      ectx.strokeStyle = '#fffdf5'
+      ectx.strokeText(label, labelX, labelY)
+      ectx.fillStyle = '#263d43'
+      ectx.fillText(label, labelX, labelY)
+      ectx.restore()
+    }
+  }
+  if (document.activeElement === editorCanvas && editorKeyboardActive) {
+    ectx.save()
+    ectx.strokeStyle = '#326778'
+    ectx.lineWidth = 2
+    ectx.setLineDash([3, 2])
+    ectx.beginPath()
+    ectx.arc(editorCursor.x, editorCursor.y, 10, 0, Math.PI * 2)
+    ectx.stroke()
+    ectx.restore()
   }
 }
 
@@ -1607,17 +1633,46 @@ function setupEditor() {
     }
     pal.appendChild(b)
   }
+  $('editor-height').disabled = editorTool === 'building'
   drawEditor()
 }
 
-editorCanvas?.addEventListener('pointerdown', (e) => {
-  const rect = editorCanvas.getBoundingClientRect()
-  const x = ((e.clientX - rect.left) / rect.width) * 28 - 14
-  const z = ((e.clientY - rect.top) / rect.height) * 200
-  const y = editorTool === 'building' ? 0 : 6 + Math.random() * 10
-  editorLayout.items.push({ t: editorTool, x, y, z })
+function placeEditorItem(x, y) {
+  const item = editorPlacement({
+    x, y,
+    width: editorCanvas.width, height: editorCanvas.height,
+    tool: editorTool, altitude: $('editor-height').value,
+  })
+  if (!item) return
+  editorLayout.items.push(item)
   drawEditor()
-  $('editor-status').textContent = `${editorLayout.items.length} items`
+  $('editor-status').textContent = `${editorLayout.items.length} items · ${item.t === 'building' ? 'ground level' : `${item.y}m high`}`
+}
+
+editorCanvas?.addEventListener('pointerdown', (e) => {
+  editorKeyboardActive = false
+  const rect = editorCanvas.getBoundingClientRect()
+  editorCursor = {
+    x: (e.clientX - rect.left) * editorCanvas.width / rect.width,
+    y: (e.clientY - rect.top) * editorCanvas.height / rect.height,
+  }
+  placeEditorItem(editorCursor.x, editorCursor.y)
+})
+editorCanvas?.addEventListener('focus', () => { editorKeyboardActive = editorCanvas.matches(':focus-visible'); drawEditor() })
+editorCanvas?.addEventListener('blur', drawEditor)
+editorCanvas?.addEventListener('keydown', (event) => {
+  const delta = { ArrowLeft: [-18, 0], ArrowRight: [18, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[event.key]
+  if (!delta && event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  event.stopPropagation()
+  editorKeyboardActive = true
+  if (delta) {
+    editorCursor.x = Math.min(editorCanvas.width, Math.max(0, editorCursor.x + delta[0]))
+    editorCursor.y = Math.min(editorCanvas.height - 10, Math.max(10, editorCursor.y + delta[1]))
+    drawEditor()
+    const point = editorPlacement({ ...editorCursor, width: editorCanvas.width, height: editorCanvas.height, tool: editorTool, altitude: $('editor-height').value })
+    $('editor-status').textContent = `Cursor ${Math.round(point.z)}m along the route`
+  } else placeEditorItem(editorCursor.x, editorCursor.y)
 })
 
 $('editor-undo')?.addEventListener('click', () => {

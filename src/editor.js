@@ -55,6 +55,19 @@ export const EDITOR_PALETTE = [
 
 export const EDITOR_ROUTE_LENGTH = 200
 
+/** Map a canvas point to the same inset grid used by the editor drawing. */
+export function editorPlacement({ x, y, width, height, tool, altitude }) {
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 20) return null
+  const selected = Number(altitude)
+  return {
+    t: tool,
+    x: clamp(x / width, 0, 1) * 28 - 14,
+    y: tool === 'building' ? 0 : ([6, 10, 14].includes(selected) ? selected : 10),
+    z: clamp((y - 10) / (height - 20), 0, 1) * EDITOR_ROUTE_LENGTH,
+  }
+}
+
 /** Imported routes may extend past the editor's standard 200m canvas. */
 export function getLayoutFinishDistance(layout) {
   return (Array.isArray(layout?.items) ? layout.items : []).reduce((end,item) =>

@@ -271,6 +271,11 @@ Analytics, service-worker flags, unrelated storage, and the recovery copy are
 excluded. This is a portable local save; it does not add cloud sync. Custom
 editor routes continue to travel through their existing share codes.
 
+In the route editor, choose a low, middle, or high flight height before
+placing birds, scissors, stars, or powers. Buildings remain on the ground.
+The map labels each flying item's height. With a keyboard, focus the map,
+move its cursor with the arrow keys, and press Enter or Space to place an item.
+
 Menu → **⚙️ Settings** for season override, graphics, accessibility.
 
 ## APIs
