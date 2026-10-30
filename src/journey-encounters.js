@@ -17,8 +17,8 @@ const ZONE_EVENTS = Object.freeze({
   ]),
   harbor: Object.freeze([
     Object.freeze({ type: 'gust', lanes: [-1, 0, 1], params: { direction: 1, strength: 0.7 } }),
-    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, count: 2 } }),
-    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, bonus: true, count: 1 } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, bonus: true } }),
   ]),
   storm: Object.freeze([
     Object.freeze({ type: 'visibility-pocket', lanes: [-1, 0, 1], params: { duration: 4.5, density: 0.72 } }),
@@ -32,7 +32,7 @@ const ZONE_EVENTS = Object.freeze({
   ]),
   sunset: Object.freeze([
     Object.freeze({ type: 'formation', lanes: [-1, 0, 1], params: { direction: 1, speed: 2.0 } }),
-    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true, count: 2 } }),
+    Object.freeze({ type: 'shortcut-gate', lanes: [-1, 0, 1], params: { required: true } }),
     Object.freeze({ type: 'formation', lanes: [-1, 1], params: { direction: -1, speed: 2.4 } }),
   ]),
   midnight: Object.freeze([
@@ -59,18 +59,11 @@ function varyLanes(lanes, seed) {
   return lanes.map((lane) => clamp(lane + offset, -1, 1)).filter((lane, index, values) => values.indexOf(lane) === index)
 }
 
-function gateCountForZone(zone) {
-  const templates = ZONE_EVENTS[zone] || []
-  return templates.reduce((total, template) => (
-    template.type === 'shortcut-gate' ? total + (Number(template.params?.count) || 1) : total
-  ), 0)
-}
-
 export function buildJourneyObjective(config = {}) {
   let kind = 'completion'
   let target = 1
   if (config.finale && config.rival) kind = 'rival'
-  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = gateCountForZone(config.zone) || 2 }
+  else if (config.modifier === 'shortcut-gates') { kind = 'shortcut-gates'; target = 2 }
   else if (config.modifier === 'star-trail') { kind = 'star-trail'; target = 5 }
   else if (config.modifier === 'moving-formation') { kind = 'near-miss'; target = 4 }
   else if (config.modifier === 'low-visibility') kind = 'shieldless'
@@ -89,7 +82,12 @@ export function buildEncounterTimeline(config = {}) {
   const routeId = config.routeId || `${config.zone || 'city'}-route`
   const events = ENCOUNTER_STAGES.map((stage, index) => {
     const random = seededHash(config.encounterSeed ?? config.seed, index, templates.length)
-    const template = templates[index] || templates[templates.length - 1]
+    const original = templates[index] || templates[templates.length - 1]
+    // A shortcut objective needs two actual encounters in every zone, not a
+    // count attached to a single gate. Keep the arrival as the zone's intro.
+    const template = !config.finale && config.modifier === 'shortcut-gates' && index > 0
+      ? { type: 'shortcut-gate', lanes: original.lanes, params: { required: true, ...(config.zone === 'midnight' ? { kind: 'stapler' } : {}), ...(index === 2 ? { bonus: true } : {}) } }
+      : original
     const bases = config.finale ? [55, 225, 395] : [48, 145, 248]
     const baseDistance = bases[index]
     return Object.freeze({

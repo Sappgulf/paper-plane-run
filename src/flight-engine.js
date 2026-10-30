@@ -839,6 +839,7 @@ let mastery = loadMastery(safeStorage).mastery
 let journeyTimeline = null
 let journeyTelemetry = null
 let journeyPreviousDistance = 0
+let pendingJourneyEncounters = []
 let journeyVisibilityTimer = 0
 let lastJourneyResult = null
 /**
@@ -3766,7 +3767,7 @@ function clearBossApproachHazards() {
 }
 
 function spawnBoss(z = 70, forcedKind = null) {
-  if (bossActive && entities.some((entity) => entity.type === 'boss' && !entity.cleared)) return
+  if (entities.some((entity) => entity.type === 'boss' && !entity.cleared)) return null
   clearBossApproachHazards()
   const encounterIndex = bossCount
   bossCount++
@@ -3821,7 +3822,7 @@ function spawnBoss(z = 70, forcedKind = null) {
   }
   scene.add(gate)
   const opening = describeBossPhase(openingSnap)
-  entities.push({
+  const bossEntity = {
     mesh: gate,
     type: 'boss',
     kind,
@@ -3834,7 +3835,8 @@ function spawnBoss(z = 70, forcedKind = null) {
     // gate retires. Shared boss materials are deduped by the disposer.
     disposable: true,
     disposeMaterials: true,
-  })
+  }
+  entities.push(bossEntity)
   bossActive = true
   // Brief approach invuln so a late hazard can't snipe the commit.
   invuln = Math.max(invuln, 0.35)
@@ -3848,6 +3850,7 @@ function spawnBoss(z = 70, forcedKind = null) {
   if (kind === 'wind') audio.windGust()
   else audio.bossWarning()
   Haptic.power()
+  return bossEntity
 }
 
 /** A lighter-weight "event" spawned at the midpoint between boss gates
@@ -3963,6 +3966,11 @@ function updateJourneyObjectiveHud() {
 
 function dispatchJourneyEncounter(event) {
   if (!event || !journeyTelemetry || journeyTelemetry.completedEventIds.includes(event.id)) return
+  if ((event.type === 'shortcut-gate' || event.type === 'boss-gate') &&
+      entities.some((entity) => entity.type === 'boss' && !entity.cleared)) {
+    if (!pendingJourneyEncounters.some((pending) => pending.id === event.id)) pendingJourneyEncounters.push(event)
+    return
+  }
   const eventStart = entities.length
   const lane = event.lanes?.[event.params?.variant % Math.max(1, event.lanes.length)] ?? 0
   switch (event.type) {
@@ -3983,9 +3991,9 @@ function dispatchJourneyEncounter(event) {
     audio.windGust()
     break
   case 'shortcut-gate': {
-    spawnBoss(82, event.params?.kind || null)
-    const gate = entities.at(-1)
+    const gate = spawnBoss(82, event.params?.kind || null)
     if (gate?.type === 'boss') {
+      gate.journeyEventId = event.id
       gate.journeyGate = true
       gate.journeyGateRequired = event.params?.required !== false
       gate.journeyGateBonus = !!event.params?.bonus
@@ -4011,10 +4019,10 @@ function dispatchJourneyEncounter(event) {
     })
     break
   case 'boss-gate':
-    spawnBoss(78, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
     {
-      const finaleGate = entities.at(-1)
+      const finaleGate = spawnBoss(78, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
       if (finaleGate?.type === 'boss') {
+        finaleGate.journeyEventId = event.id
         finaleGate.journeyGate = true
         finaleGate.journeyGateRequired = event.params?.required !== false
         journeyTelemetry.shortcutGatesTotal += finaleGate.journeyGateRequired ? 1 : 0
@@ -4855,6 +4863,7 @@ function resetGame() {
     completedEventIds: [],
   } : null
   journeyPreviousDistance = 0
+  pendingJourneyEncounters = []
   journeyVisibilityTimer = 0
   lastJourneyResult = null
   nextBossAt = 500
@@ -7347,13 +7356,6 @@ function update(dt) {
     const launch = launchPose(spawnUnfold, settings.reducedMotion, launchStrength)
     plane.scale.setScalar(activeUpgradeEffects.planeScale * launch.scale * 1.12)
   }
-  if (runKind === 'journey' && journeyRunConfig) {
-    const target = journeyRunConfig.finale ? 500 : 350
-    if (distance >= target) {
-      die('Journey route complete!')
-      return
-    }
-  }
   if (invuln > 0) invuln -= dt
   if (journeyVisibilityTimer > 0) {
     journeyVisibilityTimer = Math.max(0, journeyVisibilityTimer - dt)
@@ -7836,10 +7838,21 @@ function update(dt) {
   distance += move * scoreFactor
 
   if (journeyTimeline) {
+    if (pendingJourneyEncounters.length && !entities.some((entity) => entity.type === 'boss' && !entity.cleared)) {
+      dispatchJourneyEncounter(pendingJourneyEncounters.shift())
+    }
     const encounterEvents = getEncounterEventsAtDistance(journeyTimeline, journeyPreviousDistance, distance)
     encounterEvents.forEach(dispatchJourneyEncounter)
     journeyPreviousDistance = distance
     updateJourneyObjectiveHud()
+    const target = journeyRunConfig.finale ? 500 : 350
+    // Finish only after all crossed gate events have had time to reach the
+    // plane. Star bonuses can otherwise skip an encounter or its payoff.
+    if (distance >= target && !pendingJourneyEncounters.length &&
+        !entities.some((entity) => entity.type === 'boss' && !entity.cleared)) {
+      die('Journey route complete!')
+      return
+    }
   }
 
   // Sparkle trail from upgrades
@@ -8415,7 +8428,7 @@ function update(dt) {
       if (m.position.z < -25) {
         releaseEntity(e)
         entities.splice(i, 1)
-        bossActive = false
+        bossActive = entities.some((entity) => entity.type === 'boss' && !entity.cleared)
         continue
       }
       continue
@@ -9552,6 +9565,34 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-landscape-')) {
     plane.visible = true
     needsRender = true
     hudEl?.classList.remove('hidden')
+  }
+}
+
+// Exercise actual seeded shortcut routes without relying on a particular saved game.
+if (import.meta.env.DEV && devTestState.startsWith('#test-journey-shortcut-')) {
+  const zoneId = devTestState.slice('#test-journey-shortcut-'.length)
+  const routes = { city: [1, 0], harbor: [1, 1], storm: [1, 2], sunset: [2, 0], midnight: [2, 1] }
+  const route = routes[zoneId]
+  if (route) {
+    settings = saveSettings({ haptics: false })
+    for (let seed = 1; seed < 1000; seed++) {
+      const candidate = { ...createJourney(seed, 1000, route[0]), stepIndex: route[1] }
+      const choice = getRouteChoices(candidate).find((item) => item.modifier === 'shortcut-gates')
+      if (choice) {
+        journey = selectJourneyRoute(candidate, choice.id)
+        break
+      }
+    }
+    journeyRunConfig = buildRunConfiguration(journey)
+    runKind = 'journey'
+    hideAllPanels()
+    resetGame()
+    invuln = 999
+    state = 'playing'
+    simulationPaused = true
+    hudEl?.classList.remove('hidden')
+    showStick(true)
+    window.__paperJourneyScoreJump = (amount) => { distance += amount }
   }
 }
 
