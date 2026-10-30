@@ -6,7 +6,7 @@ export const PILOT_MASTERY = Object.freeze({
   navigator: Object.freeze({
     levels: Object.freeze([
       Object.freeze({ level: 1, title: 'Route Reader', goal: 'Complete 2 Journey routes', cosmeticId: 'milo-portrait-route-reader' }),
-      Object.freeze({ level: 2, title: 'Gate Scout', goal: 'Clear 6 shortcut gates', cosmeticId: 'milo-map-trail' }),
+      Object.freeze({ level: 2, title: 'Sky Scout', goal: 'Clear 6 Journey formations', cosmeticId: 'milo-map-trail' }),
       Object.freeze({ level: 3, title: 'Paper Cartographer', goal: 'Complete all 4 destinations', cosmeticId: 'milo-compass-border' }),
     ]),
   }),
@@ -97,7 +97,9 @@ export function resolveMasteryOutcome(state, outcome = {}) {
   }
   if (outcome.pilotId === 'navigator') {
     const counters = pilots.navigator.counters
-    counters.shortcutGatesCleared += integer(outcome.shortcutGatesCleared, 20)
+    // The stored counter retains the old key so existing progress and earned
+    // cosmetics survive the switch from gates to formation clears.
+    counters.shortcutGatesCleared += integer(outcome.formationsCleared ?? outcome.shortcutGatesCleared, 20)
     if (outcome.completed) {
       counters.routesCompleted += 1
       if (DESTINATION_IDS.includes(outcome.destinationId) && !counters.destinations.includes(outcome.destinationId)) {

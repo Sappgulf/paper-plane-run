@@ -222,10 +222,10 @@ const UPGRADE_CONTRACTS = [
   {
     id: 'bounty',
     labels: [
-      'Gate clears pay base stars',
-      'Gate clears +2★',
-      'Gate clears +4★',
-      'Gate clears +6★',
+      'Formation clears pay base stars',
+      'Formation clears +2★',
+      'Formation clears +4★',
+      'Formation clears +6★',
     ],
     values: [0, 2, 4, 6].map((starBonus) => ({ starBonus })),
     directions: { starBonus: 'up' },

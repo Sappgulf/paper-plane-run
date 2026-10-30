@@ -261,43 +261,41 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
     private func configureLoadingView() {
         loadingView.subviews.forEach { $0.removeFromSuperview() }
-        loadingView.backgroundColor = UIColor(red: 0xC8 / 255, green: 0xDF / 255, blue: 0xF5 / 255, alpha: 1)
+        loadingView.backgroundColor = UIColor(red: 0x79 / 255, green: 0xA9 / 255, blue: 0xBD / 255, alpha: 1)
         loadingView.translatesAutoresizingMaskIntoConstraints = false
 
-        let card = UIView()
-        card.backgroundColor = UIColor(red: 1, green: 0xF9 / 255, blue: 0xED / 255, alpha: 1)
-        card.layer.cornerRadius = 8
-        card.layer.borderWidth = 1
-        card.layer.borderColor = UIColor(red: 0xD9 / 255, green: 0xCF / 255, blue: 0xB9 / 255, alpha: 1).cgColor
-        card.clipsToBounds = true
-        card.translatesAutoresizingMaskIntoConstraints = false
-
-        let plane = UILabel()
-        plane.text = "✈︎"
-        plane.font = .systemFont(ofSize: 56, weight: .semibold)
-        plane.textColor = UIColor(red: 0xAC / 255, green: 0x44 / 255, blue: 0x2E / 255, alpha: 1)
+        let artwork = UIImageView(image: UIImage(named: "LaunchArtwork"))
+        artwork.contentMode = .scaleAspectFill
+        artwork.clipsToBounds = true
+        artwork.translatesAutoresizingMaskIntoConstraints = false
+        loadingView.addSubview(artwork)
 
         let title = UILabel()
         title.text = "Paper Plane Run"
-        title.font = UIFont(name: "Georgia", size: 28) ?? .systemFont(ofSize: 28, weight: .medium)
-        title.textColor = UIColor(red: 0x3D / 255, green: 0x2C / 255, blue: 0x29 / 255, alpha: 1)
+        title.font = UIFont(name: "Georgia", size: 32) ?? .systemFont(ofSize: 32, weight: .medium)
+        title.textColor = .white
+        title.shadowColor = UIColor.black.withAlphaComponent(0.45)
+        title.shadowOffset = CGSize(width: 0, height: 1)
+        title.adjustsFontSizeToFitWidth = true
+        title.minimumScaleFactor = 0.75
 
         let subtitle = UILabel()
-        subtitle.text = "Folding the sky…"
-        subtitle.font = .systemFont(ofSize: 14, weight: .bold)
-        subtitle.textColor = UIColor(red: 0x7A / 255, green: 0x64 / 255, blue: 0x60 / 255, alpha: 1)
+        subtitle.text = "A LITTLE PAPER. A BIG SKY."
+        subtitle.font = .systemFont(ofSize: 11, weight: .semibold)
+        subtitle.textColor = .white
+        subtitle.shadowColor = UIColor.black.withAlphaComponent(0.45)
+        subtitle.shadowOffset = CGSize(width: 0, height: 1)
 
         let spinner = UIActivityIndicatorView(style: .medium)
-        spinner.color = UIColor(red: 0xAC / 255, green: 0x44 / 255, blue: 0x2E / 255, alpha: 1)
+        spinner.color = .white
         spinner.startAnimating()
 
-        let stack = UIStackView(arrangedSubviews: [plane, title, subtitle, spinner])
+        let stack = UIStackView(arrangedSubviews: [title, subtitle, spinner])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-        loadingView.addSubview(card)
+        loadingView.addSubview(stack)
 
         if !loadingConstraintsInstalled {
             view.addSubview(loadingView)
@@ -311,13 +309,14 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         }
 
         NSLayoutConstraint.activate([
-            card.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
-            card.centerYAnchor.constraint(equalTo: loadingView.centerYAnchor),
-            card.widthAnchor.constraint(equalToConstant: 286),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 28),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -24),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -20),
+            artwork.topAnchor.constraint(equalTo: loadingView.topAnchor),
+            artwork.bottomAnchor.constraint(equalTo: loadingView.bottomAnchor),
+            artwork.leadingAnchor.constraint(equalTo: loadingView.leadingAnchor),
+            artwork.trailingAnchor.constraint(equalTo: loadingView.trailingAnchor),
+            stack.centerXAnchor.constraint(equalTo: loadingView.centerXAnchor),
+            stack.topAnchor.constraint(equalTo: loadingView.safeAreaLayoutGuide.topAnchor, constant: 48),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: loadingView.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: loadingView.trailingAnchor, constant: -20),
         ])
     }
 

@@ -6,6 +6,7 @@
   --club-rule: #d9cfb9; --club-blue: #326778; --club-sage: #426d54;
 }
 #c { filter: none; }
+#menu { background: linear-gradient(90deg,#dce6e5aa,#dce6e530), url('/assets/opening-flight.webp') center 55% / cover no-repeat; }
 .panel, #gameover {
   background: linear-gradient(90deg,#b8cdd4bb,#bfd2d53b), url('/assets/paper-flight-hero.webp') center / cover no-repeat;
 }
@@ -237,7 +238,7 @@ button { touch-action: manipulation; }
   .skins-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 @media (max-width: 700px) {
-  #menu { padding: max(64px,calc(env(safe-area-inset-top) + 52px)) 20px 16px; align-items: center; background: linear-gradient(180deg,#bbd1d14d 10%,#cadbd1c9 38%,#cadbd1 85%),url('/assets/paper-flight-hero.webp') 64% top / auto 100% no-repeat; }
+  #menu { padding: max(64px,calc(env(safe-area-inset-top) + 52px)) 20px 16px; align-items: center; background: linear-gradient(180deg,#e4eeeccc 0%,#dce7e2a6 55%,#ceded0b0 100%),url('/assets/opening-flight.webp') center / cover no-repeat; }
   #menu .menu-card { width: 460px; }
   #menu h1 { font-size: 55px; }
   #menu .menu-hero { margin-bottom: 18px; }

@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-30 — Open skies and opening artwork
+
+- Replaced normal boss and shortcut-ring encounters with regular enemy formations, changed shortcut objectives to close calls, and kept saved route IDs. Existing bounty ranks now pay on formation clears; navigator mastery preserves old gate progress and accepts the new formation counter. Formations provide a recovery interval so removing bosses does not eliminate the old breathing space.
+- Generated opening artwork for the web menu and both iOS launch stages, and a folded-paper hawk with a procedural fallback. Enemy warning hoops became open corners, with the duplicate HUD reticle removed. Art prompts and provenance are in `docs/art/`.
+- 786 unit tests passed, 7 skipped. The full browser run before the recovery change had 243 passes, 56 skips and one long-flight failure; after the fix, that unchanged long-flight test and the zone-cycling test passed three runs each, and the affected desktop/mobile suite passed 30 with 16 skips. Earlier 36 Journey checks passed. The dedicated iPhone 16 Pro simulator completed all Chapter 2 stops and the Red Dart finale; the final build launched Classic and reached its crash/results flow. Web bundle budget, 31-file iOS parity, simulator build and signed iPhone build 20 passed.
+
 ## 2026-10-30 — Chapter visibility and shield objective
 
 - During boss camera pullback, tilt the plane artwork toward the camera to keep its wings legible without changing flight movement or collision. A shield pickup now disqualifies the Journey objective to finish without a shield even if it never absorbs a hit.

@@ -52,11 +52,9 @@ flyable and stops being free. It ramps in after 240m, because a player should
 meet the cushion before they meet its price. See
 [`src/game/deck-lane.js`](src/game/deck-lane.js).
 
-Boss workshops use distinct approach lines, mirrored on the next circuit.
-Normal and Hard ask for earlier alignment; Easy keeps a more forgiving follow.
-The final passage locks in place, and its small gold target marks the existing
-+2★ precision bonus. The encounter strip shows distance, line commitment and
-current alignment.
+Regular enemy formations take the place of boss rings in endless and Journey
+flights. A clear lane pays a formation reward, and existing Gate Bounty ranks
+now add their star bonus to that reward.
 
 ### Enemies that read at a glance
 
@@ -65,7 +63,8 @@ paper dragonfly, paper wasp and the rare diving hawk — each cut from paper wit
 their own silhouette in [`src/game/paper-art.js`](src/game/paper-art.js), so a
 threat is nameable before it is reachable (the roster's movement signatures are
 only worth their tuning if the art names the mover). Every kind still shares
-authored paper stocks, a dark cut edge and the zone's danger ring. Birds and
+authored paper stocks, a dark cut edge and open-corner danger markers. The hawk
+uses an illustrated folded-paper sprite with a procedural fallback. Birds and
 insects have hinged wing strips that fold in 3D while retaining the original
 art silhouette and collision envelope; reduced motion holds a still pose. Seasons re-cut the most
 frequent hazard rather than repainting the world — Halloween birds are bats,
@@ -85,15 +84,6 @@ sharper. Once it has spotted you from far ahead, it rears up and locks onto the
 lane you are in, and its ground shadow marks that lane on the street before it
 stoops. The stoop can reach a plane that has left the gap, and it cannot close
 the gap you are flying through ([`src/game/hawk-stoop.js`](src/game/hawk-stoop.js)).
-
-### Boss gates load before they strike
-
-Every gate now has three readable poses, driven by its encounter phase. The
-blades, jaws, press heads and fans load open through the warning, close in as
-the pressure meter fills, and snap shut for a beat when the final pass begins.
-Each pose is clamped at the passage lip, so no moving part can reach the hole;
-the collision envelope is unchanged
-([`src/game/boss-choreography.js`](src/game/boss-choreography.js)).
 
 ### Fairness
 
@@ -192,8 +182,8 @@ and results share ivory stock, ink type, rust actions, and blue/sage cues.
 | **Ground life** — laid-out zones with traffic, pedestrians, landmarks and cargo in eight instanced draw calls |
 | **Hazard patterns** — twelve airborne obstacles on named motion patterns, resolved as absolute offsets from their anchor so frame timing cannot move them |
 | **Flyer roster** — every evergreen flyer (bird, balloon, kite, biplane, dragonfly, wasp, hawk) cut with its own silhouette, seasonal bird re-cuts, season-weighted spawn bias, and armored biplanes/hawks that take two Ink Blast hits |
-| **Boss gates** every 500m (scissors · wind tunnel · stapler jaws · the Punch), all with procedural cut-paper emblems; a centered thread pays a +2★ precision bounty |
-| **Ink Blast weapons tree** — purchasable wing pods auto-fire homing paper darts, with Salvo and Piercer ranks that visibly add barrels and ink tips; bosses stay immune |
+| **Enemy formations** — find and hold the open lane for stars and distance, with extra stars from Formation Bounty |
+| **Ink Blast weapons tree** — purchasable wing pods auto-fire paper darts, with Salvo and Piercer ranks that visibly add barrels and ink tips |
 | **Plane upgrades** — 25-node tree incl. the Ink Blast weapons branch, Deep Flare, Fever Focus, Steady Hands, Gold Rush + synergies |
 | **Skins** — lifetime-star ladder ending in Golden Fold / Ink Veil / Starcrest / Paper Legend |
 | Daily missions, achievements |
@@ -233,9 +223,9 @@ stays a pure state machine and the prose can be rewritten without touching
 route generation. Before it, every card read out its modifier and there was no
 reason the letter had to get anywhere.
 
-**Chapter 1** runs Paper City → Harbor → Storm → Aurora (Red Dart / scissors finale). Finishing Chapter 1 unlocks **Chapter 2 · Desk After Dark**: Golden Fold → Midnight Desk → Stapler Alley → Desk Showdown (stapler gauntlet / Red Dart staple run).
+**Chapter 1** runs Paper City → Harbor → Storm → Aurora (formation / Red Dart finale). Finishing Chapter 1 unlocks **Chapter 2 · Desk After Dark**: Golden Fold → Midnight Desk → Stapler Alley → Desk Showdown (formation / Red Dart race).
 
-Milo and Pip each have three cosmetic-only mastery levels covering routes, shortcut gates, near misses, risky finishes, destinations, and finales. Mastery can unlock portraits, trails, and postcard borders; stars remain the only spendable upgrade currency.
+Milo and Pip each have three cosmetic-only mastery levels covering routes, formation clears, near misses, risky finishes, destinations, and finales. Earlier gate progress remains credited. Mastery can unlock portraits, trails, and postcard borders; stars remain the only spendable upgrade currency.
 
 Completing a chapter unfolds an illustrated destination postcard. **Hangar → Postcards** stores an artwork grid with route history, objectives, stamps, pilot mastery decorations, totals, and share fallback copy. Destination paper-diorama images ship in both the Vercel build and the offline iOS bundle. Navigator is available immediately; collecting four distinct Journey stamps unlocks Daredevil. Classic and every existing game mode remain directly available from the main menu.
 

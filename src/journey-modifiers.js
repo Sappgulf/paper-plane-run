@@ -12,11 +12,10 @@ export function applyJourneyModifier(base, config = {}) {
     result.movingFormation = { amplitude: 4.5, speed: 2.4 }
     break
   case 'shortcut-gates':
-    result.shortcutGates = true
-    result.shortcutGateSequence = { required: 3, bonus: 1 }
+    result.movingObstacles = true
+    result.movingFormation = { amplitude: 4.5, speed: 2.4 }
     break
   case 'red-dart-finale': result.rival = true; result.wind = (base.wind || 1) * 1.25; break
-  case 'scissors-finale': result.boss = true; break
   default: break
   }
   return result

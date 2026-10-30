@@ -19,11 +19,11 @@ describe('Journey encounter director', () => {
 
   it.each([
     ['city', ['formation', 'rooftop-gap']],
-    ['harbor', ['gust', 'shortcut-gate']],
+    ['harbor', ['gust', 'formation']],
     ['storm', ['visibility-pocket', 'reveal']],
-    ['aurora', ['rival', 'boss-gate']],
-    ['sunset', ['formation', 'shortcut-gate']],
-    ['midnight', ['visibility-pocket', 'boss-gate']],
+    ['aurora', ['rival', 'formation']],
+    ['sunset', ['formation']],
+    ['midnight', ['visibility-pocket', 'formation']],
   ])('authors recognizable %s encounters', (zone, types) => {
     const timeline = buildEncounterTimeline({ seed: 7, zone, modifier: 'crosswind', routeId: `${zone}-route`, finale: zone === 'aurora' || zone === 'midnight' })
     expect(timeline.events.map((event) => event.type)).toEqual(expect.arrayContaining(types))
@@ -54,18 +54,19 @@ describe('Journey encounter director', () => {
   })
 
   it.each(['city', 'harbor', 'storm', 'sunset', 'midnight'])(
-    'offers enough actual gates to complete a %s shortcut objective', (zone) => {
+    'replaces %s shortcut rings with formations and a close-call objective', (zone) => {
       const timeline = buildEncounterTimeline({ seed: 42, zone, modifier: 'shortcut-gates', routeId: `${zone}-shortcut`, finale: false })
-      const gates = timeline.events.filter((event) => event.type === 'shortcut-gate' || event.type === 'boss-gate')
-      expect(timeline.objective.kind).toBe('shortcut-gates')
-      expect(gates.length).toBe(timeline.objective.target)
-      expect(gates.every((event) => event.params.required)).toBe(true)
+      expect(timeline.objective).toMatchObject({ kind: 'near-miss', target: 3 })
+      expect(timeline.events.filter((event) => event.type === 'formation').length).toBeGreaterThanOrEqual(2)
+      expect(timeline.events.some((event) => event.type === 'shortcut-gate' || event.type === 'boss-gate')).toBe(false)
     },
   )
 
   it('resolves objectives at exact boundary values', () => {
     expect(resolveJourneyObjective({ id: 'gates', kind: 'shortcut-gates', target: 3 }, { shortcutGatesCleared: 2 }).completed).toBe(false)
     expect(resolveJourneyObjective({ id: 'gates', kind: 'shortcut-gates', target: 3 }, { shortcutGatesCleared: 3 }).completed).toBe(true)
+    expect(resolveJourneyObjective({ id: 'close', kind: 'near-miss', target: 3 }, { nearMisses: 2 }).completed).toBe(false)
+    expect(resolveJourneyObjective({ id: 'close', kind: 'near-miss', target: 3 }, { nearMisses: 3 }).completed).toBe(true)
     expect(resolveJourneyObjective({ id: 'shield', kind: 'shieldless', target: 1 }, { completed: true, shieldUsed: false }).completed).toBe(true)
     expect(resolveJourneyObjective({ id: 'shield', kind: 'shieldless', target: 1 }, { completed: true, shieldUsed: true }).completed).toBe(false)
   })

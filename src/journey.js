@@ -48,7 +48,7 @@ export const JOURNEY_CHAPTERS = Object.freeze({
   2: Object.freeze({
     id: 2,
     title: 'Chapter 2 · Desk After Dark',
-    subtitle: 'Sunset to the stapler gauntlet',
+    subtitle: 'Sunset to the midnight skies',
     steps: CHAPTER_2_STEPS,
     unlockAfterChapter: 1,
   }),
@@ -62,7 +62,7 @@ const MODIFIERS = Object.freeze([
   { id: 'crosswind', label: 'Crosswind', icon: '💨', description: 'Strong side gusts test your line.', rewardMultiplier: 1.4 },
   { id: 'moving-formation', label: 'Moving Formation', icon: '🎈', description: 'Obstacle formations drift across the route.', rewardMultiplier: 1.35 },
   { id: 'low-visibility', label: 'Cloud Cover', icon: '🌫️', description: 'The path reveals itself at close range.', rewardMultiplier: 1.45 },
-  { id: 'shortcut-gates', label: 'Shortcut Gates', icon: '↗️', description: 'Thread narrow gates for extra distance.', rewardMultiplier: 1.5 },
+  { id: 'shortcut-gates', label: 'Close Call', icon: '↗️', description: 'Slip past moving flyers and chain close calls.', rewardMultiplier: 1.5 },
 ])
 
 export function stepsForChapter(chapter = 1) {
@@ -92,21 +92,21 @@ function routeFor(journey, lane) {
     if (chapter === 2) {
       modifier = {
         id: risky ? 'red-dart-stapler' : 'stapler-finale',
-        label: risky ? 'Red Dart Staple Run' : 'Stapler Gauntlet',
+        label: risky ? 'Red Dart Midnight Race' : 'Midnight Formation',
         icon: risky ? '🔺' : '📎',
         description: risky
-          ? 'Race Red Dart through a multi-stage stapler corridor.'
-          : 'Survive the desk stapler jaws — commit to the glowing lane.',
+          ? 'Race Red Dart through the midnight formations.'
+          : 'Find a clear line through the midnight flyers.',
         rewardMultiplier: risky ? 1.8 : 1.4,
       }
     } else {
       modifier = {
         id: risky ? 'red-dart-finale' : 'scissors-finale',
-        label: risky ? 'Red Dart Duel' : 'Scissors Gauntlet',
+        label: risky ? 'Red Dart Duel' : 'Aurora Formation',
         icon: risky ? '🔺' : '✂️',
         description: risky
           ? 'Race the Red Dart through its signature weave.'
-          : 'Survive a multi-stage scissors gauntlet.',
+          : 'Find a clear line through the aurora flyers.',
         rewardMultiplier: risky ? 1.75 : 1.35,
       }
     }

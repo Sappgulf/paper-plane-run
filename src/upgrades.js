@@ -179,9 +179,9 @@ export const UPGRADES = [
   },
   {
     id: 'bounty',
-    name: 'Gate Bounty',
+    name: 'Formation Bounty',
     icon: '🏅',
-    blurb: 'Threading a boss gate pays extra stars',
+    blurb: 'Clearing a hazard formation pays extra stars',
     max: 3,
     costs: FUTURE_PRICE_TABLE.upgrades.bounty,
   },
@@ -412,8 +412,8 @@ const UPGRADE_FORMULAS = {
   bounty(level) {
     const starBonus = level * 2
     const label = level === 0
-      ? 'Gate clears pay base stars'
-      : `Gate clears +${starBonus}★`
+      ? 'Formation clears pay base stars'
+      : `Formation clears +${starBonus}★`
     return effect(label, { starBonus }, {
       gateStarBonus: starBonus,
     })

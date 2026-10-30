@@ -52,6 +52,7 @@ test('an oncoming enemy takes priority over the opening star lesson', async ({ p
   await page.evaluate(() => window.advanceTime(16))
   await expect(page.locator('#flight-focus')).toBeVisible()
   await expect(page.locator('#flight-focus-cue')).toHaveText('DODGE · BIPLANE')
+  await expect(page.locator('#flight-focus .flight-focus-ring')).toBeHidden()
   const position = await page.evaluate(() => {
     const target = window.__paperPose().hazardWarnings.find(item => item.flyerId === 'biplane')
     const marker = document.querySelector('#flight-focus')

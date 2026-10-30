@@ -50,6 +50,17 @@ describe('Journey pilot mastery', () => {
     expect(state.pilots.navigator.counters.destinations).toEqual(['sunset', 'midnight'])
   })
 
+  it('adds formation clears to existing navigator gate progress exactly once', () => {
+    let state = resolveMasteryOutcome(createMasteryState(), {
+      receiptId: 'legacy', pilotId: 'navigator', completed: true, shortcutGatesCleared: 4,
+    })
+    const outcome = { receiptId: 'formation', pilotId: 'navigator', completed: true, formationsCleared: 2, shortcutGatesCleared: 0 }
+    state = resolveMasteryOutcome(state, outcome)
+    expect(state.pilots.navigator.counters.shortcutGatesCleared).toBe(6)
+    expect(state.pilots.navigator.level).toBe(2)
+    expect(resolveMasteryOutcome(state, outcome)).toEqual(state)
+  })
+
   it('unlocks Daredevil mastery without granting gameplay currency', () => {
     let state = createMasteryState()
     state = resolveMasteryOutcome(state, { receiptId: 'pip:1', pilotId: 'daredevil', nearMisses: 8, completed: true, risky: true })

@@ -1,0 +1,6 @@
+# Origami Hawk artwork
+
+- Generated and edited with OpenAI ImageGen on 2026-10-30 for the diving hawk enemy.
+- Generate prompt: “Game-ready isolated 2D enemy sprite, a single origami hawk made from folded paper, seen head-on with wings spread, facing the viewer, strong wide unmistakable bird silhouette, no text. Handmade cut-paper layers with visible crisp fold creases, warm burnt sienna and cream stock, subtle dark ink edge, small amber eyes, premium sophisticated storybook game art, clean contour that reads at small size. Center the whole bird with generous empty transparent margin on all sides; no crop, no ground, no border, no extra objects, no letters. One single bird only.”
+- Edit prompt: “Edit this isolated paper hawk into a square, game-ready transparent sprite. Preserve the same hawk design and colors, centered front-facing, but reduce its size so its entire wings, head and tail have ample transparent margin on every side. Keep the wings broad and symmetrical. Transparent background only, no dark glow, no shadows, no text, no border, no extra objects.”
+- Encoded at 512 × 512 as transparent WebP. The original ImageGen outputs were preserved; the existing procedural hawk remains the offline/loading fallback.

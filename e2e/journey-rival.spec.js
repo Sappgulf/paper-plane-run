@@ -24,7 +24,7 @@ for (const outcome of ['win', 'loss']) {
     expect(finish.result?.completed).toBe(true)
     expect(finish.result?.objectiveCompleted).toBe(outcome === 'win')
     expect(finish.journey.rival.won).toBe(outcome === 'win')
-    expect(finish.journey.telemetry.shortcutGatesTotal).toBe(2)
+    expect(finish.journey.telemetry.shortcutGatesTotal).toBe(0)
     expect(finish.journey.triggeredEncounterIds).toHaveLength(3)
     expect(errors).toEqual([])
   })

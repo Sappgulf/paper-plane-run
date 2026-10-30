@@ -60,7 +60,7 @@ export function renderJourneyMap(root, journey) {
       <span>${pilot.icon} ${escapeHtml(pilot.name)}</span>
       <span>📖 Ch.${chapter} · ${escapeHtml(meta.title)}</span>
       <span>💌 ${journey.earnedStampIds.length}/${steps.length} stamps</span>
-      <span>${chapter === 2 ? '📎 Stapler' : '🔺 Red Dart'}</span>
+      <span>🔺 Red Dart</span>
     </div>
     <ol class="journey-map-line" aria-label="Journey progress">
       ${steps.map((step, index) => {
@@ -147,7 +147,7 @@ export function renderPilotMastery(root, masteryState, pilotId) {
 
 export function renderJourneyResultProgress(root, result) {
   if (!root) return
-  const telemetryProgress = (result?.outcome?.nearMisses || 0) + (result?.outcome?.shortcutGatesCleared || 0)
+  const telemetryProgress = (result?.outcome?.nearMisses || 0) + (result?.outcome?.formationsCleared ?? result?.outcome?.shortcutGatesCleared ?? 0)
   if (!result || (!result.outcome?.completed && telemetryProgress <= 0)) {
     root.innerHTML = ''
     root.classList?.add('hidden')

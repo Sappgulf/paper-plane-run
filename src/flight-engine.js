@@ -1138,6 +1138,21 @@ function createPaperTexture(spec) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() ?? 4)
   texture.needsUpdate = true
+  if (kind === 'hazard' && variant === 'hawk') {
+    // Keep the procedural bird as a synchronous fallback if the illustration
+    // cannot load, including offline and inside the iOS bundle.
+    const illustration = new Image()
+    illustration.onload = () => {
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(illustration, 0, 0, canvas.width, canvas.height)
+      texture.userData.illustratedHazard = true
+      texture.needsUpdate = true
+      needsRender = true
+    }
+    illustration.src = resolveAssetUrl('/assets/origami-hawk-v1.webp')
+  }
   if (kind === 'ground' && (zoneId === 'city' || zoneId === 'sunset')) {
     // Keep the synchronous procedural plate as a fallback if the bundled
     // illustration is unavailable, including during offline startup.
@@ -2887,13 +2902,24 @@ function createBuilding(w, h, d, mat) {
   return mesh
 }
 
-// A single outline marks the collision envelope of an approaching threat.
-const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.065, 6, 24)
+// Four open corners frame the collision envelope without stacking hoops over
+// the enemy artwork. Build once and share the geometry across the whole run.
+const warningVertices = []
+function warningBar(x1, y1, x2, y2) {
+  warningVertices.push(x1, y1, 0, x2, y1, 0, x2, y2, 0, x1, y1, 0, x2, y2, 0, x1, y2, 0)
+}
+for (const x of [-1, 1]) for (const y of [-1, 1]) {
+  const cornerX = x * 0.96, cornerY = y * 0.96
+  warningBar(Math.min(cornerX, x * 0.62), cornerY - 0.035, Math.max(cornerX, x * 0.62), cornerY + 0.035)
+  warningBar(cornerX - 0.035, Math.min(cornerY, y * 0.62), cornerX + 0.035, Math.max(cornerY, y * 0.62))
+}
+const lethalOutlineGeo = new THREE.BufferGeometry()
+lethalOutlineGeo.setAttribute('position', new THREE.Float32BufferAttribute(warningVertices, 3))
 const armorRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 24, Math.PI * 0.8)
 // The warning rings ignore fog: when thick fog hides a hazard, its ring is the
 // one thing that still shows the player where the danger is.
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
-  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false, fog: false,
+  color: 0xff6b4a, transparent: true, opacity: 0.9, depthWrite: false, fog: false, side: THREE.DoubleSide,
 })
 // Armored flyers wear a brass arc inside the danger ring. It is a
 // readability cue, not a second hitbox: two darts (or a stronger Ink Blast)
@@ -4002,13 +4028,7 @@ function updateJourneyObjectiveHud() {
 
 function dispatchJourneyEncounter(event) {
   if (!event || !journeyTelemetry || journeyTelemetry.completedEventIds.includes(event.id)) return
-  if ((event.type === 'shortcut-gate' || event.type === 'boss-gate') &&
-      entities.some((entity) => entity.type === 'boss' && !entity.cleared)) {
-    if (!pendingJourneyEncounters.some((pending) => pending.id === event.id)) pendingJourneyEncounters.push(event)
-    return
-  }
   const eventStart = entities.length
-  const lane = event.lanes?.[event.params?.variant % Math.max(1, event.lanes.length)] ?? 0
   switch (event.type) {
   case 'formation':
   case 'rooftop-gap':
@@ -4026,21 +4046,6 @@ function dispatchJourneyEncounter(event) {
     windBanner.classList.remove('hidden')
     audio.windGust()
     break
-  case 'shortcut-gate': {
-    const gate = spawnBoss(82, event.params?.kind || null)
-    if (gate?.type === 'boss') {
-      gate.journeyEventId = event.id
-      gate.journeyGate = true
-      gate.journeyGateRequired = event.params?.required !== false
-      gate.journeyGateBonus = !!event.params?.bonus
-      gate.mesh.position.x = lane * 1.4
-      journeyTelemetry.shortcutGatesTotal += gate.journeyGateRequired ? 1 : 0
-    }
-    showFlightFeedback('SHORTCUT FORK · fly the glowing ring', 'route', 1.4)
-    pulseFlightImpact('route')
-    audio.shortcutGate()
-    break
-  }
   case 'visibility-pocket':
     journeyVisibilityTimer = Math.max(journeyVisibilityTimer, Number(event.params?.duration) || 5)
     scene.fog.far = Math.max(68, 145 * (1 - (Number(event.params?.density) || 0.75) * 0.45)) * (activeUpgradeEffects.fogDistanceMul ?? 1)
@@ -4053,17 +4058,6 @@ function dispatchJourneyEncounter(event) {
     notifications.show('🔺 Red Dart cuts across the sky — hold your line!', {
       duration: settings.reducedMotion ? 1800 : 3000,
     })
-    break
-  case 'boss-gate':
-    {
-      const finaleGate = spawnBoss(78, event.params?.kind || (journeyRunConfig?.chapter === 2 ? 'stapler' : null))
-      if (finaleGate?.type === 'boss') {
-        finaleGate.journeyEventId = event.id
-        finaleGate.journeyGate = true
-        finaleGate.journeyGateRequired = event.params?.required !== false
-        journeyTelemetry.shortcutGatesTotal += finaleGate.journeyGateRequired ? 1 : 0
-      }
-    }
     break
   default:
     spawnMiniGauntlet(64)
@@ -4908,6 +4902,7 @@ function resetGame() {
     nearMisses: 0,
     shortcutGatesCleared: 0,
     shortcutGatesTotal: 0,
+    formationsCleared: 0,
     shieldUsed: false,
     collectedJourneyStars: 0,
     rivalBeaten: false,
@@ -6420,6 +6415,7 @@ function finalizeDeathUnsafe() {
       nearMisses: journeyTelemetry?.nearMisses || 0,
       shortcutGatesCleared: journeyTelemetry?.shortcutGatesCleared || 0,
       shortcutGatesTotal: journeyTelemetry?.shortcutGatesTotal || 0,
+      formationsCleared: journeyTelemetry?.formationsCleared || 0,
       shieldUsed: !!journeyTelemetry?.shieldUsed,
       collectedJourneyStars: journeyTelemetry?.collectedJourneyStars || 0,
       rivalBeaten,
@@ -7000,7 +6996,7 @@ function animateHazards(dt) {
       const outline = e.mesh.userData.lethalOutline
       if (outline && (e.type === 'bird' || e.type === 'scissors')) {
         const u = e.mesh.userData
-        // The ring is the *collision* boundary, not a decoration: at close
+        // The brackets mark the collision boundary, not a decoration: at close
         // range it must never be smaller than the radius that kills. It only
         // grows beyond that with distance so its on-screen size stays legible
         // through haze ("open air" deaths were the old 0.85x close-range ring
@@ -7966,7 +7962,7 @@ function update(dt) {
     }
   }
 
-  // Mini-gauntlets at the 250m midpoint between boss gates
+  // Regular enemy formations replace the old boss-ring cadence.
   if (
     runKind !== 'tutorial' &&
     runKind !== 'layout' &&
@@ -7977,18 +7973,6 @@ function update(dt) {
     spawnMiniGauntlet(60)
     invuln = Math.max(invuln, 0.55)
     nextGauntletAt += 500
-  }
-
-  // Boss gates every 500m
-  if (
-    runKind !== 'tutorial' &&
-    runKind !== 'layout' &&
-    runKind !== 'journey' &&
-    distance >= nextBossAt &&
-    !bossActive
-  ) {
-    spawnBoss(75)
-    nextBossAt += 500
   }
 
   const launch = launchPose(spawnUnfold, settings.reducedMotion, launchStrength)
@@ -8352,7 +8336,8 @@ function update(dt) {
           inLane: isInsideGauntletLane({ playerX: p.x, laneX: e.gauntletLaneX }),
         })
         if (reward) {
-          stars += reward.stars
+          const earnedStars = reward.stars + (activeUpgradeEffects.gateStarBonus || 0)
+          stars += earnedStars
           runStats.stars = stars
           starsEl.textContent = String(stars)
           distance += reward.bonusMeters
@@ -8365,11 +8350,16 @@ function update(dt) {
           if (settings.haptics) Haptic.collect()
           spawnConfetti(p.x, planeY, 1, 'gold')
           pulsePaperCrease()
-          showFlightFeedback(reward.label, 'star', 1.3)
+          showFlightFeedback(`GAUNTLET CLEARED · +${earnedStars}★`, 'star', 1.3)
           pulseFlightImpact('star')
-          showPowerBanner(`⚡ Gauntlet cleared · +${reward.stars}★`, 1.6)
+          showPowerBanner(`⚡ Gauntlet cleared · +${earnedStars}★`, 1.6)
+          if (journeyTelemetry) journeyTelemetry.formationsCleared += 1
           track('gauntlet_clear', { distance: Math.floor(distance) })
         }
+        // The retired bosses used to create breathing room after their pass.
+        // Keep that respite after a formation, even when the player survives
+        // outside the bonus lane, so removing rings does not make waves denser.
+        if (runKind !== 'journey') bossRecoveryUntil = Math.max(bossRecoveryUntil, distance + 110)
       }
       continue
     }
@@ -8899,6 +8889,7 @@ window.render_game_to_text = () => JSON.stringify({
     spacingScale: endlessTier().spacingScale,
     scoreMultiplier: endlessTier().scoreMultiplier,
     capped: endlessTier().capped,
+    recovering: distance < bossRecoveryUntil,
     zoneLap: currentZoneLap,
     speed: Math.round(speed * 10) / 10,
   },
@@ -9464,6 +9455,20 @@ if (import.meta.env.DEV && ['#test-endless-rotation', '#test-endless-live'].incl
   simulationPaused = true
 }
 
+// Real endless spawn and formation cadence, protected so the test can observe
+// multiple former boss distances without an unrelated collision ending it.
+if (import.meta.env.DEV && devTestState === '#test-endless-no-boss') {
+  settings = saveSettings({ haptics: false })
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  state = 'playing'
+  invuln = 999
+  windTimer = 999
+  hudEl?.classList.remove('hidden')
+  simulationPaused = true
+}
+
 if (import.meta.env.DEV && devTestState === '#test-gauntlet-payoff') {
   settings = saveSettings({ haptics: false })
   hideAllPanels()
@@ -9831,6 +9836,7 @@ if (import.meta.env.DEV) {
         dx: e.mesh.position.x - planeX, dy: e.mesh.position.y - planeY,
         screenX: (projected.x + 1) * innerWidth / 2, screenY: (1 - projected.y) * innerHeight / 2,
         attached: Boolean(ring), visible: Boolean(ring?.visible), opacity: ring?.material.opacity ?? 0,
+        illustrated: Boolean(e.mesh.userData.billboard?.children?.[0]?.material?.map?.userData?.illustratedHazard),
         facing: ring?.rotation.y ?? null, radius: ring?.scale.x ?? 0,
         armorVisible: Boolean(e.mesh.userData.armorRing?.visible), armorRadius: e.mesh.userData.armorRing?.scale.x ?? 0,
         hitRadius: (e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.52 }

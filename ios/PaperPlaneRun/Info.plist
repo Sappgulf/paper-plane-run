@@ -24,6 +24,10 @@
 	<dict>
 		<key>UIColorName</key>
 		<string>AccentColor</string>
+		<key>UIImageName</key>
+		<string>LaunchArtwork</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
 	</dict>
 	<key>UIRequiresFullScreen</key>
 	<true/>

@@ -9,7 +9,7 @@ describe('Journey modifiers', () => {
     expect(base.wind).toBe(1)
   })
 
-  it('exposes functional movement, visibility-pocket, and gate contracts', () => {
+  it('exposes functional movement, visibility-pocket, and legacy shortcut contracts', () => {
     const moving = applyJourneyModifier({}, { modifier: 'moving-formation' })
     expect(moving.movingFormation).toEqual(expect.objectContaining({ amplitude: expect.any(Number), speed: expect.any(Number) }))
 
@@ -17,7 +17,8 @@ describe('Journey modifiers', () => {
     expect(visibility.visibilityPocket).toEqual(expect.objectContaining({ duration: expect.any(Number), density: expect.any(Number) }))
 
     const gates = applyJourneyModifier({}, { modifier: 'shortcut-gates' })
-    expect(gates.shortcutGateSequence).toEqual({ required: 3, bonus: 1 })
+    expect(gates.movingFormation).toEqual({ amplitude: 4.5, speed: 2.4 })
+    expect(gates.shortcutGateSequence).toBeUndefined()
   })
 
   it('caps Daredevil momentum and exposes Navigator hints', () => {

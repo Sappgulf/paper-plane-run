@@ -209,7 +209,9 @@ html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; 
   font-size: 9px; font-weight: 900; letter-spacing: .1em;
   text-shadow: 0 1px 4px rgba(36,59,83,.65); white-space: nowrap;
 }
-#flight-focus[data-cue="hazard"] .flight-focus-ring { --fc: rgba(255,138,110,.98); }
+/* The in-world warning already frames the hazard's collision area. Keep the
+   readable name but avoid drawing a second reticle over the same threat. */
+#flight-focus[data-cue="hazard"] .flight-focus-ring { display: none; }
 #flight-focus[data-cue="hazard"] .flight-focus-cue { color: #ffd9cc; }
 #flight-focus[data-cue="star"] .flight-focus-ring { --fc: rgba(255,214,92,.95); }
 #flight-focus[data-cue="power"] .flight-focus-ring { --fc: rgba(143,234,207,.95); }

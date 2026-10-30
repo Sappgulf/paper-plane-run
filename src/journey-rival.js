@@ -58,7 +58,7 @@ export function getRivalCallout(state, milestone) {
   const copy = {
     start: '🔺 Red Dart: Catch me if your folds can hold!',
     halfway: '🔺 Red Dart: The storm is only beginning.',
-    final: '🔺 Red Dart: One last gate. Make it count.',
+    final: '🔺 Red Dart: One last stretch. Make it count.',
   }[milestone]
   if (!copy) return null
   state.seenCallouts.add(milestone)

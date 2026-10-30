@@ -82,8 +82,8 @@ const CHAPTERS = Object.freeze({
         brief:
           'Above the weather the sky goes green and quiet, and the Red Dart stops hiding. It has ' +
           'been folded sharper than you and it knows it. Last sky.',
-        safe: 'Take the scissor gauntlet head on and let the Dart wear itself out on the blades.',
-        risky: 'Race it. Same line, same gate, and only one of you is carrying anything.',
+        safe: 'Follow a clear line through the flyers and let the Dart race on ahead.',
+        risky: 'Race it through the formations, with only one of you carrying anything.',
         arrival: 'The aurora keeps the last of the noise. The letter is still folded, and still yours.',
       }),
     }),
@@ -93,10 +93,10 @@ const CHAPTERS = Object.freeze({
     title: 'Desk After Dark',
     premise:
       'The reply was written at midnight and folded badly. Getting it back across the desk means ' +
-      'crossing the lamp, the drawer and whatever the stapler has become.',
+      'crossing the lamp, the drawer and the last of the midnight air.',
     closing: Object.freeze({
-      won: 'The reply lands on the pillow of the blotter, and the stapler closes on nothing.',
-      lost: 'The reply lands. The jaws got a corner of it, and the corner will show.',
+      won: 'The reply lands on the blotter, just ahead of the Red Dart.',
+      lost: 'The reply lands on the blotter. The Red Dart arrived first.',
     }),
     steps: Object.freeze({
       golden: Object.freeze({
@@ -127,12 +127,12 @@ const CHAPTERS = Object.freeze({
         arrival: 'Out the far end of the alley with all four corners. That is not usual.',
       }),
       'desk-finale': Object.freeze({
-        headline: 'The jaws, and the Dart again',
+        headline: 'The Dart, one last time',
         brief:
-          'The stapler has the last gate and the Red Dart has the last idea. One of them wants the ' +
-          'letter stopped and the other wants it first. Neither is getting it.',
-        safe: 'Read the jaws. Three closes, one gap, and it is the same gap every time.',
-        risky: 'Let the Dart go in first and take the gap it opens.',
+          'The Red Dart has one last idea. It wants to reach the blotter before the reply does. ' +
+          'The sky is crowded, but there is still a line through.',
+        safe: 'Read the flyers and take the clear line home.',
+        risky: 'Fly alongside the Dart and race it to the blotter.',
         arrival: 'The desk goes quiet. Somewhere under the lamp, a reply is waiting to be read.',
       }),
     }),

@@ -1,0 +1,5 @@
+# Opening Flight artwork
+
+- Generated with OpenAI ImageGen on 2026-10-30 for Paper Plane Run.
+- Prompt: “Create a premium vertical illustration for the opening screen of a paper-airplane flying game, 2:3 portrait composition. A beautifully folded ivory paper airplane in an elegant three-quarter rear view glides over a dreamy hand-crafted world of paper hills, tiny city rooftops and a distant ocean, warm sunrise light, refined editorial picture-book art, subtle paper grain and layered cut-paper depth, sophisticated muted sky blue, cream and terracotta palette, cinematic sense of flight, clean airy upper third with room for separate UI title overlay. The plane must look unmistakably folded and dimensional, broad visible wings, no square icon, no border, no lettering, no logos, no interface, no typography.”
+- The generated source was encoded as a WebP for the menu and as a JPEG in the iOS asset catalog for the native loading view. The original was preserved in the ImageGen output directory.
