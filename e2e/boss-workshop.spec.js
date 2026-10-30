@@ -16,8 +16,17 @@ for(const kind of ['scissors','wind','stapler','punch']) {
    return JSON.parse(window.render_game_to_text()).boss
   })
   expect(locked.workshop).toBe(true)
-  expect(locked.precisionTarget).toBe(true)
+  expect(locked.precisionTarget).toBe(false)
   await expect(page.locator('#boss-flight')).toBeVisible()
+  await page.evaluate(() => {
+    const toast = document.querySelector('#challenge-toast')
+    toast.dataset.seasonal = 'true'
+    toast.classList.remove('hidden')
+  })
+  await expect(page.locator('#challenge-toast')).toBeHidden()
+  await page.evaluate(() => { delete document.querySelector('#challenge-toast').dataset.seasonal })
+  await expect(page.locator('#challenge-toast')).toBeVisible()
+  await page.evaluate(() => document.querySelector('#challenge-toast').classList.add('hidden'))
   await expect(page.locator('#boss-flight-phase')).toHaveText('Line set · hold course')
   expect(locked.locked).toBe(true)
   await page.screenshot({path:`output/workshop-${kind}-${info.project.name}.png`})
@@ -54,7 +63,7 @@ test('a cleared boss stops showing its approach instruction', async ({ page }) =
   expect(errors).toEqual([])
 })
 
-test('the boss marker follows the opening rather than the gate base', async ({ page }) => {
+test('the boss opening stays clear of the generic target marker', async ({ page }) => {
   test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'deterministic encounter fixture')
   const errors = collectConsoleErrors(page)
   await openFixture(page, '/?boss-proof=stapler#test-boss-encounter')
@@ -65,13 +74,13 @@ test('the boss marker follows the opening rather than the gate base', async ({ p
       const state = JSON.parse(window.render_game_to_text())
       if (state.boss?.z > 8 && state.boss.z < 40 && document.querySelector('#flight-focus-cue').textContent === 'GATE AHEAD') {
         const marker = document.querySelector('#flight-focus')
-        return { x: parseFloat(marker.style.left), y: parseFloat(marker.style.top), target: window.__paperPose().bossGapScreen }
+        return { hidden: marker.classList.contains('hidden'), target: window.__paperPose().bossGapScreen }
       }
     }
     return null
   })
   expect(position).not.toBeNull()
-  expect(position.x).toBeCloseTo(position.target.x, 0)
-  expect(position.y).toBeCloseTo(position.target.y, 0)
+  expect(position.target).not.toBeNull()
+  expect(position.hidden).toBe(true)
   expect(errors).toEqual([])
 })

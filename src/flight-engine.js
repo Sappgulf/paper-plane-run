@@ -110,7 +110,6 @@ import {
   describeBossPhase,
   getBossApproachSpeedScale,
   BOSS_CENTER_THREAD_BONUS,
-  BOSS_CENTER_THREAD_THRESHOLD,
   getBossClearReward,
   getGateClearStars,
   isBossCenterThread,
@@ -633,7 +632,9 @@ function updateFlightReadability(routeState = null) {
     void flightFocusEl.offsetWidth
     flightFocusEl.classList.add('focus-pop')
   }
-  if (!focus.target) {
+  // The gate itself and its approach strip already identify the opening.
+  // A red targeting box over the safe passage obscures the line to fly.
+  if (!focus.target || focus.type === 'boss') {
     flightFocusEl.classList.add('hidden')
     return
   }
@@ -685,6 +686,7 @@ const challengeToast = $('challenge-toast')
 const notifications = createNotificationQueue({
   show(message) {
     if (!challengeToast) return
+    delete challengeToast.dataset.seasonal
     challengeToast.textContent = message
     challengeToast.classList.remove('hidden')
   },
@@ -2585,16 +2587,6 @@ function createBossPortalBase(kind, passage) {
   g.userData.gapY = 10
   g.userData.kind = kind
   g.userData.safeRing = safeRing
-  // The small dashed target shows the existing precision bonus, not a hitbox.
-  const points = Array.from({length:65}, (_,i) => {
-    const angle = i / 64 * Math.PI * 2
-    return new THREE.Vector3(Math.cos(angle)*halfWidth*BOSS_CENTER_THREAD_THRESHOLD, Math.sin(angle)*halfHeight*BOSS_CENTER_THREAD_THRESHOLD, 0)
-  })
-  const target = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineDashedMaterial({color:0xffdf91, dashSize:.16, gapSize:.13, transparent:true, opacity:.85, depthWrite:false}))
-  target.computeLineDistances()
-  target.position.set(0,10,-.15)
-  g.add(target)
-  g.userData.precisionTarget = target
   g.userData.halfWidth = halfWidth
   g.userData.halfHeight = halfHeight
   return g
@@ -7046,7 +7038,6 @@ function animateHazards(dt) {
       u.gapY = committedBossGap({targetY:targetGapY, previousY:u.gapY, lockedY:u.lockedGapY, bossZ:e.mesh.position.z})
       if (e.mesh.position.z <= 22) u.lockedGapY = u.gapY
       if (u.workshop) u.workshop.position.y = u.gapY
-      if (u.precisionTarget) u.precisionTarget.position.y = u.gapY
       u.encounter = encounter
       if (!e.cleared && encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
@@ -8699,6 +8690,7 @@ try {
   // this same banner slot — whichever the visitor arrived for should win.
   if (season.id !== 'default' && challengeToast && challengeToast.classList.contains('hidden')) {
     notifications.show(`✦ ${season.name} event — free seasonal skins!`, { duration: 5000 })
+    challengeToast.dataset.seasonal = 'true'
   }
   void syncRuntimeSettings(settings).catch((error) => console.warn('Initial settings sync failed', error))
 } catch (err) {

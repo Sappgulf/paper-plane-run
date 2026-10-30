@@ -28,6 +28,7 @@ test('final assist converges on the visible locked opening without recomputing a
 })
 test('boss strip communicates approach, locked line, distance and existing precision reward', () => {
   expect(bossFlightReadout({kind:'wind',bossZ:60,initialZ:120})).toMatchObject({name:'Crosswind Mill',progress:.5,range:'60m',phase:'Approach · line up'})
+  expect(bossFlightReadout({kind:'wind',bossZ:60,initialZ:120}).guidance).toBe('Fly through the center for +2★')
   expect(bossFlightReadout({kind:'punch',bossZ:-1,initialZ:120,locked:true,centered:true})).toMatchObject({name:'Punch Foundry',progress:1,range:'0m',phase:'Line set · hold course',guidance:'On line · hold for +2★'})
 })
 

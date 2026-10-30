@@ -277,7 +277,7 @@ export function bossFlightReadout({ kind, bossZ, initialZ, locked, centered } = 
     phase: locked ? 'Line set · hold course' : 'Approach · line up',
     progress: Math.min(1, Math.max(0, 1 - z / Math.max(1, Number(initialZ) || 120))),
     range: `${Math.ceil(z)}m`,
-    guidance: centered ? 'On line · hold for +2★' : 'Aim for the small gold ring',
+    guidance: centered ? 'On line · hold for +2★' : 'Fly through the center for +2★',
   }
 }
 

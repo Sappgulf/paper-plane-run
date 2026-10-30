@@ -721,3 +721,8 @@ Plan: `docs/superpowers/plans/2026-07-17-max-everything.md`
 - Seeded Journey lane variation now preserves the authored lane choices rather than collapsing lanes at the corridor edges. Formation and rooftop beats select their authored flight line and distinct flyer/scissor patterns; moving hazards retain their own wave's gap and collision radius when clamping motion.
 - Added a generated Golden Fold ground illustration with mirrored wrapping and procedural fallback; refined Aurora and Midnight ground plates. Prompt and provenance are in `docs/art/golden-fold-ground-v1.md`.
 - 785 unit tests passed, 7 skipped; final targeted desktop/mobile run passed 22 cases. Dedicated simulator completed Golden Fold with 2/2 gates, flew Midnight, and launched the final build in Classic; screenshot-reviewed Golden Fold and Aurora. Bundle budget and 29-file iOS parity passed. Full mode-by-mode native playthrough remains open.
+
+## 2026-10-30 — Clearer boss approach
+- Removed the faint precision ring and redundant danger reticle from boss openings. The approach strip now explains the existing center bonus, and the gameplay collision and reward rules remain unchanged.
+- Seasonal promotion toasts yield while the boss strip is visible; other notifications remain visible. Browser coverage verifies both paths.
+- 785 unit tests passed, 7 skipped; 18 desktop/mobile boss and hazard-warning cases passed. Web budget and 29-file iOS parity passed. Dedicated simulator required a restart to restore its input bridge, then a Classic flight reached Punch Foundry with the clear opening and updated instruction visible. Signed iPhone build 18 and asset parity verified.

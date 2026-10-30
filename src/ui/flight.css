@@ -726,6 +726,10 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 #hud:not(.hidden) ~ #challenge-toast {
   top: calc(var(--hud-bottom, 58px) + 16px + var(--banner-stack-h, 0px));
 }
+/* A seasonal promotion can wait while the player lines up a boss opening. */
+#game-root:has(#boss-flight:not(.hidden)) #challenge-toast[data-seasonal='true'] {
+  visibility: hidden;
+}
 
 /* —— Install prompt (custom, since iOS Safari has no beforeinstallprompt) —— */
 #install-hint {
