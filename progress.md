@@ -2,6 +2,12 @@
 
 Original prompt: “1-3! Use skills needed, imagegen, computer! Build, test and polish! When finished push and commit! Then deploy to vercel!” Direction approved: “Balanced hybrid!” Final authorization: “I approve get it done!”
 
+## 2026-10-30 — Chapter visibility and shield objective
+
+- During boss camera pullback, tilt the plane artwork toward the camera to keep its wings legible without changing flight movement or collision. A shield pickup now disqualifies the Journey objective to finish without a shield even if it never absorbs a hit.
+- Added deterministic arrival visibility coverage for the four Chapter 1 scenic stops and both choices at each Chapter 2 stop. Corrected a guide-focus test helper interaction that could click the backdrop after the first click had already opened the dialog.
+- 785 unit tests passed, 7 skipped; 24 desktop/mobile chapter checks passed; the separate mobile browser suite passed 105 with 38 skips. The combined run completed the desktop cases with one guide-focus failure, then its duplicate mobile portion was stopped; the corrected focus test passed five desktop reruns. Dedicated simulator play included Chapter 2 completion, Classic, Daily, Weekly, Tutorial, Hangar upgrade and mission claim. Web bundle budget, 29-file iOS parity and signed build 19 passed.
+
 ## 2026-10-29 — Tuck input and feedback
 
 - Track Space and Enter separately on the focused Tuck button, clearing its keyboard holds when focus leaves. This prevents a stuck dive and preserves another held key. Added a distinct held-state color for immediate flight feedback.

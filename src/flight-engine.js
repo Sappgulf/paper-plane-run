@@ -4207,6 +4207,13 @@ function activatePower(kind) {
   const meta = POWER_META[kind] || buildPowerMeta()[kind]
   if (!meta) return
 
+  // The Journey objective asks the player to finish without a shield, so
+  // activating one counts even if it expires without absorbing a collision.
+  if (kind === 'shield' && journeyTelemetry) {
+    journeyTelemetry.shieldUsed = true
+    updateJourneyObjectiveHud()
+  }
+
   const fx = activeUpgradeEffects
   const duration = getPowerDuration({
     kind,
@@ -8008,7 +8015,10 @@ function update(dt) {
   // Fever adds a light shimmy on top of normal banking — a readable "turbo" feel
   // without fighting the player's actual steering input.
   const feverWobble = feverActive ? Math.sin(elapsed * 16) * 0.05 : 0
-  plane.rotation.x = THREE.MathUtils.clamp(pitch + launch.pitch, -0.5, 0.45)
+  // The boss camera pulls back to frame the gate. Tip the artwork toward the
+  // camera as it recedes so the wings remain legible instead of edge-on.
+  // This is presentation only; movement and collision use planeX/planeY.
+  plane.rotation.x = THREE.MathUtils.clamp(pitch + launch.pitch - (bossCamPullback - 1) * 0.55, -0.6, 0.45)
   const handleMul = getHandlingRollMul(activeUpgradeEffects.handlingLevel)
   plane.rotation.z = THREE.MathUtils.clamp((roll + feverWobble) * handleMul, -0.9, 0.9)
   plane.rotation.y = flightPose.yaw
@@ -9668,6 +9678,50 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-journey-shortcut-')) {
     showStick(true)
     window.__paperJourneyScoreJump = (amount) => { distance += amount }
   }
+}
+
+// Exercise each Chapter 2 route through its actual arrival flow.
+if (import.meta.env.DEV && /^#test-chapter2-[0-3]-[01]$/.test(devTestState)) {
+  const [, , stepText, choiceText] = devTestState.split('-')
+  const stepIndex = Number(stepText), choiceIndex = Number(choiceText)
+  settings = saveSettings({ haptics: false })
+  journey = { ...createJourney(4242, 1000, 2), stepIndex }
+  journey = selectJourneyRoute(journey, getRouteChoices(journey)[choiceIndex].id)
+  journeyRunConfig = buildRunConfiguration(journey)
+  runKind = 'journey'
+  hideAllPanels()
+  resetGame()
+  invuln = 999
+  state = 'playing'
+  simulationPaused = true
+  hudEl?.classList.remove('hidden')
+  showStick(true)
+}
+
+// Exercise a real shield pickup on a Chapter 2 shieldless objective.
+if (import.meta.env.DEV && devTestState === '#test-journey-shield') {
+  settings = saveSettings({ haptics: false })
+  for (let seed = 1; seed < 1000; seed++) {
+    const candidate = { ...createJourney(seed, 1000, 2), stepIndex: 2 }
+    const choice = getRouteChoices(candidate).find(item => item.modifier === 'low-visibility')
+    if (choice) { journey = selectJourneyRoute(candidate, choice.id); break }
+  }
+  journeyRunConfig = buildRunConfiguration(journey)
+  runKind = 'journey'
+  hideAllPanels()
+  resetGame()
+  clearEntities()
+  nextSpawnZ = 1e9
+  windTimer = 999
+  invuln = 999
+  state = 'playing'
+  simulationPaused = true
+  const shield = createPowerUp('shield')
+  shield.position.set(planeX, planeY, 1)
+  scene.add(shield)
+  entities.push({ mesh: shield, type: 'power', kind: 'shield', radius: 1.35 })
+  hudEl?.classList.remove('hidden')
+  showStick(true)
 }
 
 // Real finale flow with controlled rival pace for win/loss regression coverage.

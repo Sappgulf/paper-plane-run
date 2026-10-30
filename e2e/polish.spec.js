@@ -52,12 +52,16 @@ test('touch text fields stay readable without iOS focus zoom', async ({ page }, 
 
 test('flight guide contains keyboard focus and returns it on close', async ({ page }, testInfo) => {
   await openApp(page)
-  // A tap can be lost while the dev server is still transforming modules (the
-  // lane's first minutes), so retry the open until the dialog answers, as a
-  // player tapping again would.
+  const dialog = page.getByRole('dialog', { name: 'A good fold goes further.' })
+  // A loaded host can time out after dispatching the click. If it already
+  // opened the guide, do not force-click the background button a second time.
   await expect(async () => {
-    await tap(page.locator('#flight-guide-btn'))
-    await expect(page.getByRole('dialog', { name: 'A good fold goes further.' })).toBeVisible({ timeout: 3_000 })
+    if (!await dialog.isVisible()) {
+      await page.locator('#flight-guide-btn').click({ timeout: 10_000 }).catch(async error => {
+        if (!await dialog.isVisible()) throw error
+      })
+    }
+    await expect(dialog).toBeVisible({ timeout: 3_000 })
   }).toPass({ timeout: 30_000 })
   await expect(page.locator('#flight-guide-close')).toBeFocused()
   await page.keyboard.press('Tab')
