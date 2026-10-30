@@ -124,7 +124,7 @@ test('all six paper landscapes render with readable flight UI and bounded scener
     await expect(page.locator('#hud')).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('data-zone', zone)
     await expect(page.locator('#altitude-hud')).toBeVisible()
-    if (zone === 'city') await expect.poll(() => page.evaluate(() => window.__paperPose().groundIllustrated)).toBe(true)
+    if (zone === 'city' || zone === 'sunset') await expect.poll(() => page.evaluate(() => window.__paperPose().groundIllustrated)).toBe(true)
     await page.screenshot({ path: `output/redesign-${testInfo.project.name}-flight-${zone}.png` })
     const state = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
     readings.push({ zone, quality: state.performance.quality.level, ...state.performance.renderer })

@@ -169,7 +169,7 @@ import { applyJourneyRewardOnce, loadJourney, saveJourney } from './journey-stor
 import { savePostcardOnce } from './journey-postcards.js'
 import { cosmeticLabel, renderJourneyResultProgress } from './journey-ui.js'
 import { advanceRivalRace, createRivalState, getRivalCallout, getRivalDelta, getRivalRaceResult, sampleRivalPosition } from './journey-rival.js'
-import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
+import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective, journeyGauntletSpec } from './journey-encounters.js'
 import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
 import { loadMastery, saveMastery } from './journey-mastery-storage.js'
@@ -1136,18 +1136,24 @@ function createPaperTexture(spec) {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() ?? 4)
   texture.needsUpdate = true
-  if (kind === 'ground' && zoneId === 'city') {
+  if (kind === 'ground' && (zoneId === 'city' || zoneId === 'sunset')) {
     // Keep the synchronous procedural plate as a fallback if the bundled
     // illustration is unavailable, including during offline startup.
     const illustration = new Image()
     illustration.onload = () => {
       const context = canvas.getContext('2d')
       if (!context) return
-      paintCityBlocks(context, canvas.width, canvas.height, illustration)
+      if (zoneId === 'city') paintCityBlocks(context, canvas.width, canvas.height, illustration)
+      else {
+        context.globalAlpha = .76
+        context.drawImage(illustration, 0, 0, canvas.width, canvas.height)
+        context.globalAlpha = 1
+      }
       texture.userData.illustratedGround = true
       texture.needsUpdate = true
+      needsRender = true
     }
-    illustration.src = resolveAssetUrl('/assets/paper-city-ground-v2.webp')
+    illustration.src = resolveAssetUrl(zoneId === 'city' ? '/assets/paper-city-ground-v2.webp' : '/assets/golden-fold-ground-v1.webp')
   }
   return texture
 }
@@ -1364,9 +1370,15 @@ const groundMap = loadTex('paper:ground:city')
 // City blocks share the roads' 35-unit scroll period; other plates stay square.
 function configureGroundPattern(texture,url,groundZ = 120) {
   const city = url === 'paper:ground:city'
-  texture.repeat.set(city ? 260/STREET_BLOCK_SIZE : 8,city ? 900/STREET_BLOCK_SIZE : 28)
-  texture.offset.set(city ? .5-(130/STREET_BLOCK_SIZE)%1 : 0,
-    city ? .5-((450+groundZ+20)/STREET_BLOCK_SIZE)%1 : 0)
+  const sunset = url === 'paper:ground:sunset'
+  const wrapping = sunset ? THREE.MirroredRepeatWrapping : THREE.RepeatWrapping
+  if (texture.wrapS !== wrapping || texture.wrapT !== wrapping) {
+    texture.wrapS = texture.wrapT = wrapping
+    texture.needsUpdate = true
+  }
+  texture.repeat.set(city ? 260/STREET_BLOCK_SIZE : sunset ? 4 : 8,city ? 900/STREET_BLOCK_SIZE : sunset ? 14 : 28)
+  texture.offset.set(city ? .5-(130/STREET_BLOCK_SIZE)%1 : sunset ? .19 : 0,
+    city ? .5-((450+groundZ+20)/STREET_BLOCK_SIZE)%1 : sunset ? .13 : 0)
 }
 configureGroundPattern(groundMap,'paper:ground:city')
 const ground = new THREE.Mesh(
@@ -3881,16 +3893,18 @@ function spawnBoss(z = 70, forcedKind = null) {
  *  (every 250m, offset from the 500m boss cadence) — a deliberate cluster
  *  of hazards instead of the usual sparse random spawns, so the mid-run
  *  pacing has more texture than "quiet until the next boss". */
-function spawnMiniGauntlet(z = 60) {
+function spawnMiniGauntlet(z = 60, encounter = null) {
   // The gauntlet's whole job is to be denser than a normal wave while still
   // being flyable, so it shares the same guarantee as every other spawn: one
   // continuous gap, wide enough, whose position the player has to read. It
   // just makes that gap narrower and puts more metal around it.
+  const corridorHalfWidth = Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH)
+  const authored = encounter ? journeyGauntletSpec(encounter, lastGapCenter, corridorHalfWidth - 3) : null
   const gapWidth = requiredGapWidth({
     planeRadius: PLANE_COLLISION_RADIUS,
     tier: endlessTier().tier,
-  }) * 1.15
-  const gapCenter = chooseGapCenter({
+  }) * (authored?.widthMultiplier ?? 1.15)
+  const gapCenter = authored?.gapCenter ?? chooseGapCenter({
     random: rng,
     previousCenter: lastGapCenter,
     halfWidth: Math.min(MAX_X - 1, CORRIDOR_HALF_WIDTH),
@@ -3901,7 +3915,7 @@ function spawnMiniGauntlet(z = 60) {
   activePassageGap = { center: gapCenter, width: gapWidth }
   const placements = []
 
-  if (rng() < 0.5) {
+  if (authored ? authored.pattern === 'scissors' : rng() < 0.5) {
     // Scissor zigzag: three blades alternating either side of the gap, so the
     // committed line through it is a slalom rather than a straight tunnel.
     const plan = planWaveGaps({
@@ -3916,7 +3930,7 @@ function spawnMiniGauntlet(z = 60) {
       const sc = createScissors()
       sc.position.set(x, 8 + rng() * 6, flyerSpawnZ(z + i * 9))
       scene.add(sc)
-      entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenter })
+      entities.push({ mesh: sc, type: 'scissors', radius: 1.6, passageGapX: gapCenter, passageGapWidth: gapWidth })
       placements.push({ x, radius: 1.6 })
     })
   } else {
@@ -3935,7 +3949,7 @@ function spawnMiniGauntlet(z = 60) {
       flyer.position.set(x, 6 + rng() * 12, flyerSpawnZ(z + i * 3.5 + (rng() - 0.5) * 1.5))
       scene.add(flyer)
       entities.push({
-        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageGapX: gapCenter,
+        mesh: flyer, type: 'bird', flyerId: def.id, label: def.label, radius: def.radius, passageGapX: gapCenter, passageGapWidth: gapWidth,
       })
       placements.push({ x, radius: def.radius })
     })
@@ -4006,9 +4020,9 @@ function dispatchJourneyEncounter(event) {
   switch (event.type) {
   case 'formation':
   case 'rooftop-gap':
-    spawnMiniGauntlet(64)
+    spawnMiniGauntlet(64, event)
     for (const entity of entities.slice(eventStart)) {
-      entity.journeyMotion = event.type === 'formation'
+      entity.journeyMotion = event.type === 'formation' && (entity.type === 'bird' || entity.type === 'scissors')
         ? { originX: entity.mesh.position.x, amplitude: 3.5, speed: event.params?.speed || 2.4, direction: event.params?.direction || 1 }
         : null
     }
@@ -6870,9 +6884,9 @@ function animateHazards(dt) {
       const clamped = clampAmplitudeToGap({
         requestedAmplitude: requested,
         anchorX: motion.originX,
-        gapCenter: lastGapCenter,
-        gapWidth: 5.5,
-        damageRadius: e.radius || 0.7,
+        gapCenter: e.passageGapX ?? lastGapCenter,
+        gapWidth: e.passageGapWidth ?? 5.5,
+        damageRadius: getObstacleDamageRadius({ entityRadius: e.radius || 0.7, planeRadius: PLANE_COLLISION_RADIUS }),
         reach: 1,
       })
       const amp = Math.min(requested, clamped)

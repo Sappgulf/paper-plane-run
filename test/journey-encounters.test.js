@@ -4,6 +4,7 @@ import {
   buildEncounterTimeline,
   getEncounterEventsAtDistance,
   resolveJourneyObjective,
+  journeyGauntletSpec,
 } from '../src/journey-encounters.js'
 
 describe('Journey encounter director', () => {
@@ -35,6 +36,21 @@ describe('Journey encounter director', () => {
     const event = timeline.events[0]
     expect(getEncounterEventsAtDistance(timeline, event.distance - 1, event.distance)).toEqual([event])
     expect(getEncounterEventsAtDistance(timeline, event.distance, event.distance + 1)).toEqual([])
+  })
+
+  it('preserves authored lane choices across seeded variations', () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const events = buildEncounterTimeline({ seed, zone: 'city', routeId: 'city-safe' }).events
+      expect(events.map(event => event.lanes.length)).toEqual([3, 1, 2])
+      expect(events.every(event => new Set(event.lanes).size === event.lanes.length)).toBe(true)
+    }
+  })
+
+  it('gives route beats distinct patterns and bounded, authored flight lines', () => {
+    expect(journeyGauntletSpec({type: 'rooftop-gap', lanes: [-1], params: {width: 1.2}}, 0, 8))
+      .toEqual({gapCenter: -4, pattern: 'scissors', widthMultiplier: 1.2})
+    expect(journeyGauntletSpec({type: 'formation', lanes: [1]}, -4, 8))
+      .toEqual({gapCenter: 1.7999999999999998, pattern: 'flyers', widthMultiplier: 1.15})
   })
 
   it.each(['city', 'harbor', 'storm', 'sunset', 'midnight'])(

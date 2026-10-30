@@ -137,6 +137,20 @@ export function createWorldCanvas({ kind = 'ground', zoneId = 'city', size = 512
       ctx.strokeStyle = '#f9ddba'; ctx.globalAlpha = .42; ctx.lineWidth = 2
       ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+span,y-9); ctx.stroke(); ctx.globalAlpha = 1
     }
+  } else if (zoneId === 'aurora' || zoneId === 'midnight') {
+    // Folded ribbons make the night routes read as a landscape rather than
+    // a scattering of unrelated rectangular patches.
+    for (let row = 0; row < 5; row++) {
+      const y = row * h / 5
+      polygon(ctx, [[0,y],[w*.24,y+12],[w*.49,y-10],[w*.74,y+8],[w,y],[w,y+32],[w*.74,y+40],[w*.49,y+22],[w*.24,y+44],[0,y+32]], row%2 ? p.groundAlt : p.mid)
+      ctx.strokeStyle = p.paper; ctx.globalAlpha = .17; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w*.24,y+12); ctx.lineTo(w*.49,y-10); ctx.lineTo(w*.74,y+8); ctx.lineTo(w,y); ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+    for (let i = 0; i < 18; i++) {
+      const x = random()*w, y = random()*h, span = 10+random()*18
+      polygon(ctx, [[x,y-span],[x+span,y],[x,y+span],[x-span,y]], i%2 ? p.near : p.groundAlt)
+    }
   } else {
     const count = zoneId === 'midnight' ? 14 : 24
     for (let i = 0; i < count; i++) {

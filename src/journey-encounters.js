@@ -56,7 +56,24 @@ function clamp(value, minimum, maximum) {
 
 function varyLanes(lanes, seed) {
   const offset = (seed % 3) - 1
-  return lanes.map((lane) => clamp(lane + offset, -1, 1)).filter((lane, index, values) => values.indexOf(lane) === index)
+  // Rotate the three lane choices rather than clamping at the edge. Clamping
+  // merges neighboring lanes and silently removes authored route options.
+  return lanes.map((lane) => ((lane + 1 + offset + 3) % 3) - 1)
+}
+
+/** Translate an authored route beat into a readable, bounded flight line. */
+export function journeyGauntletSpec(event, previousCenter, halfWidth) {
+  const lanes = event?.lanes || []
+  const variant = Math.max(0, Math.floor(Number(event?.params?.variant) || 0))
+  const lane = lanes[variant % Math.max(1, lanes.length)] ?? 0
+  const previous = Number.isFinite(previousCenter) ? previousCenter : 0
+  const bound = Math.max(0, Number.isFinite(halfWidth) ? halfWidth : 0)
+  const target = clamp(lane * 4, -bound, bound)
+  return {
+    gapCenter: clamp(target, Math.max(-bound, previous - 5.8), Math.min(bound, previous + 5.8)),
+    pattern: event?.type === 'rooftop-gap' ? 'scissors' : 'flyers',
+    widthMultiplier: clamp(Number(event?.params?.width) || 1.15, 1, 1.5),
+  }
 }
 
 export function buildJourneyObjective(config = {}) {
