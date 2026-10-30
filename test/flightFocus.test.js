@@ -21,12 +21,28 @@ describe('flight focus lane scoring', () => {
     expect(picked.label).toBe('GATE AHEAD')
   })
 
-  test('first-flight teaching ignores hazards and names the star line', () => {
+  test('targets the actual boss opening instead of the ground-level assembly origin', () => {
+    const boss = { type:'boss', mesh:{ position:{ x:2, y:0, z:22 }, userData:{ gapY:11 } } }
+    expect(pickFlightFocus([boss], { planeX:0, planeY:10 })).toMatchObject({
+      cue:'hazard', label:'GATE AHEAD', target:{ x:2, y:11, z:22 },
+    })
+  })
+
+  test('an imminent in-lane hazard overrides the early star lesson', () => {
     const picked = pickFlightFocus([
       { type: 'scissors', x: 0, y: 10, z: 16 },
       { type: 'star', x: 1, y: 10, z: 30 },
     ], { planeX: 0, planeY: 10, teachStars: true })
-    expect(picked.type).toBe('star')
+    expect(picked).toMatchObject({ type:'scissors', label:'DODGE · SCISSORS' })
+  })
+
+  test('the early lesson keeps its star cue when danger is distant or off the flight line', () => {
+    const star = { type:'star', x:0, y:10, z:30 }
+    for (const hazard of [
+      { type:'scissors', x:0, y:10, z:40 },
+      { type:'bird', flyerId:'hawk', x:9, y:10, z:14 },
+      { type:'bird', flyerId:'hawk', x:0, y:18, z:14 },
+    ]) expect(pickFlightFocus([hazard, star], {planeX:0, planeY:10, teachStars:true}).type).toBe('star')
   })
 
   test('returns FLY when the corridor ahead is empty', () => {
@@ -48,6 +64,12 @@ describe('flight focus lane scoring', () => {
     for (const [kind,label] of [['boost','BOOST · SPEED'],['shield','SHIELD · PROTECT'],['magnet','MAGNET · STARS']]) {
       expect(pickFlightFocus([{type:'power',kind,x:0,y:10,z:24}]).label).toBe(label)
     }
+  })
+
+  test('names approaching hazards so their silhouettes are easier to identify', () => {
+    expect(pickFlightFocus([{type:'bird',flyerId:'hawk',x:0,y:10,z:12}]).label).toBe('DODGE · HAWK')
+    expect(pickFlightFocus([{type:'scissors',x:0,y:10,z:12}]).label).toBe('DODGE · SCISSORS')
+    expect(pickFlightFocus([{type:'building',x:0,y:10,z:12}]).label).toBe('DODGE · BUILDING')
   })
 })
 

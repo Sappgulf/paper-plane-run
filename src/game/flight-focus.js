@@ -21,8 +21,11 @@ function finite(value, fallback = 0) {
 
 export function describeFocusCue(type, kind) {
   if (type === 'boss') return { cue: 'hazard', label: 'GATE AHEAD' }
-  if (type === 'building' || type === 'bird' || type === 'scissors') {
-    return { cue: 'hazard', label: 'DODGE' }
+  if (type === 'building') return { cue: 'hazard', label: 'DODGE · BUILDING' }
+  if (type === 'scissors') return { cue: 'hazard', label: 'DODGE · SCISSORS' }
+  if (type === 'bird') {
+    const name = { bird: 'BIRD', balloon: 'BALLOON', kite: 'KITE', biplane: 'BIPLANE', dragonfly: 'DRAGONFLY', wasp: 'WASP', hawk: 'HAWK' }[kind] || 'FLYER'
+    return { cue: 'hazard', label: `DODGE · ${name}` }
   }
   if (type === 'power') return { cue: 'power', label: ({ boost: 'BOOST · SPEED', shield: 'SHIELD · PROTECT', magnet: 'MAGNET · STARS' })[kind] || 'POWER' }
   if (type === 'updraft') return { cue: 'lift', label: 'UPDRAFT · LIFT' }
@@ -46,10 +49,15 @@ export function focusScore({ z, dx = 0, dy = 0, type, teachStars = false } = {})
 export function pickFlightFocus(candidates, { planeX = 0, planeY = 10, teachStars = false } = {}) {
   let best = null
   let bestScore = Infinity
+  let urgent = null
+  let urgentScore = Infinity
   for (const item of candidates || []) {
     const type = item.type
     const x = item.x ?? item.mesh?.position?.x
-    const y = item.y ?? item.mesh?.position?.y
+    const bossGap = item.mesh?.userData?.gapY
+    const y = type === 'boss' && Number.isFinite(bossGap)
+      ? finite(item.mesh?.position?.y) + bossGap
+      : item.y ?? item.mesh?.position?.y
     const z = item.z ?? item.mesh?.position?.z
     const score = focusScore({
       z,
@@ -58,11 +66,24 @@ export function pickFlightFocus(candidates, { planeX = 0, planeY = 10, teachStar
       type,
       teachStars,
     })
+    // Teaching a star line must never hide a nearby collision threat in the
+    // player's path. Ignore distant or off-lane hazards so the lesson stays calm.
+    if (teachStars && ['bird', 'scissors', 'building'].includes(type)
+      && finite(z, Infinity) >= FOCUS_Z_MIN && finite(z, Infinity) <= 32
+      && Math.abs(finite(x) - finite(planeX)) <= 4
+      && Math.abs(finite(y) - finite(planeY)) <= 4.5) {
+      const dangerScore = focusScore({ z, dx: finite(x) - finite(planeX), dy: finite(y) - finite(planeY), type })
+      if (dangerScore < urgentScore) {
+        urgentScore = dangerScore
+        urgent = { type, kind: type === 'bird' ? item.flyerId : item.kind, score: dangerScore, x: finite(x), y: finite(y), z: finite(z) }
+      }
+    }
     if (score < bestScore) {
       bestScore = score
-      best = { type, kind: item.kind, score, x: finite(x), y: finite(y), z: finite(z) }
+      best = { type, kind: type === 'bird' ? item.flyerId : item.kind, score, x: finite(x), y: finite(y), z: finite(z) }
     }
   }
+  if (urgent) best = urgent
   // Prefer the teaching star line when one exists; do not suppress useful
   // lift or power cues merely because the early corridor has no stars.
   if (!best && teachStars) return pickFlightFocus(candidates,{planeX,planeY,teachStars:false})

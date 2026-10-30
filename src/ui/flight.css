@@ -205,7 +205,8 @@ html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; 
 }
 .flight-focus-cue {
   position: absolute; left: 50%; top: 100%; transform: translate(-50%, 5px);
-  color: #fffaf2; font-size: 9px; font-weight: 900; letter-spacing: .16em;
+  color: #fffaf2; background: #233e49e8; padding: 3px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em;
   text-shadow: 0 1px 4px rgba(36,59,83,.65); white-space: nowrap;
 }
 #flight-focus[data-cue="hazard"] .flight-focus-ring { --fc: rgba(255,138,110,.98); }
@@ -217,9 +218,9 @@ html.a11y-reduced-motion #warn-flash.paper-crease { animation: none !important; 
 /* Pop on target change: brackets swing out a touch and settle, with a
    softened falloff so it reads as a highlight rather than a bounce. */
 @keyframes focusPop {
-  0% { transform: scale(.82); opacity: .4; }
-  55% { transform: scale(1.12); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% { transform: translate(-50%, -50%) scale(.82); opacity: .4; }
+  55% { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 #flight-focus.focus-pop { animation: focusPop .22s ease-out; }
 html.a11y-reduced-motion #flight-focus { transition: none; }

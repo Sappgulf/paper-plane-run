@@ -2854,6 +2854,7 @@ function createBuilding(w, h, d, mat) {
 // danger claims space instead of a thin hairline that vanishes into the sky.
 const lethalOutlineGeo = new THREE.TorusGeometry(1, 0.12, 6, 20)
 const lethalGlowGeo = new THREE.TorusGeometry(1.16, 0.05, 6, 20)
+const armorRingGeo = new THREE.TorusGeometry(1, 0.045, 6, 24)
 // The warning rings ignore fog: when thick fog hides a hazard, its ring is the
 // one thing that still shows the player where the danger is.
 const lethalOutlineMat = new THREE.MeshBasicMaterial({
@@ -2877,7 +2878,8 @@ function attachLethalOutline(group, radius = 0.85) {
   if (!group || group.userData.lethalOutline) return group
   const outline = new THREE.Mesh(lethalOutlineGeo, lethalOutlineMat)
   outline.name = 'lethalOutline'
-  outline.rotation.y = Math.PI / 2
+  // The camera looks along +Z: the torus lies in XY and faces it unrotated.
+  outline.position.z = -0.08
   outline.scale.setScalar(radius)
   outline.visible = false
   group.add(outline)
@@ -2886,7 +2888,7 @@ function attachLethalOutline(group, radius = 0.85) {
   if (renderQuality.secondaryEffects) {
     const glow = new THREE.Mesh(lethalGlowGeo, lethalGlowMat)
     glow.name = 'lethalGlow'
-    glow.rotation.y = Math.PI / 2
+    glow.position.z = -0.09
     glow.scale.setScalar(radius)
     glow.visible = false
     group.add(glow)
@@ -2958,10 +2960,6 @@ function createBillboardFlyer(scale = 1.5, kind = 'flyer') {
   card.rotation.y = Math.PI
   g.add(card)
   g.userData.billboard = card
-  // The warning ring is sized to overhang the sprite visibly even at distance:
-  // a hairline ring 40 units out is invisible, and in the haze zones it is the
-  // one cue that says "something lethal is here".
-  attachLethalOutline(g, Math.max(0.85, (scale || 1.5) * 0.55))
   return g
 }
 
@@ -2991,14 +2989,15 @@ function createFlyer(kindId) {
   g.userData.hp = hp
   g.userData.maxHp = hp
   if (hp > 1) {
-    const armor = new THREE.Mesh(lethalOutlineGeo, armorRingMat)
+    const armor = new THREE.Mesh(armorRingGeo, armorRingMat)
     armor.name = 'armorRing'
-    armor.rotation.y = Math.PI / 2
+    armor.position.z = -0.1
     armor.visible = false
     g.add(armor)
     g.userData.armorRing = armor
   }
-  return g
+  // Attach to the entity itself so the live warning pass can update it.
+  return attachLethalOutline(g, Math.max(0.85, (def.scale || 1.5) * 0.55))
 }
 
 function pickFlyerKind() {
@@ -3018,7 +3017,7 @@ function createScissors() {
   g.add(bill)
   g.userData.billboard = bill.userData.billboard
   g.userData.hp = 1
-  return g
+  return attachLethalOutline(g, 3.15 * 0.55)
 }
 
 // Ink Blast dart — shared geometry/material, since a run fires dozens.
@@ -4929,8 +4928,6 @@ function resetGame() {
       fogMul: journeyRunConfig.modifier === 'low-visibility' ? 0.55 : 1,
       starMul: journeyRunConfig.modifier === 'star-trail' ? 1.6 : 1,
     }
-    if (journeyRunConfig.finale) nextBossAt = 180
-    if (journeyRunConfig.modifier === 'moving-formation') nextGauntletAt = 120
     if (journeyRunConfig.modifier === 'shortcut-gates') activeTwist.starMul = 1.35
     if (journeyRunConfig.risk === 'risky') activeTwist.windMul = (activeTwist.windMul || 1) * 1.2
   } else if (runKind === 'layout') {
@@ -6805,6 +6802,11 @@ function fogReadabilityDepth() {
 const STARTLE_SECONDS = 0.7
 
 function animateHazards(dt) {
+  // Materials are shared across the roster; a far-away hidden ring must not
+  // make a nearby ring transparent by overwriting its opacity.
+  const warningOpacity = settings.reducedMotion ? 0.8 : 0.62 + Math.sin(hazardClock * 10) * 0.24
+  lethalOutlineMat.opacity = warningOpacity
+  lethalGlowMat.opacity = warningOpacity * 0.38
   for (const e of entities) {
     if (e.journeyMotion) {
       const motion = e.journeyMotion
@@ -6928,15 +6930,14 @@ function animateHazards(dt) {
     }
       const outline = e.mesh.userData.lethalOutline
       if (outline && (e.type === 'bird' || e.type === 'scissors')) {
+        const u = e.mesh.userData
         // Start ringing earlier (z<36) so the approach reads as pressure; the
         // shared glow mesh mirrors the pulse without a second draw call.
         // A hazard sitting deeper than the readable fog depth also rings —
         // the ring ignores fog, so it reads through haze.
         const hazy = e.mesh.position.z > fogReadabilityDepth()
-        const near = e.mesh.position.z < 36 || hazy || u.stoopPhase === 'lock'
-        const pulse = near ? 0.62 + Math.sin(hazardClock * 10) * 0.24 : 0
+        const near = e.mesh.position.z > 0 && (e.mesh.position.z < 36 || hazy || u.stoopPhase === 'lock')
         outline.visible = near
-        outline.material.opacity = pulse
         // The ring is the *collision* boundary, not a decoration: at close
         // range it must never be smaller than the radius that kills. It only
         // grows beyond that with distance so its on-screen size stays legible
@@ -6954,13 +6955,12 @@ function animateHazards(dt) {
         const glow = e.mesh.userData.lethalGlow
         if (glow) {
           glow.visible = near && renderQuality.secondaryEffects
-          glow.material.opacity = pulse * 0.38
           glow.scale.setScalar(warningScale)
         }
         const armorRing = e.mesh.userData.armorRing
         if (armorRing) {
           armorRing.visible = near && (e.mesh.userData.hp || 1) > 1
-          if (armorRing.visible) armorRing.scale.setScalar(warningScale * 1.04)
+          if (armorRing.visible) armorRing.scale.setScalar(warningScale * 0.84)
         }
       }
       if (e.mesh.userData.hitPulse > 0) {
@@ -6986,7 +6986,7 @@ function animateHazards(dt) {
       if (u.workshop) u.workshop.position.y = u.gapY
       if (u.precisionTarget) u.precisionTarget.position.y = u.gapY
       u.encounter = encounter
-      if (encounter?.phase && encounter.phase !== e.lastBossPhase) {
+      if (!e.cleared && encounter?.phase && encounter.phase !== e.lastBossPhase) {
         e.lastBossPhase = encounter.phase
         u.poseClock = 0
         const presentation = describeBossPhase(encounter)
@@ -7902,6 +7902,7 @@ function update(dt) {
   if (
     runKind !== 'tutorial' &&
     runKind !== 'layout' &&
+    runKind !== 'journey' &&
     distance >= nextGauntletAt &&
     !bossActive
   ) {
@@ -7914,6 +7915,7 @@ function update(dt) {
   if (
     runKind !== 'tutorial' &&
     runKind !== 'layout' &&
+    runKind !== 'journey' &&
     distance >= nextBossAt &&
     !bossActive
   ) {
@@ -8033,7 +8035,6 @@ function update(dt) {
     }
   }
   updateEndlessTier()
-  updateEdgeIndicators()
   // Faint gap moth trail — always on, 0.12 opacity, so the guaranteed gap reads even without gauntlet ribbon
   if (gapTrailEl && activePassageGap && state === 'playing') {
     gapTrailEl.style.left = `calc(50% + ${activePassageGap.center * 1.8}%)`
@@ -8083,6 +8084,9 @@ function update(dt) {
       camera.position.y += (Math.random() - 0.5) * shake * 0.25
     }
   }
+  // Screen-space cues must use this frame's chase camera, not the matrix left
+  // by the previous render (which drifts visibly during pulls and banking).
+  camera.updateMatrixWorld()
   // Contact shadow tracks the plane's lane; it tightens and fades with
   // altitude so height stays readable against the patterned ground.
   const sh = shadowForPlane({ planeY, planeX, bank: plane.rotation.z, maxY: MAX_Y })
@@ -8096,6 +8100,7 @@ function update(dt) {
 
   scrollWorld(move, windPushX * dt * 0.5)
   animateHazards(slowmo ? dt * SLOWMO_WORLD_SCALE : dt)
+  updateEdgeIndicators()
   updateEdgeThreats()
   updateFlightReadability(zp)
   updateWeapon(dt)
@@ -8363,6 +8368,7 @@ function update(dt) {
         }
         const reward = getBossClearReward()
         bossActive = false
+        if (zoneBannerKind === 'boss') { zoneBannerTimer = 0; zoneBanner.classList.add('hidden') }
         bossRecoveryUntil = distance + reward.recoveryMeters
         hitStopTimer = reward.hitStopSeconds
         track('boss_clear', { distance: Math.floor(distance), kind: m.userData.kind })
@@ -8401,6 +8407,7 @@ function update(dt) {
       if (!e.cleared && m.position.z < -2.5) {
         e.cleared = true
         bossActive = false
+        if (zoneBannerKind === 'boss') { zoneBannerTimer = 0; zoneBanner.classList.add('hidden') }
         releaseEntity(e)
         entities.splice(i, 1)
         continue
@@ -8997,6 +9004,31 @@ if (import.meta.env.DEV && devTestState === '#test-obstacles') {
   needsRender = true
 }
 
+// A star and a collision threat share the opening flight line. The live
+// marker should name the danger before the star lesson.
+if (import.meta.env.DEV && devTestState === '#test-focus-danger') {
+  hideAllPanels()
+  runKind = 'classic'
+  resetGame()
+  clearEntities()
+  state = 'playing'
+  simulationPaused = true
+  spawnUnfold = 1
+  invuln = 999
+  nextSpawnZ = 1e9
+  windTimer = 999
+  const flyer = createFlyer('biplane')
+  flyer.position.set(0, planeY, 22)
+  scene.add(flyer)
+  entities.push({ mesh: flyer, type: 'bird', flyerId: 'biplane', radius: 0.9 })
+  const star = createStar()
+  star.position.set(0, planeY, 26)
+  scene.add(star)
+  entities.push({ mesh: star, type: 'star', radius: 0.9 })
+  hudEl?.classList.remove('hidden')
+  needsRender = true
+}
+
 // A diving hawk stoops on a plane that has left the gap: the lock telegraphs the
 // lane and the stoop reaches the plane. The `-gap` variant parks the plane dead
 // centre in the gap, where the same hawk must not reach it.
@@ -9523,7 +9555,22 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-landscape-')) {
   }
 }
 
-if (import.meta.env.DEV && devTestState.startsWith('#test-journey-')) {
+if (import.meta.env.DEV && devTestState === '#test-journey-desk-finale') {
+  settings = saveSettings({ haptics: false })
+  journey = { ...createJourney(4242, 1000, 2), stepIndex: 3 }
+  journey = selectJourneyRoute(journey, getRouteChoices(journey)[0].id)
+  journeyRunConfig = buildRunConfiguration(journey)
+  runKind = 'journey'
+  hideAllPanels()
+  resetGame()
+  invuln = 999
+  state = 'playing'
+  simulationPaused = true
+  hudEl?.classList.remove('hidden')
+  needsRender = true
+}
+
+if (import.meta.env.DEV && devTestState.startsWith('#test-journey-') && devTestState !== '#test-journey-desk-finale') {
   const zoneId = devTestState.slice('#test-journey-'.length)
   const stepIndex = ['city', 'harbor', 'storm', 'aurora'].indexOf(zoneId)
   if (stepIndex >= 0) {
@@ -9585,6 +9632,22 @@ if (import.meta.env.DEV) {
     wingBounds: { min: wingBounds.min.toArray(),max: wingBounds.max.toArray() },
     liftLabelBounds,
     boostStreamerVisible: Boolean(boostFlame?.visible),
+    bossGapScreen: (() => {
+      const boss = entities.find(e => e.type === 'boss' && !e.cleared)
+      if (!boss) return null
+      const p = new THREE.Vector3(boss.mesh.position.x, boss.mesh.position.y + boss.mesh.userData.gapY, boss.mesh.position.z).project(camera)
+      return { x: (p.x + 1) * innerWidth / 2, y: (1 - p.y) * innerHeight / 2 }
+    })(),
+    hazardWarnings: entities.filter(e => e.type === 'bird' || e.type === 'scissors').map(e => {
+      const ring = e.mesh.userData.lethalOutline
+      const projected = e.mesh.position.clone().project(camera)
+      return { type: e.type, flyerId: e.flyerId || '', z: e.mesh.position.z,
+        screenX: (projected.x + 1) * innerWidth / 2, screenY: (1 - projected.y) * innerHeight / 2,
+        attached: Boolean(ring), visible: Boolean(ring?.visible), opacity: ring?.material.opacity ?? 0,
+        facing: ring?.rotation.y ?? null, radius: ring?.scale.x ?? 0,
+        armorVisible: Boolean(e.mesh.userData.armorRing?.visible), armorRadius: e.mesh.userData.armorRing?.scale.x ?? 0,
+        hitRadius: (e.radius || 0.7) + PLANE_COLLISION_RADIUS * 0.52 }
+    }),
     shadowVisible: planeShadow.visible,
     shadowScale: planeShadow.scale.x,
     unfold: spawnUnfold,

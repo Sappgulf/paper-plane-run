@@ -29,3 +29,49 @@ for(const kind of ['scissors','wind','stapler','punch']) {
   expect(errors).toEqual([])
  })
 }
+
+test('a cleared boss stops showing its approach instruction', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'deterministic encounter fixture')
+  const errors = collectConsoleErrors(page)
+  await openFixture(page, '/?boss-proof=scissors&boss-pass=1#test-boss-encounter')
+  const result = await page.evaluate(() => {
+    window.__paperFreeze(true)
+    for (let i = 0; i < 20; i++) {
+      window.advanceTime(50)
+      const state = JSON.parse(window.render_game_to_text())
+      if (state.boss?.completed) {
+        window.advanceTime(350) // Let the encounter strip retire and the cleared gate keep animating.
+        return state
+      }
+    }
+    return JSON.parse(window.render_game_to_text())
+  })
+  expect(result.boss?.completed).toBe(true)
+  await expect(page.locator('#boss-flight')).toBeHidden()
+  await expect(page.locator('#zone-banner')).toBeHidden()
+  await expect(page.locator('#zone-banner')).toHaveClass(/hidden/)
+  await expect(page.locator('#flight-feedback')).toContainText('THREAD')
+  expect(errors).toEqual([])
+})
+
+test('the boss marker follows the opening rather than the gate base', async ({ page }) => {
+  test.skip(process.env.PLAYWRIGHT_PREVIEW === '1', 'deterministic encounter fixture')
+  const errors = collectConsoleErrors(page)
+  await openFixture(page, '/?boss-proof=stapler#test-boss-encounter')
+  const position = await page.evaluate(() => {
+    window.__paperFreeze(true)
+    for (let i = 0; i < 100; i++) {
+      window.advanceTime(50)
+      const state = JSON.parse(window.render_game_to_text())
+      if (state.boss?.z > 8 && state.boss.z < 40 && document.querySelector('#flight-focus-cue').textContent === 'GATE AHEAD') {
+        const marker = document.querySelector('#flight-focus')
+        return { x: parseFloat(marker.style.left), y: parseFloat(marker.style.top), target: window.__paperPose().bossGapScreen }
+      }
+    }
+    return null
+  })
+  expect(position).not.toBeNull()
+  expect(position.x).toBeCloseTo(position.target.x, 0)
+  expect(position.y).toBeCloseTo(position.target.y, 0)
+  expect(errors).toEqual([])
+})
