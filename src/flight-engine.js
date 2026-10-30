@@ -5560,6 +5560,7 @@ function announceFlightStart() {
 }
 
 launcher = createSlingshot({
+  reducedMotion: () => settings.reducedMotion,
   onRelease(power) {
     const now = new Date()
     const period = runKind === 'daily' ? dailyKey(now) : runKind === 'weekly' ? weeklyKey(now) : null
@@ -5569,7 +5570,7 @@ launcher = createSlingshot({
     resetStick()
     spawnUnfold = 0
     launchStrength = power
-    speedBoost = power * 8
+    speedBoost = power * 18
     timer?.reset?.()
     if (['classic', 'daily', 'weekly'].includes(runKind)) {
       remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind: runKind, seed: activeRunSeed })
@@ -6124,6 +6125,8 @@ function die(reason) {
   fovPunch = isWin ? 0 : -6
   showStick(false)
   clearPower()
+  clearFlightBanners()
+  if (boostFlame) boostFlame.visible = false
   // Freeze the weather with the world: no streaks hanging mid-gust.
   for (const s of windStreaks) s.visible = false
   showFlightFeedback(isWin ? 'ROUTE COMPLETE' : 'PAPER CRASH', isWin ? 'route' : 'hazard', isWin ? 1.5 : 1.1)
@@ -6131,6 +6134,9 @@ function die(reason) {
 
   // Sync crash pose
   plane.position.set(planeX, planeY, 0)
+  // A run can end during an invulnerability blink. The dead-state update no
+  // longer runs the blink logic, so restore the plane before the final frame.
+  plane.visible = true
   if (!isWin) {
     audio.crash()
     if (settings.haptics) Haptic.crash()
@@ -7215,7 +7221,7 @@ function registerStarStreak() {
 const launchProjection = new THREE.Vector3()
 function update(dt) {
   if (launcher?.pending && state === 'playing') {
-    const pull = settings.reducedMotion ? 0 : launcher.charge
+    const pull = launcher.charge
     plane.visible = true
     plane.position.set(0, 8 - pull, -pull * 2)
     plane.rotation.set(-pull * .2, 0, 0)
@@ -7227,7 +7233,7 @@ function update(dt) {
     launchProjection.set(0, 8, 0).project(camera)
     const baseY = (1 - launchProjection.y) * height / 2
     launchProjection.copy(plane.position).project(camera)
-    launcher.setAnchor((launchProjection.x + 1) * width / 2, (1 - launchProjection.y) * height / 2, baseY, width, height)
+    launcher.setAnchor((launchProjection.x + 1) * width / 2, (1 - launchProjection.y) * height / 2, width / 2, baseY, width, height)
     return
   }
   elapsed += dt
@@ -7338,7 +7344,7 @@ function update(dt) {
   // delaying controls or changing collision coordinates.
   if (spawnUnfold < 1) {
     spawnUnfold = Math.min(1, spawnUnfold + dt / UNFOLD_SECONDS)
-    const launch = launchPose(spawnUnfold, settings.reducedMotion)
+    const launch = launchPose(spawnUnfold, settings.reducedMotion, launchStrength)
     plane.scale.setScalar(activeUpgradeEffects.planeScale * launch.scale * 1.12)
   }
   if (runKind === 'journey' && journeyRunConfig) {
@@ -7915,8 +7921,8 @@ function update(dt) {
     nextBossAt += 500
   }
 
-  const launch = launchPose(spawnUnfold, settings.reducedMotion)
-  plane.position.set(planeX, planeY, launch.depth * (.8 + launchStrength * .4))
+  const launch = launchPose(spawnUnfold, settings.reducedMotion, launchStrength)
+  plane.position.set(planeX, planeY + launch.lift, launch.depth)
   // Visual bank from motion (clamped so mouse snaps don't spin the plane)
   const flightPose = getPaperFlightPose({
     horizontalVelocity: velX,
@@ -7950,11 +7956,11 @@ function update(dt) {
   if (wingL?.userData.outline) wingL.userData.outline.quaternion.copy(wingL.quaternion)
   if (wingR?.userData.outline) wingR.userData.outline.quaternion.copy(wingR.quaternion)
 
-  // Invuln blink
-  if (invuln > 0 && elapsed >= SPAWN_INVULN_SECONDS) {
-    plane.visible = Math.sin(elapsed * 28) > -0.2
-  } else {
-    plane.visible = true
+  // Never blink the whole plane away: it is the player's reference for
+  // steering. A light pulse complements the existing protection feedback.
+  plane.visible = true
+  if (invuln > 0 && elapsed >= SPAWN_INVULN_SECONDS && !settings.reducedMotion) {
+    planeBodyMat.emissiveIntensity += 0.18 * (0.5 + 0.5 * Math.sin(elapsed * 9))
   }
 
   // Ghost
@@ -8928,6 +8934,7 @@ window.render_game_to_text = () => JSON.stringify({
 })
 
 if (import.meta.env.DEV) {
+  window.__paperHidePlane = () => { plane.visible = false }
   window.advanceTime = (ms) => {
     const steps = Math.min(3600, Math.max(0, Math.ceil(Number(ms) / (1000 / 60))))
     for (let index = 0; index < steps; index += 1) update(1 / 60)

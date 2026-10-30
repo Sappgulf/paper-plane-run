@@ -12,7 +12,7 @@ test('the opening throw settles while the flight continues', async ({ page }) =>
   })
   expect(result.first.pose.planeVisible).toBe(true)
   expect(result.last.pose.planeVisible).toBe(true)
-  expect(result.first.pose.planePos[2]).toBeLessThan(0)
+  expect(result.first.pose.planePos[2]).toBeGreaterThan(0)
   expect(result.last.pose.planePos[2]).toBe(0)
   expect(result.last.state.distance).toBeGreaterThan(result.first.state.distance)
   expect(result.last.state.state).toBe('playing')

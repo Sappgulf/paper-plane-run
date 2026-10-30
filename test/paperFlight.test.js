@@ -87,14 +87,16 @@ describe('paper flight integration', () => {
 
 describe('visual launch pose', () => {
   test('throws forward and settles exactly into the normal flight pose', () => {
-    const start = launchPose(0)
-    const halfway = launchPose(0.5)
+    const start = launchPose(0, false, 0.7)
+    const halfway = launchPose(0.5, false, 0.7)
+    expect(start.depth).toBeCloseTo(-1.4)
+    expect(start.lift).toBeCloseTo(-0.7)
     expect(start.depth).toBeLessThan(halfway.depth)
-    expect(start.scale).toBeLessThan(halfway.scale)
-    expect(launchPose(1)).toEqual({ depth: 0, pitch: 0, scale: 1 })
+    expect(halfway.depth).toBeGreaterThan(0)
+    expect(launchPose(1)).toEqual({ depth: 0, lift: 0, pitch: 0, scale: 1 })
     expect(launchPose(20)).toEqual(launchPose(1))
   })
   test('reduced motion starts immediately in the normal pose', () => {
-    expect(launchPose(0, true)).toEqual({ depth: 0, pitch: 0, scale: 1 })
+    expect(launchPose(0, true)).toEqual({ depth: 0, lift: 0, pitch: 0, scale: 1 })
   })
 })

@@ -769,12 +769,15 @@ html.a11y-reduced-motion #tutorial-hint { animation: none !important; }
 #sw-update-btn:disabled { opacity: 0.7; cursor: wait; }
 
 .slingshot { position:absolute; inset:0; z-index:30; pointer-events:none; color:#fff8e7; background:linear-gradient(0deg,#163b49b8,transparent 36%,transparent 75%,#163b4920); }
-.launch-heading { position:absolute; top:24%; left:0; width:100%; text-align:center; color:#28434a; text-shadow:0 1px 0 #fff8e780; }
+.launch-heading { position:absolute; top:24%; left:0; width:100%; padding:10px 0; text-align:center; color:#fff8e7; background:linear-gradient(90deg,transparent,#173744df 20%,#173744df 80%,transparent); text-shadow:0 2px 3px #102832; }
 .slingshot-eyebrow { margin:0 0 9px; font-size:10px; font-weight:900; letter-spacing:.22em; }
 .slingshot h2 { font-family:Georgia,serif; font-size:clamp(26px,4vw,40px); font-weight:500; margin:0; }
 .slingshot-track { position:absolute; inset:0; touch-action:none; }
 .slingshot-track > svg { width:100%; height:100%; overflow:visible; }
 .sling-band { fill:none; stroke:#e7955f; stroke-width:5; stroke-linecap:round; filter:drop-shadow(0 2px 0 #28434a); }
+.sling-post { fill:#28434a; stroke:#f6c58a; stroke-width:2; }
+.slingshot.releasing { background:none; }
+.slingshot.releasing .launch-heading, .slingshot.releasing .launch-dock, .slingshot.releasing #slingshot-plane, .slingshot.releasing .sling-trajectory, .slingshot.releasing .sling-post { visibility:hidden; }
 .sling-trajectory { fill:none; stroke:#fff8e7; stroke-width:2; stroke-dasharray:5 10; opacity:.65; }
 #slingshot-plane { position:absolute; top:58%; left:50%; transform:translate(-50%,-50%); width:120px; height:110px; padding:0; border:0; background:transparent; box-shadow:none; color:#fff8e7; cursor:grab; touch-action:none; user-select:none; -webkit-touch-callout:none; pointer-events:auto; }
 #slingshot-plane:active { cursor:grabbing; }

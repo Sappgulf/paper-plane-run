@@ -24,11 +24,19 @@ export const UNFOLD_SECONDS = 0.55
 export const SPAWN_INVULN_SECONDS = 0.8
 
 /** A brief visual throw; simulation and steering remain at their normal position. */
-export function launchPose(progress = 1, reducedMotion = false) {
+export function launchPose(progress = 1, reducedMotion = false, power = 1) {
   const t = clamp(finite(progress, 1), 0, 1)
-  if (reducedMotion || t === 1) return { depth: 0, pitch: 0, scale: 1 }
+  if (reducedMotion || t === 1) return { depth: 0, lift: 0, pitch: 0, scale: 1 }
+  const tension = clamp(finite(power, 1), 0, 1)
   const remaining = (1 - t) ** 3
-  return { depth: -3.2 * remaining, pitch: -0.2 * remaining, scale: 1 - 0.22 * remaining }
+  // Begin exactly where the pulled plane was, travel past the resting point,
+  // then settle into the chase rig while the actual flight remains steerable.
+  return {
+    depth: -2 * tension * remaining + Math.sin(Math.PI * t) * (1 - t) * (1.5 + tension),
+    lift: -tension * remaining,
+    pitch: -0.2 * tension * remaining,
+    scale: 1,
+  }
 }
 
 export function groundEffectSpeedMul(tier = 0) {
