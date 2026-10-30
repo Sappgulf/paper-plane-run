@@ -188,6 +188,10 @@ kbd {
 }
 .manual-lessons h3 { font-size: 16px; margin-bottom: 4px; }
 .manual-lessons p, .manual-modes p { font-size: 13px; line-height: 1.5; color: #50616c; }
+.manual-sky-watch { margin: 0 0 18px; overflow: hidden; border: 1px solid #c8baa1; border-radius: 5px; background: #f4eee1; }
+.manual-sky-watch img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+.manual-sky-watch figcaption { display: grid; gap: 4px; padding: 12px 14px 14px; font-size: 13px; line-height: 1.5; color: #50616c; }
+.manual-sky-watch figcaption b { font-size: 12px; color: var(--ink); }
 .manual-modes { padding: 14px; border: 1px dashed #c8baa1; border-radius: 8px; }
 .manual-modes b { display: block; font-size: 12px; margin-bottom: 5px; }
 .manual-keys { display: flex; gap: 7px; align-items: center; justify-content: center; margin: 18px 0 6px; font-size: 11px; }

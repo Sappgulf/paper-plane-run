@@ -1,0 +1,5 @@
+# Sky Watch enemy illustration
+
+Generated with the built-in OpenAI image generation tool on 2026-10-29 using `public/assets/paper-flight-hero.webp` as a paper-craft style reference. The exported game asset `public/assets/sky-watch-enemies.webp` is resized to 960 pixels wide and compressed to WebP for the flight guide. It is illustrative concept art, not the in-flight collision art.
+
+Prompt: Create a polished concept-art reference sheet for enemies in a playful paper-plane flying game. Use the supplied image only as a style reference: tactile folded paper, cut edges, warm cream/terracotta, muted teal and soft daylight. Depict three distinct airborne threats: an origami hawk, a vintage paper biplane, and a wind-up paper wasp, each as a simple readable silhouette at three-quarter view, evenly spaced on a light neutral background. Make their shapes physically plausible as cut-and-fold paper props, with highly legible wings and proportions that could be built as low-poly 3D models. No typography, borders, interface, logos or watermark. This is a visual reference, not a sprite sheet.

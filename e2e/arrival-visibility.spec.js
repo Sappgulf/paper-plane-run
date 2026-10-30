@@ -10,13 +10,18 @@ test('journey arrival restores a visible plane even when the last flight frame b
     let previous = window.__paperPose()
     let hiddenFlightFrames = 0
     for (let i = 0; i < 1500; i++) {
-      if (JSON.parse(window.render_game_to_text()).distance >= 350) {
-        // A blink can be hidden on the last frame; hold that state until the
-        // next update processes the route finish.
+      const flight = JSON.parse(window.render_game_to_text())
+      if (flight.state === 'playing' && flight.distance >= 340) {
+        // Finish can now happen in the same update that crosses 350m, or
+        // later while a gate resolves. Hide before each candidate update so
+        // the transition itself must restore the plane.
         window.__paperHidePlane()
         previous = window.__paperPose()
         window.advanceTime(16)
-        return { previous, current: window.__paperPose(), hiddenFlightFrames }
+        const current = window.__paperPose()
+        if (current.state === 'dead') return { previous, current, hiddenFlightFrames }
+        if (!current.planeVisible) hiddenFlightFrames++
+        continue
       }
       window.advanceTime(16)
       const current = window.__paperPose()

@@ -168,7 +168,7 @@ import {
 import { applyJourneyRewardOnce, loadJourney, saveJourney } from './journey-storage.js'
 import { savePostcardOnce } from './journey-postcards.js'
 import { cosmeticLabel, renderJourneyResultProgress } from './journey-ui.js'
-import { createRivalState, getRivalCallout, getRivalDelta, sampleRivalPosition } from './journey-rival.js'
+import { advanceRivalRace, createRivalState, getRivalCallout, getRivalDelta, getRivalRaceResult, sampleRivalPosition } from './journey-rival.js'
 import { buildEncounterTimeline, getEncounterEventsAtDistance, resolveJourneyObjective } from './journey-encounters.js'
 import { getPilotEffect } from './journey-modifiers.js'
 import { getPilotMasteryView, resolveMasteryOutcome } from './journey-mastery.js'
@@ -3947,12 +3947,18 @@ function spawnMiniGauntlet(z = 60) {
 function journeyObjectiveText() {
   if (!journeyRunConfig?.objective || !journeyTelemetry) return ''
   const result = resolveJourneyObjective(journeyRunConfig.objective, journeyTelemetry)
+  if (result.kind === 'rival' && journeyRivalState) {
+    const race = getRivalRaceResult(journeyRivalState)
+    if (race.playerFinished) return race.won ? 'Red Dart beaten' : 'Red Dart reached the line first'
+    const gap = getRivalDelta(journeyRivalState, distance)
+    return gap === 0 ? 'Red Dart · neck and neck' : `Red Dart · ${Math.abs(gap)}m ${gap > 0 ? 'behind' : 'ahead'}`
+  }
   const labels = {
     'shortcut-gates': `Gates ${result.value}/${result.target}`,
     'near-miss': `Close calls ${result.value}/${result.target}`,
     shieldless: journeyTelemetry.shieldUsed ? 'Shield used · finish still counts' : 'Keep the shield folded',
     'star-trail': `Trail stars ${result.value}/${result.target}`,
-    rival: journeyTelemetry.rivalBeaten ? 'Red Dart beaten' : 'Beat Red Dart',
+    rival: 'Beat Red Dart',
     completion: 'Reach the destination',
   }
   return labels[result.kind] || result.label
@@ -4014,7 +4020,7 @@ function dispatchJourneyEncounter(event) {
     scene.fog.far = zoneFogFar()
     break
   case 'rival':
-    notifications.show('🔺 Red Dart cuts across the aurora — hold your line!', {
+    notifications.show('🔺 Red Dart cuts across the sky — hold your line!', {
       duration: settings.reducedMotion ? 1800 : 3000,
     })
     break
@@ -4963,7 +4969,7 @@ function resetGame() {
 
   ghostRecorder = createGhostRecorder()
   journeyRivalState = runKind === 'journey' && journeyRunConfig?.rival
-    ? createRivalState({ seed: journeyRunConfig.seed, targetDistance: 500 })
+    ? createRivalState({ seed: journeyRunConfig.seed, targetDistance: 500, difficulty: difficulty.id })
     : null
   ghostData = runKind === 'tutorial' || journeyRivalState
     ? null
@@ -6344,7 +6350,7 @@ function finalizeDeathUnsafe() {
       addLifetimeStars(journeyBonus)
       addWallet(journeyBonus)
     } else if (journeyBonus > 0) journeyBonus = 0
-    const rivalBeaten = !!journeyRunConfig.rival && completedJourneyRoute
+    const rivalBeaten = completedJourneyRoute && getRivalRaceResult(journeyRivalState).won
     const journeyOutcomeBase = Object.freeze({
       receiptId: journeyRunConfig.attemptId,
       pilotId: journeyRunConfig.pilotId,
@@ -6393,7 +6399,7 @@ function finalizeDeathUnsafe() {
       step: journeyRunConfig.stepIndex,
       distance: d,
     })
-    if (journeyRunConfig.rival && completedJourneyRoute) {
+    if (rivalBeaten) {
       track('journey_rival_beaten', { journeyId: journey.id, routeId: journeyRunConfig.routeId })
     }
   }
@@ -7836,6 +7842,10 @@ function update(dt) {
     getTierScoreMultiplierSmooth(distance) *
     (feverActive ? FEVER_SCORE_MUL : 1)
   distance += move * scoreFactor
+  if (journeyRivalState) {
+    advanceRivalRace(journeyRivalState, distance, dt)
+    if (journeyTelemetry) journeyTelemetry.rivalBeaten = getRivalRaceResult(journeyRivalState).won
+  }
 
   if (journeyTimeline) {
     if (pendingJourneyEncounters.length && !entities.some((entity) => entity.type === 'boss' && !entity.cleared)) {
@@ -7981,15 +7991,17 @@ function update(dt) {
   // Ghost
   if (ghostRecorder) ghostRecorder.push(distance, planeX, planeY, elapsed)
   if (ghostMesh && journeyRivalState) {
-    const pose = sampleRivalPosition(journeyRivalState, distance + 18)
-    ghostMesh.position.set(pose.x, pose.y, 2.5)
+    const race = getRivalRaceResult(journeyRivalState)
+    const pose = sampleRivalPosition(journeyRivalState, race.rivalDistance)
+    const gap = getRivalDelta(journeyRivalState, distance)
+    ghostMesh.position.set(pose.x, pose.y, THREE.MathUtils.clamp(5 - gap * 0.06, -1, 14))
+    // Keep a trailing rival from filling the camera when it falls behind.
+    ghostMesh.scale.setScalar(THREE.MathUtils.clamp(1.2 - Math.abs(gap) * 0.01, 0.5, 1.2))
     ghostMesh.rotation.z = Math.sin(distance * 0.027) * 0.3
     ghostMesh.visible = true
-    const delta = getRivalDelta(journeyRivalState, distance)
-    ghostDeltaHud?.classList.remove('hidden')
-    ghostDeltaHud?.classList.toggle('ahead', delta <= 0)
-    ghostDeltaHud?.classList.toggle('behind', delta > 0)
-    if (ghostDeltaValEl) ghostDeltaValEl.textContent = `Red Dart · ${Math.max(0, delta)}m`
+    // The race status occupies the primary Route Goal card: a separate ghost
+    // chip is usually suppressed by the mobile HUD budget during combat.
+    ghostDeltaHud?.classList.add('hidden')
     const milestone = distance >= 440 ? 'final' : distance >= 250 ? 'halfway' : null
     const callout = milestone && getRivalCallout(journeyRivalState, milestone)
     if (callout) {
@@ -8941,6 +8953,7 @@ window.render_game_to_text = () => JSON.stringify({
     pilotId: journeyRunConfig.pilotId,
     objective: journeyRunConfig.objective,
     objectiveText: journeyObjectiveText(),
+    rival: journeyRivalState ? { ...getRivalRaceResult(journeyRivalState), delta: getRivalDelta(journeyRivalState, distance) } : null,
     triggeredEncounterIds: [...(journeyTelemetry?.completedEventIds || [])],
     visibleEncounterIds: entities.filter((entity) => entity.journeyEventId && entity.mesh.position.z > -25 && entity.mesh.position.z < 110).map((entity) => entity.journeyEventId),
     telemetry: journeyTelemetry ? { ...journeyTelemetry, completedEventIds: [...journeyTelemetry.completedEventIds] } : null,
@@ -9594,6 +9607,23 @@ if (import.meta.env.DEV && devTestState.startsWith('#test-journey-shortcut-')) {
     showStick(true)
     window.__paperJourneyScoreJump = (amount) => { distance += amount }
   }
+}
+
+// Real finale flow with controlled rival pace for win/loss regression coverage.
+if (import.meta.env.DEV && ['#test-journey-duel-win', '#test-journey-duel-loss'].includes(devTestState)) {
+  settings = saveSettings({ haptics: false })
+  journey = { ...createJourney(4242, 1000, 2), stepIndex: 3 }
+  journey = selectJourneyRoute(journey, getRouteChoices(journey).find((route) => route.rival).id)
+  journeyRunConfig = buildRunConfiguration(journey)
+  runKind = 'journey'
+  hideAllPanels()
+  resetGame()
+  journeyRivalState.speed = devTestState.endsWith('win') ? 5 : 1000
+  invuln = 999
+  state = 'playing'
+  simulationPaused = true
+  hudEl?.classList.remove('hidden')
+  showStick(true)
 }
 
 if (import.meta.env.DEV && devTestState === '#test-journey-desk-finale') {

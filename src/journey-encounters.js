@@ -5,7 +5,7 @@ export const OBJECTIVES = Object.freeze({
   'near-miss': Object.freeze({ kind: 'near-miss', label: 'Chain close calls', metric: 'nearMisses' }),
   shieldless: Object.freeze({ kind: 'shieldless', label: 'Finish without a shield', metric: 'shieldUsed' }),
   'star-trail': Object.freeze({ kind: 'star-trail', label: 'Collect the star trail', metric: 'collectedJourneyStars' }),
-  rival: Object.freeze({ kind: 'rival', label: 'Beat Red Dart at the final gate', metric: 'rivalBeaten' }),
+  rival: Object.freeze({ kind: 'rival', label: 'Race Red Dart to 500m', metric: 'rivalBeaten' }),
   completion: Object.freeze({ kind: 'completion', label: 'Reach the destination', metric: 'completed' }),
 })
 
