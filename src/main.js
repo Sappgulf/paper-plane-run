@@ -4,7 +4,7 @@ import { GameAudio } from './audio.js'
 import { PLANE_PORTRAIT_PREFIX, planePortraitUrl } from './game/plane-portrait.js'
 import { PLANE_TRAITS } from './plane-models.js'
 import { Haptic } from './haptics.js'
-import { copyNative, isNativeShell, notifyNativeShellReady, shareNative } from './native-shell.js'
+import { copyNative, isNativeShell, shareNative } from './native-shell.js'
 import { shareBaseUrl } from './share-url.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, editorPlacement, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
@@ -288,7 +288,7 @@ function showSwUpdateBanner(worker) {
 
 // The offline shell belongs to the deployed build. In dev it would claim the
 // page and reload it once while the module graph is still loading.
-if (!import.meta.env.DEV && !disableServiceWorker && 'serviceWorker' in navigator) {
+if (!isNativeShell && !import.meta.env.DEV && !disableServiceWorker && 'serviceWorker' in navigator) {
   let refreshing = false
   // `clients.claim()` on a first install fires controllerchange for a page that
   // was previously uncontrolled. That is not an update: reloading here wasted
@@ -2104,4 +2104,3 @@ if (retryRequest) {
 }
 
 document.documentElement.dataset.shell = 'ready'
-notifyNativeShellReady()

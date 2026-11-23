@@ -4,12 +4,6 @@
 export const isNativeGame = location => location?.protocol === 'paper-plane:' && location.host === 'game'
 export const isNativeShell = isNativeGame(globalThis.location)
 
-export function notifyNativeShellReady() {
-  if (!isNativeShell) return
-  const token = new URLSearchParams(location.search).get('nativeBoot')
-  if (token) postToShell('shellReady', token)
-}
-
 function postToShell(name, body) {
   try {
     window.webkit?.messageHandlers?.[name]?.postMessage(body)

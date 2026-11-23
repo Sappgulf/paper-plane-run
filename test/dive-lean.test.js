@@ -37,6 +37,7 @@ describe('dive lean', () => {
     const gapWidth = 5.5
     const damageRadius = 0.9
     for (let gapCenter = -4; gapCenter <= 4; gapCenter += 1) {
+      let tightestClearance = Infinity
       for (let anchorX = -12; anchorX <= 12; anchorX += 0.5) {
         const clearance = envelopeClearance(anchorX, gapCenter, gapWidth, damageRadius)
         if (clearance <= 0) continue
@@ -44,10 +45,11 @@ describe('dive lean', () => {
           for (let depth = 0; depth <= 1; depth += 0.25) {
             const lean = diveLeanOffset({ diveDepth: depth, planeX, anchorX, gapCenter, gapWidth, damageRadius })
             const after = envelopeClearance(anchorX + lean, gapCenter, gapWidth, damageRadius)
-            expect(after).toBeGreaterThanOrEqual(-1e-9)
+            tightestClearance = Math.min(tightestClearance, after)
           }
         }
       }
+      expect(tightestClearance, `gap centered at ${gapCenter}`).toBeGreaterThanOrEqual(-1e-9)
     }
   })
 

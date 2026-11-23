@@ -4,7 +4,7 @@ export function createSlingshot({ onRelease, onCharge = () => {}, reducedMotion 
   panel.id = 'slingshot'
   panel.className = 'slingshot hidden'
   panel.setAttribute('aria-label', 'Launch your plane')
-  panel.innerHTML = `<div class="launch-heading"><p class="slingshot-eyebrow">THE PAPER FLIGHT CLUB</p><h2>Your next great flight.</h2></div><div class="slingshot-track"><svg aria-hidden="true"><path class="sling-band"/><circle class="sling-post sling-post-left" r="5"/><circle class="sling-post sling-post-right" r="5"/><path class="sling-trajectory"/></svg><button id="slingshot-plane" type="button" aria-label="Pull plane to launch" aria-describedby="slingshot-help"><span class="launch-grip" aria-hidden="true"></span><span class="launch-pull-label" aria-hidden="true">PULL</span></button></div><div class="launch-dock"><p id="slingshot-status" role="status">Pull the plane toward you</p><div class="launch-meter" aria-hidden="true"><span></span></div><p id="slingshot-help">Pull down, then release to fly.<br><span>Space / Enter · hold and release</span></p></div>`
+  panel.innerHTML = `<div class="launch-heading"><h2>Ready to launch</h2></div><div class="slingshot-track"><svg aria-hidden="true"><path class="sling-band"/><circle class="sling-post sling-post-left" r="5"/><circle class="sling-post sling-post-right" r="5"/><path class="sling-trajectory"/></svg><button id="slingshot-plane" type="button" aria-label="Pull plane to launch" aria-describedby="slingshot-help"><span class="launch-grip" aria-hidden="true"></span><span class="launch-pull-label" aria-hidden="true">PULL</span></button></div><div class="launch-dock"><p id="slingshot-status" role="status">Pull the plane down</p><div class="launch-meter" aria-hidden="true"><span></span></div><p id="slingshot-help">Release the plane to fly.<span>Space or Enter also launches.</span></p></div>`
   document.getElementById('app')?.append(panel)
   if (!panel.isConnected) document.body.append(panel)
   const button = panel.querySelector('button')
@@ -29,8 +29,10 @@ export function createSlingshot({ onRelease, onCharge = () => {}, reducedMotion 
   function setCharge(value) {
     charge = Math.max(0, Math.min(1, value))
     meter.style.width = `${charge * 100}%`
-    panel.dataset.charged = String(charge >= .18)
-    status.textContent = charge >= .8 ? 'Full tension · let it fly!' : charge >= .18 ? 'Release to launch!' : 'Pull the plane toward you'
+    const charged = charge >= .18
+    panel.dataset.charged = String(charged)
+    const nextStatus = charge >= .8 ? 'Full tension · release to fly' : charged ? 'Release to launch' : 'Pull the plane down'
+    if (status.textContent !== nextStatus) status.textContent = nextStatus
     onCharge(charge)
   }
   function cancel() { touchId = null; pointer = null; heldKey = null; setCharge(0) }

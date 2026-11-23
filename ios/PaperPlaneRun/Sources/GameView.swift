@@ -94,7 +94,6 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     private var loadingConstraintsInstalled = false
     private var runtimeObservers: [NSObjectProtocol] = []
     private var bootNavigation: WKNavigation?
-    private var bootToken: String?
     private var bootTimeout: DispatchWorkItem?
 
     override func viewDidLoad() {
@@ -121,7 +120,6 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         // never shipped in any iOS WebKit), so the same game code that already
         // calls Haptic.* on the web gets real Taptic Engine feedback here.
         let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
-        contentController.add(scriptMessageHandler, name: "shellReady")
         contentController.add(scriptMessageHandler, name: "haptics")
         contentController.add(scriptMessageHandler, name: "shareBackup")
         // Custom-scheme pages are not secure contexts, so navigator.share,
@@ -147,7 +145,9 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
           console.log = function() { send('log', arguments); orig.log.apply(console, arguments) };
           console.warn = function() { send('warn', arguments); orig.warn.apply(console, arguments) };
           console.error = function() { send('error', arguments); orig.error.apply(console, arguments) };
-          window.addEventListener('error', (e) => send('error', [e.message, e.filename, e.lineno]));
+          window.addEventListener('error', (e) => {
+            send('error', [e.message || e.target?.src || e.target?.href, e.filename, e.lineno]);
+          }, true);
         })();
         """
         contentController.addUserScript(WKUserScript(source: consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
@@ -333,36 +333,30 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     private func loadGame() {
         loadingView.isHidden = false
         loadingView.alpha = 1
-        let token = UUID().uuidString
-        var url = URLComponents()
-        url.scheme = "paper-plane"
-        url.host = "game"
-        url.path = "/index.html"
-        url.queryItems = [URLQueryItem(name: "nativeBoot", value: token)]
-        guard let indexURL = url.url else {
+        guard let indexURL = URL(string: "paper-plane://game/index.html"),
+              let navigation = webView.load(URLRequest(url: indexURL)) else {
             presentLoadFailure()
             return
         }
-        bootToken = token
-        bootNavigation = webView.load(URLRequest(url: indexURL))
+        bootNavigation = navigation
         let timeout = DispatchWorkItem { [weak self] in
-            guard let self, self.bootToken == token else { return }
+            guard let self, self.bootNavigation === navigation else { return }
+            NSLog("[PaperPlaneRun] Startup timed out waiting for WebKit.")
             self.presentLoadFailure()
         }
         bootTimeout?.cancel()
         bootTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 35, execute: timeout)
     }
 
-    private func clearBootSignal() {
-        bootToken = nil
+    private func finishBoot() {
+        bootNavigation = nil
         bootTimeout?.cancel()
         bootTimeout = nil
     }
 
     private func presentLoadFailure() {
-        clearBootSignal()
-        bootNavigation = nil
+        finishBoot()
         UIApplication.shared.isIdleTimerDisabled = false
         loadingView.layer.removeAllAnimations()
         loadingView.isHidden = false
@@ -375,8 +369,12 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         message.font = .systemFont(ofSize: 18, weight: .bold)
         message.textColor = UIColor(red: 0x3D / 255, green: 0x2C / 255, blue: 0x29 / 255, alpha: 1)
         let retry = UIButton(type: .system)
-        retry.setTitle("Retry", for: .normal)
-        retry.titleLabel?.font = .systemFont(ofSize: 17, weight: .heavy)
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = "Retry"
+        configuration.baseBackgroundColor = UIColor(red: 0x87 / 255, green: 0x3A / 255, blue: 0x22 / 255, alpha: 1)
+        configuration.baseForegroundColor = .white
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24)
+        retry.configuration = configuration
         retry.addTarget(self, action: #selector(retryLoad), for: .touchUpInside)
         let stack = UIStackView(arrangedSubviews: [message, retry])
         stack.axis = .vertical
@@ -399,17 +397,11 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
-              message.frameInfo.request.url?.scheme == "paper-plane",
-              message.frameInfo.request.url?.host == "game"
+              message.webView === webView,
+              webView.url?.scheme == "paper-plane",
+              webView.url?.host == "game"
         else { return }
 
-        if message.name == "shellReady" {
-            guard let bootToken, message.body as? String == bootToken else { return }
-            clearBootSignal()
-            sendNativeRuntimeSignal()
-            hideLoadingView()
-            return
-        }
         if message.name == "screenAwake" {
             let active = UIApplication.shared.applicationState == .active
             UIApplication.shared.isIdleTimerDisabled = active && message.body as? Bool == true
@@ -539,9 +531,29 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if navigation === bootNavigation { bootNavigation = nil }
-        // The first navigation still needs the JavaScript readiness signal.
-        if bootToken == nil { sendNativeRuntimeSignal() }
+        if let navigation, navigation === bootNavigation {
+            waitForGameShell(navigation)
+        } else {
+            sendNativeRuntimeSignal()
+        }
+    }
+
+    private func waitForGameShell(_ navigation: WKNavigation) {
+        guard bootNavigation === navigation else { return }
+        // WebKit can finish a custom-scheme navigation while the bundled
+        // deferred module is still running. The boot timeout owns failure.
+        webView.evaluateJavaScript("document.documentElement.dataset.shell === 'ready'") { [weak self] value, _ in
+            guard let self, self.bootNavigation === navigation else { return }
+            guard value as? Bool == true else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.waitForGameShell(navigation)
+                }
+                return
+            }
+            self.finishBoot()
+            self.sendNativeRuntimeSignal()
+            self.hideLoadingView()
+        }
     }
 
     private func presentTextShareSheet(text: String, urlString: String) {
