@@ -93,6 +93,9 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     private let loadingView = UIView()
     private var loadingConstraintsInstalled = false
     private var runtimeObservers: [NSObjectProtocol] = []
+    private var bootNavigation: WKNavigation?
+    private var bootToken: String?
+    private var bootTimeout: DispatchWorkItem?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -118,6 +121,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         // never shipped in any iOS WebKit), so the same game code that already
         // calls Haptic.* on the web gets real Taptic Engine feedback here.
         let scriptMessageHandler = WeakScriptMessageHandler(delegate: self)
+        contentController.add(scriptMessageHandler, name: "shellReady")
         contentController.add(scriptMessageHandler, name: "haptics")
         contentController.add(scriptMessageHandler, name: "shareBackup")
         // Custom-scheme pages are not secure contexts, so navigator.share,
@@ -191,6 +195,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
     deinit {
+        bootTimeout?.cancel()
         runtimeObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
@@ -215,23 +220,19 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
         })
         // While backgrounded/resigned, stop gameplay audio and rendering so the
         // game doesn't keep playing or burning battery off-screen.
-        let pauseNotifications: [Notification.Name] = [
-            UIApplication.willResignActiveNotification,
-            UIApplication.didEnterBackgroundNotification,
-        ]
-        runtimeObservers.append(contentsOf: pauseNotifications.map { name in
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                // A backgrounded game must not hold the display awake, and a
-                // transient resign (Control Center, call banner) may not fire
-                // visibilitychange inside WebKit — ask the engine to pause.
-                UIApplication.shared.isIdleTimerDisabled = false
-                self.webView?.pauseAllMediaPlayback()
-                self.webView?.evaluateJavaScript(
-                    "window.dispatchEvent(new Event('paperplane:native-paused'));",
-                    completionHandler: nil
-                )
-            }
+        runtimeObservers.append(center.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            // Control Center and other interruptions may leave WebKit visible.
+            UIApplication.shared.isIdleTimerDisabled = false
+            self.webView?.pauseAllMediaPlayback()
+            self.webView?.evaluateJavaScript(
+                "window.dispatchEvent(new Event('paperplane:native-paused'));",
+                completionHandler: nil
+            )
         })
     }
 
@@ -321,7 +322,7 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     }
 
     private func hideLoadingView() {
-        UIView.animate(withDuration: 0.22, animations: {
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.22, animations: {
             self.loadingView.alpha = 0
         }, completion: { finished in
             guard finished else { return }
@@ -332,14 +333,36 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     private func loadGame() {
         loadingView.isHidden = false
         loadingView.alpha = 1
-        guard let indexURL = URL(string: "paper-plane://game/index.html") else {
+        let token = UUID().uuidString
+        var url = URLComponents()
+        url.scheme = "paper-plane"
+        url.host = "game"
+        url.path = "/index.html"
+        url.queryItems = [URLQueryItem(name: "nativeBoot", value: token)]
+        guard let indexURL = url.url else {
             presentLoadFailure()
             return
         }
-        webView.load(URLRequest(url: indexURL))
+        bootToken = token
+        bootNavigation = webView.load(URLRequest(url: indexURL))
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.bootToken == token else { return }
+            self.presentLoadFailure()
+        }
+        bootTimeout?.cancel()
+        bootTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+    }
+
+    private func clearBootSignal() {
+        bootToken = nil
+        bootTimeout?.cancel()
+        bootTimeout = nil
     }
 
     private func presentLoadFailure() {
+        clearBootSignal()
+        bootNavigation = nil
         UIApplication.shared.isIdleTimerDisabled = false
         loadingView.layer.removeAllAnimations()
         loadingView.isHidden = false
@@ -375,8 +398,21 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame,
+              message.frameInfo.request.url?.scheme == "paper-plane",
+              message.frameInfo.request.url?.host == "game"
+        else { return }
+
+        if message.name == "shellReady" {
+            guard let bootToken, message.body as? String == bootToken else { return }
+            clearBootSignal()
+            sendNativeRuntimeSignal()
+            hideLoadingView()
+            return
+        }
         if message.name == "screenAwake" {
-            UIApplication.shared.isIdleTimerDisabled = (message.body as? Bool) ?? false
+            let active = UIApplication.shared.applicationState == .active
+            UIApplication.shared.isIdleTimerDisabled = active && message.body as? Bool == true
             return
         }
         if message.name == "consoleLog" {
@@ -471,11 +507,15 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
     // our own scheme. Cancelling everything else means a stray https link (in
     // fetched content, console, etc.) can never navigate the webview away.
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if navigationAction.request.url?.scheme == "paper-plane" {
+        let url = navigationAction.request.url
+        if url?.scheme == "paper-plane", url?.host == "game" {
             decisionHandler(.allow)
-        } else {
-            print("[Nav] blocked navigation to: \(navigationAction.request.url?.absoluteString ?? "<nil>")")
-            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.cancel)
+        if let url, url.scheme == "mailto", url.path == "sappgulf@gmail.com",
+           navigationAction.navigationType == .linkActivated, navigationAction.sourceFrame.isMainFrame {
+            UIApplication.shared.open(url)
         }
     }
 
@@ -486,20 +526,22 @@ final class GameViewController: UIViewController, WKScriptMessageHandler, WKUIDe
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
+        if let bootNavigation, navigation !== bootNavigation { return }
         print("[Nav] provisional navigation failed: \(error)")
         presentLoadFailure()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
+        if let bootNavigation, navigation !== bootNavigation { return }
         print("[Nav] navigation failed: \(error)")
         presentLoadFailure()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        print("[Nav] finished loading")
-        sendNativeRuntimeSignal()
-        hideLoadingView()
+        if navigation === bootNavigation { bootNavigation = nil }
+        // The first navigation still needs the JavaScript readiness signal.
+        if bootToken == nil { sendNativeRuntimeSignal() }
     }
 
     private func presentTextShareSheet(text: String, urlString: String) {

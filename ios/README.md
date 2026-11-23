@@ -58,10 +58,10 @@ deployment, so the iOS build and native shell establish equivalent contracts:
    and rewrites to `./assets/...` when `BASE_PATH=./` is set (`build:ios`).
    CSS asset references resolve relative to the stylesheet's own location,
    independent of the origin scheme.
-2. **`/api/leaderboard` and `/api/analytics`** — relative fetches with no
-   server to resolve against. `build:ios` sets `VITE_API_BASE` to the
-   production URL so remote leaderboard/analytics calls still work from the
-   offline-bundled app.
+2. **Online leaderboards** use the HTTPS host set by `build:ios`. Reading
+   rankings is available from the online boards. Publishing starts disabled and
+   is enabled in Settings for this installation. Public scores omit the
+   player's callsign, and gameplay diagnostics stay on the device.
 3. **Offline ES modules and `crossorigin` tags** — Vite adds
    this by default for real HTTPS deployments. Under `file://` origins,
    WKWebView fetches the resource fine at the network layer (confirmed via
@@ -72,6 +72,23 @@ deployment, so the iOS build and native shell establish equivalent contracts:
    The native shell serves all bundled resources from
    one `paper-plane://game/` origin with `WKURLSchemeHandler`, allowing current
    WebKit to execute the ES module while the game remains fully offline.
+
+## App Store build
+
+1. Run `npm ci`, `npm test`, and `npm run ios:generate` from the repo root.
+2. Build the Release configuration for iPhone and iPad. Verify that the offline
+   menu becomes interactive, a practice flight launches, backgrounding pauses
+   it, and the Help and Privacy pages open in Settings.
+3. Set your Apple Developer team in Xcode or pass `DEVELOPMENT_TEAM` on the
+   command line. Archive for a generic iOS device, then use Xcode Organizer to
+   validate and upload for App Store Connect.
+4. Use the privacy policy and support pages from the production game domain.
+   Confirm that they load before submitting the uploaded build with current
+   phone and tablet screenshots.
+
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` live in `project.yml`.
+Increment the build number for each new upload. The game package includes
+`PaperPlaneRun/PrivacyInfo.xcprivacy`.
 
 ## Project layout
 

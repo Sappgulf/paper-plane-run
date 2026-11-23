@@ -18,13 +18,17 @@ const SWEEP_SAMPLES = Array.from({ length: 240 }, (_, index) => index * 0.031)
 describe('pattern bounds', () => {
   it('never exceeds the requested amplitude, over a long time domain', () => {
     for (const pattern of HAZARD_PATTERN_IDS) {
+      let peakX = 0
+      let peakY = 0
       for (const t of TIME_SAMPLES) {
         const offset = resolveHazardOffset({
           pattern, elapsed: t, phase: 1.7, speed: 8, amplitudeX: 3, amplitudeY: 2,
         })
-        expect(Math.abs(offset.x)).toBeLessThanOrEqual(3 + 1e-9)
-        expect(Math.abs(offset.y)).toBeLessThanOrEqual(2 + 1e-9)
+        peakX = Math.max(peakX, Math.abs(offset.x))
+        peakY = Math.max(peakY, Math.abs(offset.y))
       }
+      expect(peakX, pattern).toBeLessThanOrEqual(3 + 1e-9)
+      expect(peakY, pattern).toBeLessThanOrEqual(2 + 1e-9)
     }
   })
 

@@ -2,6 +2,11 @@ import { defineConfig, devices } from '@playwright/test'
 
 const workerCount = Math.max(1, Number(process.env.PLAYWRIGHT_WORKERS || 1))
 const usePreviewServer = process.env.PLAYWRIGHT_PREVIEW === '1'
+const port = Number(process.env.PLAYWRIGHT_PORT || 4173)
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error('PLAYWRIGHT_PORT must be a port between 1 and 65535')
+}
+const baseURL = `http://127.0.0.1:${port}`
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,7 +19,7 @@ export default defineConfig({
   workers: workerCount,
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -26,9 +31,9 @@ export default defineConfig({
   ],
   webServer: {
     command: usePreviewServer
-      ? 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173'
-      : 'npm run dev -- --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
+      ? `npm run build && npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`
+      : `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,
   },

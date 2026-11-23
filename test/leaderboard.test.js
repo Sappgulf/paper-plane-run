@@ -4,6 +4,7 @@ import {
   fetchRemoteTop,
   getWeeklyTop,
   startRemoteRun,
+  setOnlineScorePublishing,
   submitLocalScore,
   submitRemoteScore,
 } from '../src/leaderboard.js'
@@ -42,6 +43,26 @@ describe('leaderboards', () => {
   test('treats a malformed online leaderboard response as unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scores: 'invalid' }) }))
     expect(await fetchRemoteTop('normal', { daily: true })).toBeNull()
+  })
+
+  test('the iOS board hides online names and submits scores without a private callsign', async () => {
+    vi.stubGlobal('location', new URL('paper-plane://game/index.html'))
+    const scores = [{ name: 'A private callsign', distance: 42, stars: 2 }]
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ scores }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchRemoteTop()).toEqual({ scores: [{ name: 'Pilot', distance: 42, stars: 2 }] })
+    expect(await startRemoteRun({ kind: 'classic', mode: 'normal' })).toBeNull()
+    expect(await submitRemoteScore({ runId: 'a'.repeat(32), distance: 42, stars: 2 })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    setOnlineScorePublishing(true)
+    await submitRemoteScore({ runId: 'a'.repeat(32), name: 'Local callsign', distance: 42, stars: 2 })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      action: 'finish', runId: 'a'.repeat(32), name: 'Pilot', distance: 42, stars: 2,
+    })
   })
 
   test('keeps a weekly board separate from the daily list', () => {

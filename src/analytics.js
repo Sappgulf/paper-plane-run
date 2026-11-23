@@ -2,6 +2,7 @@
  * Lightweight anonymous analytics — local ring buffer + optional POST.
  */
 import { safeSetItem } from './game/safe-storage.js'
+import { isNativeGame } from './native-shell.js'
 
 const KEY = 'paper-plane-run-analytics'
 const SESSION = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -37,7 +38,7 @@ export function track(event, props = {}) {
 
   // The plain Vite development server does not mount Vercel functions.
   // Keep local funnel data without generating a noisy 404 for every event.
-  if (import.meta.env.DEV || isLocalHost) return row
+  if (import.meta.env.DEV || isLocalHost || isNativeGame(globalThis.location)) return row
 
   // Fire-and-forget remote
   try {

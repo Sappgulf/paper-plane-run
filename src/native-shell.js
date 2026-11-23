@@ -1,7 +1,14 @@
 // The iOS app (ios/) hosts this exact build in a WKWebView under the paper-plane://
 // origin and registers script message handlers for what a browser cannot do. Every
 // call here is a silent no-op on the web.
-export const isNativeShell = typeof location !== 'undefined' && location.protocol === 'paper-plane:'
+export const isNativeGame = location => location?.protocol === 'paper-plane:' && location.host === 'game'
+export const isNativeShell = isNativeGame(globalThis.location)
+
+export function notifyNativeShellReady() {
+  if (!isNativeShell) return
+  const token = new URLSearchParams(location.search).get('nativeBoot')
+  if (token) postToShell('shellReady', token)
+}
 
 function postToShell(name, body) {
   try {

@@ -1,4 +1,5 @@
 import { safeGetItem, safeSetItem } from './game/safe-storage.js'
+import { isNativeGame } from './native-shell.js'
 import {
   LEADERBOARD_MODES,
   isLeaderboardMode,
@@ -18,10 +19,18 @@ export {
 const LOCAL_KEY = 'paper-plane-run-lb-local'
 const DAILY_KEY = 'paper-plane-run-lb-daily'
 const WEEKLY_KEY = 'paper-plane-run-lb-weekly'
-// The iOS app bundles this build offline and loads it via file://, where a
-// relative /api/... fetch has no server to resolve against. Vite bakes this
-// in at build time — see package.json's build:ios script — so the web build
-// (relative, same-origin) is completely unaffected.
+// Consent is specific to the current installation and stays out of backups.
+const PUBLISH_KEY = 'paper-plane-online-score-publishing'
+
+export function canPublishOnlineScore() {
+  return !isNativeGame(globalThis.location) || safeGetItem(PUBLISH_KEY) === 'yes'
+}
+
+export function setOnlineScorePublishing(enabled) {
+  return safeSetItem(PUBLISH_KEY, enabled ? 'yes' : 'no')
+}
+// The bundled app has no same-origin API. The iOS build supplies the HTTPS
+// endpoint, while the hosted game uses its own origin.
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 function load(key) {
@@ -93,7 +102,11 @@ export async function fetchRemoteTop(mode = 'normal', opts = false, { timeoutMs 
     const res = await fetch(`${API_BASE}/api/leaderboard?${q}`, controller ? { signal: controller.signal } : undefined)
     if (!res.ok) return null
     const result = await res.json()
-    return Array.isArray(result?.scores) ? result : null
+    if (!Array.isArray(result?.scores)) return null
+    if (isNativeGame(globalThis.location)) {
+      return { ...result, scores: result.scores.map(row => ({ ...row, name: 'Pilot' })) }
+    }
+    return result
   } catch {
     return null
   } finally {
@@ -122,11 +135,13 @@ async function postRemote(body, attempts = 1) {
 }
 
 export async function startRemoteRun({ mode, kind, seed }) {
+  if (!canPublishOnlineScore()) return null
   const result = await postRemote({ action: 'start', mode, kind, seed })
   return typeof result?.runId === 'string' ? result.runId : null
 }
 
 export async function submitRemoteScore({ runId, name, distance, stars }) {
-  if (!runId) return null
-  return postRemote({ action: 'finish', runId, name, distance, stars }, 2)
+  if (!runId || !canPublishOnlineScore()) return null
+  const publicName = isNativeGame(globalThis.location) ? 'Pilot' : name
+  return postRemote({ action: 'finish', runId, name: publicName, distance, stars }, 2)
 }

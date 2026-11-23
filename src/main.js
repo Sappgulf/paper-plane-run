@@ -4,7 +4,7 @@ import { GameAudio } from './audio.js'
 import { PLANE_PORTRAIT_PREFIX, planePortraitUrl } from './game/plane-portrait.js'
 import { PLANE_TRAITS } from './plane-models.js'
 import { Haptic } from './haptics.js'
-import { copyNative, isNativeShell, shareNative } from './native-shell.js'
+import { copyNative, isNativeShell, notifyNativeShellReady, shareNative } from './native-shell.js'
 import { shareBaseUrl } from './share-url.js'
 import { createEngineLoader } from './engine-contract.js'
 import { EDITOR_PALETTE, editorPlacement, emptyLayout, layoutToShareCode, parseCompact } from './editor.js'
@@ -76,6 +76,8 @@ import {
 } from './game/hangar-nav.js'
 import {
   fetchRemoteTop,
+  canPublishOnlineScore,
+  setOnlineScorePublishing,
   getDailyTop,
   getLocalTop,
   getWeeklyTop,
@@ -1246,6 +1248,15 @@ function renderSettings() {
   bind('set-colorblind', 'colorblindPowers')
   bind('set-low-power', 'lowPower')
   bind('set-haptics', 'haptics')
+  const scoreToggle = $('set-online-scores')
+  if (isNativeShell && scoreToggle) {
+    $('settings-online-scores')?.removeAttribute('hidden')
+    scoreToggle.checked = canPublishOnlineScore()
+    scoreToggle.onchange = () => {
+      setOnlineScorePublishing(scoreToggle.checked)
+      scoreToggle.checked = canPublishOnlineScore()
+    }
+  }
   bind('set-season', 'forceSeason')
   // Music lives in GameAudio's own pref (audio.js), not settings.js — mirror
   // how boot reads it and persist through the same toggle as the mute button.
@@ -1401,13 +1412,16 @@ async function renderBoard(tab = 'local') {
   const sourceNote = $('board-source')
   if (sourceNote) sourceNote.textContent = tab === 'local'
     ? 'Scores saved on this device.'
-    : 'Online leaderboard · scores are checked for plausibility; play is not independently verified.'
+    : isNativeShell
+      ? 'Online leaderboard · anonymous pilot scores. Enable publishing in Settings.'
+      : 'Online leaderboard · scores checked for plausibility.'
   document.querySelectorAll('[data-board]').forEach((t) => {
     const selected = t.dataset.board === tab
     t.classList.toggle('active', selected)
     t.setAttribute('aria-pressed', String(selected))
   })
   let rows = []
+  let fromDevice = tab === 'local'
   let remoteFailed = false
   if (tab === 'local') rows = getLocalTop(12)
   else {
@@ -1417,6 +1431,7 @@ async function renderBoard(tab = 'local') {
     remoteFailed = remote === null
     rows = remote?.scores || []
     if (remoteFailed && tab !== 'remote') {
+      fromDevice = true
       rows = tab === 'daily' ? getDailyTop(dailyKey(), difficulty.id, 12) : getWeeklyTop(weeklyKey(), difficulty.id, 12)
       if (sourceNote) sourceNote.textContent = 'Online leaderboard unavailable. Showing scores saved on this device.'
     } else if (remoteFailed && sourceNote) {
@@ -1443,7 +1458,7 @@ async function renderBoard(tab = 'local') {
     const li = document.createElement('li')
     const rank = i + 1
     const safeName = normalizeLeaderboardName(r.name)
-    const isMe = safeName === myName
+    const isMe = fromDevice && safeName === myName
     li.className = `board-row${rank <= 3 ? ` rank-${rank}` : ''}${isMe ? ' board-me' : ''}`
     const rankElement = document.createElement('span')
     rankElement.className = 'board-rank'
@@ -2089,3 +2104,4 @@ if (retryRequest) {
 }
 
 document.documentElement.dataset.shell = 'ready'
+notifyNativeShellReady()

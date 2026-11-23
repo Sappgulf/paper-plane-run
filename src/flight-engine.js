@@ -77,6 +77,7 @@ import {
 import {
   submitLocalScore,
   startRemoteRun,
+  canPublishOnlineScore,
   submitRemoteScore,
 } from './leaderboard.js'
 import { parseCompact, getLayoutFinishDistance } from './editor.js'
@@ -5634,7 +5635,7 @@ launcher = createSlingshot({
     launchStrength = power
     speedBoost = power * 18
     timer?.reset?.()
-    if (['classic', 'daily', 'weekly'].includes(runKind)) {
+    if (canPublishOnlineScore() && ['classic', 'daily', 'weekly'].includes(runKind)) {
       remoteRunPromise = startRemoteRun({ mode: difficulty.id, kind: runKind, seed: activeRunSeed })
     }
     audio.startFlight()
@@ -6499,14 +6500,16 @@ function finalizeDeathUnsafe() {
   })
   refreshMissionBadge()
 
-  const name = normalizeLeaderboardName(pilotNameInput.value)
+  const name = normalizeLeaderboardName(pilotNameInput?.value)
   if (isDistanceRun) {
     submitLocalScore({
       name, distance: d, stars, mode: difficulty.id,
       daily: runKind === 'daily', dailyKey: activeRunPeriod,
       weekly: runKind === 'weekly', weeklyKey: activeRunPeriod,
     })
-    const run = remoteRunPromise
+  }
+  const run = remoteRunPromise
+  if (isDistanceRun && run && canPublishOnlineScore()) {
     const generation = scoreSubmissionGeneration
     const status = $('score-sync-status')
     if (status) { status.textContent = 'Saving online score…'; status.classList.remove('hidden') }
